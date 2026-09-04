@@ -75,6 +75,8 @@ In the app: **Settings -> Servers -> Add server**.
 | Port | `27700` |
 | Token | the Token line from the installer |
 
+![Add server dialog](images/quickstart-servers-add.png)
+
 Press **Add**, then **Connect** on the new row.
 The status line on that page says `Connected to build box (ws://...)` when it worked.
 The app remembers the choice and dials that server the next time it starts.
