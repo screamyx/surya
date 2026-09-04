@@ -76,8 +76,23 @@ Surya copies the data model, not the program:
 Skipped in v1: file leases, merge train, gates.
 Luvus `task` command set is the vocabulary to copy: add, list, claim, next, start, done, release.
 
+## 9. Runs already outlive the browser, but the runtime cannot cancel them
+
+Probed on 2026-09-05 against `@copilotkit/runtime` 1.69.2 with a fake agent and the real Claude adapter, with two controls.
+Full writeup: `docs/probes/agui-disconnect-2026-09-05.md`.
+
+Finding, quoted from that writeup: "when the client disconnects the runtime only unsubscribes the HTTP reader from a hot ReplaySubject, while the agent itself runs on to RUN_FINISHED in a fire-and-forget async function, so nothing is aborted and every event after the disconnect is lost rather than cancelled."
+
+Numbers: fake agent emitted=44, client saw 6 before the kill, logged_after_disconnect=38.
+Real Claude adapter: `claude` child alive 4s after the disconnect, run reached RUN_FINISHED 34s later.
+Control with the client connected: 40 of 40 ticks delivered.
+
+Three consequences for the daemon:
+- Reconnect through the runtime's connect endpoint, not a fresh run, and keep our own event log on disk, since the runtime drops post-disconnect events at its write guard.
+- The runtime's stop endpoint does not stop Claude. `abortRun()` is empty in the base agent and the Claude adapter never overrides it. The daemon owns the `claude` pid, or subclasses `abortRun()` to call the adapter's `interrupt()`.
+- A second run on a busy thread calls the same empty abort, so two `claude` processes result. The daemon must serialise runs per agent itself.
+- Replace the in-memory runner if runs must survive a daemon restart.
+
 ## Open
 
-- Does the AG-UI runtime abort a run when the browser disconnects?
-  Being probed on 2026-09-05.
-  Decides whether runs live inside HTTP requests or beside them.
+None at day zero.
