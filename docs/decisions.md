@@ -144,6 +144,23 @@ Owner, 2026-09-05 01:02: "build rule: keep every file thin, 500 loc max".
 Every file 500 lines max, in the mockup and in the real app.
 The mockup at `mockup/` is the ground truth for builders of the real app, stock shadcn "base-nova" preset on neutral, tokens only.
 
+## 14. surya knows no business, workspaces bring their own cards
+
+Owner, 2026-09-05 01:28: "this harness is used to interface with DMS and with me to develop app. i plan to use the harness like i use claude code, so it is not a specialised bespoke app for the dms."
+Owner, 01:31: "we should be able to build catalog bespoke to our needs, depending on the project. e.g a kss-marketing repo might need a more data-visualizatiuon-centric and meta-specific catalog, project-jag might need catalog that shows diff, image etc."
+
+surya knows workspaces, agents, tasks, files, previews and cards. It knows no business.
+Nothing in surya's code names a car, a lead, a campaign, or the DMS. Sample data in the mockup may, code may not.
+
+Cards come in three layers:
+- surya primitives: Stack, Text, Image, Badge, Table, Chart, Diff, Form, Button, Progress. Built once, phone and desktop.
+- surya built-in shapes, six generic cards: record, table, form, approval, diff-summary, metric.
+- workspace cards: a `.surya/cards` folder in the repo, each card a schema plus a layout built from the primitives. Data, never code. Loaded when that workspace is open, checked against that workspace's catalog.
+
+Agents write cards as tool calls (`show_card`), never as text in the reply. The tap on a card returns as the tool result. Reply text stays to one line when a card is shown.
+Because a workspace card is JSON, an agent working in that repo can add a new card the same way it adds a skill.
+Escape hatch, not day one: a built and installed surya plugin for a visual the primitives cannot express.
+
 ## Open
 
 None at day zero.
