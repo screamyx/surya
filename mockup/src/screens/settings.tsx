@@ -55,7 +55,7 @@ export function SettingsScreen() {
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6 md:py-8">
       <header className="flex flex-col gap-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight md:text-3xl">Settings</h1>
+        <h1 className="u-display text-3xl md:text-4xl">Settings</h1>
         <p className="text-muted-foreground text-sm">Your account, the machines that run the agents, and how surya reaches you.</p>
       </header>
 

@@ -103,7 +103,7 @@ function AgentRow({ agent }: { agent: Agent }) {
       variant="outline"
       className="relative flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:gap-2.5"
     >
-      <div className="flex items-center gap-2 sm:w-60 sm:shrink-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-2 sm:w-60 sm:flex-nowrap sm:shrink-0">
         <StatusDot status={agent.status} />
         <Link to={`/w/${agent.workspaceId}/agent/${agent.id}`} className="font-medium after:absolute after:inset-0">
           {agent.name}
@@ -112,10 +112,10 @@ function AgentRow({ agent }: { agent: Agent }) {
         <span className="text-muted-foreground ml-auto text-xs tabular-nums sm:hidden">{fmtTime(agent.lastEventAt)}</span>
       </div>
       <ItemContent className="gap-0.5">
-        <ItemDescription className={cn(agent.status === "idle" && "text-muted-foreground/70")}>
+        <ItemDescription className={cn(agent.status === "idle" && "text-muted-foreground")}>
           {agent.summary}
         </ItemDescription>
-        {task && <ItemDescription className="text-muted-foreground/70 line-clamp-1">On: {task.title}</ItemDescription>}
+        {task && <ItemDescription className="text-muted-foreground line-clamp-1">On: {task.title}</ItemDescription>}
       </ItemContent>
       <ItemActions className="w-full shrink-0 sm:w-auto">
         <span className="text-muted-foreground hidden text-xs tabular-nums sm:inline">{fmtTime(agent.lastEventAt)}</span>
@@ -158,7 +158,7 @@ export function AgentsScreen() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="font-heading text-xl font-semibold tracking-tight">{w.name}</h1>
+            <h1 className="u-display text-3xl md:text-4xl">{w.name}</h1>
             <Badge variant="outline">{w.branch}</Badge>
           </div>
           <p className="text-muted-foreground text-sm">{w.repo}</p>

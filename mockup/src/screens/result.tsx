@@ -59,7 +59,7 @@ function Stepper() {
                 className={cn(
                   "flex size-5 shrink-0 items-center justify-center rounded-full",
                   s.state === "done" && "bg-primary text-primary-foreground",
-                  s.state === "ready" && "bg-foreground text-background",
+                  s.state === "ready" && "text-primary ring-primary bg-background ring-2",
                   later && "bg-muted text-muted-foreground"
                 )}
               >
@@ -126,7 +126,7 @@ export function ResultScreen() {
   return (
     <div className="flex min-w-0 flex-col gap-4 p-4">
       <div className="flex flex-col gap-2">
-        <h1 className="text-lg leading-snug font-medium">{result.title}</h1>
+        <h1 className="u-display max-w-[22ch] text-2xl md:text-3xl">{result.title}</h1>
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant="outline" className="gap-1.5">
             <StatusDot status={agent.status} />

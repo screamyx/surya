@@ -40,7 +40,7 @@ export function MessagesScreen() {
   return (
     <div className="flex h-[calc(100svh-3rem-2.75rem-5rem)] flex-col md:h-[calc(100svh-3rem-2.75rem)]">
       <div className="shrink-0 border-b px-4 py-3">
-        <h1 className="font-heading text-xl font-semibold tracking-tight">Messages</h1>
+        <h1 className="u-display text-3xl md:text-4xl">Messages</h1>
         <p className="text-muted-foreground text-sm">
           Mail between you and your agents, and between agents. Every message has an address, a delivery id, and an ack.
         </p>

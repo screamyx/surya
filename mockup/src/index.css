@@ -104,6 +104,11 @@
     --color-background: var(--background);
     --color-ok: var(--ok);
     --color-warn: var(--warn);
+    --color-code-key: var(--code-key);
+    --color-code-str: var(--code-str);
+    --color-code-num: var(--code-num);
+    --color-code-com: var(--code-com);
+    --color-code-txt: var(--code-txt);
     --color-ink-soft: var(--ink-soft);
 }
 
@@ -136,7 +141,7 @@
     --accent-foreground: oklch(0.191 0.002 107);
     --faint: oklch(0.948 0.011 95);
 
-    --destructive: oklch(0.545 0.166 25);
+    --destructive: oklch(0.508 0.192 18);
     --destructive-foreground: oklch(0.988 0.005 95);
     --ok: oklch(0.522 0.088 152);
     --warn: oklch(0.545 0.11 75);
@@ -153,6 +158,13 @@
     --shade-mid: oklch(0.32 0.02 70 / 14%);
     --shade-deep: oklch(0.32 0.02 70 / 20%);
     --sheen: oklch(1 0 0 / 60%);
+
+    /* Code colours. Five categories, all warm, each measured at 4.7:1 on --canvas. */
+    --code-key: oklch(0.532 0.13 39);
+    --code-str: oklch(0.508 0.09 152);
+    --code-num: oklch(0.523 0.11 75);
+    --code-com: oklch(0.518 0.008 100);
+    --code-txt: oklch(0.359 0.005 107);
 
     --chart-1: oklch(0.558 0.135 39);
     --chart-2: oklch(0.522 0.088 152);
@@ -195,8 +207,8 @@
     --accent-foreground: oklch(0.936 0.006 95);
     --faint: oklch(0.222 0.004 100);
 
-    --destructive: oklch(0.664 0.164 25);
-    --destructive-foreground: oklch(0.176 0.012 25);
+    --destructive: oklch(0.782 0.134 18);
+    --destructive-foreground: oklch(0.19 0.035 18);
     --ok: oklch(0.706 0.114 152);
     --warn: oklch(0.762 0.114 75);
 
@@ -210,6 +222,12 @@
     --shade-mid: oklch(0 0 0 / 40%);
     --shade-deep: oklch(0 0 0 / 55%);
     --sheen: oklch(1 0 0 / 6%);
+
+    --code-key: oklch(0.742 0.12 39);
+    --code-str: oklch(0.732 0.1 152);
+    --code-num: oklch(0.762 0.11 75);
+    --code-com: oklch(0.702 0.008 100);
+    --code-txt: oklch(0.902 0.006 95);
 
     --chart-1: oklch(0.702 0.128 40);
     --chart-2: oklch(0.706 0.114 152);

@@ -42,7 +42,7 @@ export function InboxScreen() {
     <div className="mx-auto w-full max-w-3xl px-4 py-5 md:px-6 md:py-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h1 className="font-heading text-xl font-semibold tracking-tight">Needs you</h1>
+          <h1 className="u-display text-3xl md:text-4xl">Needs you</h1>
           <p className="text-muted-foreground text-sm">
             {inbox.length} in your inbox, {needs} waiting on you.
           </p>

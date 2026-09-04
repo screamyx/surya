@@ -68,7 +68,7 @@ function WorkspaceRow({ w, current }: { w: (typeof workspaces)[number]; current:
         </span>
         <span className="truncate">{w.name}</span>
       </SidebarMenuButton>
-      {hot > 0 && <SidebarMenuBadge className="bg-destructive text-destructive-foreground right-12 rounded-full">{hot}</SidebarMenuBadge>}
+      {hot > 0 && <SidebarMenuBadge className="bg-destructive text-destructive-foreground peer-hover/menu-button:text-destructive-foreground peer-data-active/menu-button:text-destructive-foreground right-12 rounded-full">{hot}</SidebarMenuBadge>}
       <Tooltip>
         <TooltipTrigger render={<SidebarMenuAction className="right-6 opacity-0 group-hover/ws:opacity-100 max-md:opacity-100" render={<Link to={`/new?ws=${w.id}`} />} aria-label={`New agent in ${w.name}`} />}>
           <Plus />
@@ -191,7 +191,7 @@ export function AppShell() {
                 <SidebarMenuItem><SidebarMenuButton render={<Link to="/new" />} tooltip="New ask"><Plus /><span>New ask</span></SidebarMenuButton></SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton render={<Link to="/inbox" />} tooltip="Needs you"><Inbox /><span>Needs you</span></SidebarMenuButton>
-                  {needsYou > 0 && <SidebarMenuBadge className="bg-destructive text-destructive-foreground rounded-full">{needsYou}</SidebarMenuBadge>}
+                  {needsYou > 0 && <SidebarMenuBadge className="bg-destructive text-destructive-foreground peer-hover/menu-button:text-destructive-foreground peer-data-active/menu-button:text-destructive-foreground rounded-full">{needsYou}</SidebarMenuBadge>}
                 </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
@@ -216,7 +216,7 @@ export function AppShell() {
               <Bell />
               {needsYou > 0 && <span className="bg-destructive absolute top-1.5 right-1.5 size-2 rounded-full" />}
             </Button>
-            <Button size="sm" nativeButton={false} render={<Link to="/new" />} className="hidden md:inline-flex"><Plus data-icon="inline-start" />New ask</Button>
+            <Button size="sm" variant="outline" nativeButton={false} render={<Link to="/new" />} className="hidden md:inline-flex"><Plus data-icon="inline-start" />New ask</Button>
             <Avatar className="size-7"><AvatarFallback>{settings.user.name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase()}</AvatarFallback></Avatar>
           </div>
         </header>

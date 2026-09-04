@@ -6,7 +6,9 @@ import { javascript } from "@codemirror/lang-javascript"
 import { markdown } from "@codemirror/lang-markdown"
 import { EditorView, lineNumbers } from "@codemirror/view"
 import { EditorState } from "@codemirror/state"
-import { defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language"
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
+import { tags as t } from "@lezer/highlight"
+import { Prec } from "@codemirror/state"
 import { MergeView, unifiedMergeView } from "@codemirror/merge"
 import { PanelLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -21,11 +23,34 @@ import { fileContents, leadPhpAfter, leadPhpBefore } from "@/data"
 
 export const DIFF_PATH = "backend/app/Models/Lead.php"
 
+// The merge view paints its own surface, so it has to be told our tokens or it
+// inherits page colours and lands ivory-on-white in dark mode.
+const surface = Prec.highest(EditorView.theme({
+  "&": { backgroundColor: "var(--canvas)", color: "var(--foreground)" },
+  ".cm-content": { caretColor: "var(--primary)" },
+  ".cm-gutters": { backgroundColor: "var(--canvas)", color: "var(--muted-foreground)", borderRight: "1px solid var(--border)" },
+  ".cm-lineNumbers .cm-gutterElement": { color: "var(--muted-foreground)" },
+  ".cm-activeLine, .cm-activeLineGutter": { backgroundColor: "transparent" },
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": { backgroundColor: "var(--accent)" },
+}))
+
+// One syntax palette, written in tokens, so the editor swaps with the theme like
+// everything else. Prec.highest keeps basicSetup's stock style from winning.
+const codeHighlight = HighlightStyle.define([
+  { tag: [t.keyword, t.controlKeyword, t.modifier, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword], color: "var(--code-key)" },
+  { tag: [t.string, t.special(t.string), t.regexp], color: "var(--code-str)" },
+  { tag: [t.number, t.bool, t.null, t.atom], color: "var(--code-num)" },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.meta], color: "var(--code-com)", fontStyle: "italic" },
+  { tag: [t.function(t.variableName), t.definition(t.variableName), t.className, t.typeName, t.propertyName, t.attributeName, t.variableName, t.punctuation, t.bracket, t.operator, t.heading, t.link], color: "var(--code-txt)" },
+])
+
+const codeExtensions = () => [surface, Prec.highest(syntaxHighlighting(codeHighlight))]
+
 // What each side of the merge view needs: read only, line numbers, PHP-ish colours.
 const diffSide = () => [
   javascript(),
   lineNumbers(),
-  syntaxHighlighting(defaultHighlightStyle),
+  ...codeExtensions(),
   EditorView.editable.of(false),
   EditorState.readOnly.of(true),
 ]
@@ -59,18 +84,19 @@ function SideBySideDiff() {
   )
 }
 
+
 function InlineDiff() {
   return (
     <div className="flex h-full flex-col">
       <p className="text-muted-foreground bg-muted/50 shrink-0 border-b px-3 py-1.5 text-xs">What raven changed. New lines are marked, removed lines sit above them.</p>
       <CodeMirror
         value={leadPhpAfter}
-        theme="light"
+        theme="none"
         height="100%"
         className="min-h-0 flex-1 [&_.cm-editor]:h-full! [&_.cm-scroller]:h-full"
         editable={false}
         basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false, highlightActiveLineGutter: false }}
-        extensions={[javascript(), EditorView.lineWrapping, unifiedMergeView({ original: leadPhpBefore, mergeControls: false })]}
+        extensions={[javascript(), EditorView.lineWrapping, unifiedMergeView({ original: leadPhpBefore, mergeControls: false }), ...codeExtensions()]}
       />
     </div>
   )
@@ -93,12 +119,12 @@ function EditBody({ path, isDesktop }: { path: string; isDesktop: boolean }) {
     <CodeMirror
       key={`${path}-${isDesktop}`}
       value={fileContents[path] ?? ""}
-      theme="light"
+      theme="none"
       height="100%"
       className="h-full [&_.cm-editor]:h-full! [&_.cm-scroller]:h-full"
       editable={false}
       basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false, highlightActiveLineGutter: false }}
-      extensions={isDesktop ? [langFor(path)] : [langFor(path), EditorView.lineWrapping]}
+      extensions={isDesktop ? [langFor(path), ...codeExtensions()] : [langFor(path), EditorView.lineWrapping, ...codeExtensions()]}
     />
   )
 }

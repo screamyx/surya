@@ -46,7 +46,7 @@ function NeedsYouCard() {
               </ItemDescription>
             </ItemContent>
             <ItemActions className="w-full sm:w-auto">
-              <Button nativeButton={false} className="h-11 w-full sm:h-8 sm:w-auto" render={<Link to="/inbox" />}>
+              <Button variant="outline" nativeButton={false} className="h-11 w-full sm:h-8 sm:w-auto" render={<Link to="/inbox" />}>
                 Open
                 <ArrowRight data-icon="inline-end" />
               </Button>
@@ -180,7 +180,7 @@ export function HomeScreen() {
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-5 md:px-6 md:py-6">
       <div>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">Good morning, {settings.user.name}</h1>
+        <h1 className="u-display text-3xl md:text-4xl">Good morning, {settings.user.name}</h1>
         <p className="text-muted-foreground text-sm">
           {grouped && `${servers.length} servers, `}{workspaces.length} workspaces, {agents.length} agents, {needsYou.length} things need you
         </p>

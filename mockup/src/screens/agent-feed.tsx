@@ -67,7 +67,7 @@ function HeaderStrip({ ws, name, model, summary, status, startedAt, stopped, onS
             </Button>
           ) : (
             <Button size="sm" variant="outline" onClick={onStop} aria-label="Stop the agent" className="text-destructive border-destructive/30 hover:bg-destructive/10 max-sm:size-8 max-sm:px-0">
-              <Square data-icon="inline-start" />
+              <Square data-icon="inline-start" className="size-3.5 fill-current" />
               <span className="max-sm:sr-only">Stop</span>
             </Button>
           )}

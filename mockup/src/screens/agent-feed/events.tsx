@@ -256,7 +256,7 @@ export function CommandEvent({ e }: { e: Of<"command"> }) {
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="bg-primary text-primary-foreground max-w-[85%] rounded-2xl px-3 py-2 text-sm">
-        <span className="bg-primary-foreground/15 rounded-md px-1.5 py-0.5 font-mono text-[13px]">/{e.name}</span>
+        <span className="bg-primary-foreground text-primary rounded-md px-1.5 py-0.5 font-mono text-xs">/{e.name}</span>
         {e.args && <span className="ml-2">{e.args}</span>}
       </div>
       <div className="text-muted-foreground flex items-center gap-1.5 text-xs">

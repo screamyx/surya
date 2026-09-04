@@ -110,7 +110,7 @@ export function TasksScreen() {
     <div className="flex min-w-0 flex-col gap-4 p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <div className="flex items-baseline gap-2">
-          <h1 className="text-base font-medium">{w.name}</h1>
+          <h1 className="u-display text-3xl md:text-4xl">{w.name}</h1>
           <span className="text-muted-foreground text-sm">{mine.length} tasks</span>
         </div>
         <p className="text-muted-foreground text-sm">Agents pull from Queued when they go idle.</p>

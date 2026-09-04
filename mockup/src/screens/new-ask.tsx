@@ -67,7 +67,7 @@ export function NewAskScreen() {
       className="mx-auto w-full max-w-2xl space-y-6 px-4 py-8 md:py-12"
     >
       <motion.div variants={rise} className="space-y-1">
-        <h1 className="font-heading text-2xl font-medium tracking-tight">What do you want done?</h1>
+        <h1 className="u-display text-3xl md:text-4xl">What do you want done?</h1>
         <p className="text-muted-foreground text-sm">One sentence is enough. The agent asks if it needs more.</p>
         {asked && (
           <p className="text-muted-foreground text-sm">
@@ -140,7 +140,7 @@ export function NewAskScreen() {
         <Button size="lg" className="w-full sm:w-auto">
           <Play data-icon="inline-start" />
           Start agent
-          <Kbd className="bg-primary-foreground/15 text-primary-foreground ml-1">⌘↵</Kbd>
+          <Kbd className="bg-primary-foreground text-primary ml-1">⌘↵</Kbd>
         </Button>
       </motion.div>
 

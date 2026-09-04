@@ -17,7 +17,7 @@ export function CatalogScreen() {
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-6 md:py-8">
       <header className="flex flex-col gap-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight md:text-3xl">Cards agents can show you</h1>
+        <h1 className="u-display text-3xl md:text-4xl">Cards agents can show you</h1>
         <p className="text-muted-foreground text-sm">Agents pick from this catalog. They cannot draw anything else.</p>
         <p className="text-muted-foreground text-sm">Six built-in shapes. Each workspace adds its own cards on top.</p>
       </header>
