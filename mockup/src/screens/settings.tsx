@@ -1,13 +1,176 @@
-// Screen: settings. Builder replaces this file. Read src/data.ts and src/components/app-shell.tsx first.
-import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty"
+// Screen: settings. Account, the daemon on the tailnet, notifications, models, look, workspaces.
+import { useState } from "react"
+import { motion } from "motion/react"
+import { Monitor, MoonStar, Plus, RotateCw, Sun } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle } from "@/components/ui/item"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { settings, workspaces } from "@/data"
+import { rise, stagger } from "@/motion"
+
+function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 py-1.5">
+      <span className="text-muted-foreground text-sm">{label}</span>
+      <span className={mono ? "truncate font-mono text-sm" : "truncate text-sm font-medium"}>{value}</span>
+    </div>
+  )
+}
+
+function Toggle({ id, label, description, defaultChecked }: { id: string; label: string; description: string; defaultChecked: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-1">
+      <Label htmlFor={id} className="flex-col items-start gap-0.5">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="text-muted-foreground text-sm font-normal">{description}</span>
+      </Label>
+      <Switch id={id} defaultChecked={defaultChecked} />
+    </div>
+  )
+}
 
 export function SettingsScreen() {
+  const [model, setModel] = useState(settings.models[0])
+  const [theme, setTheme] = useState<string[]>(["system"])
+
   return (
-    <Empty className="min-h-[60vh]">
-      <EmptyHeader>
-        <EmptyTitle>settings</EmptyTitle>
-        <EmptyDescription>Not built yet.</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
+    <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6 md:py-8">
+      <header className="flex flex-col gap-1">
+        <h1 className="font-heading text-2xl font-semibold tracking-tight md:text-3xl">Settings</h1>
+        <p className="text-muted-foreground text-sm">Your account, the machine that runs the agents, and how surya reaches you.</p>
+      </header>
+
+      <motion.div variants={stagger} initial="hidden" animate="show" className="mt-6 flex flex-col gap-4">
+        <motion.div variants={rise}>
+          <Card>
+            <CardHeader><CardTitle>Account</CardTitle></CardHeader>
+            <CardContent>
+              <Row label="Name" value={settings.user.name} />
+              <Row label="Email" value={settings.user.email} />
+              <Row label="Signed in with" value={settings.user.auth} />
+              <Separator className="my-3" />
+              <Button variant="outline" className="h-9 md:h-8">Sign out</Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={rise}>
+          <Card>
+            <CardHeader className="flex flex-row items-start justify-between gap-2">
+              <div className="flex flex-col gap-1">
+                <CardTitle>Daemon</CardTitle>
+                <CardDescription>The machine your agents run on. It keeps working when you close the app.</CardDescription>
+              </div>
+              <Badge variant="secondary" className="shrink-0 gap-1.5"><span className="bg-primary size-1.5 animate-pulse rounded-full" />Running</Badge>
+            </CardHeader>
+            <CardContent>
+              <Row label="Host" value={settings.daemon.host} mono />
+              <Row label="surya version" value={settings.daemon.version} mono />
+              <Row label="Claude Code version" value={settings.daemon.claude} mono />
+              <Row label="Up for" value={settings.daemon.uptime} />
+              <Separator className="my-3" />
+              <Button variant="outline" className="h-9 md:h-8"><RotateCw data-icon="inline-start" />Restart daemon</Button>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={rise}>
+          <Card>
+            <CardHeader><CardTitle>Notifications</CardTitle></CardHeader>
+            <CardContent>
+              <Toggle id="n-push" label="Push to this phone" description="Turn this off and surya goes quiet everywhere." defaultChecked={settings.notifications.push} />
+              <Separator className="my-2" />
+              <Toggle id="n-needs" label="When an agent needs you" description="A permission ask or a question that blocks the work." defaultChecked={settings.notifications.needsYou} />
+              <Separator className="my-2" />
+              <Toggle id="n-results" label="When work is finished" description="One notification per result, with the summary." defaultChecked={settings.notifications.results} />
+              <Separator className="my-3" />
+              <p className="text-sm font-medium">Quiet hours</p>
+              <p className="text-muted-foreground mt-0.5 text-sm">Nothing buzzes between these times. Agents keep working.</p>
+              <div className="mt-3 flex flex-wrap items-end gap-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="quiet-from">From</Label>
+                  <Input id="quiet-from" type="time" defaultValue={settings.notifications.quietFrom} className="w-32" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="quiet-to">To</Label>
+                  <Input id="quiet-to" type="time" defaultValue={settings.notifications.quietTo} className="w-32" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={rise}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Models</CardTitle>
+              <CardDescription>Which model a new agent starts on. You can change it per agent.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RadioGroup value={model} onValueChange={(v) => setModel(v as string)} className="gap-0">
+                {settings.models.map((m) => (
+                  <Label key={m} htmlFor={`model-${m}`} className="hover:bg-muted/50 -mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5">
+                    <RadioGroupItem id={`model-${m}`} value={m} />
+                    <span className="font-mono text-sm font-normal">{m}</span>
+                    {m === model && <Badge variant="outline" className="ml-auto">Default</Badge>}
+                  </Label>
+                ))}
+              </RadioGroup>
+              <p className="text-muted-foreground mt-3 text-sm">OAuth through your Claude subscription, no API key.</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={rise}>
+          <Card>
+            <CardHeader><CardTitle>Appearance</CardTitle></CardHeader>
+            <CardContent>
+              <ToggleGroup value={theme} onValueChange={(v) => v.length && setTheme(v as string[])} variant="outline" spacing={0}>
+                <ToggleGroupItem value="light"><Sun data-icon="inline-start" />Light</ToggleGroupItem>
+                <ToggleGroupItem value="dark"><MoonStar data-icon="inline-start" />Dark</ToggleGroupItem>
+                <ToggleGroupItem value="system"><Monitor data-icon="inline-start" />System</ToggleGroupItem>
+              </ToggleGroup>
+              <p className="text-muted-foreground mt-3 text-sm">Theme is tokens only, restyle by changing them.</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div variants={rise}>
+          <Card>
+            <CardHeader>
+              <CardTitle>Workspaces</CardTitle>
+              <CardDescription>Each one is a folder on the daemon. Agents are grouped by workspace.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ItemGroup className="gap-1">
+                {workspaces.map((w) => (
+                  <Item key={w.id} variant="outline" className="flex-nowrap">
+                    <ItemContent className="min-w-0">
+                      <ItemTitle>{w.name}<Badge variant="outline">{w.branch}</Badge></ItemTitle>
+                      <ItemDescription className="truncate font-mono">{w.worktree}</ItemDescription>
+                    </ItemContent>
+                    <ItemActions>
+                      <Button variant="ghost" size="sm" className="h-9 md:h-7">Remove</Button>
+                    </ItemActions>
+                  </Item>
+                ))}
+              </ItemGroup>
+              <Separator className="my-3" />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Input placeholder="/home/user/git/new-project" className="font-mono sm:flex-1" aria-label="New workspace path" />
+                <Button variant="outline" className="h-9 md:h-8"><Plus data-icon="inline-start" />Add workspace</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
+    </div>
   )
 }
