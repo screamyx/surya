@@ -7,6 +7,7 @@
 pub mod agent;
 pub mod card;
 pub mod entities;
+pub mod files;
 pub mod motion;
 pub mod view;
 pub mod workspace;

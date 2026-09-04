@@ -6578,13 +6578,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "surya-a2ui"
+name = "surya-mcp"
 version = "0.2.34"
 dependencies = [
- "gpui",
+ "chrono",
  "serde",
  "serde_json",
- "zeron-proto",
+ "tempfile",
+ "uuid",
 ]
 
 [[package]]
@@ -9381,7 +9382,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "similar",
- "surya-a2ui",
  "tempfile",
  "tokio",
  "tracing",

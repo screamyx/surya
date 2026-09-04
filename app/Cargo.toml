@@ -6,6 +6,7 @@ members = [
     "crates/doc",
     "crates/sync",
     "crates/harness",
+    "crates/mcp",
     "crates/engine",
     "crates/rpc",
     "crates/update",

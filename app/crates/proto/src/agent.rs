@@ -123,6 +123,38 @@ pub struct RunRequest {
     /// host ignores it and runs in `cwd` (the repo's main checkout).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree: Option<WorktreeSpec>,
+    /// surya's own abilities for this run (decision 5): the `surya-mcp`
+    /// sidecar and the prompt append that teaches the agent to use it. `None`
+    /// leaves the harness exactly as it was, which is what tests and the
+    /// non-surya harnesses want. Additive + serde-defaulted for wire compat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surya: Option<SuryaOptions>,
+}
+
+/// What surya hands one agent when it starts it. Every field is a path or an
+/// address the host owns; the sidecar binary itself names nothing (decision
+/// 14: surya knows no business).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuryaOptions {
+    /// This agent's address. The `from` on the mail it sends.
+    pub agent_id: String,
+    /// The workspace it is working in. The default mail channel.
+    #[serde(default)]
+    pub workspace: String,
+    /// Explicit path to the `surya-mcp` binary. When unset the harness looks
+    /// beside the running executable, then on PATH.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mcp_binary: Option<String>,
+    /// Where shown cards are recorded for the app to read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub card_store: Option<String>,
+    /// The daemon's mail socket. Mail falls back to a log file without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mail_socket: Option<String>,
+    /// The A2UI catalog id cards declare. Defaults to the basic catalog.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_id: Option<String>,
 }
 
 /// Isolated-worktree directive riding [`RunRequest`]. The worktree is created
