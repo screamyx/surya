@@ -827,6 +827,7 @@ mod tests {
                 ..KeymapConfig::default()
             },
             appearance: crate::appearance::AppearanceMode::Light,
+            motion: crate::motion::MotionMode::Reduced,
             ui_font_family: crate::typography::UiFontFamily::Installed("Arial".into()),
             ui_font_size: crate::typography::UiFontSize::ALL[5],
             theme_selection: zeron_theme::ThemeSelection {
