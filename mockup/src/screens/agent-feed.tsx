@@ -1,18 +1,19 @@
 // Screen: agent feed. Feature 1 - chat with Claude Code: tool calls, diffs, A2UI cards,
 // subagents, and the two things that stop the run: a permission ask and a question.
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { Link, useParams } from "react-router"
 import { motion } from "motion/react"
 import { ArrowUp, FolderTree, Monitor, Square } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/ui/command"
+import { SlashPalette } from "@/screens/agent-feed/slash"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import { StatusBadge } from "@/components/status"
 import { A2UICard } from "@/screens/agent-feed/a2ui-card"
 import {
-  AssistantEvent, DiffEvent, FeedRow, PermissionEvent, QuestionEvent, SubagentEvent, ThinkingEvent, ToolRow, UserEvent,
-} from "@/screens/agent-feed/events"
+  AssistantEvent, DiffEvent, FeedRow, PermissionEvent, QuestionEvent, SubagentEvent, ThinkingEvent, ToolRow, UserEvent, CommandEvent } from "@/screens/agent-feed/events"
 import { pop, stagger } from "@/motion"
 import { agents, feed, fmtTime, inbox, type FeedEvent } from "@/data"
 
@@ -67,15 +68,20 @@ function HeaderStrip({ ws, name, model, summary, status, startedAt }: {
 }
 
 function Composer({ model }: { model: string }) {
+  const [text, setText] = useState("")
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const open = text.startsWith("/") && !text.includes(" ")
+  const pick = (name: string) => { setText(`/${name} `); ref.current?.focus() }
   return (
     <div className="bg-background/95 sticky bottom-0 z-20 border-t px-4 pt-3 pb-20 backdrop-blur md:pb-3">
-      <div className="mx-auto max-w-3xl">
+      <div className="relative mx-auto max-w-3xl">
+        {open && <SlashPalette query={text.slice(1)} onPick={pick} Command={Command} CommandList={CommandList} CommandGroup={CommandGroup} CommandItem={CommandItem} CommandEmpty={CommandEmpty} />}
         <InputGroup>
-          <InputGroupTextarea name="reply" rows={2} placeholder="Reply, or ask for the next thing" />
+          <InputGroupTextarea ref={ref} name="reply" rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="Reply, ask for the next thing, or type / for a command" />
           <InputGroupAddon align="block-end" className="border-t">
             <Badge variant="outline" className="font-mono">model: {model.replace("claude-", "")}</Badge>
             <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
-              <KbdGroup><Kbd>⌘</Kbd><Kbd>↵</Kbd></KbdGroup> to send
+              <KbdGroup><Kbd>⌘</Kbd><Kbd>↵</Kbd></KbdGroup> to send · <Kbd>/</Kbd> commands
             </span>
             <InputGroupButton variant="default" size="icon-sm" className="ml-auto" aria-label="Send">
               <ArrowUp />
@@ -98,6 +104,7 @@ function EventBody({ e, ws, name }: { e: FeedEvent; ws: string; name: string }) 
     case "subagent": return <SubagentEvent e={e} />
     case "question": return <QuestionEvent e={e} />
     case "permission": return <PermissionEvent e={e} name={name} />
+    case "command": return <CommandEvent e={e} />
   }
 }
 

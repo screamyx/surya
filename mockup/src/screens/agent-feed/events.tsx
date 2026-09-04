@@ -250,3 +250,20 @@ export function QuestionEvent({ e }: { e: Of<"question"> }) {
 export function FeedRow({ children }: { children: React.ReactNode }) {
   return <motion.div variants={rise}>{children}</motion.div>
 }
+
+// A slash command you sent. Reads like the terminal: the command as a chip, the skill it resolved to underneath.
+export function CommandEvent({ e }: { e: Of<"command"> }) {
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <div className="bg-primary text-primary-foreground max-w-[85%] rounded-2xl px-3 py-2 text-sm">
+        <span className="bg-primary-foreground/15 rounded-md px-1.5 py-0.5 font-mono text-[13px]">/{e.name}</span>
+        {e.args && <span className="ml-2">{e.args}</span>}
+      </div>
+      <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+        <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{e.source}</Badge>
+        <span className="truncate">{e.description}</span>
+        <Stamp at={e.at} />
+      </div>
+    </div>
+  )
+}
