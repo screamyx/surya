@@ -7,6 +7,10 @@ use serde_json::Value;
 use crate::data::DataModel;
 use crate::model::*;
 
+/// Components a single card may define; the rest are dropped with a
+/// diagnostic. Bounds parse time and the render budget's input.
+pub const MAX_COMPONENTS: usize = 2_000;
+
 /// Parse a card from JSON text: one envelope, an array of envelopes, the
 /// shorthand object, or JSONL (one envelope per line).
 pub fn parse_card_str(text: &str) -> Card {
@@ -112,7 +116,11 @@ fn apply_envelope(card: &mut Card, item: &Value) {
         let path = str_field(update, "path").unwrap_or_default();
         let mut model = DataModel::new(std::mem::take(&mut card.data));
         match update.get("value") {
-            Some(value) => model.set(&path, value.clone()),
+            Some(value) => {
+                if !model.set(&path, value.clone()) {
+                    card.errors.push(format!("updateDataModel refused: path {path} is out of bounds"));
+                }
+            }
             None => model.remove(&path),
         }
         card.data = model.into_value();
@@ -150,6 +158,14 @@ fn apply_shorthand(card: &mut Card, obj: &serde_json::Map<String, Value>) {
 
 fn add_components(card: &mut Card, items: &[Value]) {
     for (ix, item) in items.iter().enumerate() {
+        if card.components.len() >= MAX_COMPONENTS {
+            card.errors.push(format!(
+                "too many components: {} kept, {} dropped (cap {MAX_COMPONENTS})",
+                card.components.len(),
+                items.len() - ix
+            ));
+            return;
+        }
         match parse_component(item) {
             Ok(component) => {
                 card.components.insert(component.id.clone(), component);

@@ -6581,6 +6581,7 @@ dependencies = [
 name = "surya-a2ui"
 version = "0.2.34"
 dependencies = [
+ "base64",
  "gpui",
  "serde",
  "serde_json",
@@ -6595,7 +6596,9 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "uuid",
+ "zeron-rpc",
 ]
 
 [[package]]

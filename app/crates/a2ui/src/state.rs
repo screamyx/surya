@@ -117,15 +117,13 @@ impl CardState {
     /// are not state: they return `false` and the host handles them.
     pub fn apply(&mut self, event: &CardEvent) -> bool {
         let changed = match event {
-            CardEvent::SetValue { binding, value } => {
-                match binding {
-                    Binding::Path(p) => self.data.set(p, value.clone()),
-                    Binding::Local(id) => {
-                        self.locals.insert(id.clone(), value.clone());
-                    }
+            CardEvent::SetValue { binding, value } => match binding {
+                Binding::Path(p) => self.data.set(p, value.clone()),
+                Binding::Local(id) => {
+                    self.locals.insert(id.clone(), value.clone());
+                    true
                 }
-                true
-            }
+            },
             CardEvent::SelectTab {
                 component_id,
                 index,
