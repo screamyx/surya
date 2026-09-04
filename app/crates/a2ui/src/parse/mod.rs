@@ -414,3 +414,6 @@ fn parse_action(v: Option<&Value>) -> Action {
     }
     Action::None
 }
+
+#[cfg(test)]
+mod tests;
