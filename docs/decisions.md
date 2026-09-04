@@ -122,6 +122,16 @@ Cut from 1.0: terminal panel, luvus module, leases, merge train, multi-user acco
 
 Release candidate bar: the owner runs a real project-jag task end to end from a phone, no terminal, no developer beside him, and the result merges.
 
+## 12. Exceptional GUI, whole app in React on shadcn/ui
+
+Owner, 2026-09-05 00:53: "people today are superficial (like me), form what attract attentions over feature. since a2ui is already built on react, the whole app should be built on react. that way we can start building with component libraries like shadcnui or equivalents."
+
+Ships first class in 1.0 as feature 8: the look.
+The whole app is React.
+Components come from shadcn/ui on Tailwind, or an equivalent, never hand-rolled.
+The A2UI catalog is built from the same shadcn components, so agent cards and surya panels are one design system.
+A design direction is chosen and written down before the first screen is built, and every screen is reviewed against it.
+
 ## Open
 
 None at day zero.
