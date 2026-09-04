@@ -3520,6 +3520,29 @@ impl Transcript {
         for echo in &echoes {
             new_rows.extend(self.rows_for(echo, true));
         }
+        // Proof counter for A2UI cards (surya): how many card parts the
+        // selected chat carries against how many Card rows the row model
+        // built from them. Logged only when a card is present and the
+        // count changes, so ordinary chats stay silent.
+        {
+            let asked = entries
+                .iter()
+                .flat_map(|e| e.parts.iter())
+                .filter(|p| matches!(p, MessagePart::Card { .. }))
+                .count();
+            let built = new_rows
+                .iter()
+                .filter(|r| matches!(r.kind, RowKind::Card { .. }))
+                .count();
+            let prev = self
+                .rows
+                .iter()
+                .filter(|r| matches!(r.kind, RowKind::Card { .. }))
+                .count();
+            if asked > 0 && built != prev {
+                tracing::info!(target: "surya_a2ui", asked, built, "card rows synced");
+            }
+        }
 
         // Runtime scroll handles follow the stable code rows exactly. A live
         // block keeps its handle through completion; deleted/reindexed tail
