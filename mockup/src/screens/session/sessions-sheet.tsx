@@ -10,7 +10,7 @@ import { useIsMobile } from "@/hooks/use-mobile"
 import { rise, stagger } from "@/motion"
 import { fmtTime, type Session } from "@/data"
 import { cn } from "@/lib/utils"
-import { modelName } from "@/screens/agent-feed/model-sheet"
+import { modelName } from "@/screens/session/model-sheet"
 
 // Sessions run across midnight, so the day has to show or "22:10" reads as tonight.
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-MY", { day: "numeric", month: "short" })

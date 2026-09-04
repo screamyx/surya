@@ -1,5 +1,6 @@
 // The editor pane: open tabs, the real CodeMirror, and a side-by-side diff of what the
-// agent changed. Side by side on a desktop, one column with inline marks on a phone.
+// agent changed. Desktop only - decision 20 point 4 cuts the editor and the tree from the
+// phone, where the files pane shows changed files and the diff instead.
 import { Fragment, useEffect, useRef } from "react"
 import CodeMirror from "@uiw/react-codemirror"
 import { javascript } from "@codemirror/lang-javascript"
@@ -9,8 +10,7 @@ import { EditorState } from "@codemirror/state"
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language"
 import { tags as t } from "@lezer/highlight"
 import { Prec } from "@codemirror/state"
-import { MergeView, unifiedMergeView } from "@codemirror/merge"
-import { PanelLeft } from "lucide-react"
+import { MergeView } from "@codemirror/merge"
 import { Badge } from "@/components/ui/badge"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { Button } from "@/components/ui/button"
@@ -85,24 +85,7 @@ function SideBySideDiff() {
 }
 
 
-function InlineDiff() {
-  return (
-    <div className="flex h-full flex-col">
-      <p className="text-muted-foreground bg-muted/50 shrink-0 border-b px-3 py-1.5 text-xs">What raven changed. New lines are marked, removed lines sit above them.</p>
-      <CodeMirror
-        value={leadPhpAfter}
-        theme="none"
-        height="100%"
-        className="min-h-0 flex-1 [&_.cm-editor]:h-full! [&_.cm-scroller]:h-full"
-        editable={false}
-        basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false, highlightActiveLineGutter: false }}
-        extensions={[javascript(), EditorView.lineWrapping, unifiedMergeView({ original: leadPhpBefore, mergeControls: false }), ...codeExtensions()]}
-      />
-    </div>
-  )
-}
-
-function DiffBody({ path, isDesktop }: { path: string; isDesktop: boolean }) {
+function DiffBody({ path }: { path: string }) {
   if (path !== DIFF_PATH) {
     return (
       <div className="flex min-h-64 flex-col items-center justify-center gap-1 p-8 text-center">
@@ -111,32 +94,30 @@ function DiffBody({ path, isDesktop }: { path: string; isDesktop: boolean }) {
       </div>
     )
   }
-  return isDesktop ? <SideBySideDiff /> : <InlineDiff />
+  return <SideBySideDiff />
 }
 
-function EditBody({ path, isDesktop }: { path: string; isDesktop: boolean }) {
+function EditBody({ path }: { path: string }) {
   return (
     <CodeMirror
-      key={`${path}-${isDesktop}`}
+      key={path}
       value={fileContents[path] ?? ""}
       theme="none"
       height="100%"
       className="h-full [&_.cm-editor]:h-full! [&_.cm-scroller]:h-full"
       editable={false}
       basicSetup={{ lineNumbers: true, foldGutter: false, highlightActiveLine: false, highlightActiveLineGutter: false }}
-      extensions={isDesktop ? [langFor(path), ...codeExtensions()] : [langFor(path), EditorView.lineWrapping, ...codeExtensions()]}
+      extensions={[langFor(path), ...codeExtensions()]}
     />
   )
 }
 
-export function FileEditor({ path, tabs, onSelectTab, mode, onModeChange, isDesktop, onOpenTree }: {
+export function FileEditor({ path, tabs, onSelectTab, mode, onModeChange }: {
   path: string
   tabs: string[]
   onSelectTab: (path: string) => void
   mode: "edit" | "diff"
   onModeChange: (mode: "edit" | "diff") => void
-  isDesktop: boolean
-  onOpenTree: () => void
 }) {
   const parts = path.split("/")
   return (
@@ -147,11 +128,6 @@ export function FileEditor({ path, tabs, onSelectTab, mode, onModeChange, isDesk
       </div>
 
       <div className="flex shrink-0 items-center gap-2 border-b px-2 py-2">
-        {!isDesktop && (
-          <Button variant="outline" size="sm" className="shrink-0" onClick={onOpenTree}>
-            <PanelLeft data-icon="inline-start" />Files
-          </Button>
-        )}
         <div className="min-w-0 flex-1 overflow-x-auto">
           <Tabs value={path} onValueChange={(v) => onSelectTab(v as string)}>
             <TabsList variant="line" className="h-8">
@@ -169,8 +145,10 @@ export function FileEditor({ path, tabs, onSelectTab, mode, onModeChange, isDesk
           spacing={0}
           className="shrink-0"
         >
+          {/* "Changes", not "Diff": the pane's own Diff tab reviews every changed file,
+              and this one only shows what moved inside the file you have open. */}
           <ToggleGroupItem value="edit">Edit</ToggleGroupItem>
-          <ToggleGroupItem value="diff">Diff</ToggleGroupItem>
+          <ToggleGroupItem value="diff">Changes</ToggleGroupItem>
         </ToggleGroup>
       </div>
 
@@ -187,7 +165,7 @@ export function FileEditor({ path, tabs, onSelectTab, mode, onModeChange, isDesk
         </Breadcrumb>
         <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border">
           <div className="absolute inset-0 overflow-auto">
-            {mode === "edit" ? <EditBody path={path} isDesktop={isDesktop} /> : <DiffBody path={path} isDesktop={isDesktop} />}
+            {mode === "edit" ? <EditBody path={path} /> : <DiffBody path={path} />}
           </div>
         </div>
       </div>
@@ -199,8 +177,8 @@ export function FileEditor({ path, tabs, onSelectTab, mode, onModeChange, isDesk
         <Separator orientation="vertical" className="hidden h-3 sm:block" />
         <Badge variant="outline">{labelFor(path)}</Badge>
         <div className="ml-auto flex items-center gap-2">
-          <Button size="sm" variant="ghost" className="h-9 px-4 md:h-7 md:px-2.5">Revert</Button>
-          <Button size="sm" className="h-9 px-4 md:h-7 md:px-2.5">Save</Button>
+          <Button size="sm" variant="ghost" className="h-7 px-2.5">Revert</Button>
+          <Button size="sm" className="h-7 px-2.5">Save</Button>
         </div>
       </div>
     </div>

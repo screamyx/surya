@@ -12,12 +12,13 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { ApprovalsPanel } from "@/screens/settings/approvals"
 import { McpPanel } from "@/screens/settings/mcp"
 import { PluginsPanel } from "@/screens/settings/plugins"
 import { ServersPanel } from "@/screens/settings/servers"
 import { readTheme, setTheme, type Theme } from "@/screens/settings/theme"
 import { serverById, settings, workspaces } from "@/data"
-import { rise, stagger } from "@/motion"
+import { layoutSpring, rise, stagger } from "@/motion"
 
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
@@ -60,7 +61,7 @@ export function SettingsScreen() {
       </header>
 
       <motion.div variants={stagger} initial="hidden" animate="show" className="mt-6 flex flex-col gap-4">
-        <motion.div variants={rise}>
+        <motion.div variants={rise} layout="position" transition={layoutSpring}>
           <Card>
             <CardHeader><CardTitle>Account</CardTitle></CardHeader>
             <CardContent>
@@ -73,13 +74,15 @@ export function SettingsScreen() {
           </Card>
         </motion.div>
 
-        <motion.div variants={rise}><ServersPanel /></motion.div>
+        <motion.div variants={rise} layout="position" transition={layoutSpring}><ServersPanel /></motion.div>
 
-        <motion.div variants={rise}><McpPanel /></motion.div>
+        <motion.div variants={rise} layout="position" transition={layoutSpring}><McpPanel /></motion.div>
 
-        <motion.div variants={rise}><PluginsPanel /></motion.div>
+        <motion.div variants={rise} layout="position" transition={layoutSpring}><PluginsPanel /></motion.div>
 
-        <motion.div variants={rise}>
+        <motion.div variants={rise} layout="position" transition={layoutSpring}><ApprovalsPanel /></motion.div>
+
+        <motion.div variants={rise} layout="position" transition={layoutSpring}>
           <Card>
             <CardHeader><CardTitle>Notifications</CardTitle></CardHeader>
             <CardContent>
@@ -105,7 +108,7 @@ export function SettingsScreen() {
           </Card>
         </motion.div>
 
-        <motion.div variants={rise}>
+        <motion.div variants={rise} layout="position" transition={layoutSpring}>
           <Card>
             <CardHeader>
               <CardTitle>Models</CardTitle>
@@ -126,7 +129,7 @@ export function SettingsScreen() {
           </Card>
         </motion.div>
 
-        <motion.div variants={rise}>
+        <motion.div variants={rise} layout="position" transition={layoutSpring}>
           <Card>
             <CardHeader><CardTitle>Appearance</CardTitle></CardHeader>
             <CardContent>
@@ -135,12 +138,12 @@ export function SettingsScreen() {
                 <ToggleGroupItem value="dark"><MoonStar data-icon="inline-start" />Dark</ToggleGroupItem>
                 <ToggleGroupItem value="system"><Monitor data-icon="inline-start" />System</ToggleGroupItem>
               </ToggleGroup>
-              <p className="text-muted-foreground mt-3 text-sm">Stock shadcn tokens. Dark is the same components with different tokens, nothing else changes.</p>
+              <p className="text-muted-foreground mt-3 text-sm">One token set, two values each. Dark is the same components in the same layout, nothing else changes.</p>
             </CardContent>
           </Card>
         </motion.div>
 
-        <motion.div variants={rise}>
+        <motion.div variants={rise} layout="position" transition={layoutSpring}>
           <Card>
             <CardHeader>
               <CardTitle>Workspaces</CardTitle>
@@ -155,7 +158,7 @@ export function SettingsScreen() {
                       <ItemDescription className="truncate font-mono">{serverById(w.serverId).name}:{w.worktree}</ItemDescription>
                     </ItemContent>
                     <ItemActions>
-                      <Button variant="ghost" size="sm" className="h-9 md:h-7">Remove</Button>
+                      <Button variant="destructive" size="sm" className="h-9 md:h-7">Remove</Button>
                     </ItemActions>
                   </Item>
                 ))}

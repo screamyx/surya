@@ -2,7 +2,7 @@
 import { motion } from "motion/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cards } from "@/data"
-import { rise, stagger } from "@/motion"
+import { pop, stagger } from "@/motion"
 import { A2UICard } from "@/screens/catalog/cards"
 import { shapeName } from "@/screens/catalog/shape"
 import { WorkspaceCardSections } from "@/screens/catalog/workspace-cards"
@@ -29,7 +29,7 @@ export function CatalogScreen() {
         className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
       >
         {cards.map((card) => (
-          <motion.div key={card.type} variants={rise} className="min-w-0">
+          <motion.div key={card.type} variants={pop} className="min-w-0">
             <Card className="h-full">
               <CardHeader>
                 <CardTitle className="text-muted-foreground font-mono text-xs font-normal">{shapeName(card)}</CardTitle>

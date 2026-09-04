@@ -2,7 +2,7 @@
 import { useState } from "react"
 import { Link } from "react-router"
 import { motion } from "motion/react"
-import { Check, ChevronRight, FileDiff, Mail, Send, ShieldAlert, Sparkles, X } from "lucide-react"
+import { Check, ChevronRight, FileDiff, Mail, Send, ShieldAlert, ShieldCheck, Sparkles, X } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -169,11 +169,22 @@ export function SubagentEvent({ e }: { e: Of<"subagent"> }) {
   )
 }
 
-export function PermissionEvent({ e, name }: { e: Of<"permission">; name: string }) {
+// Decision 20, point 3: an answer can become a rule, so the next identical ask never comes.
+// Cline "exposes approval policy by capability" and Kiro "lets one permission decision become
+// a precise rule by pattern and scope". The rule lives in Settings once you make it.
+const ruleFor = (command: string) => {
+  if (command.includes("migrate")) return "migrations"
+  if (command.includes("pest") || command.includes("test")) return "test runs"
+  return "this command"
+}
+
+export function PermissionEvent({ e, name, ws }: { e: Of<"permission">; name: string; ws: string }) {
   const ask = inbox.find((i) => i.id === "i-1")
-  const [decided, setDecided] = useState<"approved" | "rejected" | undefined>(e.decided)
+  const [decided, setDecided] = useState<"approved" | "rejected" | "always" | undefined>(e.decided)
+  const rule = `Always allow ${ruleFor(e.command)} in ${ws}`
   return (
-    <Card className="ring-destructive/30 ring-2">
+    // Loud while it waits on you, and quiet the moment you answer it.
+    <Card className={cn(!decided && "ring-destructive/30 ring-2")}>
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
           <ShieldAlert className="text-destructive size-4 shrink-0" />
@@ -186,15 +197,32 @@ export function PermissionEvent({ e, name }: { e: Of<"permission">; name: string
       <CardContent>
         <pre className="bg-muted rounded-md p-3 font-mono text-xs break-all whitespace-pre-wrap">{e.command}</pre>
       </CardContent>
-      <CardFooter className="gap-2 max-sm:flex-col max-sm:items-stretch">
+      <CardFooter className="flex-wrap gap-2 max-sm:flex-col max-sm:items-stretch">
         {decided ? (
-          <Badge variant={decided === "approved" ? "secondary" : "destructive"} className="h-7 px-3">
-            {decided === "approved" ? "You approved this" : "You rejected this"}
-          </Badge>
+          <>
+            <Badge variant={decided === "rejected" ? "destructive" : "secondary"} className="h-7 px-3">
+              {decided === "rejected" ? "You rejected this" : "You approved this"}
+            </Badge>
+            {decided === "always" && (
+              <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                <ShieldCheck className="size-3.5" />
+                Rule saved: {rule}. Change it in Settings.
+              </span>
+            )}
+          </>
         ) : (
           <>
             <Button size="lg" className="max-sm:w-full" onClick={() => setDecided("approved")}>Approve</Button>
             <Button size="lg" variant="outline" className="max-sm:w-full" onClick={() => setDecided("rejected")}>Reject</Button>
+            {/* The quieter second answer. One click here and this ask stops coming back. */}
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground hover:text-foreground max-sm:w-full sm:ml-auto"
+              onClick={() => setDecided("always")}
+            >
+              <ShieldCheck data-icon="inline-start" />{rule}
+            </Button>
           </>
         )}
       </CardFooter>

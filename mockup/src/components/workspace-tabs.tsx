@@ -1,19 +1,18 @@
 import { NavLink, Outlet, useParams } from "react-router"
-import { FolderTree, ListTodo, Mail, Monitor, Plus, Sparkles } from "lucide-react"
+import { ListTodo, Mail, Plus, Sparkles } from "lucide-react"
 import { Link } from "react-router"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { workspaceById } from "@/data"
 
-// The four pages every workspace has. They live here, on the page, not in the rail.
+// The three pages every workspace has. Files and Preview left this bar in decision 20:
+// they are panes of an agent session now, not places of their own.
 export function WorkspaceLayout() {
   const { ws } = useParams()
   const w = workspaceById(ws!)
   const tabs = [
     { to: `/w/${w.id}/agents`, icon: Sparkles, label: "Agents" },
     { to: `/w/${w.id}/tasks`, icon: ListTodo, label: "Tasks" },
-    { to: `/w/${w.id}/preview`, icon: Monitor, label: "Preview" },
-    { to: `/w/${w.id}/files`, icon: FolderTree, label: "Files" },
     { to: `/w/${w.id}/messages`, icon: Mail, label: "Messages" },
   ]
   return (

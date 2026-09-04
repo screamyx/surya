@@ -20,7 +20,11 @@ const photo = (seed: string) => `https://picsum.photos/seed/${seed}/400/260`
 
 function VehicleTile({ v }: { v: Stock }) {
   return (
-    <div className="bg-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border">
+    <div
+      data-stock={v.no}
+      data-el={`.vehicle-grid [data-stock="${v.no}"]`}
+      className="bg-card flex min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border"
+    >
       <div className="bg-muted relative min-h-0 flex-1">
         <img src={photo(v.no)} alt={v.title} className="size-full object-cover" />
         {v.badge && (
@@ -44,6 +48,7 @@ function UploadTile() {
   return (
     <button
       type="button"
+      data-el="button.upload-tile"
       className="upload-tile bg-muted/40 text-muted-foreground hover:bg-muted flex min-h-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed px-2 py-1 text-center"
     >
       <Upload className="size-4 shrink-0" />
@@ -58,9 +63,14 @@ function UploadTile() {
 
 function LeadCard() {
   return (
-    <div className="lead-card bg-card flex min-w-0 flex-col gap-2 rounded-lg border p-2.5">
+    <div data-el=".lead-card" className="lead-card bg-card flex min-w-0 flex-col gap-2 rounded-lg border p-2.5">
       <div className="flex items-center justify-between gap-2">
-        <p className="follow-up text-muted-foreground truncate text-[11px]">Next follow-up: not set</p>
+        <p
+          data-el=".lead-card .follow-up"
+          className="follow-up text-muted-foreground truncate text-[11px]"
+        >
+          Next follow-up: not set
+        </p>
         <ChevronRight className="text-muted-foreground size-3.5 shrink-0" />
       </div>
       <Separator />
@@ -132,7 +142,7 @@ export function FakeDms({ narrow = false, cols = 4 }: { narrow?: boolean; cols?:
             <Search className="size-3.5 shrink-0" />
             <span className="truncate">Search stock, leads, plate number</span>
           </div>
-          <Badge className="sync-badge h-6 shrink-0 gap-1" variant="secondary">
+          <Badge data-el="header .sync-badge" className="sync-badge h-6 shrink-0 gap-1" variant="secondary">
             <Check className="size-3" />
             Synced
           </Badge>
@@ -148,7 +158,10 @@ export function FakeDms({ narrow = false, cols = 4 }: { narrow?: boolean; cols?:
           <p className="text-muted-foreground text-[11px]">{shown.length} cars · 2 reserved</p>
         </div>
 
-        <div className={cn("vehicle-grid grid min-h-0 flex-1 auto-rows-fr gap-1.5", gridCols)}>
+        <div
+          data-el=".vehicle-grid"
+          className={cn("vehicle-grid grid min-h-0 flex-1 auto-rows-fr gap-1.5", gridCols)}
+        >
           {head.map((v) => (
             <VehicleTile key={v.no} v={v} />
           ))}

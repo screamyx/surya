@@ -36,3 +36,35 @@ export const skills: SkillEntry[] = [
   { name: "grill-me", description: "A relentless interview to sharpen a plan", source: "user", path: "~/.claude/skills/grill-me", enabled: false },
   { name: "tdd", description: "Build the feature test-first", source: "plugin", path: "mattpocock-skills/tdd", enabled: true },
 ]
+
+// Approval policy (decision 20, point 3). One answer in the inbox can become a rule,
+// and the rules live here. Cline's per-capability model and Kiro's pattern-and-scope
+// rules are the references; see docs/research/cline.md and docs/research/kiro.md.
+export type Capability = "read" | "edit" | "command" | "browser" | "mcp"
+export type PolicyMode = "ask" | "allow"
+
+export const capabilityPolicy: { capability: Capability; label: string; description: string; mode: PolicyMode }[] = [
+  { capability: "read", label: "Read files", description: "Open any file in the worktree.", mode: "allow" },
+  { capability: "edit", label: "Edit files", description: "Write to files the agent already read.", mode: "allow" },
+  { capability: "command", label: "Run commands", description: "Anything in a shell, including migrations and deploys.", mode: "ask" },
+  { capability: "browser", label: "Drive the browser", description: "Click through the preview and read the console.", mode: "ask" },
+  { capability: "mcp", label: "Call MCP tools", description: "Every tool the connected MCP servers expose.", mode: "ask" },
+]
+
+export type ApprovalRule = {
+  id: string
+  capability: Capability
+  label: string       // what you see: "Run database migrations"
+  pattern: string     // what it matches: "php artisan migrate*"
+  scope: string       // "project-jag", "studio", or "everywhere"
+  from: string        // the ask that created it
+  createdAt: string
+  uses: number
+}
+
+export const approvalRules: ApprovalRule[] = [
+  { id: "r-1", capability: "command", label: "Run the test suite", pattern: "vendor/bin/pest*", scope: "project-jag", from: "raven asked on 2026-08-29", createdAt: "2026-08-29T14:20:00+08:00", uses: 38 },
+  { id: "r-2", capability: "command", label: "Read the git log", pattern: "git log*", scope: "everywhere", from: "kite asked on 2026-08-22", createdAt: "2026-08-22T09:05:00+08:00", uses: 112 },
+  { id: "r-3", capability: "mcp", label: "Search the Laravel docs", pattern: "laravel-boost/search-docs", scope: "project-jag", from: "raven asked on 2026-09-01", createdAt: "2026-09-01T22:40:00+08:00", uses: 17 },
+  { id: "r-4", capability: "browser", label: "Open the preview", pattern: "localhost:8000/*", scope: "project-jag", from: "heron asked on 2026-09-03", createdAt: "2026-09-03T11:12:00+08:00", uses: 6 },
+]

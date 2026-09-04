@@ -1,20 +1,28 @@
 // One card per inbox kind. Every card carries the same header, the same body width,
 // and its own row of actions, so the list reads as one thing on a phone.
+//
+// A card does not keep its own answer. It reports one up with onResolve, and the stack
+// collapses it to an answered line. That keeps one truth about whether an ask is done,
+// and it is the same event that drives the movement.
 import { useState } from "react"
 import { Link } from "react-router"
+import { AnimatePresence, motion } from "motion/react"
 import { Check, ExternalLink, MapPin, Rocket, RotateCcw, X } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Item, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
-import { Spinner } from "@/components/ui/spinner"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge } from "@/components/status"
+import { AlwaysAllow, RuleMade } from "@/screens/inbox/always-allow"
+import type { CreatedRule } from "@/screens/inbox/rule-draft"
 import { agentById, fmtTime, workspaceById, type InboxItem } from "@/data"
+import { pop } from "@/motion"
 import { cn } from "@/lib/utils"
 
-type Decision = "approved" | "rejected"
+// What the answered line says, per card. Plain words, past tense, no invented state.
+export type Resolve = (outcome: string) => void
 
 // Phone: thumb sized and full width. Desktop: a normal button row.
 const thumb = "h-11 w-full sm:h-8 sm:w-auto"
@@ -44,8 +52,10 @@ function OpenAgent({ item, variant = "ghost" }: { item: InboxItem; variant?: "gh
   )
 }
 
-function PermissionCard({ item }: { item: InboxItem }) {
-  const [decided, setDecided] = useState<Decision | null>(null)
+function PermissionCard({ item, onResolve }: { item: InboxItem; onResolve: Resolve }) {
+  // Approve and Reject answer the ask, so the stack collapses the card. Always allow
+  // keeps a rule as well, and that has its own undo, so it stays here and pops in.
+  const [rule, setRule] = useState<CreatedRule | null>(null)
   return (
     <Card>
       <CardHeader>
@@ -60,34 +70,43 @@ function PermissionCard({ item }: { item: InboxItem }) {
         <p className="text-muted-foreground">{item.body}</p>
       </CardContent>
       <CardFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-        {decided ? (
-          <Badge variant={decided === "approved" ? "default" : "secondary"} className="self-start">
-            {decided === "approved" ? "Approved" : "Rejected"}
-          </Badge>
-        ) : (
-          <>
-            <Button className={thumb} onClick={() => setDecided("approved")}>
-              <Check data-icon="inline-start" />
-              Approve
-            </Button>
-            <Button variant="outline" className={thumb} onClick={() => setDecided("rejected")}>
-              <X data-icon="inline-start" />
-              Reject
-            </Button>
-          </>
-        )}
-        <div className="sm:ml-auto">
-          <OpenAgent item={item} />
-        </div>
+        <AnimatePresence mode="wait" initial={false}>
+          {rule ? (
+            <motion.div key="rule" variants={pop} initial="hidden" animate="show" exit="hidden" className="w-full">
+              <RuleMade rule={rule} onUndo={() => setRule(null)} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="ask"
+              variants={pop}
+              initial="hidden"
+              animate="show"
+              exit="hidden"
+              className="flex w-full flex-col items-stretch gap-2 sm:flex-row sm:items-center"
+            >
+              <Button className={thumb} onClick={() => onResolve("Approved")}>
+                <Check data-icon="inline-start" />
+                Approve
+              </Button>
+              <Button variant="outline" className={thumb} onClick={() => onResolve("Rejected")}>
+                <X data-icon="inline-start" />
+                Reject
+              </Button>
+              <div className="flex flex-col items-stretch gap-1 sm:ml-auto sm:flex-row sm:items-center">
+                <AlwaysAllow item={item} onCreate={setRule} />
+                <OpenAgent item={item} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </CardFooter>
     </Card>
   )
 }
 
-function QuestionCard({ item }: { item: InboxItem }) {
+function QuestionCard({ item, onResolve }: { item: InboxItem; onResolve: Resolve }) {
   const [picked, setPicked] = useState<string | null>(null)
   const [other, setOther] = useState("")
-  const [sent, setSent] = useState<string | null>(null)
   const answer = other.trim() || picked
   return (
     <Card>
@@ -97,57 +116,48 @@ function QuestionCard({ item }: { item: InboxItem }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-muted-foreground">{item.body}</p>
-        {sent ? (
-          <Item variant="muted">
-            <ItemContent>
-              <ItemTitle>{sent}</ItemTitle>
-              <ItemDescription>Sent to {agentById(item.agentId).name}.</ItemDescription>
-            </ItemContent>
-            <Badge variant="secondary">Answered</Badge>
-          </Item>
-        ) : (
-          <>
-            <div className="flex flex-col gap-2">
-              {item.options?.map((o) => (
-                <Item
-                  key={o.label}
-                  variant="outline"
-                  className={cn("cursor-pointer text-left", picked === o.label && "border-primary bg-muted")}
-                  render={<button type="button" onClick={() => setPicked(o.label)} />}
-                >
-                  <ItemContent>
-                    <ItemTitle className="font-semibold">{o.label}</ItemTitle>
-                    <ItemDescription>{o.description}</ItemDescription>
-                  </ItemContent>
-                  {picked === o.label && <Check className="text-primary size-4" />}
-                </Item>
-              ))}
-            </div>
-            <Textarea
-              value={other}
-              onChange={(e) => setOther(e.target.value)}
-              placeholder="Other - type your own answer"
-              className="min-h-20"
-            />
-          </>
-        )}
+        <div className="flex flex-col gap-2">
+          {item.options?.map((o) => (
+            <Item
+              key={o.label}
+              variant="outline"
+              className={cn("cursor-pointer text-left", picked === o.label && "border-primary bg-muted")}
+              render={<button type="button" onClick={() => setPicked(o.label)} />}
+            >
+              <ItemContent>
+                <ItemTitle className="font-semibold">{o.label}</ItemTitle>
+                <ItemDescription>{o.description}</ItemDescription>
+              </ItemContent>
+              <AnimatePresence initial={false}>
+                {picked === o.label && (
+                  <motion.span key="mark" variants={pop} initial="hidden" animate="show" exit="hidden" className="inline-flex">
+                    <Check className="text-primary size-4" />
+                  </motion.span>
+                )}
+              </AnimatePresence>
+            </Item>
+          ))}
+        </div>
+        <Textarea
+          value={other}
+          onChange={(e) => setOther(e.target.value)}
+          placeholder="Other - type your own answer"
+          className="min-h-20"
+        />
       </CardContent>
-      {!sent && (
-        <CardFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-          <Button className={thumb} disabled={!answer} onClick={() => setSent(answer)}>
-            Send answer
-          </Button>
-          <div className="sm:ml-auto">
-            <OpenAgent item={item} />
-          </div>
-        </CardFooter>
-      )}
+      <CardFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+        <Button className={thumb} disabled={!answer} onClick={() => answer && onResolve(`Answered: ${answer}`)}>
+          Send answer
+        </Button>
+        <div className="sm:ml-auto">
+          <OpenAgent item={item} />
+        </div>
+      </CardFooter>
     </Card>
   )
 }
 
-function PinCard({ item }: { item: InboxItem }) {
-  const [decided, setDecided] = useState<Decision | null>(null)
+function PinCard({ item, onResolve }: { item: InboxItem; onResolve: Resolve }) {
   return (
     <Card>
       <CardHeader>
@@ -163,20 +173,12 @@ function PinCard({ item }: { item: InboxItem }) {
         <p className="text-muted-foreground">{item.body}</p>
       </CardContent>
       <CardFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-        {decided ? (
-          <Badge variant={decided === "approved" ? "default" : "secondary"} className="self-start">
-            {decided === "approved" ? "Accepted" : "Replied"}
-          </Badge>
-        ) : (
-          <>
-            <Button className={thumb} onClick={() => setDecided("approved")}>
-              Accept
-            </Button>
-            <Button variant="outline" className={thumb} onClick={() => setDecided("rejected")}>
-              Reply
-            </Button>
-          </>
-        )}
+        <Button className={thumb} onClick={() => onResolve("Accepted")}>
+          Accept
+        </Button>
+        <Button variant="outline" className={thumb} onClick={() => onResolve("Replied")}>
+          Reply
+        </Button>
         <div className="sm:ml-auto">
           <OpenAgent item={item} />
         </div>
@@ -185,8 +187,7 @@ function PinCard({ item }: { item: InboxItem }) {
   )
 }
 
-function ResultCard({ item }: { item: InboxItem }) {
-  const [shipped, setShipped] = useState(false)
+function ResultCard({ item, onResolve }: { item: InboxItem; onResolve: Resolve }) {
   return (
     <Card>
       <CardHeader>
@@ -196,19 +197,15 @@ function ResultCard({ item }: { item: InboxItem }) {
       <CardContent className="flex flex-col gap-3">
         <p className="text-muted-foreground">{item.body}</p>
         <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">PR #648</Badge>
+          <Badge variant="secondary">PR #648</Badge>{/* ds-allow-hardcode: a pull-request number, not a colour */}
           <Badge variant="secondary">CI green</Badge>
         </div>
       </CardContent>
       <CardFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-        {shipped ? (
-          <Badge className="self-start">Shipping</Badge>
-        ) : (
-          <Button className={thumb} onClick={() => setShipped(true)}>
-            <Rocket data-icon="inline-start" />
-            Ship
-          </Button>
-        )}
+        <Button className={thumb} onClick={() => onResolve("Shipping")}>
+          <Rocket data-icon="inline-start" />
+          Ship
+        </Button>
         <Button variant="outline" className={thumb} nativeButton={false} render={<Link to={`/w/${item.workspaceId}/result/${item.agentId}`} />}>
           See result
         </Button>
@@ -222,14 +219,13 @@ function ResultCard({ item }: { item: InboxItem }) {
 
 // A stopped agent wants Retry or Give up, not an answer. The reason leads, the detail
 // says how far it got, so you can decide without opening the feed.
-function FailedCard({ item }: { item: InboxItem }) {
+function FailedCard({ item, onResolve }: { item: InboxItem; onResolve: Resolve }) {
   const agent = agentById(item.agentId)
-  const [retrying, setRetrying] = useState(false)
   const failure = agent.failure
   return (
     <Card className="ring-destructive/30 ring-2">
       <CardHeader>
-        <CardTop item={item} trailing={retrying ? undefined : <StatusBadge status="failed" />} />
+        <CardTop item={item} trailing={<StatusBadge status="failed" />} />
         <CardTitle className="mt-2">{item.title}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
@@ -237,39 +233,31 @@ function FailedCard({ item }: { item: InboxItem }) {
         <p className="text-muted-foreground">{failure?.detail ?? item.body}</p>
       </CardContent>
       <CardFooter className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-        {retrying ? (
-          <>
-            <Badge variant="secondary" className="gap-1.5 self-start">
-              <Spinner className="size-3" />
-              Retrying
-            </Badge>
-            <p className="text-muted-foreground text-sm">{agent.name} is back on the task</p>
-          </>
-        ) : (
-          <>
-            {failure?.retryable !== false && (
-              <Button className={thumb} onClick={() => setRetrying(true)}>
-                <RotateCcw data-icon="inline-start" />
-                Retry
-              </Button>
-            )}
-            <Button variant="outline" className={thumb} nativeButton={false} render={<Link to={`/w/${item.workspaceId}/agent/${item.agentId}`} />}>
-              Open agent
-            </Button>
-            <Button variant="ghost" className={cn(thumb, "text-destructive hover:text-destructive")}>
-              Give up
-            </Button>
-          </>
+        {failure?.retryable !== false && (
+          <Button className={thumb} onClick={() => onResolve("Retrying")}>
+            <RotateCcw data-icon="inline-start" />
+            Retry
+          </Button>
         )}
+        <Button variant="outline" className={thumb} nativeButton={false} render={<Link to={`/w/${item.workspaceId}/agent/${item.agentId}`} />}>
+          Open agent
+        </Button>
+        <Button
+          variant="ghost"
+          className={cn(thumb, "text-destructive hover:text-destructive")}
+          onClick={() => onResolve("Given up")}
+        >
+          Give up
+        </Button>
       </CardFooter>
     </Card>
   )
 }
 
-export function InboxCard({ item }: { item: InboxItem }) {
-  if (item.kind === "permission") return <PermissionCard item={item} />
-  if (item.kind === "question") return <QuestionCard item={item} />
-  if (item.kind === "pin") return <PinCard item={item} />
-  if (item.kind === "failed") return <FailedCard item={item} />
-  return <ResultCard item={item} />
+export function InboxCard({ item, onResolve }: { item: InboxItem; onResolve: Resolve }) {
+  if (item.kind === "permission") return <PermissionCard item={item} onResolve={onResolve} />
+  if (item.kind === "question") return <QuestionCard item={item} onResolve={onResolve} />
+  if (item.kind === "pin") return <PinCard item={item} onResolve={onResolve} />
+  if (item.kind === "failed") return <FailedCard item={item} onResolve={onResolve} />
+  return <ResultCard item={item} onResolve={onResolve} />
 }

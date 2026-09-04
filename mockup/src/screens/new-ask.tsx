@@ -146,7 +146,7 @@ export function NewAskScreen() {
 
       <motion.div variants={rise} className="space-y-2">
         <span className="text-muted-foreground text-xs">Or start from one of these</span>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-2 sm:grid-cols-3">
           {examples.map((x) => (
             <motion.div key={x} variants={pop}>
               <Card
@@ -161,29 +161,30 @@ export function NewAskScreen() {
               </Card>
             </motion.div>
           ))}
-        </div>
+        </motion.div>
       </motion.div>
 
       <motion.div variants={rise} className="space-y-2">
         <span className="text-muted-foreground text-xs">Recent asks</span>
-        <div className="grid gap-1.5">
+        <motion.div variants={stagger} initial="hidden" animate="show" className="grid gap-1.5">
           {recent.map(({ task, agent }) => (
-            <Item
-              key={task.id}
-              variant="outline"
-              size="sm"
-              render={<Link to={`/w/${task.workspaceId}/agent/${agent.id}`} />}
-              className="gap-3"
-            >
-              <StatusDot status={agent.status} />
-              <ItemContent>
-                <ItemTitle>{task.title}</ItemTitle>
-                <ItemDescription>{agent.name} in {task.workspaceId}</ItemDescription>
-              </ItemContent>
-              <ArrowRight className="text-muted-foreground size-4 shrink-0" />
-            </Item>
+            <motion.div key={task.id} variants={rise}>
+              <Item
+                variant="outline"
+                size="sm"
+                render={<Link to={`/w/${task.workspaceId}/agent/${agent.id}`} />}
+                className="gap-3"
+              >
+                <StatusDot status={agent.status} />
+                <ItemContent>
+                  <ItemTitle>{task.title}</ItemTitle>
+                  <ItemDescription>{agent.name} in {task.workspaceId}</ItemDescription>
+                </ItemContent>
+                <ArrowRight className="text-muted-foreground size-4 shrink-0" />
+              </Item>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </motion.div>
     </motion.div>
   )

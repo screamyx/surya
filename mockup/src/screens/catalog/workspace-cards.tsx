@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { workspaceCards, workspaces } from "@/data"
-import { rise, stagger } from "@/motion"
+import { pop, stagger } from "@/motion"
 import { A2UICard } from "@/screens/catalog/cards"
 import { shapeName } from "@/screens/catalog/shape"
 
@@ -82,7 +82,7 @@ export function WorkspaceCardSections() {
               className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
             >
               {list.map((card) => (
-                <motion.div key={card.name} variants={rise} className="min-w-0">
+                <motion.div key={card.name} variants={pop} className="min-w-0">
                   <WorkspaceCardTile card={card} />
                 </motion.div>
               ))}

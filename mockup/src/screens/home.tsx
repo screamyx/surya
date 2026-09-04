@@ -1,216 +1,221 @@
-// Screen: / - servers, then their workspaces, then the agents in each.
-// The first thing you see on your phone: what needs him, then what every workspace is doing.
+// Screen: / - the attention queue (decision 20, point 1).
+// Home used to be an inventory grouped by server, which answers "where things live".
+// A person opening surya is asking "what now", so the order is: what needs you, what
+// is running, what is finished and unshipped. Workspace is a label, not the grouping.
+//
+// The queue is the one thing on this page that changes, so it is the one thing that
+// moves: answering the lead ask drops it to an answered line and the next ask rises
+// into the open slot on a layout spring, rather than the list teleporting.
+import { useState } from "react"
 import { Link } from "react-router"
-import { motion } from "motion/react"
-import { ArrowRight, FolderTree, ListTodo, Monitor, RefreshCw, Server as ServerIcon, Sparkles } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { AnimatePresence, motion } from "motion/react"
+import { ArrowRight, Check, Rocket } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
-import { Textarea } from "@/components/ui/textarea"
-import { StatusBadge, StatusDot } from "@/components/status"
-import { agentById, agents, inbox, servers, settings, tasks, workspaces, type Server, type Workspace } from "@/data"
-import { rise, stagger } from "@/motion"
+import { StatusDot } from "@/components/status"
+import { BeatCount } from "@/screens/beat"
+import { LeadAsk, AskRow, type Answer } from "@/screens/home/ask"
+import { MachineList, StartBox } from "@/screens/home/aside"
+import {
+  agents, fmtTime, inbox, servers, settings, workspaces,
+  type Agent, type InboxItem,
+} from "@/data"
+import { layoutSpring, pop, rise, row, stagger } from "@/motion"
 import { cn } from "@/lib/utils"
 
-// A stopped agent needs you as much as a question does, so it lands in the same list.
-const needsYou = inbox.filter((i) => i.kind === "permission" || i.kind === "question" || i.kind === "failed")
+// A stopped agent needs you as much as a question does, so it lands in the same queue.
+const needsYou: InboxItem[] = inbox.filter((i) => i.kind === "permission" || i.kind === "question" || i.kind === "failed")
+const all = agents
+const working = all.filter((a) => a.status === "working")
+const done = all.filter((a) => a.status === "done")
+const idle = all.filter((a) => a.status === "idle")
+const wsName = (id: string) => workspaces.find((w) => w.id === id)?.name ?? id
 
-const wsLinks = (id: string) => [
-  { to: `/w/${id}/agents`, icon: Sparkles, label: "Agents" },
-  { to: `/w/${id}/tasks`, icon: ListTodo, label: "Tasks" },
-  { to: `/w/${id}/preview`, icon: Monitor, label: "Preview" },
-  { to: `/w/${id}/files`, icon: FolderTree, label: "Files" },
-]
-
-function NeedsYouCard() {
+function Section({ label, count, children }: { label: string; count: number; children: React.ReactNode }) {
   return (
-    <Card className="border-destructive/30 ring-destructive/20">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          Needs you
-          <Badge variant="destructive">{needsYou.length}</Badge>
-        </CardTitle>
-        <CardDescription>Answer these and your agents carry on.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        {needsYou.map((i) => (
-          <Item key={i.id} variant="outline" className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-            <ItemContent>
-              <ItemTitle className="flex flex-wrap items-center gap-2">
-                <span className="min-w-0">{i.title}</span>
-                {i.kind === "failed" && <StatusBadge status="failed" />}
-              </ItemTitle>
-              <ItemDescription>
-                {agentById(i.agentId).name} in {i.workspaceId}
-              </ItemDescription>
-            </ItemContent>
-            <ItemActions className="w-full sm:w-auto">
-              <Button variant="outline" nativeButton={false} className="h-11 w-full sm:h-8 sm:w-auto" render={<Link to="/inbox" />}>
-                Open
-                <ArrowRight data-icon="inline-end" />
-              </Button>
-            </ItemActions>
-          </Item>
-        ))}
-      </CardContent>
-    </Card>
+    <section className="flex flex-col gap-2">
+      <h2 className="u-overline text-muted-foreground flex items-baseline gap-2">
+        {label}
+        <BeatCount value={count} className="text-muted-foreground" />
+      </h2>
+      {children}
+    </section>
   )
 }
 
-function WorkspaceCard({ w }: { w: Workspace }) {
-  const mine = tasks.filter((t) => t.workspaceId === w.id)
-  const counts = [
-    { label: "queued", n: mine.filter((t) => t.status === "queued").length },
-    { label: "running", n: mine.filter((t) => t.status === "running").length },
-    { label: "done", n: mine.filter((t) => t.status === "done").length },
-  ]
+// One line per agent. The differentiator is what varies: the summary, and the time.
+function AgentLine({ a, trailing }: { a: Agent; trailing?: React.ReactNode }) {
   return (
-    <Card className="h-full">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Link to={`/w/${w.id}/agents`} className="truncate hover:underline">{w.name}</Link>
-          <Badge variant="outline">{w.branch}</Badge>
-        </CardTitle>
-        <CardDescription className="truncate">{w.repo}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-1">
-        {w.agents.map((a) => (
-          <Link key={a.id} to={`/w/${w.id}/agent/${a.id}`} className="hover:bg-muted flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5">
-            <StatusDot status={a.status} />
-            <span className="shrink-0 font-medium">{a.name}</span>
-            <span className="text-muted-foreground min-w-0 truncate text-xs">{a.summary}</span>
-          </Link>
-        ))}
-      </CardContent>
-      <CardFooter className="flex-col items-stretch gap-3">
-        <div className="flex flex-wrap gap-1.5">
-          {counts.map((c) => (
-            <Badge key={c.label} variant="secondary" className="font-normal">
-              {c.n} {c.label}
-            </Badge>
-          ))}
-        </div>
-        <div className="-mx-1 flex flex-wrap gap-0.5">
-          {wsLinks(w.id).map((l) => (
-            <Button key={l.to} variant="ghost" size="sm" nativeButton={false} className="text-muted-foreground" render={<Link to={l.to} />}>
-              <l.icon data-icon="inline-start" />
-              {l.label}
-            </Button>
-          ))}
-        </div>
-      </CardFooter>
-    </Card>
-  )
-}
-
-// Servers are the top of the tree (decision 18). One server, no heading; more than one, group under it.
-const grouped = servers.length > 1
-
-function ServerHeading({ s, count }: { s: Server; count: number }) {
-  const off = s.state !== "online"
-  return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-      <ServerIcon className={cn("size-4 shrink-0", off ? "text-muted-foreground" : "text-foreground")} />
-      <h2 className={cn("font-heading text-sm font-medium", off && "text-muted-foreground")}>{s.name}</h2>
-      {s.home && <Badge variant="secondary">home</Badge>}
-      <span className="flex items-center gap-1.5">
-        <span className={cn("size-1.5 rounded-full", s.state === "online" ? "bg-primary" : s.state === "installing" ? "bg-primary animate-pulse" : "bg-border")} />
-        <span className="text-muted-foreground text-xs">{s.state}</span>
-      </span>
-      <span className="text-muted-foreground text-xs">· {count} {count === 1 ? "workspace" : "workspaces"}</span>
+    <div className="hover:bg-accent group flex min-w-0 items-center gap-3 rounded-lg px-3 py-2 transition-colors">
+      <StatusDot status={a.status} />
+      <Link to={`/w/${a.workspaceId}/agent/${a.id}`} className="shrink-0 text-sm font-medium">
+        {a.name}
+      </Link>
+      <span className="text-muted-foreground hidden shrink-0 font-mono text-xs sm:inline">{wsName(a.workspaceId)}</span>
+      <span className="text-muted-foreground min-w-0 flex-1 truncate text-sm">{a.summary}</span>
+      {trailing ?? <span className="text-muted-foreground tnum hidden shrink-0 text-xs sm:inline">{fmtTime(a.lastEventAt)}</span>}
     </div>
   )
 }
 
-function OfflineCard({ s }: { s: Server }) {
+function QuietQueue() {
   return (
-    <Card className="bg-muted/30 border-dashed">
-      <CardContent className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-muted-foreground text-sm">{s.name} is offline.</p>
-        <Button variant="ghost" size="sm" className="h-9 md:h-8">
-          <RefreshCw data-icon="inline-start" />
-          Check again
-        </Button>
-      </CardContent>
-    </Card>
+    <motion.div variants={pop} initial="hidden" animate="show" className="bg-card shadow-raise flex flex-col items-start gap-2 rounded-xl px-6 py-10">
+      <Check className="text-ok size-6" />
+      <p className="text-lg font-medium">Nothing needs attention</p>
+      <p className="text-muted-foreground max-w-[46ch] text-sm">
+        Every agent is either working or waiting for a task. surya buzzes this phone the moment one of them stops.
+      </p>
+    </motion.div>
   )
 }
 
-function ServerSection({ s }: { s: Server }) {
-  const mine = workspaces.filter((w) => w.serverId === s.id)
+// The queue. Open asks first, the answered ones under them, and the whole list on one
+// layout spring so a decision reflows the section instead of redrawing it.
+function Queue({ answers, onAnswer, onUndo }: {
+  answers: Record<string, Answer>
+  onAnswer: (id: string, a: Answer) => void
+  onUndo: (id: string) => void
+}) {
+  const open = needsYou.filter((i) => !answers[i.id])
+  const settled = needsYou.filter((i) => answers[i.id])
+  const answer = onAnswer
+  const undo = onUndo
+
   return (
-    <div className="flex flex-col gap-2.5">
-      <ServerHeading s={s} count={mine.length} />
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {mine.map((w) => (
-          <motion.div key={w.id} variants={rise} className="min-w-0">
-            <WorkspaceCard w={w} />
-          </motion.div>
-        ))}
-        {mine.length === 0 && (
-          <motion.div variants={rise} className="min-w-0">
-            <OfflineCard s={s} />
-          </motion.div>
+    <Section label="Needs you" count={open.length}>
+      <motion.div layout="position" transition={layoutSpring} className="flex flex-col">
+        <AnimatePresence mode="popLayout" initial={false}>
+          {open.length === 0 && settled.length === 0 && <QuietQueue key="quiet" />}
+
+          {open[0] && (
+            <motion.div key={open[0].id} layout="position" transition={layoutSpring} variants={pop} initial="hidden" animate="show" exit="hidden">
+              <LeadAsk item={open[0]} onAnswer={(a) => answer(open[0].id, a)} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <motion.div layout="position" transition={layoutSpring} className="-mx-3 mt-1 flex flex-col">
+          <AnimatePresence initial={false}>
+            {open.slice(1).map((i) => (
+              <motion.div key={i.id} layout="position" transition={layoutSpring} variants={row} initial="hidden" animate="show" exit="exit">
+                <AskRow item={i} />
+              </motion.div>
+            ))}
+            {settled.map((i) => (
+              <motion.div key={i.id} layout="position" transition={layoutSpring} variants={row} initial="hidden" animate="show" exit="exit">
+                <AskRow item={i} answer={answers[i.id]} onUndo={() => undo(i.id)} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </motion.div>
+
+        {open.length === 0 && settled.length > 0 && (
+          <motion.p layout="position" transition={layoutSpring} className="text-muted-foreground mt-2 text-sm">
+            That is the queue answered. Undo any line above to put it back.
+          </motion.p>
         )}
-      </div>
-    </div>
-  )
-}
-
-function StartCard() {
-  return (
-    <Card className="h-full">
-      <CardHeader>
-        <CardTitle>Start something</CardTitle>
-        <CardDescription>One sentence is enough. An agent picks it up.</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col gap-3 xl:flex-row xl:items-end">
-        <Textarea placeholder="Add a Ship button to the result page" className="min-h-20 flex-1" />
-        <Button nativeButton={false} className="h-11 w-full sm:h-8 xl:h-11 xl:max-w-40" render={<Link to="/new" />}>
-          Start
-          <ArrowRight data-icon="inline-end" />
-        </Button>
-      </CardContent>
-    </Card>
+      </motion.div>
+    </Section>
   )
 }
 
 export function HomeScreen() {
-  return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-5 md:px-6 md:py-6">
-      <div>
-        <h1 className="u-display text-3xl md:text-4xl">Good morning, {settings.user.name}</h1>
-        <p className="text-muted-foreground text-sm">
-          {grouped && `${servers.length} servers, `}{workspaces.length} workspaces, {agents.length} agents, {needsYou.length} things need you
-        </p>
-      </div>
+  const [answers, setAnswers] = useState<Record<string, Answer>>({})
+  const waiting = needsYou.filter((i) => !answers[i.id]).length
 
-      <motion.div variants={stagger} initial="hidden" animate="show" className="mt-5 flex flex-col gap-4">
-        {needsYou.length > 0 && (
+  return (
+    <div className="mx-auto w-full max-w-6xl px-4 py-6 md:px-6 md:py-8">
+      <header className="flex flex-col gap-1">
+        <h1 className="u-display text-3xl md:text-4xl">Good morning, {settings.user.name}</h1>
+        <p className="text-muted-foreground text-base">
+          {waiting > 0 ? (
+            <>
+              <BeatCount value={waiting} /> {waiting === 1 ? "thing needs" : "things need"} you.{" "}
+              {working.length} agents are still working.
+            </>
+          ) : (
+            `Nothing needs you. ${working.length} agents are still working.`
+          )}
+        </p>
+      </header>
+
+      <motion.div
+        variants={stagger}
+        initial="hidden"
+        animate="show"
+        className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-8"
+      >
+        <div className="flex min-w-0 flex-col gap-7">
           <motion.div variants={rise}>
-            <NeedsYouCard />
+            <Queue
+              answers={answers}
+              onAnswer={(id, a) => setAnswers((prev) => ({ ...prev, [id]: a }))}
+              onUndo={(id) => setAnswers(({ [id]: _gone, ...rest }) => rest)}
+            />
           </motion.div>
-        )}
-        {grouped ? (
-          servers.map((s) => (
-            <motion.div key={s.id} variants={rise}>
-              <ServerSection s={s} />
+
+          <motion.div variants={rise}>
+            <Section label="Working" count={working.length}>
+              <div className="-mx-3 flex flex-col">
+                {working.map((a) => <AgentLine key={a.id} a={a} />)}
+              </div>
+            </Section>
+          </motion.div>
+
+          <motion.div variants={rise}>
+            <Section label="Done, not shipped" count={done.length}>
+              <div className="-mx-3 flex flex-col">
+                {done.map((a) => (
+                  <AgentLine
+                    key={a.id}
+                    a={a}
+                    trailing={
+                      <Button variant="outline" size="sm" nativeButton={false} className="shrink-0" render={<Link to={`/w/${a.workspaceId}/result/${a.id}`} />}>
+                        <Rocket data-icon="inline-start" />
+                        See result
+                      </Button>
+                    }
+                  />
+                ))}
+              </div>
+            </Section>
+          </motion.div>
+
+          {idle.length > 0 && (
+            <motion.div variants={rise}>
+              <Section label="Idle" count={idle.length}>
+                <div className="-mx-3 flex flex-col">
+                  {idle.map((a) => (
+                    <AgentLine
+                      key={a.id}
+                      a={a}
+                      trailing={
+                        <Button variant="ghost" size="sm" nativeButton={false} className="text-muted-foreground shrink-0" render={<Link to={`/new?ws=${a.workspaceId}`} />}>
+                          Give a task
+                          <ArrowRight data-icon="inline-end" />
+                        </Button>
+                      }
+                    />
+                  ))}
+                </div>
+              </Section>
             </motion.div>
-          ))
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {workspaces.map((w) => (
-              <motion.div key={w.id} variants={rise} className="min-w-0">
-                <WorkspaceCard w={w} />
-              </motion.div>
-            ))}
-          </div>
-        )}
-        <motion.div variants={rise}>
-          <StartCard />
-        </motion.div>
+          )}
+        </div>
+
+        <motion.aside variants={rise} className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-18">
+          <StartBox />
+          <MachineList />
+        </motion.aside>
       </motion.div>
+
+      <footer className={cn("mt-10 flex flex-col gap-3")}>
+        <div className="u-seam" />
+        <p className="text-muted-foreground text-xs">
+          {servers.length} servers, {workspaces.length} workspaces, {all.length} agents.
+          {" "}This app was opened from {settings.daemon.host}, which keeps the list.
+        </p>
+      </footer>
     </div>
   )
 }

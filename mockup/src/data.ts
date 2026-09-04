@@ -442,7 +442,8 @@ export const result = {
   ],
 }
 
-export { settings, mcpServers, plugins, skills } from "./settings-data"
+export { settings, mcpServers, plugins, skills, capabilityPolicy, approvalRules } from "./settings-data"
+export type { Capability, PolicyMode, ApprovalRule, McpServer, Plugin, SkillEntry } from "./settings-data"
 
 export const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: false })
 export const agentById = (id: string) => agents.find((a) => a.id === id)!

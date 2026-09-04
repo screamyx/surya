@@ -1,7 +1,7 @@
 // Screen: result. Feature 5 - the finished job in plain words, with a Ship button
 // that walks the PR from open to merged.
 import { useState } from "react"
-import { motion } from "motion/react"
+import { AnimatePresence, motion } from "motion/react"
 import { Check, CircleCheck, ExternalLink, GitMerge } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,7 @@ import { Item, ItemActions, ItemContent, ItemTitle } from "@/components/ui/item"
 import { Separator } from "@/components/ui/separator"
 import { StatusDot } from "@/components/status"
 import { agentById, result } from "@/data"
-import { pop, rise, stagger } from "@/motion"
+import { breathe, pop, rise, stagger, swap } from "@/motion"
 import { cn } from "@/lib/utils"
 import { hunks } from "@/screens/result/hunks"
 
@@ -55,7 +55,12 @@ function Stepper() {
         return (
           <li key={s.name} className="flex gap-3">
             <div className="flex flex-col items-center">
-              <span
+              {/* The step you are on has not finished, so it breathes. The finished and
+                  the not-yet steps hold still. */}
+              <motion.span
+                variants={breathe}
+                initial="rest"
+                animate={s.state === "ready" ? "live" : "rest"}
                 className={cn(
                   "flex size-5 shrink-0 items-center justify-center rounded-full",
                   s.state === "done" && "bg-primary text-primary-foreground",
@@ -64,7 +69,7 @@ function Stepper() {
                 )}
               >
                 {s.state === "done" ? <Check className="size-3" /> : <span className="size-1.5 rounded-full bg-current" />}
-              </span>
+              </motion.span>
               {!last && <span className="bg-border w-px flex-1" />}
             </div>
             <div className={cn("pb-4", last && "pb-0")}>
@@ -88,15 +93,18 @@ function ShipCard() {
         <CardContent className="flex flex-col gap-4">
           <Stepper />
           <Separator />
-          <ul className="flex flex-col gap-1.5">
-            {result.checks.map((c) => (
-              <li key={c.name} className="flex items-center gap-2 text-sm">
-                <CircleCheck className="text-primary size-4 shrink-0" />
-                <span className="truncate">{c.name}</span>
-                <span className="text-muted-foreground ml-auto text-xs">{c.state}</span>
-              </li>
-            ))}
-          </ul>
+          <div>
+            <h3 className="u-overline text-muted-foreground">Checks</h3>
+            <ul className="mt-2 flex flex-col gap-1.5">
+              {result.checks.map((c) => (
+                <li key={c.name} className="flex items-center gap-2 text-sm">
+                  <CircleCheck className="text-ok size-4 shrink-0" />
+                  <span className="truncate">{c.name}</span>
+                  <span className="text-ok ml-auto text-xs font-medium">{c.state}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
           <div className="flex flex-col gap-2">
             <Button className="h-10 w-full lg:h-9">
               <GitMerge data-icon="inline-start" />
@@ -148,14 +156,10 @@ export function ResultScreen() {
           <ShipCard />
         </div>
 
-        <Card className="order-2 lg:order-none lg:col-start-1 lg:row-start-1">
-          <CardHeader>
-            <CardTitle>What changed</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-base leading-relaxed">{result.summary}</p>
-          </CardContent>
-        </Card>
+        <section className="order-2 lg:order-none lg:col-start-1 lg:row-start-1">
+          <h2 className="u-overline text-muted-foreground">What changed</h2>
+          <p className="text-ink-soft mt-2 max-w-[68ch] text-lg leading-relaxed">{result.summary}</p>
+        </section>
 
         <div className="order-3 flex min-w-0 flex-col gap-3 lg:order-none lg:col-start-1 lg:row-start-2">
           <div className="flex items-baseline justify-between">
@@ -182,9 +186,22 @@ export function ResultScreen() {
               </motion.div>
             ))}
           </motion.div>
-          <DiffView path={file} />
+          {/* The old diff leaves before the new one arrives, so the two never cross. */}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div key={file} variants={swap} initial="hidden" animate="show" exit="exit">
+              <DiffView path={file} />
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
+
+      <footer className="mt-6 flex flex-col gap-3">
+        <div className="u-seam" />
+        <p className="text-muted-foreground text-xs">
+          {agent.name} opened PR #{result.pr.number} on {result.pr.title.split(":")[0]}.
+          {" "}Merging closes the task and puts the result in your inbox.
+        </p>
+      </footer>
     </div>
   )
 }

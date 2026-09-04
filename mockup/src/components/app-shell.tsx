@@ -131,17 +131,21 @@ function WorkspaceNav() {
   return <>{servers.map((srv) => <ServerGroup key={srv.id} srv={srv} current={current} />)}</>
 }
 
+const leafLabel: Record<string, string> = { inbox: "Needs you", catalog: "Cards", settings: "Settings", new: "New ask", agents: "Agents", tasks: "Tasks", preview: "Preview", files: "Files", messages: "Messages" }
+
 function Crumbs() {
   const { ws, id } = useParams()
   const { pathname } = useLocation()
   const leaf = pathname.split("/").filter(Boolean).pop() ?? "home"
-  const leafLabel: Record<string, string> = { inbox: "Needs you", catalog: "Cards", settings: "Settings", new: "New ask", agents: "Agents", tasks: "Tasks", preview: "Preview", files: "Files", messages: "Messages" }
+  // A session pane is part of the path now, so the crumb reads "raven / Files".
+  const pane = id && leaf !== id ? leafLabel[leaf] : undefined
   return (
     <Breadcrumb>
       <BreadcrumbList>
         <BreadcrumbItem className="hidden md:block"><BreadcrumbLink render={<Link to="/" />}>surya</BreadcrumbLink></BreadcrumbItem>
         {ws && (<><BreadcrumbSeparator className="hidden md:block" /><BreadcrumbItem><BreadcrumbLink render={<Link to={`/w/${ws}/agents`} />}>{ws}</BreadcrumbLink></BreadcrumbItem></>)}
-        {(id || leafLabel[leaf]) && (<><BreadcrumbSeparator className={ws ? undefined : "hidden md:block"} /><BreadcrumbItem><BreadcrumbPage>{id ?? leafLabel[leaf]}</BreadcrumbPage></BreadcrumbItem></>)}
+        {(id || leafLabel[leaf]) && (<><BreadcrumbSeparator className={ws ? undefined : "hidden md:block"} /><BreadcrumbItem>{pane ? <BreadcrumbLink render={<Link to={`/w/${ws}/agent/${id}`} />}>{id}</BreadcrumbLink> : <BreadcrumbPage>{id ?? leafLabel[leaf]}</BreadcrumbPage>}</BreadcrumbItem></>)}
+        {pane && (<><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>{pane}</BreadcrumbPage></BreadcrumbItem></>)}
       </BreadcrumbList>
     </Breadcrumb>
   )
