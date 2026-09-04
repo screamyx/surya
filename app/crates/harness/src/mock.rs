@@ -620,9 +620,13 @@ fn mock_card_events(dir: &std::path::Path) -> Vec<AgentEvent> {
         out.push(AgentEvent::TextDelta {
             text: format!("\n\nCard {}: `{stem}`\n\n", ix + 1),
         });
+        let card_id = format!("card-{stem}");
+        let (surface_id, a2ui) = crate::cards::envelope_list(&json, &card_id);
         out.push(AgentEvent::Card {
-            id: format!("card-{stem}"),
-            json,
+            tool_use_id: format!("toolu_{card_id}"),
+            card_id,
+            surface_id,
+            a2ui,
         });
     }
     out

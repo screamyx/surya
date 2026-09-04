@@ -235,8 +235,12 @@ pub struct Component {
 /// whatever went wrong on the way in.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Card {
-    /// The `surfaceId`; also the id a button press reports back under.
+    /// The A2UI `surfaceId`.
     pub id: String,
+    /// The id a button press reports back under (the harness's card store
+    /// key). Defaults to the surface id; the host overrides it from the
+    /// transcript part.
+    pub card_id: String,
     pub catalog_id: String,
     pub components: HashMap<String, Component>,
     /// The data model as sent (`updateDataModel` folded in). Live edits

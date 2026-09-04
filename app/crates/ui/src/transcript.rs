@@ -1382,15 +1382,35 @@ pub fn rows_for_entry(
                             copy_text: None,
                         });
                     }
-                    MessagePart::Card { id: part_id, json } => {
-                        let bytes = serde_json::to_vec(json).unwrap_or_default();
+                    MessagePart::Card {
+                        id: part_id,
+                        card_id,
+                        a2ui,
+                        a2ui_ref,
+                        ..
+                    } => {
+                        let bytes = serde_json::to_vec(a2ui).unwrap_or_default();
+                        let mut card = match a2ui {
+                            Some(envelopes) => surya_a2ui::parse_card(
+                                &serde_json::Value::Array(envelopes.clone()),
+                            ),
+                            None => {
+                                let mut card = surya_a2ui::parse_card(&serde_json::Value::Null);
+                                card.errors = vec![format!(
+                                    "card payload is not inline (ref {})",
+                                    a2ui_ref.as_deref().unwrap_or("none")
+                                )];
+                                card
+                            }
+                        };
+                        card.card_id = card_id.clone();
                         rows.push(Row {
                             id: format!("{}#{}", entry.id, part_id).into(),
                             version: fnv1a(&bytes) << 1,
                             turn_start: false,
                             kind: RowKind::Card {
-                                card_id: part_id.clone().into(),
-                                card: Arc::new(surya_a2ui::parse_card(json)),
+                                card_id: card_id.clone().into(),
+                                card: Arc::new(card),
                             },
                             entry_id: entry_id.clone(),
                             timestamp: None,
@@ -4600,7 +4620,7 @@ impl Transcript {
                 tracing::info!(
                     target: "surya_a2ui",
                     card = %action.card_id,
-                    action = %action.name,
+                    action = %action.action,
                     wire = %action.to_wire(),
                     "card action"
                 );

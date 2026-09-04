@@ -41,6 +41,7 @@ pub fn parse_card_str(text: &str) -> Card {
 pub fn parse_card(input: &Value) -> Card {
     let mut card = Card {
         id: "card".to_owned(),
+        card_id: String::new(),
         catalog_id: String::new(),
         components: Default::default(),
         data: Value::Object(Default::default()),
@@ -65,6 +66,9 @@ pub fn parse_card(input: &Value) -> Card {
             }
         }
         other => card.errors.push(format!("card must be an object or array, got {other}")),
+    }
+    if card.card_id.is_empty() {
+        card.card_id = card.id.clone();
     }
     if card.components.is_empty() {
         card.errors.push("no components".to_owned());

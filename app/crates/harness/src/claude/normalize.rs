@@ -67,29 +67,27 @@ fn opt_str_field(input: &Value, key: &str) -> Option<String> {
     input.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
-/// The tool names whose call IS an A2UI card (surya decision 14: agents
-/// draw cards as `show_card` tool calls, never as reply text). Bare or
-/// MCP-prefixed (`mcp__surya__show_card`, or any server's `__show_card`).
-pub(crate) fn is_card_tool(name: &str) -> bool {
-    name == "show_card" || name.ends_with("__show_card")
-}
-
 /// Lift a `show_card` tool_use out as [`AgentEvent::Card`] instead of a
-/// tool chip. The input is the card JSON itself, or `{"card": ...}` /
-/// `{"json": "..."}` wrappers a tool schema may impose; `surya-a2ui` parses
-/// whichever arrives. `None` for every other tool.
+/// tool chip. v1 reads the card from the tool_use INPUT (an A2UI envelope
+/// list, one envelope, or the shorthand — see [`crate::cards`]); the card
+/// store lookup by `card_id` on the tool_result is the surya-mcp seat's
+/// follow-up and lands in this same function. `None` for every other tool.
 pub(crate) fn card_tool_use(name: &str, id: &str, input: &Value) -> Option<AgentEvent> {
-    if !is_card_tool(name) {
+    if !crate::cards::is_card_tool(name) {
         return None;
     }
-    let json = input
-        .get("card")
-        .or_else(|| input.get("json"))
-        .cloned()
-        .unwrap_or_else(|| input.clone());
+    let card_id = input
+        .get("card_id")
+        .or_else(|| input.get("cardId"))
+        .and_then(Value::as_str)
+        .unwrap_or(id)
+        .to_owned();
+    let (surface_id, a2ui) = crate::cards::envelope_list(input, &card_id);
     Some(AgentEvent::Card {
-        id: id.to_owned(),
-        json,
+        card_id,
+        surface_id,
+        tool_use_id: id.to_owned(),
+        a2ui,
     })
 }
 
@@ -695,7 +693,9 @@ mod tests {
             );
             let ev = normalize_one(&raw);
             assert!(
-                matches!(&ev[0], AgentEvent::Card { id, json } if id == "toolu_card" && *json == card),
+                matches!(&ev[0], AgentEvent::Card { card_id, surface_id, tool_use_id, a2ui }
+                    if card_id == "toolu_card" && surface_id == "s1" && tool_use_id == "toolu_card"
+                    && a2ui.len() == 2 && a2ui[1]["updateComponents"]["components"][0]["id"] == "root"),
                 "{name}: {ev:?}"
             );
             assert!(
@@ -703,11 +703,11 @@ mod tests {
                 "{name}: no chip expected, got {ev:?}"
             );
         }
-        // A `{"card": ...}` wrapper unwraps to the card itself.
+        // A `{"card": ...}` wrapper unwraps, and an explicit card_id wins.
         let wrapped = normalize_one(
-            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"show_card","input":{"card":{"components":[]}}}]}}"#,
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"show_card","input":{"card_id":"card-9","card":[{"createSurface":{"surfaceId":"w","catalogId":"c"}}]}}]}}"#,
         );
-        assert!(matches!(&wrapped[0], AgentEvent::Card { json, .. } if *json == json!({"components": []})));
+        assert!(matches!(&wrapped[0], AgentEvent::Card { card_id, surface_id, a2ui, .. } if card_id == "card-9" && surface_id == "w" && a2ui.len() == 1));
         // Other MCP tools stay chips.
         let other = normalize_one(
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t3","name":"mcp__surya__open_file","input":{}}]}}"#,

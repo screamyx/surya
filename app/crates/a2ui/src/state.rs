@@ -23,8 +23,9 @@ pub enum Binding {
 /// What a card can do to its state, or ask the host to forward.
 #[derive(Debug, Clone, PartialEq)]
 pub enum CardEvent {
-    /// A button press with its `event.name` and resolved context — the host
-    /// forwards it to the agent ([`CardAction::to_wire`]).
+    /// A button press: `event.name` as `action`, the resolved context as
+    /// `payload` — the host forwards it to the agent ([`CardAction::to_wire`]).
+    /// `card_id` is the card the host gave the renderer, not the surface id.
     Action(CardAction),
     /// A local `functionCall` action (`openUrl` is the only useful one).
     Function { call: String, args: Value },
@@ -157,9 +158,9 @@ impl CardState {
                         .collect(),
                 );
                 Some(CardEvent::Action(CardAction {
-                    card_id: card.id.clone(),
-                    name: name.clone(),
-                    context,
+                    card_id: card.card_id.clone(),
+                    action: name.clone(),
+                    payload: context,
                 }))
             }
             Action::Function(call) => Some(CardEvent::Function {
@@ -206,7 +207,7 @@ mod tests {
             panic!("expected an action");
         };
         assert_eq!(action.card_id, "follow_up");
-        assert_eq!(action.context, json!({"lead": "Mei", "note": "x"}));
+        assert_eq!(action.payload, json!({"lead": "Mei", "note": "x"}));
         assert_eq!(action.to_wire(), r#"[card:follow_up] save {"lead":"Mei","note":"x"}"#);
     }
 
@@ -231,6 +232,6 @@ mod tests {
         assert!(!state.apply(&CardEvent::SelectTab { component_id: "t".into(), index: 2 }));
         assert_eq!(state.selected_tab("t"), 2);
         assert!(state.apply(&CardEvent::Focus(Some("who".into()))));
-        assert!(!state.apply(&CardEvent::Action(CardAction { card_id: "c".into(), name: "n".into(), context: json!({}) })));
+        assert!(!state.apply(&CardEvent::Action(CardAction { card_id: "c".into(), action: "n".into(), payload: json!({}) })));
     }
 }

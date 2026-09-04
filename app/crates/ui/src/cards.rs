@@ -79,8 +79,20 @@ pub fn demo_entries(dir: &Path) -> Vec<zeron_doc::SessionMessageEntry> {
                     text: format!("Card {}: `{stem}`", ix + 1),
                 },
                 zeron_doc::MessagePart::Card {
-                    id: format!("card-{stem}"),
-                    json,
+                    id: format!("toolu_{stem}"),
+                    card_id: format!("card-{stem}"),
+                    surface_id: json
+                        .as_array()
+                        .and_then(|l| l.first())
+                        .and_then(|e| e["createSurface"]["surfaceId"].as_str())
+                        .unwrap_or_default()
+                        .to_owned(),
+                    a2ui: Some(match json {
+                        serde_json::Value::Array(items) => items,
+                        other => vec![other],
+                    }),
+                    a2ui_ref: None,
+                    a2ui_bytes: None,
                 },
             ],
             created_at: now + ix as i64,
