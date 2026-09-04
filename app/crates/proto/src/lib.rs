@@ -9,12 +9,14 @@ pub mod entities;
 pub mod files;
 pub mod motion;
 pub mod state;
+pub mod tasks;
 pub mod view;
 pub mod workspace;
 
 pub use agent::*;
 pub use entities::*;
 pub use state::*;
+pub use tasks::*;
 pub use workspace::*;
 
 /// Parse "0.2.12" (tolerating a `-suffix`/`+build` tail on the last part)
