@@ -35,6 +35,7 @@ pub mod run_journal;
 pub mod sessions;
 pub mod source_control;
 pub mod spaces;
+pub mod tasks;
 pub mod terminals;
 pub mod titles;
 pub mod uploads;
@@ -63,6 +64,7 @@ pub use source_control::{
     GitRemote, parse_git_remote,
 };
 pub use spaces::SpacesSync;
+pub use tasks::{CreateTaskParams, UpdateTaskParams, WatchTasksParams};
 pub use terminals::Terminals;
 pub use titles::TitleGenerator;
 pub use uploads::{AttachmentChunk, Uploads};

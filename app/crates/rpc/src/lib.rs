@@ -87,9 +87,13 @@ pub mod methods {
     pub const WATCH_SESSIONS: &str = "WatchSessions";
     /// Spaces registry (device+folder pairs) from the workspace doc.
     pub const WATCH_SPACES: &str = "WatchSpaces";
+    /// Task board rows for one space (`{spaceId}`) or every space (no
+    /// params), from the workspace registry; board order (rank).
+    pub const WATCH_TASKS: &str = "WatchTasks";
     /// Entity mutations against the workspace doc (feature-inventory §2 DataRpc).
     /// Params are tagged `{op: createChat|createSpace|renameSpace|deleteSpace|
-    /// renameChat|setChatArchived|deleteChat|renameDevice|markChatSeen, …}`.
+    /// renameChat|setChatArchived|deleteChat|renameDevice|markChatSeen|
+    /// createTask|updateTask|deleteTask|reorderTask, …}`.
     pub const MUTATE: &str = "Mutate";
     /// This engine's identity → `{deviceId}` (IPC-only; never relay-forwarded —
     /// the answer is about whichever engine you are directly connected to).

@@ -30,6 +30,8 @@ pub const KIND_DEVICES: &str = "devices";
 pub const KIND_SPACES: &str = "spaces";
 pub const KIND_CHATS: &str = "chats";
 pub const KIND_SESSIONS: &str = "sessions";
+/// Task board rows (`registry/tasks.rs`).
+pub const KIND_TASKS: &str = "tasks";
 
 /// Snapshot row id in the local `DocsStore` for the persisted registry state.
 pub const REGISTRY_DOC_ID: &str = "registry1";
@@ -1355,3 +1357,6 @@ fn row_to<T: serde::de::DeserializeOwned>(row: &RegistryRow) -> Option<T> {
 
 #[cfg(test)]
 mod tests;
+
+mod tasks;
+pub use tasks::TaskPatch;

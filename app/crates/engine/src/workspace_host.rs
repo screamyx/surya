@@ -26,7 +26,7 @@ use chrono::Utc;
 use tokio::sync::watch;
 
 use zeron_doc::{DeletedSpace, REGISTRY_DOC_ID, RegistryDoc, WorkspaceDoc};
-use zeron_proto::{Chat, ChatConfig, Device, Session, Space};
+use zeron_proto::{Chat, ChatConfig, Device, Session, Space, Task};
 use zeron_sync::{DocsStore, RegistryClient, RegistryTuning};
 
 use crate::doc_host::EdgeConfig;
@@ -158,6 +158,8 @@ struct WorkspaceHostInner {
     devices_tx: watch::Sender<Vec<Device>>,
     sessions_tx: watch::Sender<Vec<Session>>,
     spaces_tx: watch::Sender<Vec<Space>>,
+    /// Task board rows (`tasks.rs`); published alongside the sidebar tables.
+    tasks_tx: watch::Sender<Vec<Task>>,
     room: Mutex<Option<Arc<RegistryClient>>>,
     /// Bumped on every registry change (local mutation or applied server
     /// frame) — drives republish + the snapshot debounce in `workspace_task`.
@@ -275,6 +277,7 @@ impl WorkspaceHost {
         let (devices_tx, _) = watch::channel(state.devices);
         let (sessions_tx, _) = watch::channel(state.sessions);
         let (spaces_tx, _) = watch::channel(state.spaces);
+        let (tasks_tx, _) = watch::channel(doc.read_tasks()?);
         let (changed_tx, changed_rx) = watch::channel(0u64);
 
         let host = Self {
@@ -286,6 +289,7 @@ impl WorkspaceHost {
                 devices_tx,
                 sessions_tx,
                 spaces_tx,
+                tasks_tx,
                 room: Mutex::new(None),
                 changed_tx,
                 presence_seen: Mutex::new(std::collections::HashMap::new()),
@@ -599,7 +603,7 @@ impl WorkspaceHost {
 
     /// Run a mutation under the registry lock, then wake the publish/persist
     /// task and push the write to the room.
-    fn mutate<R>(&self, f: impl FnOnce(&mut RegistryDoc) -> R) -> R {
+    pub(crate) fn mutate<R>(&self, f: impl FnOnce(&mut RegistryDoc) -> R) -> R {
         let result = f(&mut lock(&self.inner.reg));
         self.inner.bump_changed();
         if let Some(room) = lock(&self.inner.room).as_ref() {
@@ -608,7 +612,7 @@ impl WorkspaceHost {
         result
     }
 
-    fn read<R>(&self, f: impl FnOnce(&RegistryDoc) -> R) -> R {
+    pub(crate) fn read<R>(&self, f: impl FnOnce(&RegistryDoc) -> R) -> R {
         f(&lock(&self.inner.reg))
     }
 
@@ -651,6 +655,11 @@ impl WorkspaceHost {
 
     pub fn watch_spaces(&self) -> watch::Receiver<Vec<Space>> {
         self.inner.spaces_tx.subscribe()
+    }
+
+    /// Every task row, all boards, board order (filter per space in `tasks.rs`).
+    pub fn watch_tasks(&self) -> watch::Receiver<Vec<Task>> {
+        self.inner.tasks_tx.subscribe()
     }
 
     /// WatchSessions source: remote devices' rows from the registry merged with
@@ -1103,7 +1112,14 @@ impl WorkspaceHostInner {
     }
 
     fn publish(&self) {
-        match lock(&self.reg).read_all() {
+        // One lock for both reads: a `match lock(..).read_all()` scrutinee
+        // keeps its guard alive for the whole match, so a second `lock` in an
+        // arm deadlocks the publish task (std Mutex is not reentrant).
+        let (state, tasks) = {
+            let doc = lock(&self.reg);
+            (doc.read_all(), doc.read_tasks())
+        };
+        match state {
             Ok(mut state) => {
                 self.overlay_presence(&mut state.devices);
                 // send_replace, NOT send: `watch::Sender::send` drops the value when
@@ -1113,6 +1129,12 @@ impl WorkspaceHostInner {
                 self.devices_tx.send_replace(state.devices);
                 self.sessions_tx.send_replace(state.sessions);
                 self.spaces_tx.send_replace(state.spaces);
+                match tasks {
+                    Ok(tasks) => {
+                        self.tasks_tx.send_replace(tasks);
+                    }
+                    Err(err) => tracing::warn!(error = %err, "task rows read failed"),
+                }
             }
             Err(err) => {
                 tracing::warn!(error = %err, "registry read failed");
