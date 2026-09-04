@@ -16,6 +16,8 @@ pub mod app_menus;
 pub mod appearance;
 pub mod attachments;
 pub mod badges;
+#[cfg(feature = "browser")]
+pub mod browser_pane;
 pub mod change_requests;
 pub mod changes;
 pub mod comments;
@@ -149,6 +151,10 @@ pub fn run_app(config: UiConfig) {
         composer::init(cx);
         terminal::panel::init(cx);
         app_menus::init(cx);
+        // CEF before the window: one browser per process, pumped from the
+        // shell's render and an idle chain (surya-browser).
+        #[cfg(feature = "browser")]
+        surya_browser::start(cx);
         cx.register_url_scheme("zeron").detach();
 
         let state = cx.new(|_| state::AppState::new());

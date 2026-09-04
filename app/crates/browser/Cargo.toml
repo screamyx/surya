@@ -1,0 +1,16 @@
+[package]
+name = "surya-browser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "haktui's offscreen Chromium (CEF) pane, ported onto comet's gpui"
+
+[dependencies]
+gpui.workspace = true
+futures.workspace = true
+image = { version = "0.25", default-features = false }
+# Offscreen Chromium. The build script downloads the CEF binary for the
+# target into CEF_PATH (or OUT_DIR) and copies the runtime files next to the
+# binaries in the target dir; see README.md.
+cef = "151.8.0"

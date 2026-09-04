@@ -9,11 +9,18 @@ publish.workspace = true
 name = "zeron"
 path = "src/main.rs"
 
+# CEF's subprocess (renderer, GPU, utility). Must sit next to `zeron`.
+[[bin]]
+name = "zeron-browser-helper"
+path = "src/browser_helper.rs"
+required-features = ["browser"]
+
 [dependencies]
 zeron-engine.workspace = true
 zeron-rpc.workspace = true
 zeron-ui.workspace = true
 zeron-update.workspace = true
+surya-browser = { workspace = true, optional = true }
 tokio.workspace = true
 clap.workspace = true
 anyhow.workspace = true
@@ -26,6 +33,11 @@ tracing-subscriber.workspace = true
 # same streaming/scroll workloads, so Linux keeps the system allocator.
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc.workspace = true
+
+[features]
+# The CEF browser pane. `cargo build -p zeron --features browser` builds
+# `zeron` with the pane and the `zeron-browser-helper` subprocess binary.
+browser = ["zeron-ui/browser", "dep:surya-browser"]
 
 [dev-dependencies]
 tempfile.workspace = true

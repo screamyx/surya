@@ -101,6 +101,10 @@ fn workos_client_id_from_env(edge_token: &Option<String>) -> Option<String> {
 static ALLOC: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn main() -> anyhow::Result<()> {
+    // First, before clap or logging: a CEF helper process re-executing this
+    // binary must return here and nowhere else.
+    #[cfg(feature = "browser")]
+    surya_browser::preflight();
     let cli = Cli::parse();
     // Long-running modes log at info, one-shot CLI commands at warn (RUST_LOG
     // overrides either).
