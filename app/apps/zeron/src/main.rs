@@ -302,7 +302,12 @@ fn harness_from_env() -> zeron_engine::HarnessId {
 }
 
 fn dirs_data_dir() -> std::path::PathBuf {
-    let home = std::path::PathBuf::from(std::env::var_os("HOME").expect("HOME not set"));
+    // Windows sessions set USERPROFILE, not HOME; a plain double-click on the
+    // exe used to panic here.
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+        .expect("neither HOME nor USERPROFILE is set");
     let dir = home.join(".zeron");
     // One-shot 0.2.0 migration: adopt the pre-rename data dir (sign-in,
     // device identity, prefs) instead of starting fresh.
