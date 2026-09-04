@@ -1,5 +1,5 @@
 // Shared fake data for the surya 1.0 RC mockup. Builders read from here, never edit.
-export type AgentStatus = "working" | "needs-you" | "done" | "idle"
+export type AgentStatus = "working" | "needs-you" | "failed" | "done" | "idle"
 
 export type Workspace = {
   id: string
@@ -23,9 +23,13 @@ export type Agent = {
   task?: string
   parentId?: string // the agent that spawned this one; undefined = you started it
   children: Agent[]
+  sessions: Session[] // past conversations of this agent, newest first; the current one is sessions[0]
+  failure?: { reason: string; detail: string; retryable: boolean } // set when status is "failed"
 }
 
-export type InboxKind = "permission" | "question" | "pin" | "result"
+export type Session = { id: string; title: string; startedAt: string; endedAt?: string; turns: number; model: string }
+
+export type InboxKind = "permission" | "question" | "pin" | "result" | "failed"
 export type InboxItem = {
   id: string
   kind: InboxKind
@@ -140,6 +144,11 @@ export const agents: Agent[] = [
     lastEventAt: "2026-09-05T01:10:12+08:00",
     task: "t-1",
     children: [],
+    sessions: [
+      { id: "s-raven-3", title: "Add follow-up fields to leads", startedAt: "2026-09-05T00:41:00+08:00", turns: 14, model: "claude-fable-5-1" },
+      { id: "s-raven-2", title: "Why does the media tab scroll sideways", startedAt: "2026-09-04T22:10:00+08:00", endedAt: "2026-09-04T22:48:00+08:00", turns: 9, model: "claude-fable-5-1" },
+      { id: "s-raven-1", title: "Read the v2 handoff and summarise it", startedAt: "2026-09-04T21:30:00+08:00", endedAt: "2026-09-04T21:36:00+08:00", turns: 3, model: "claude-opus-5" },
+    ],
   },
   {
     id: "raven-tests",
@@ -152,6 +161,7 @@ export const agents: Agent[] = [
     lastEventAt: "2026-09-05T01:11:50+08:00",
     parentId: "raven",
     children: [],
+    sessions: [],
   },
   {
     id: "raven-review",
@@ -164,6 +174,7 @@ export const agents: Agent[] = [
     lastEventAt: "2026-09-05T01:09:30+08:00",
     parentId: "raven",
     children: [],
+    sessions: [],
   },
   {
     id: "kite",
@@ -176,6 +187,7 @@ export const agents: Agent[] = [
     lastEventAt: "2026-09-05T01:11:58+08:00",
     task: "t-2",
     children: [],
+    sessions: [],
   },
   {
     id: "heron",
@@ -188,6 +200,7 @@ export const agents: Agent[] = [
     lastEventAt: "2026-09-05T00:38:00+08:00",
     task: "t-4",
     children: [],
+    sessions: [],
   },
   {
     id: "ibis",
@@ -200,6 +213,7 @@ export const agents: Agent[] = [
     lastEventAt: "2026-09-05T01:11:40+08:00",
     task: "t-6",
     children: [],
+    sessions: [],
   },
   {
     id: "ibis-shots",
@@ -212,6 +226,7 @@ export const agents: Agent[] = [
     lastEventAt: "2026-09-05T01:11:20+08:00",
     parentId: "ibis",
     children: [],
+    sessions: [],
   },
   {
     id: "wren",
@@ -223,6 +238,21 @@ export const agents: Agent[] = [
     startedAt: "2026-09-05T00:58:00+08:00",
     lastEventAt: "2026-09-05T01:05:00+08:00",
     children: [],
+    sessions: [],
+  },
+  {
+    id: "swift",
+    workspaceId: "kss-marketing",
+    name: "swift",
+    model: "claude-sonnet-5",
+    status: "failed",
+    summary: "Stopped: Meta Graph rate limit, three tries in a row",
+    startedAt: "2026-09-05T00:30:00+08:00",
+    lastEventAt: "2026-09-05T01:02:00+08:00",
+    task: "t-9",
+    children: [],
+    sessions: [{ id: "s-swift-1", title: "Publish the 12 new reels to the catalog", startedAt: "2026-09-05T00:30:00+08:00", endedAt: "2026-09-05T01:02:00+08:00", turns: 21, model: "claude-sonnet-5" }],
+    failure: { reason: "Rate limited by Meta Graph", detail: "POST /v21.0/catalog/items returned 429 three times over 8 minutes. The agent stopped rather than retry forever. 7 of 12 reels are published.", retryable: true },
   },
   {
     id: "finch",
@@ -234,16 +264,17 @@ export const agents: Agent[] = [
     startedAt: "2026-09-04T22:00:00+08:00",
     lastEventAt: "2026-09-04T23:48:00+08:00",
     children: [],
+    sessions: [],
   },
 ]
 for (const a of agents) a.children = agents.filter((c) => c.parentId === a.id)
 for (const w of workspaces) w.agents = agents.filter((a) => a.workspaceId === w.id && !a.parentId)
 
 // Status of an agent including everything it spawned: the worst state wins.
-const rank: Record<AgentStatus, number> = { "needs-you": 0, working: 1, done: 2, idle: 3 }
+const rank: Record<AgentStatus, number> = { "needs-you": 0, failed: 0, working: 1, done: 2, idle: 3 }
 export const rollup = (a: Agent): AgentStatus =>
   [a, ...a.children.map((c) => ({ status: rollup(c) }))].reduce<AgentStatus>((worst, x) => (rank[x.status] < rank[worst] ? x.status : worst), a.status)
-export const needsYouCount = (list: Agent[]): number => list.reduce((n, a) => n + (a.status === "needs-you" ? 1 : 0) + needsYouCount(a.children), 0)
+export const needsYouCount = (list: Agent[]): number => list.reduce((n, a) => n + (a.status === "needs-you" || a.status === "failed" ? 1 : 0) + needsYouCount(a.children), 0)
 export const byPriority = (list: Agent[]): Agent[] => [...list].sort((x, y) => rank[rollup(x)] - rank[rollup(y)])
 export const flatten = (list: Agent[]): Agent[] => list.flatMap((a) => [a, ...flatten(a.children)])
 
@@ -283,6 +314,15 @@ export const inbox: InboxItem[] = [
     at: "2026-09-05T00:59:00+08:00",
   },
   {
+    id: "i-5",
+    kind: "failed",
+    agentId: "swift",
+    workspaceId: "kss-marketing",
+    title: "swift stopped: rate limited by Meta Graph",
+    body: "Three 429s in a row on the catalog endpoint. 7 of 12 reels are published. Retry now, or wait for the limit to reset at 02:30.",
+    at: "2026-09-05T01:02:00+08:00",
+  },
+  {
     id: "i-4",
     kind: "result",
     agentId: "heron",
@@ -301,6 +341,7 @@ export const tasks: Task[] = [
   { id: "t-5", workspaceId: "project-jag", title: "Media tab scrolls sideways after Library upload (#553)", status: "queued", deps: [], source: "you", createdAt: "2026-09-04T18:00:00+08:00" },
   { id: "t-6", workspaceId: "surya", title: "Inbox screen with permission and question cards", status: "running", agentId: "ibis", deps: [], source: "you", createdAt: "2026-09-05T01:00:00+08:00" },
   { id: "t-7", workspaceId: "surya", title: "Approve button full width on phone", status: "queued", deps: ["t-6"], source: "pin", createdAt: "2026-09-05T00:59:00+08:00" },
+  { id: "t-9", workspaceId: "kss-marketing", title: "Publish the 12 new reels to the catalog", status: "blocked", agentId: "swift", deps: [], source: "you", createdAt: "2026-09-05T00:28:00+08:00" },
   { id: "t-8", workspaceId: "surya", title: "File tree lights up files the agent touches", status: "queued", deps: [], source: "agent", createdAt: "2026-09-05T00:45:00+08:00" },
 ]
 
@@ -311,134 +352,10 @@ export const pins: Pin[] = [
   { id: "p-4", workspaceId: "project-jag", x: 45, y: 52, selector: ".vehicle-grid", note: "I made the grid 3 across on tablet. Check it on yours?", by: "agent", status: "open" },
 ]
 
-export const fileTree: FileNode[] = [
-  {
-    name: "backend", path: "backend", kind: "dir", children: [
-      { name: "app", path: "backend/app", kind: "dir", children: [
-        { name: "Models", path: "backend/app/Models", kind: "dir", children: [
-          { name: "Lead.php", path: "backend/app/Models/Lead.php", kind: "file", touched: "agent" },
-          { name: "Vehicle.php", path: "backend/app/Models/Vehicle.php", kind: "file" },
-        ]},
-        { name: "Jobs", path: "backend/app/Jobs", kind: "dir", children: [
-          { name: "SendFollowUpReminder.php", path: "backend/app/Jobs/SendFollowUpReminder.php", kind: "file", touched: "agent" },
-        ]},
-      ]},
-      { name: "database", path: "backend/database", kind: "dir", children: [
-        { name: "migrations", path: "backend/database/migrations", kind: "dir", children: [
-          { name: "2026_09_05_000001_add_follow_up_to_leads.php", path: "backend/database/migrations/2026_09_05_000001_add_follow_up_to_leads.php", kind: "file", touched: "agent" },
-        ]},
-      ]},
-      { name: "tests", path: "backend/tests", kind: "dir", children: [
-        { name: "Feature", path: "backend/tests/Feature", kind: "dir", children: [
-          { name: "FollowUpReminderTest.php", path: "backend/tests/Feature/FollowUpReminderTest.php", kind: "file", touched: "agent" },
-        ]},
-      ]},
-      { name: "staff-react", path: "backend/staff-react", kind: "dir", children: [
-        { name: "src", path: "backend/staff-react/src", kind: "dir", children: [
-          { name: "LeadCard.tsx", path: "backend/staff-react/src/LeadCard.tsx", kind: "file", touched: "you" },
-        ]},
-      ]},
-    ],
-  },
-  { name: "specs", path: "specs", kind: "dir", children: [
-    { name: "behaviors", path: "specs/behaviors", kind: "dir", children: [
-      { name: "crm-lead-follow-up.md", path: "specs/behaviors/crm-lead-follow-up.md", kind: "file" },
-    ]},
-  ]},
-  { name: "AGENTS.md", path: "AGENTS.md", kind: "file" },
-]
+export { fileTree, fileContents, leadPhpBefore, leadPhpAfter } from "./files-data"
 
-export const fileContents: Record<string, string> = {
-  "backend/app/Models/Lead.php": `<?php
-
-namespace App\\Models;
-
-use Illuminate\\Database\\Eloquent\\Model;
-
-class Lead extends Model
-{
-    protected $fillable = [
-        'customer_id',
-        'vehicle_id',
-        'source',
-        'next_follow_up_at',
-        'follow_up_note',
-    ];
-
-    protected function casts(): array
-    {
-        return [
-            'next_follow_up_at' => 'datetime',
-        ];
-    }
-
-    public function isOverdue(): bool
-    {
-        return $this->next_follow_up_at?->isPast() ?? false;
-    }
-}
-`,
-  "backend/app/Jobs/SendFollowUpReminder.php": `<?php
-
-namespace App\\Jobs;
-
-use App\\Models\\Lead;
-use Illuminate\\Contracts\\Queue\\ShouldQueue;
-use Illuminate\\Foundation\\Queue\\Queueable;
-
-class SendFollowUpReminder implements ShouldQueue
-{
-    use Queueable;
-
-    public function __construct(public Lead $lead) {}
-
-    public function handle(): void
-    {
-        if ($this->lead->next_follow_up_at === null) {
-            return;
-        }
-
-        // TODO: push to the salesperson's phone
-    }
-}
-`,
-  "specs/behaviors/crm-lead-follow-up.md": `# Behavior: lead follow-up
-
-Every lead carries a next follow-up date and a one-line note.
-The morning after a lead comes in, the salesperson gets one reminder.
-`,
-}
-
-export const leadPhpBefore = `    protected $fillable = [
-        'customer_id',
-        'vehicle_id',
-        'source',
-    ];
-`
-export const leadPhpAfter = `    protected $fillable = [
-        'customer_id',
-        'vehicle_id',
-        'source',
-        'next_follow_up_at',
-        'follow_up_note',
-    ];
-
-    protected function casts(): array
-    {
-        return [
-            'next_follow_up_at' => 'datetime',
-        ];
-    }
-`
-
-export const cards: CardSample[] = [
-  { type: "vehicle", stockNo: "KSS-0412", title: "2021 Toyota Alphard 2.5 SC", price: "RM 268,800", days: 34, photo: "https://picsum.photos/seed/alphard/640/400", status: "In stock" },
-  { type: "table", title: "Leads with no follow-up date", columns: ["Lead", "Car", "Came in", "Salesperson"], rows: [["Ahmad F.", "Alphard SC", "2 days ago", "Zul"], ["Mei Ling", "Vellfire ZG", "4 days ago", "Farah"], ["Rajesh K.", "Harrier Z", "6 days ago", "Zul"]] },
-  { type: "form", title: "Set the follow-up", fields: [{ label: "Lead", type: "text", value: "Ahmad F." }, { label: "When", type: "date", value: "2026-09-06" }, { label: "Salesperson", type: "select", value: "Zul", options: ["Zul", "Farah", "Hafiz"] }, { label: "Note", type: "text", value: "Ask about trade-in" }], submit: "Save follow-up" },
-  { type: "approval", title: "Write 3 leads", summary: "Set next_follow_up_at to tomorrow 08:00 for the three leads above.", code: "Lead::whereIn('id', [412, 418, 421])\n    ->update(['next_follow_up_at' => now()->addDay()->setTime(8, 0)]);" },
-  { type: "diff-summary", title: "What changed", files: [{ path: "backend/app/Models/Lead.php", added: 12, removed: 0 }, { path: "backend/database/migrations/2026_09_05_000001_add_follow_up_to_leads.php", added: 28, removed: 0 }, { path: "backend/app/Jobs/SendFollowUpReminder.php", added: 24, removed: 0 }], note: "Two new columns, one job, no route changes." },
-  { type: "metric", title: "Leads followed up this week", value: "38", delta: "+12 vs last week", series: [4, 6, 3, 8, 7, 5, 5] },
-]
+export { cards, workspaceCards } from "./cards-data"
+import { cards } from "./cards-data"
 
 export { slashCommands } from "./slash-data"
 
@@ -484,12 +401,7 @@ export const result = {
   ],
 }
 
-export const settings = {
-  user: { name: "Azani", email: "muhd.azani@gmail.com", auth: "claude.ai OAuth, Max plan" },
-  daemon: { host: "pc-ajim.tail82fec1.ts.net", version: "0.1.0", claude: "2.1.260", uptime: "3d 4h" },
-  notifications: { push: true, needsYou: true, results: true, quietFrom: "23:30", quietTo: "07:30" },
-  models: ["claude-fable-5-1", "claude-opus-5", "claude-sonnet-5", "gpt-5.6-sol"],
-}
+export { settings, mcpServers, plugins, skills } from "./settings-data"
 
 export const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString("en-MY", { hour: "2-digit", minute: "2-digit", hour12: false })
 export const agentById = (id: string) => agents.find((a) => a.id === id)!

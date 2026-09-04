@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils"
 
 const action: Record<AgentStatus, { label: string; variant: "default" | "outline" | "destructive" | "secondary" }> = {
   "needs-you": { label: "Answer", variant: "destructive" },
+  failed: { label: "Retry", variant: "destructive" },
   working: { label: "Watch", variant: "outline" },
   done: { label: "See result", variant: "outline" },
   idle: { label: "Give a task", variant: "secondary" },
