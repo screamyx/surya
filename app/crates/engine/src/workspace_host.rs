@@ -1112,7 +1112,14 @@ impl WorkspaceHostInner {
     }
 
     fn publish(&self) {
-        match lock(&self.reg).read_all() {
+        // One lock for both reads: a `match lock(..).read_all()` scrutinee
+        // keeps its guard alive for the whole match, so a second `lock` in an
+        // arm deadlocks the publish task (std Mutex is not reentrant).
+        let (state, tasks) = {
+            let doc = lock(&self.reg);
+            (doc.read_all(), doc.read_tasks())
+        };
+        match state {
             Ok(mut state) => {
                 self.overlay_presence(&mut state.devices);
                 // send_replace, NOT send: `watch::Sender::send` drops the value when
@@ -1122,7 +1129,7 @@ impl WorkspaceHostInner {
                 self.devices_tx.send_replace(state.devices);
                 self.sessions_tx.send_replace(state.sessions);
                 self.spaces_tx.send_replace(state.spaces);
-                match lock(&self.reg).read_tasks() {
+                match tasks {
                     Ok(tasks) => {
                         self.tasks_tx.send_replace(tasks);
                     }

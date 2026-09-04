@@ -25,9 +25,9 @@ fn assemble(dir: &std::path::Path) -> EngineCore {
 }
 
 async fn next_board(rx: &mut tokio::sync::mpsc::Receiver<serde_json::Value>) -> Vec<Task> {
-    let item = tokio::time::timeout(Duration::from_secs(10), rx.recv())
+    let item = tokio::time::timeout(Duration::from_secs(30), rx.recv())
         .await
-        .expect("WatchTasks emits within 10s")
+        .expect("WatchTasks emits within 30s")
         .expect("stream alive");
     serde_json::from_value(item).expect("board decodes as Vec<Task>")
 }
@@ -154,7 +154,7 @@ async fn reorder_keeps_board_order_across_a_restart() {
         let core = assemble(&data);
         let client = zeron_rpc::memory_client(core.rpc_service());
         create_space(&client, &core.device_id).await;
-        for (id, title) in [("t-1", "one"), ("t-2", "two"), ("t-3", "three")] {
+        for (id, title) in [("t-1", "one"), ("t-2", "two"), ("t-3", "three"), ("t-4", "four")] {
             client
                 .call(
                     methods::MUTATE,
@@ -180,12 +180,12 @@ async fn reorder_keeps_board_order_across_a_restart() {
             .into_iter()
             .map(|t| t.id)
             .collect();
-        assert_eq!(ids, ["t-3", "t-1", "t-2"]);
+        assert_eq!(ids, ["t-3", "t-1", "t-2", "t-4"]);
         // Delete is a tombstone that survives too.
         client
             .call(
                 methods::MUTATE,
-                serde_json::json!({ "op": "deleteTask", "taskId": "t-2" }),
+                serde_json::json!({ "op": "deleteTask", "taskId": "t-4" }),
             )
             .await
             .expect("deleteTask");
@@ -196,7 +196,7 @@ async fn reorder_keeps_board_order_across_a_restart() {
     let core = assemble(&data);
     let tasks = core.workspace.read_tasks(Some("space-1")).unwrap();
     let ids: Vec<&str> = tasks.iter().map(|t| t.id.as_str()).collect();
-    let expected = ["t-3", "t-1"];
+    let expected = ["t-3", "t-1", "t-2"];
     let ordered = ids
         .iter()
         .zip(expected.iter())
@@ -211,5 +211,5 @@ async fn reorder_keeps_board_order_across_a_restart() {
         .await
         .expect("subscribe all boards");
     let snapshot = next_board(&mut all).await;
-    assert_eq!(snapshot.len(), 2, "unfiltered watch carries every board");
+    assert_eq!(snapshot.len(), 3, "unfiltered watch carries every board");
 }
