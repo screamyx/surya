@@ -21,6 +21,8 @@ pub mod change_requests;
 pub mod chat2_host;
 pub mod diff_sync;
 pub mod doc_host;
+pub mod files;
+pub mod files_watch;
 pub mod instance_lock;
 pub mod local_import;
 pub mod profile;
