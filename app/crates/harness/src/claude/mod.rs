@@ -33,6 +33,7 @@
 
 pub mod catalog;
 mod normalize;
+pub mod surya;
 mod wire;
 
 use std::path::PathBuf;
@@ -235,6 +236,25 @@ impl ClaudeHarness {
         if !settings.is_empty() {
             cmd.arg("--settings");
             cmd.arg(Value::Object(settings).to_string());
+        }
+        // surya's own abilities (decision 5): the `surya-mcp` sidecar plus the
+        // prompt append that teaches the agent when a card beats prose. Only
+        // when the caller asked for them, so every other harness and every
+        // test spawns exactly the command it did before.
+        if let Some(options) = &request.surya
+            && let Some(files) = surya::prepare(options, &request.cwd)
+        {
+            cmd.arg("--mcp-config");
+            cmd.arg(&files.mcp_config);
+            cmd.arg("--append-system-prompt-file");
+            cmd.arg(&files.system_append);
+            // surya is the host of every agent, so surya owns mail
+            // (decision 19). The CLI's own cross-session messaging talks to
+            // Claude Code sessions surya does not know about, and an agent
+            // told to message a peer reaches for it first - measured on
+            // 2026-09-05, the model called the built-in SendMessage and never
+            // touched ours. Deny both so there is one mail channel.
+            cmd.args(["--disallowed-tools", surya::DENIED_TOOLS]);
         }
         if !request.cwd.is_empty() {
             cmd.current_dir(&request.cwd);
@@ -896,6 +916,78 @@ fn updated_input_with_answers(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    use zeron_proto::{SandboxLevel, SuryaOptions};
+
+    fn request() -> RunRequest {
+        RunRequest {
+            prompt: "hi".into(),
+            harness: None,
+            model: None,
+            reasoning: None,
+            model_options: serde_json::Map::new(),
+            cwd: String::new(),
+            sandbox: SandboxLevel::DangerFullAccess,
+            auto_approve: true,
+            attachments: Vec::new(),
+            worktree: None,
+            resume: None,
+            surya: None,
+        }
+    }
+
+    fn args_of(request: &RunRequest) -> Vec<String> {
+        ClaudeHarness::new()
+            .build_command(&PathBuf::from("/bin/true"), request)
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// Without the option the command is byte-for-byte the one every other
+    /// caller and every existing test already spawns.
+    #[test]
+    fn no_surya_option_means_no_extra_flags() {
+        let args = args_of(&request());
+        assert!(!args.iter().any(|a| a == "--mcp-config"), "{args:?}");
+        assert!(
+            !args.iter().any(|a| a == "--append-system-prompt-file"),
+            "{args:?}"
+        );
+    }
+
+    #[test]
+    fn the_surya_option_adds_the_mcp_config_and_the_prompt_append() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("surya-mcp");
+        std::fs::write(&binary, "").unwrap();
+        let mut request = request();
+        request.surya = Some(SuryaOptions {
+            agent_id: "seat-1".into(),
+            workspace: "demo".into(),
+            mcp_binary: Some(binary.to_string_lossy().into()),
+            card_store: None,
+            mail_socket: None,
+            catalog_id: None,
+        });
+        let args = args_of(&request);
+
+        let config = args
+            .iter()
+            .position(|a| a == "--mcp-config")
+            .map(|i| args[i + 1].clone())
+            .expect("--mcp-config is passed");
+        let body: Value = serde_json::from_str(&std::fs::read_to_string(&config).unwrap()).unwrap();
+        assert_eq!(body["mcpServers"]["surya"]["command"], binary.to_string_lossy().to_string());
+
+        let append = args
+            .iter()
+            .position(|a| a == "--append-system-prompt-file")
+            .map(|i| args[i + 1].clone())
+            .expect("--append-system-prompt-file is passed");
+        assert!(std::fs::read_to_string(&append).unwrap().contains("show_card"));
+    }
 
     #[test]
     fn parses_questions_tolerantly() {

@@ -35,6 +35,7 @@ async fn managed_install_reaches_session_started() {
         permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     let request = RunRequest {
+        surya: None,
         prompt: "say the word ok and stop".into(),
         harness: None,
         model: None,

@@ -303,6 +303,7 @@ mod tests {
 
     fn run_request() -> RunRequest {
         RunRequest {
+            surya: None,
             prompt: "hello".into(),
             harness: None,
             model: None,

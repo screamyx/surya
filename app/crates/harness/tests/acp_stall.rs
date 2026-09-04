@@ -45,6 +45,7 @@ async fn silent_agent_errors_via_the_prompt_stall_watchdog() {
         permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     let request = RunRequest {
+        surya: None,
         prompt: "scenario:prompt-stall".into(),
         harness: None,
         model: None,

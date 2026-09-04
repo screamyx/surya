@@ -44,6 +44,7 @@ async fn silent_npm_enoent_death_surfaces_decoded_error() {
         permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     let request = RunRequest {
+        surya: None,
         prompt: "hi".into(),
         harness: None,
         model: None,

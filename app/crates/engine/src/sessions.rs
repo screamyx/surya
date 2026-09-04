@@ -785,6 +785,7 @@ impl SessionsEngine {
                     .or_else(|| {
                         let (_, cwd) = sessions.inner.journal_harness_session(&chat_id)?;
                         Some(RunRequest {
+                            surya: None,
                             prompt: String::new(),
                             harness: None,
                             model: None,
@@ -1360,6 +1361,7 @@ async fn drive_run(
     // re-injects the stored resume id). Option so the retry branch (inside
     // the event loop) can take ownership.
     let mut retry_request = Some(RunRequest {
+        surya: None,
         resume: None,
         ..request.clone()
     });
@@ -2262,6 +2264,7 @@ mod tests {
 
     fn request() -> RunRequest {
         RunRequest {
+            surya: None,
             prompt: "first".into(),
             harness: None,
             model: Some("grok-4.6".into()),

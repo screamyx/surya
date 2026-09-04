@@ -37,6 +37,7 @@ async fn main() -> anyhow::Result<()> {
         permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     let request = RunRequest {
+        surya: None,
         prompt: "Reply with exactly: Devin model discovery verified. Do not use tools.".into(),
         harness: None,
         model: Some(model.clone()),
