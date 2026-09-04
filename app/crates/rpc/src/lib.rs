@@ -22,13 +22,15 @@ mod client;
 pub mod device_room;
 mod server;
 
-pub use client::{RpcClient, RpcSubscription, connect_ws};
+pub use client::{RpcClient, RpcSubscription, connect_ws, connect_ws_with_token};
 pub use device_room::{
     DeviceFrameHeader, DeviceLink, HostRelay, HostRelayConfig, LinkCache, LinkCacheConfig,
     NudgeHandler, PeerLiveness, PeerLivenessProbe, StaticToken, TokenSource, decode_device_frame,
     device_room_ws_url, encode_device_frame,
 };
-pub use server::{serve_connection, serve_ws_listener};
+pub use server::{
+    authorization_matches, serve_connection, serve_ws_listener, serve_ws_listener_with_auth,
+};
 
 /// RPC method names — single source of truth for both ends.
 /// Full surface: docs/research/feature-inventory.md §2.
@@ -144,6 +146,18 @@ pub mod methods {
     pub const SEARCH_FILES: &str = "SearchFiles";
     pub const CREATE_WORKTREE: &str = "CreateWorktree";
     pub const DELETE_WORKTREE: &str = "DeleteWorktree";
+    // Files (ControlRpc, relay-forwardable): the tree + editor data path, jailed
+    // to a space's checkout root. Types + haktui mapping: `zeron_proto::files`.
+    /// Lazy directory listing `{spaceId, path, depth}` -> `FileTree`.
+    pub const FILES_TREE: &str = "FilesTree";
+    /// Stream of debounced `FileWatchBatch`es for `{spaceId}`.
+    pub const FILES_WATCH: &str = "FilesWatch";
+    /// `{spaceId, path, range?}` -> `FileRead` (text + content hash, binary, or too large).
+    pub const FILES_READ: &str = "FilesRead";
+    /// `{spaceId, path, content, expectedHash?}` -> `FileWrite`; refused on a stale hash.
+    pub const FILES_WRITE: &str = "FilesWrite";
+    /// `{spaceId, query}` -> fuzzy relative-path matches (name match only).
+    pub const FILES_SEARCH: &str = "FilesSearch";
     // Terminals (ControlRpc, relay-forwardable; SubscribeTerminal streams).
     pub const OPEN_TERMINAL: &str = "OpenTerminal";
     pub const SUBSCRIBE_TERMINAL: &str = "SubscribeTerminal";

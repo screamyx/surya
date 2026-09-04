@@ -6,6 +6,7 @@
 
 pub mod agent;
 pub mod entities;
+pub mod files;
 pub mod motion;
 pub mod state;
 pub mod view;

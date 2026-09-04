@@ -528,6 +528,24 @@ impl EngineRpc {
     /// Resolve a mention-search root from synced workspace rows. A client may
     /// name an existing linked worktree for a new chat, but it is verified
     /// against the space repository before any filesystem walk begins.
+    /// The checkout root the file RPCs are jailed to: the space's folder, on
+    /// this device only.
+    async fn files_jail(&self, space_id: &str) -> Result<crate::files::Jail, RpcError> {
+        let space = self
+            .workspace
+            .space(space_id)
+            .map_err(|e| RpcError::Failed(e.to_string()))?
+            .ok_or_else(|| RpcError::Failed("space not found".into()))?;
+        if space.device_id != self.doc_host.device_id() {
+            return Err(RpcError::Failed("space belongs to another device".into()));
+        }
+        let root = std::path::PathBuf::from(&space.path);
+        tokio::task::spawn_blocking(move || crate::files::Jail::new(&root))
+            .await
+            .map_err(|e| RpcError::Failed(e.to_string()))?
+            .map_err(|e| RpcError::Failed(e.to_string()))
+    }
+
     async fn file_search_root(&self, p: &FileSearchParams) -> Result<std::path::PathBuf, RpcError> {
         let local_device = self.doc_host.device_id();
         match (&p.chat_id, &p.space_id) {
@@ -950,6 +968,11 @@ fn forwardable(method: &str) -> bool {
             | methods::SEARCH_FILES
             | methods::CREATE_WORKTREE
             | methods::DELETE_WORKTREE
+            | methods::FILES_TREE
+            | methods::FILES_WATCH
+            | methods::FILES_READ
+            | methods::FILES_WRITE
+            | methods::FILES_SEARCH
             // Checkout diffs are produced on the device holding the checkout.
             | methods::WATCH_CHECKOUT_DIFFS
             | methods::WATCH_CHECKOUT_CHANGE_REQUEST
@@ -990,6 +1013,7 @@ fn is_stream_method(method: &str) -> bool {
             | methods::WATCH_CHECKOUT_DIFFS
             | methods::WATCH_CHECKOUT_CHANGE_REQUEST
             | methods::UPDATE_STATUS
+            | methods::FILES_WATCH
     )
 }
 
@@ -1789,6 +1813,68 @@ impl RpcService for EngineRpc {
                     .await
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&zeron_proto::DriveListing { drives })
+            }
+            methods::FILES_TREE => {
+                let p: zeron_proto::files::FileTreeParams = parse_params(params)?;
+                let jail = self.files_jail(&p.space_id).await?;
+                let tree = tokio::task::spawn_blocking(move || {
+                    crate::files::tree(&jail, &p.path, p.depth)
+                })
+                .await
+                .map_err(|e| RpcError::Failed(e.to_string()))?
+                .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&tree)
+            }
+            methods::FILES_WATCH => {
+                let p: zeron_proto::files::FileWatchParams = parse_params(params)?;
+                let jail = self.files_jail(&p.space_id).await?;
+                let batches =
+                    crate::files_watch::watch(jail).map_err(|e| RpcError::Failed(e.to_string()))?;
+                Ok(RpcReply::Stream(
+                    batches
+                        .filter_map(|batch| async move { serde_json::to_value(&batch).ok() })
+                        .boxed(),
+                ))
+            }
+            methods::FILES_READ => {
+                let p: zeron_proto::files::FileReadParams = parse_params(params)?;
+                let jail = self.files_jail(&p.space_id).await?;
+                let read = tokio::task::spawn_blocking(move || {
+                    crate::files::read(&jail, &p.path, p.range)
+                })
+                .await
+                .map_err(|e| RpcError::Failed(e.to_string()))?
+                .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&read)
+            }
+            methods::FILES_WRITE => {
+                let p: zeron_proto::files::FileWriteParams = parse_params(params)?;
+                let jail = self.files_jail(&p.space_id).await?;
+                let written = tokio::task::spawn_blocking(move || {
+                    crate::files::write(&jail, &p.path, &p.content, p.expected_hash.as_deref())
+                })
+                .await
+                .map_err(|e| RpcError::Failed(e.to_string()))?
+                .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&written)
+            }
+            methods::FILES_SEARCH => {
+                let p: zeron_proto::files::FileNameSearchParams = parse_params(params)?;
+                if p.query.chars().count() > 256 {
+                    return Err(RpcError::BadParams(
+                        "FilesSearch query must not exceed 256 characters".into(),
+                    ));
+                }
+                let jail = self.files_jail(&p.space_id).await?;
+                let matches = tokio::time::timeout(
+                    FILE_SEARCH_RPC_TIMEOUT,
+                    self.repos
+                        .search_files(jail.root().to_path_buf(), p.query, Vec::new()),
+                )
+                .await
+                .map_err(|_| RpcError::Failed("file search timed out".into()))?
+                .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&matches)
             }
             methods::SEARCH_FILES => {
                 let p: FileSearchParams = parse_params(params)?;
