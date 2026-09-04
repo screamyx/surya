@@ -1773,8 +1773,12 @@ impl RpcService for EngineRpc {
             methods::FILES_WATCH => {
                 let p: zeron_proto::files::FileWatchParams = parse_params(params)?;
                 let jail = self.files_jail(&p.space_id).await?;
-                let batches =
-                    crate::files_watch::watch(jail).map_err(|e| RpcError::Failed(e.to_string()))?;
+                // Recursive inotify adds and the gitignore reads are sync work;
+                // build the watcher on the blocking pool like diff_sync does.
+                let batches = tokio::task::spawn_blocking(move || crate::files_watch::watch(jail))
+                    .await
+                    .map_err(|e| RpcError::Failed(e.to_string()))?
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
                 Ok(RpcReply::Stream(
                     batches
                         .filter_map(|batch| async move { serde_json::to_value(&batch).ok() })
