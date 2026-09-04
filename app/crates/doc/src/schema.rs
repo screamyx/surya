@@ -106,6 +106,10 @@ struct DocPartJson {
     /// One-line live tail of the subagent's output (additive).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     subagent_tail: Option<String>,
+    /// A2UI card payload for `kind: "card"` (additive; surya). Old readers
+    /// fall through to an empty text part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    card: Option<serde_json::Value>,
 }
 
 /// App parts → doc part json (mirror of `toDocParts`).
@@ -180,6 +184,12 @@ fn to_doc_part(part: &MessagePart) -> Result<DocPartJson, DocError> {
             message: Some(message.clone()),
             ..Default::default()
         },
+        MessagePart::Card { id, json } => DocPartJson {
+            id: id.clone(),
+            kind: "card".into(),
+            card: Some(json.clone()),
+            ..Default::default()
+        },
     })
 }
 
@@ -228,6 +238,10 @@ fn from_doc_part(p: DocPartJson) -> MessagePart {
         "reasoning" => MessagePart::Reasoning {
             id: p.id,
             text: p.reasoning.unwrap_or_default(),
+        },
+        "card" => MessagePart::Card {
+            id: p.id,
+            json: p.card.unwrap_or(serde_json::Value::Null),
         },
         _ => MessagePart::Text {
             id: p.id,
@@ -699,6 +713,9 @@ fn push_part(parts: &LoroList, part: &MessagePart) -> Result<(), DocError> {
     if let Some(subagent_tail) = &doc_part.subagent_tail {
         map.insert("subagentTail", subagent_tail.as_str())?;
     }
+    if let Some(card) = &doc_part.card {
+        map.insert("card", loro_value_from_json(card))?;
+    }
     Ok(())
 }
 
@@ -1094,6 +1111,9 @@ fn update_part_fields(map: &LoroMap, part: &MessagePart) -> Result<(), DocError>
     }
     if let Some(subagent_tail) = &doc_part.subagent_tail {
         map.insert("subagentTail", subagent_tail.as_str())?;
+    }
+    if let Some(card) = &doc_part.card {
+        map.insert("card", loro_value_from_json(card))?;
     }
     if let Some(text) = &doc_part.text {
         // Defensive path only — the fold never rewrites earlier text.

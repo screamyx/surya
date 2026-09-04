@@ -197,6 +197,14 @@ pub enum MessagePart {
         id: String,
         message: String,
     },
+    /// An agent-drawn A2UI card (surya decision 4). `json` is the opaque
+    /// A2UI payload the UI parses with `surya-a2ui`; `id` is the tool_use
+    /// id of the `show_card` call that produced it. Old readers degrade it
+    /// to an invisible empty text part (unknown doc kind).
+    Card {
+        id: String,
+        json: serde_json::Value,
+    },
 }
 
 impl MessagePart {
@@ -206,7 +214,8 @@ impl MessagePart {
             | MessagePart::Reasoning { id, .. }
             | MessagePart::Tool { id, .. }
             | MessagePart::Input { id, .. }
-            | MessagePart::Error { id, .. } => id,
+            | MessagePart::Error { id, .. }
+            | MessagePart::Card { id, .. } => id,
         }
     }
 
@@ -233,6 +242,7 @@ impl MessagePart {
                 serde_json::to_vec(questions).map_or(0, |v| v.len())
             }
             MessagePart::Error { message, .. } => message.len(),
+            MessagePart::Card { json, .. } => serde_json::to_vec(json).map_or(0, |v| v.len()),
         }
     }
 }
@@ -384,6 +394,22 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                 out.push(MessagePart::Error {
                     id,
                     message: message.clone(),
+                });
+            }
+        }
+        // A card refreshes in place when its id already exists (the harness
+        // re-emits on retry, like ToolCall), otherwise appends. It breaks the
+        // trailing text block the way a tool call does.
+        AgentEvent::Card { id, json } => {
+            if let Some(existing) = out.iter_mut().find_map(|p| match p {
+                MessagePart::Card { id: pid, json: j } if pid == id => Some(j),
+                _ => None,
+            }) {
+                *existing = json.clone();
+            } else {
+                out.push(MessagePart::Card {
+                    id: id.clone(),
+                    json: json.clone(),
                 });
             }
         }
