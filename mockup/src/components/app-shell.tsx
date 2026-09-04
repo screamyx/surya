@@ -1,8 +1,9 @@
 import { Link, NavLink, Outlet, useLocation, useParams } from "react-router"
-import { Bell, FolderTree, Home, Inbox, LayoutGrid, ListTodo, Monitor, Plus, Settings, Sparkles } from "lucide-react"
+import { Bell, ChevronRight, Home, Inbox, LayoutGrid, ListTodo, Monitor, Plus, Settings, Sparkles } from "lucide-react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarInset,
-  SidebarMenu, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem,
+  SidebarMenu, SidebarMenuAction, SidebarMenuBadge, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem,
   SidebarProvider, SidebarRail, SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { Button } from "@/components/ui/button"
@@ -11,55 +12,83 @@ import { Separator } from "@/components/ui/separator"
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { StatusDot } from "@/components/status"
-import { inbox, workspaces } from "@/data"
+import { byPriority, inbox, needsYouCount, rollup, workspaces, type Agent } from "@/data"
 import { cn } from "@/lib/utils"
 
 const needsYou = inbox.filter((i) => i.kind === "permission" || i.kind === "question").length
 
-function WorkspaceNav() {
-  const { ws, id } = useParams()
-  const { pathname } = useLocation()
+// One row per agent. Spawned agents nest under their spawner, folded by default unless one of them needs you.
+function AgentRow({ a, ws }: { a: Agent; ws: string }) {
+  const { id } = useParams()
+  const kids = byPriority(a.children)
+  const hot = needsYouCount(a.children) > 0
+  const row = (
+    <SidebarMenuButton render={<Link to={`/w/${ws}/agent/${a.id}`} />} isActive={id === a.id} tooltip={a.summary} className="group/agent">
+      <StatusDot status={rollup(a)} />
+      <span className="truncate">{a.name}</span>
+      <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">{a.summary}</span>
+    </SidebarMenuButton>
+  )
+  if (!kids.length) return <SidebarMenuItem>{row}</SidebarMenuItem>
   return (
-    <>
-      {workspaces.map((w) => (
-        <SidebarGroup key={w.id}>
-          <SidebarGroupLabel className="justify-between">
-            <span className="truncate">{w.name}</span>
-            <span className="text-muted-foreground font-normal">{w.branch}</span>
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {w.agents.map((a) => (
-                <SidebarMenuItem key={a.id}>
-                  <SidebarMenuButton render={<Link to={`/w/${w.id}/agent/${a.id}`} />} isActive={ws === w.id && id === a.id} tooltip={a.summary}>
-                    <StatusDot status={a.status} />
-                    <span className="truncate">{a.name}</span>
-                    <span className="text-muted-foreground ml-auto truncate text-xs">{a.model.replace("claude-", "").replace("gpt-", "")}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-              <SidebarMenuItem>
-                <SidebarMenuSub className="mx-0 border-0 px-0">
-                  {[
-                    { to: `/w/${w.id}/agents`, icon: Sparkles, label: "Agents" },
-                    { to: `/w/${w.id}/tasks`, icon: ListTodo, label: "Tasks" },
-                    { to: `/w/${w.id}/preview`, icon: Monitor, label: "Preview" },
-                    { to: `/w/${w.id}/files`, icon: FolderTree, label: "Files" },
-                  ].map((l) => (
-                    <SidebarMenuSubItem key={l.to}>
-                      <SidebarMenuSubButton render={<Link to={l.to} />} isActive={pathname === l.to} size="sm">
-                        <l.icon />
-                        <span>{l.label}</span>
-                      </SidebarMenuSubButton>
-                    </SidebarMenuSubItem>
-                  ))}
-                </SidebarMenuSub>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
-    </>
+    <Collapsible defaultOpen={hot || id === a.id || kids.some((k) => k.id === id)} className="group/kids" render={<SidebarMenuItem />}>
+      {row}
+      <CollapsibleTrigger render={<SidebarMenuAction className="data-[panel-open]:rotate-90" aria-label="Show spawned agents" />}>
+        <ChevronRight />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <SidebarMenuSub>
+          {kids.map((k) => (
+            <SidebarMenuSubItem key={k.id}>
+              <SidebarMenuSubButton render={<Link to={`/w/${ws}/agent/${k.id}`} />} isActive={id === k.id} size="sm">
+                <StatusDot status={rollup(k)} />
+                <span className="truncate">{k.name}</span>
+                <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">{k.summary}</span>
+              </SidebarMenuSubButton>
+            </SidebarMenuSubItem>
+          ))}
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  )
+}
+
+// Workspaces are the top level. Only the current one is open; a closed one still shows its worst status and its "needs you" count.
+function WorkspaceNav() {
+  const { ws } = useParams()
+  const current = ws ?? workspaces[0].id
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel>Workspaces</SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {workspaces.map((w) => {
+            const hot = needsYouCount(w.agents)
+            const worst = w.agents.length ? rollup({ ...w.agents[0], status: "idle", children: w.agents }) : "idle"
+            return (
+              <Collapsible key={w.id} defaultOpen={w.id === current} render={<SidebarMenuItem />}>
+                <SidebarMenuButton render={<Link to={`/w/${w.id}/agents`} />} isActive={w.id === current} tooltip={`${w.name} · ${w.branch}`} className="font-medium">
+                  <span className="bg-muted text-foreground relative grid size-5 shrink-0 place-items-center rounded-md text-[10px] font-semibold uppercase">
+                    {w.name.slice(0, 2)}
+                    <StatusDot status={worst} className="absolute -top-0.5 -right-0.5 size-2 ring-2 ring-sidebar" />
+                  </span>
+                  <span className="truncate">{w.name}</span>
+                </SidebarMenuButton>
+                {hot > 0 && <SidebarMenuBadge className="bg-destructive text-destructive-foreground right-7 rounded-full">{hot}</SidebarMenuBadge>}
+                <CollapsibleTrigger render={<SidebarMenuAction className="data-[panel-open]:rotate-90" aria-label="Toggle workspace" />}>
+                  <ChevronRight />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <SidebarMenu className="mt-0.5 ml-1 gap-0.5">
+                    {byPriority(w.agents).map((a) => <AgentRow key={a.id} a={a} ws={w.id} />)}
+                  </SidebarMenu>
+                </CollapsibleContent>
+              </Collapsible>
+            )
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   )
 }
 
@@ -125,7 +154,6 @@ export function AppShell() {
                   <SidebarMenuButton render={<Link to="/inbox" />} tooltip="Needs you"><Inbox /><span>Needs you</span></SidebarMenuButton>
                   {needsYou > 0 && <SidebarMenuBadge className="bg-destructive text-destructive-foreground rounded-full">{needsYou}</SidebarMenuBadge>}
                 </SidebarMenuItem>
-                <SidebarMenuItem><SidebarMenuButton render={<Link to="/catalog" />} tooltip="Cards"><LayoutGrid /><span>Cards</span></SidebarMenuButton></SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
@@ -133,9 +161,8 @@ export function AppShell() {
         </SidebarContent>
         <SidebarFooter>
           <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton render={<Link to="/settings" />} tooltip="Settings"><Settings /><span>Settings</span></SidebarMenuButton>
-            </SidebarMenuItem>
+            <SidebarMenuItem><SidebarMenuButton render={<Link to="/catalog" />} tooltip="Cards"><LayoutGrid /><span>Cards</span></SidebarMenuButton></SidebarMenuItem>
+            <SidebarMenuItem><SidebarMenuButton render={<Link to="/settings" />} tooltip="Settings"><Settings /><span>Settings</span></SidebarMenuButton></SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
         <SidebarRail />

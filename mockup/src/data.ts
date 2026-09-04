@@ -21,6 +21,8 @@ export type Agent = {
   startedAt: string
   lastEventAt: string
   task?: string
+  parentId?: string // the agent that spawned this one; undefined = you started it
+  children: Agent[]
 }
 
 export type InboxKind = "permission" | "question" | "pin" | "result"
@@ -133,6 +135,31 @@ export const agents: Agent[] = [
     startedAt: "2026-09-05T00:41:00+08:00",
     lastEventAt: "2026-09-05T01:10:12+08:00",
     task: "t-1",
+    children: [],
+  },
+  {
+    id: "raven-tests",
+    workspaceId: "project-jag",
+    name: "tests",
+    model: "claude-sonnet-5",
+    status: "working",
+    summary: "Running the Pest suite for the follow-up migration, 12 of 14 green",
+    startedAt: "2026-09-05T01:08:00+08:00",
+    lastEventAt: "2026-09-05T01:11:50+08:00",
+    parentId: "raven",
+    children: [],
+  },
+  {
+    id: "raven-review",
+    workspaceId: "project-jag",
+    name: "review",
+    model: "gpt-5.6-sol",
+    status: "done",
+    summary: "Reviewed the migration and the model change, one nit left as a comment",
+    startedAt: "2026-09-05T01:05:00+08:00",
+    lastEventAt: "2026-09-05T01:09:30+08:00",
+    parentId: "raven",
+    children: [],
   },
   {
     id: "kite",
@@ -144,6 +171,7 @@ export const agents: Agent[] = [
     startedAt: "2026-09-05T00:52:00+08:00",
     lastEventAt: "2026-09-05T01:11:58+08:00",
     task: "t-2",
+    children: [],
   },
   {
     id: "heron",
@@ -155,6 +183,7 @@ export const agents: Agent[] = [
     startedAt: "2026-09-04T23:20:00+08:00",
     lastEventAt: "2026-09-05T00:38:00+08:00",
     task: "t-4",
+    children: [],
   },
   {
     id: "ibis",
@@ -166,6 +195,19 @@ export const agents: Agent[] = [
     startedAt: "2026-09-05T01:02:00+08:00",
     lastEventAt: "2026-09-05T01:11:40+08:00",
     task: "t-6",
+    children: [],
+  },
+  {
+    id: "ibis-shots",
+    workspaceId: "surya",
+    name: "shots",
+    model: "claude-haiku-4-5-20251001",
+    status: "needs-you",
+    summary: "Wants to install a Chrome build to take phone screenshots",
+    startedAt: "2026-09-05T01:09:00+08:00",
+    lastEventAt: "2026-09-05T01:11:20+08:00",
+    parentId: "ibis",
+    children: [],
   },
   {
     id: "wren",
@@ -176,6 +218,7 @@ export const agents: Agent[] = [
     summary: "Waiting for the next task",
     startedAt: "2026-09-05T00:58:00+08:00",
     lastEventAt: "2026-09-05T01:05:00+08:00",
+    children: [],
   },
   {
     id: "finch",
@@ -186,9 +229,19 @@ export const agents: Agent[] = [
     summary: "Rendered 42 catalog reels, all published",
     startedAt: "2026-09-04T22:00:00+08:00",
     lastEventAt: "2026-09-04T23:48:00+08:00",
+    children: [],
   },
 ]
-for (const w of workspaces) w.agents = agents.filter((a) => a.workspaceId === w.id)
+for (const a of agents) a.children = agents.filter((c) => c.parentId === a.id)
+for (const w of workspaces) w.agents = agents.filter((a) => a.workspaceId === w.id && !a.parentId)
+
+// Status of an agent including everything it spawned: the worst state wins.
+const rank: Record<AgentStatus, number> = { "needs-you": 0, working: 1, done: 2, idle: 3 }
+export const rollup = (a: Agent): AgentStatus =>
+  [a, ...a.children.map((c) => ({ status: rollup(c) }))].reduce<AgentStatus>((worst, x) => (rank[x.status] < rank[worst] ? x.status : worst), a.status)
+export const needsYouCount = (list: Agent[]): number => list.reduce((n, a) => n + (a.status === "needs-you" ? 1 : 0) + needsYouCount(a.children), 0)
+export const byPriority = (list: Agent[]): Agent[] => [...list].sort((x, y) => rank[rollup(x)] - rank[rollup(y)])
+export const flatten = (list: Agent[]): Agent[] => list.flatMap((a) => [a, ...flatten(a.children)])
 
 export const inbox: InboxItem[] = [
   {

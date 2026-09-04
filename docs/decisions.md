@@ -161,6 +161,22 @@ Agents write cards as tool calls (`show_card`), never as text in the reply. The 
 Because a workspace card is JSON, an agent working in that repo can add a new card the same way it adds a skill.
 Escape hatch, not day one: a built and installed surya plugin for a visual the primitives cannot express.
 
+## 15. Rail and agent tree
+
+Owner, 2026-09-05 01:44: "the left rails could be done better i think."
+Owner, 01:46: "agents spawned by other agents are parented by their spawner."
+
+The rail lists workspaces and agents, nothing else.
+The four workspace pages, Agents, Tasks, Preview, Files, are a tab bar on the workspace page.
+Workspaces collapse, only the current one is open. A closed workspace still shows its worst status as a dot and its "needs you" count.
+Agents form a tree. An agent's parent is you or the agent that spawned it. Children nest under their parent in the rail and on the Agents page, folded unless one of them needs you.
+Status rolls up: a child that needs you marks every ancestor's row.
+Agents sort by priority: needs you, working, done, idle.
+Model names stay off the rail row.
+Cards and Settings sit at the bottom of the rail.
+
+Applied to the mockup on 2026-09-05 01:50.
+
 ## Open
 
 None at day zero.

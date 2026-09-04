@@ -1,6 +1,7 @@
 // Route table for every surya 1.0 RC surface. Frozen: builders edit their screen files, not this.
 import { Routes, Route, Navigate } from "react-router"
 import { AppShell } from "@/components/app-shell"
+import { WorkspaceLayout } from "@/components/workspace-tabs"
 import { HomeScreen } from "@/screens/home"
 import { AgentFeedScreen } from "@/screens/agent-feed"
 import { InboxScreen } from "@/screens/inbox"
@@ -38,12 +39,14 @@ export function AppRoutes() {
         <Route path="settings" element={<SettingsScreen />} />
         <Route path="w/:ws">
           <Route index element={<Navigate to="agents" replace />} />
-          <Route path="agents" element={<AgentsScreen />} />
+          <Route element={<WorkspaceLayout />}>
+            <Route path="agents" element={<AgentsScreen />} />
+            <Route path="tasks" element={<TasksScreen />} />
+            <Route path="preview" element={<PreviewScreen />} />
+            <Route path="files" element={<FilesScreen />} />
+          </Route>
           <Route path="agent/:id" element={<AgentFeedScreen />} />
-          <Route path="preview" element={<PreviewScreen />} />
-          <Route path="tasks" element={<TasksScreen />} />
           <Route path="result/:id" element={<ResultScreen />} />
-          <Route path="files" element={<FilesScreen />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

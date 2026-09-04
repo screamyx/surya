@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Item, ItemActions, ItemContent, ItemDescription } from "@/components/ui/item"
 import { StatusDot } from "@/components/status"
-import { fmtTime, tasks, workspaceById, workspaces, type Agent, type AgentStatus } from "@/data"
+import { flatten, fmtTime, tasks, workspaceById, workspaces, type Agent, type AgentStatus } from "@/data"
 import { rise, stagger } from "@/motion"
 import { cn } from "@/lib/utils"
 
@@ -95,7 +95,7 @@ export function AgentsScreen() {
           <Card key={t.status} size="sm" className="items-center text-center">
             <div className="flex flex-col items-center gap-1">
               <span className="font-heading text-2xl leading-none font-semibold tabular-nums">
-                {w.agents.filter((a) => a.status === t.status).length}
+                {flatten(w.agents).filter((a) => a.status === t.status).length}
               </span>
               <span className="text-muted-foreground flex items-center gap-1.5 text-xs">
                 <StatusDot status={t.status} />
@@ -110,6 +110,12 @@ export function AgentsScreen() {
         {w.agents.map((a) => (
           <motion.div key={a.id} variants={rise}>
             <AgentRow agent={a} />
+            {a.children.length > 0 && (
+              <div className="border-border ml-5 mt-1.5 flex flex-col gap-1.5 border-l-2 pl-3">
+                <div className="text-muted-foreground text-xs">spawned by {a.name}</div>
+                {a.children.map((c) => <AgentRow key={c.id} agent={c} />)}
+              </div>
+            )}
           </motion.div>
         ))}
       </motion.div>
