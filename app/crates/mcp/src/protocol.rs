@@ -31,7 +31,7 @@ pub const FALLBACK_PROTOCOL_VERSION: &str = "2025-06-18";
 /// exposes them to the model as `mcp__surya__<name>`, and the app detects
 /// `mcp__surya__show_card` in the transcript.
 pub fn tool_definitions() -> Value {
-    json!([
+    let mut tools = json!([
         {
             "name": "show_card",
             "description":
@@ -85,7 +85,12 @@ pub fn tool_definitions() -> Value {
                  in a workspace you have not shown one in yet.",
             "inputSchema": { "type": "object", "properties": {} }
         }
-    ])
+    ]);
+    tools
+        .as_array_mut()
+        .expect("tool_definitions is an array")
+        .extend(crate::tasks::tool_specs());
+    tools
 }
 
 /// A tool result, either content or an error the model can read and retry.
@@ -98,7 +103,10 @@ fn text_result(text: String, is_error: bool) -> Value {
 
 fn call_tool(config: &Config, params: &Value) -> Value {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-    let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+    let arguments = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
     match name {
         "show_card" => match cards::show(config, &arguments) {
             Ok(card) => text_result(
@@ -126,8 +134,17 @@ fn call_tool(config: &Config, params: &Value) -> Value {
             Err(error) => text_result(error, true),
         },
         "list_cards" => text_result(cards::list(config).to_string(), false),
+        name if crate::tasks::handles(name) => {
+            match crate::tasks::call_blocking(Some(&config.workspace), name, arguments) {
+                Ok(result) => text_result(result.to_string(), false),
+                Err(error) => text_result(error, true),
+            }
+        }
         other => text_result(
-            format!("unknown tool \"{other}\"; this server has show_card, send_message and list_cards"),
+            format!(
+                "unknown tool \"{other}\"; this server has show_card, send_message, list_cards, \
+                 list_tasks, create_task and update_task"
+            ),
             true,
         ),
     }
@@ -204,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn tools_list_advertises_the_three_v1_tools() {
+    fn tools_list_advertises_the_v1_tools() {
         let dir = tempfile::tempdir().unwrap();
         let response = handle(
             &config(dir.path()),
@@ -217,7 +234,17 @@ mod tests {
             .iter()
             .map(|t| t["name"].as_str().unwrap())
             .collect();
-        assert_eq!(names, vec!["show_card", "send_message", "list_cards"]);
+        assert_eq!(
+            names,
+            vec![
+                "show_card",
+                "send_message",
+                "list_cards",
+                "list_tasks",
+                "create_task",
+                "update_task"
+            ]
+        );
     }
 
     #[test]
@@ -251,7 +278,13 @@ mod tests {
             body["card_id"].as_str().unwrap().starts_with("card_"),
             "{body}"
         );
-        assert_eq!(std::fs::read_to_string(&config.card_store).unwrap().lines().count(), 1);
+        assert_eq!(
+            std::fs::read_to_string(&config.card_store)
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
     }
 
     #[test]
