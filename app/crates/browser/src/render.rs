@@ -140,7 +140,31 @@ wrap_render_handler! {
             if n <= 3 || n % 60 == 0 {
                 println!("browser: on_paint #{n}: {width}x{height}, {len} bytes, copy {:.2}ms", us as f64 / 1000.0);
             }
+            dump_frame(n, width as u32, height as u32, bytes);
         }
+    }
+}
+
+/// `SURYA_BROWSER_DUMP=<dir>`: write paints 1, 2, 3 and then every 30th as
+/// PNG, for a picture of what CEF produced on a box with no display to
+/// screenshot. BGRA in, RGBA on disk.
+fn dump_frame(n: u64, width: u32, height: u32, bgra: &[u8]) {
+    static DIR: std::sync::OnceLock<Option<std::path::PathBuf>> = std::sync::OnceLock::new();
+    let Some(dir) = DIR.get_or_init(|| std::env::var_os("SURYA_BROWSER_DUMP").map(Into::into)) else {
+        return;
+    };
+    if !(n <= 3 || n % 30 == 0) {
+        return;
+    }
+    let mut rgba = bgra.to_vec();
+    for px in rgba.chunks_exact_mut(4) {
+        px.swap(0, 2);
+    }
+    let _ = std::fs::create_dir_all(dir);
+    let path = dir.join(format!("frame-{n:04}-{width}x{height}.png"));
+    match image::save_buffer(&path, &rgba, width, height, image::ColorType::Rgba8) {
+        Ok(()) => println!("browser: dumped {}", path.display()),
+        Err(e) => println!("browser: dump failed {e}"),
     }
 }
 

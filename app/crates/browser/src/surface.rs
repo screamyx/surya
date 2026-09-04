@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use cef::ImplBrowserHost as _;
 use gpui::{canvas, div, prelude::*, px, Corners, RenderImage, Window};
 
 use crate::render::{SCALE, VIEW_H, VIEW_W};
@@ -85,7 +86,9 @@ pub fn surface() -> gpui::AnyElement {
             let Some((seq, img)) = crate::render::frame() else { return };
             let fresh = LAST.lock().ok().map(|l| l.as_ref().map(|(s, _)| *s) != Some(seq)).unwrap_or(true);
             let t0 = Instant::now();
-            let _ = window.paint_image(bounds, bounds, Corners::default(), img.clone(), 0, false);
+            // comet's fork (e2ddcc6): `paint_image(bounds, radii, image, frame, grayscale)`;
+            // haktui's gpui took a second `image_bounds` here.
+            let _ = window.paint_image(bounds, Corners::default(), img.clone(), 0, false);
             if fresh {
                 let us = t0.elapsed().as_micros() as u64;
                 UPLOAD_N.fetch_add(1, Ordering::Relaxed);

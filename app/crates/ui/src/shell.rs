@@ -1053,6 +1053,10 @@ pub struct Shell {
     /// The one Browser surface view, made on first open (surya).
     #[cfg(feature = "browser")]
     browser_pane: Option<Entity<crate::browser_pane::BrowserPane>>,
+    /// `ZERON_OPEN_BROWSER=1`: open the Browser surface on the first frame,
+    /// for proofs that cannot click the titlebar globe (xvfb, dtry).
+    #[cfg(feature = "browser")]
+    debug_open_browser: bool,
     /// Chat outlet vs settings pages.
     route: Route,
     /// Route history behind the titlebar back/forward buttons (§ nav history).
@@ -1337,6 +1341,8 @@ impl Shell {
             right_tab_scroll: gpui::ScrollHandle::new(),
             #[cfg(feature = "browser")]
             browser_pane: None,
+            #[cfg(feature = "browser")]
+            debug_open_browser: std::env::var_os("ZERON_OPEN_BROWSER").is_some(),
             route,
             nav,
             devices_page: None,
@@ -7415,6 +7421,11 @@ impl Render for Shell {
         // rest (surya-browser).
         #[cfg(feature = "browser")]
         surya_browser::pump(window, cx);
+        #[cfg(feature = "browser")]
+        if self.debug_open_browser {
+            self.debug_open_browser = false;
+            self.add_browser_surface(cx);
+        }
         self.viewport_width = f32::from(window.viewport_size().width);
         // Appearance actions persist independently of the shell. Mirror the
         // globals before any later debounced settings save can overwrite them.

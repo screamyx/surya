@@ -25,13 +25,14 @@ mod surface;
 
 pub use page::{navigate_to, page, Page};
 pub use pump::{counters, pump};
-pub use surface::surface;
+pub use surface::{surface, surface_origin};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use cef::args::Args;
-use cef::rc::Rc as _;
-use cef::{api_hash, execute_process, initialize, CefString, Settings};
+// The glob brings the `Impl*` traits that carry every method on `Browser`
+// and `BrowserHost`; `cef::App` is a CEF type here, gpui's is spelled out.
+use cef::*;
 
 /// Set by [`start`] when CEF refused to initialize (another instance owns the
 /// cache dir, or the runtime files are missing). The rest of the module then

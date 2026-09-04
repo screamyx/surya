@@ -55,7 +55,8 @@ pub(crate) fn schedule_pump(delay_ms: i64) {
 }
 
 /// Called the moment an input event is handed to CEF, so the idle chain
-/// snaps back from its back-off.
+/// snaps back from its back-off. The input path is the next seat's.
+#[allow(dead_code)]
 pub(crate) fn mark_input() {
     INPUT_SEQ.fetch_add(1, Ordering::Relaxed);
     if let Some(tx) = WAKE.get() {
@@ -92,7 +93,7 @@ pub(crate) fn install(cx: &mut gpui::App) {
                 _ = rx.next() => {}
             }
             // A burst of wakes is one pump.
-            while let Ok(Some(())) = rx.try_next() {}
+            while let Ok(()) = rx.try_recv() {}
             IDLE_RAN.fetch_add(1, Ordering::Relaxed);
             work_now();
             let now = (INPUT_SEQ.load(Ordering::Relaxed), PUMP_ASKS.load(Ordering::Relaxed));
@@ -196,7 +197,7 @@ fn clock_after(d: Duration, tx: UnboundedSender<()>) {
                 let now = Instant::now();
                 match heap.peek().copied() {
                     None => {
-                        let _ = worker.wake.wait(heap).unwrap();
+                        drop(worker.wake.wait(heap).unwrap());
                     }
                     Some(std::cmp::Reverse((due, id))) if due <= now => {
                         heap.pop();
@@ -207,7 +208,7 @@ fn clock_after(d: Duration, tx: UnboundedSender<()>) {
                         }
                     }
                     Some(std::cmp::Reverse((due, _))) => {
-                        let _ = worker.wake.wait_timeout(heap, due - now).unwrap();
+                        drop(worker.wake.wait_timeout(heap, due - now).unwrap());
                     }
                 }
             })
