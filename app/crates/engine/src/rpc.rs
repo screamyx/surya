@@ -83,6 +83,41 @@ struct ChatParams {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RespondPermissionParams {
+    request_id: String,
+    decision: zeron_proto::PermissionDecision,
+    /// Present when the client asked to turn this answer into a rule.
+    #[serde(default)]
+    remember: Option<zeron_proto::RememberRule>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuleIdParams {
+    rule_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentIdParams {
+    agent_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddAllowRuleParams {
+    #[serde(default)]
+    name: Option<String>,
+    scope: zeron_proto::RuleScope,
+    #[serde(default)]
+    workspace_path: Option<String>,
+    tool_name: String,
+    #[serde(default)]
+    pattern: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ListModelsParams {
     harness: HarnessId,
 }
@@ -1280,6 +1315,65 @@ impl RpcService for EngineRpc {
                     .workspace
                     .merged_sessions_watch(self.sessions.watch_sessions());
                 Ok(RpcReply::Stream(watch_stream(merged)))
+            }
+            // ── derived agent state, the needs-you inbox, the rules ──────
+            methods::WATCH_AGENT_STATES => Ok(RpcReply::Stream(watch_stream(
+                self.sessions.agent_states().watch_states(),
+            ))),
+            methods::WATCH_NEEDS_YOU => Ok(RpcReply::Stream(watch_stream(
+                self.sessions.agent_states().watch_needs_you(),
+            ))),
+            methods::RESPOND_PERMISSION => {
+                let p: RespondPermissionParams = parse_params(params)?;
+                self.sessions
+                    .respond_permission(&p.request_id, p.decision, p.remember.as_ref())
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&serde_json::json!({ "ok": true }))
+            }
+            methods::LIST_ALLOW_RULES => {
+                RpcReply::value(&self.sessions.agent_states().rules().list())
+            }
+            methods::ADD_ALLOW_RULE => {
+                let p: AddAllowRuleParams = parse_params(params)?;
+                let pattern = p.pattern.trim().to_string();
+                let workspace_path = p.workspace_path.clone();
+                let name = p
+                    .name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .map(str::to_string)
+                    .unwrap_or_else(|| format!("{} {}", p.tool_name, pattern).trim().to_string());
+                let rule = zeron_proto::AllowRule {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name,
+                    scope: p.scope,
+                    workspace_path,
+                    tool_name: p.tool_name,
+                    pattern,
+                    created_at: chrono::Utc::now(),
+                };
+                let stored = self
+                    .sessions
+                    .agent_states()
+                    .rules()
+                    .add(rule)
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&stored)
+            }
+            methods::DELETE_ALLOW_RULE => {
+                let p: RuleIdParams = parse_params(params)?;
+                self.sessions
+                    .agent_states()
+                    .rules()
+                    .delete(&p.rule_id)
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&serde_json::json!({ "ok": true }))
+            }
+            methods::MARK_AGENT_SEEN => {
+                let p: AgentIdParams = parse_params(params)?;
+                self.sessions.agent_states().mark_seen(&p.agent_id);
+                RpcReply::value(&serde_json::json!({ "ok": true }))
             }
             methods::LOCAL_DEVICE => {
                 RpcReply::value(&serde_json::json!({ "deviceId": self.doc_host.device_id() }))

@@ -56,6 +56,10 @@ pub struct RunControls {
     /// interrupt, then escalates to SIGTERM/SIGKILL on the child after a grace
     /// period. The run's stream ends with `Done { status: Interrupted }`.
     pub interrupt: CancellationToken,
+    /// Answers tool-permission requests. [`PermissionGate::auto_allow`] is
+    /// comet's original unattended behavior; the engine passes a gate backed
+    /// by its always-allow rules and its needs-you inbox.
+    pub permission: permission::PermissionGate,
 }
 
 #[async_trait]
@@ -101,6 +105,7 @@ pub mod cursor;
 pub(crate) mod jsonrpc;
 pub mod mock;
 pub mod opencode;
+pub mod permission;
 pub mod shell_env;
 
 /// Bin directories where npm-installed CLIs land under Node version managers.

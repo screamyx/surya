@@ -5,8 +5,8 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 
 use zeron_proto::{
-    AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SteeringMode,
-    UserInputQuestion,
+    AgentEvent, DoneStatus, HarnessId, Model, PermissionDecision, PermissionRequest, ReasoningLevel,
+    RunRequest, SteeringMode, UserInputQuestion,
 };
 
 use crate::{Harness, HarnessError, RunControls};
@@ -560,20 +560,66 @@ impl Harness for MockHarness {
         let sub_delay_ms = std::env::var("ZERON_MOCK_SUBAGENT_DELAY_MS")
             .ok()
             .and_then(|v| v.parse::<u64>().ok());
-        if delay_ms == 0 && sub_delay_ms.is_none() {
+        // A scripted `AgentEvent::PermissionRequested` is not emitted — it is
+        // the mock ASKING. The gate answers it (an always-allow rule, or a
+        // person through the needs-you inbox) and the scripted run continues,
+        // exactly as a real harness blocks on a `can_use_tool` control
+        // request. This is the only data-side way to drive the permission
+        // path end to end without a real CLI.
+        let permission = controls.permission;
+        let asks_permission = events
+            .iter()
+            .any(|e| matches!(e, Ok(AgentEvent::PermissionRequested { .. })));
+        if delay_ms == 0 && sub_delay_ms.is_none() && !asks_permission {
             return Ok(futures::stream::iter(events).boxed());
         }
-        Ok(futures::stream::iter(events)
-            .then(move |event| async move {
-                let pause = match (&event, sub_delay_ms) {
-                    (Ok(AgentEvent::Subagent { .. }), Some(ms)) => {
-                        std::time::Duration::from_millis(ms)
+        Ok(
+            futures::stream::unfold((events.into_iter(), permission), move |(mut rest, gate)| {
+                async move {
+                    loop {
+                        let event = rest.next()?;
+                        let ask = match &event {
+                            Ok(AgentEvent::PermissionRequested {
+                                request_id,
+                                tool_name,
+                                command,
+                                input,
+                            }) => Some(PermissionRequest {
+                                request_id: request_id.clone(),
+                                tool_name: tool_name.clone(),
+                                command: command.clone(),
+                                input: input.clone(),
+                            }),
+                            _ => None,
+                        };
+                        if let Some(ask) = ask {
+                            if gate.ask(ask).await == PermissionDecision::Deny {
+                                // A refused tool ends the scripted turn the
+                                // way a real refusal ends a run.
+                                let done = Ok(AgentEvent::Done {
+                                    status: DoneStatus::Interrupted,
+                                    result: None,
+                                    error: None,
+                                    session_id: None,
+                                });
+                                return Some((done, (rest, gate)));
+                            }
+                            continue;
+                        }
+                        let pause = match (&event, sub_delay_ms) {
+                            (Ok(AgentEvent::Subagent { .. }), Some(ms)) => {
+                                std::time::Duration::from_millis(ms)
+                            }
+                            _ => delay,
+                        };
+                        if !pause.is_zero() {
+                            tokio::time::sleep(pause).await;
+                        }
+                        return Some((event, (rest, gate)));
                     }
-                    _ => delay,
-                };
-                tokio::time::sleep(pause).await;
-                event
+                }
             })
-            .boxed())
+            .boxed(),
+        )
     }
 }

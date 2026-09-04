@@ -72,6 +72,29 @@ pub mod methods {
     pub const WATCH_CHATS: &str = "WatchChats";
     pub const WATCH_DEVICES: &str = "WatchDevices";
     pub const WATCH_SESSIONS: &str = "WatchSessions";
+    /// Derived agent rows (`AgentStateRow[]`): the five states, the spawned
+    /// agent tree and the needs-you roll-up (surya decisions 15, 17, 20).
+    /// Current snapshot first, then every change. No params.
+    pub const WATCH_AGENT_STATES: &str = "WatchAgentStates";
+    /// The needs-you inbox (`NeedsYouItem[]`) across every chat, newest
+    /// first: pending permissions with their tool command, pending questions
+    /// with their options, and failed or stopped runs with their reason.
+    /// Current snapshot first, then every change. No params.
+    pub const WATCH_NEEDS_YOU: &str = "WatchNeedsYou";
+    /// Answer one parked permission. Params `{requestId, decision,
+    /// remember?: {scope, pattern, name?}}`; `remember` turns the answer into
+    /// an always-allow rule in the same breath.
+    pub const RESPOND_PERMISSION: &str = "RespondPermission";
+    /// The device's always-allow rules (`AllowRule[]`). No params.
+    pub const LIST_ALLOW_RULES: &str = "ListAllowRules";
+    /// Add one always-allow rule from Settings. Params `{name?, scope,
+    /// workspacePath?, toolName, pattern}`.
+    pub const ADD_ALLOW_RULE: &str = "AddAllowRule";
+    /// Delete one always-allow rule. Params `{ruleId}`.
+    pub const DELETE_ALLOW_RULE: &str = "DeleteAllowRule";
+    /// Clear an agent's unread badge so a finished run stops reading Done.
+    /// Params `{agentId}`.
+    pub const MARK_AGENT_SEEN: &str = "MarkAgentSeen";
     /// Spaces registry (device+folder pairs) from the workspace doc.
     pub const WATCH_SPACES: &str = "WatchSpaces";
     /// Entity mutations against the workspace doc (feature-inventory §2 DataRpc).

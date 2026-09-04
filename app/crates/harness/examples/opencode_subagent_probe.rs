@@ -39,6 +39,7 @@ async fn main() {
         }),
         steering,
         interrupt: CancellationToken::new(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     // Optional second arg overrides the prompt (e.g. the mock rig's
     // "TWO subagents" variant exercising concurrent binding).
