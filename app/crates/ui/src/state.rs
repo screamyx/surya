@@ -35,8 +35,7 @@ use zeron_proto::{
     EngineInfo, HarnessId, Session, Space, WorkspaceScope,
 };
 use zeron_rpc::{
-    RpcClient, RpcError, RpcReply, RpcService, connect_ws, connect_ws_with_token, memory_client,
-    methods,
+    RpcClient, RpcError, RpcReply, RpcService, connect_ws_with_token, memory_client, methods,
 };
 
 use crate::change_requests::{
@@ -2178,6 +2177,7 @@ fn spawn_subagent_watch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zeron_rpc::connect_ws;
     use chrono::TimeDelta;
     use zeron_engine::{EngineCore, default_registry};
     // `SessionStatus` is only needed to build the fixtures below — the module

@@ -82,10 +82,8 @@ pub struct UiConfig {
 }
 
 impl UiConfig {
-    fn boot(&self) -> EngineBootConfig {
-        self.boot_with(self.engine.clone())
-    }
-
+    /// The boot configuration with the engine choice resolved by the caller
+    /// (`--engine`, the saved active server, or local).
     fn boot_with(&self, remote: Option<RemoteEngineTarget>) -> EngineBootConfig {
         EngineBootConfig {
             data_dir: self.data_dir.clone(),
