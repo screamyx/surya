@@ -1,0 +1,35 @@
+[
+  {"version": "v0.9.1", "createSurface": {"surfaceId": "leads_followed_up", "catalogId": "https://a2ui.org/specification/v0_9_1/catalogs/basic/catalog.json"}},
+  {"version": "v0.9.1", "updateComponents": {"surfaceId": "leads_followed_up", "components": [
+    {"id": "root", "component": "Card", "child": "body"},
+    {"id": "body", "component": "Column", "children": ["head", "tabs", "footer"]},
+    {"id": "head", "component": "Row", "justify": "spaceBetween", "align": "start", "children": ["head_left", "value"]},
+    {"id": "head_left", "component": "Column", "weight": 1, "children": ["title", "delta"]},
+    {"id": "title", "component": "Text", "text": "Leads followed up this week", "variant": "h4"},
+    {"id": "delta", "component": "Text", "text": {"path": "/delta"}, "variant": "caption"},
+    {"id": "value", "component": "Text", "text": {"path": "/value"}, "variant": "h1"},
+    {"id": "tabs", "component": "Tabs", "tabs": [
+      {"title": "By day", "child": "by_day"},
+      {"title": "By salesperson", "child": "by_person"}
+    ]},
+    {"id": "by_day", "component": "List", "direction": "horizontal", "children": {"componentId": "day", "path": "/series"}},
+    {"id": "day", "component": "Column", "align": "center", "children": ["day_value", "day_label"]},
+    {"id": "day_value", "component": "Text", "text": {"path": "value"}, "variant": "h5"},
+    {"id": "day_label", "component": "Text", "text": {"path": "label"}, "variant": "caption"},
+    {"id": "by_person", "component": "List", "direction": "vertical", "children": {"componentId": "person", "path": "/people"}},
+    {"id": "person", "component": "Row", "justify": "spaceBetween", "children": ["person_name", "person_count"]},
+    {"id": "person_name", "component": "Text", "text": {"path": "name"}},
+    {"id": "person_count", "component": "Text", "text": {"path": "count"}, "variant": "h5"},
+    {"id": "footer", "component": "Row", "children": ["breakdown"]},
+    {"id": "breakdown", "component": "Button", "child": "breakdown_label", "action": {"event": {"name": "break_down", "context": {"by": "salesperson"}}}},
+    {"id": "breakdown_label", "component": "Text", "text": "Break it down by salesperson"}
+  ]}},
+  {"version": "v0.9.1", "updateDataModel": {"surfaceId": "leads_followed_up", "value": {
+    "value": "38", "delta": "+12 vs last week",
+    "series": [
+      {"label": "Mon", "value": 4}, {"label": "Tue", "value": 6}, {"label": "Wed", "value": 3}, {"label": "Thu", "value": 8},
+      {"label": "Fri", "value": 7}, {"label": "Sat", "value": 5}, {"label": "Sun", "value": 5}
+    ],
+    "people": [{"name": "Zul", "count": 17}, {"name": "Farah", "count": 13}, {"name": "Hafiz", "count": 8}]
+  }}}
+]

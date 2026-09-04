@@ -1,0 +1,24 @@
+[
+  {"version": "v0.9.1", "createSurface": {"surfaceId": "set_follow_up", "catalogId": "https://a2ui.org/specification/v0_9_1/catalogs/basic/catalog.json"}},
+  {"version": "v0.9.1", "updateComponents": {"surfaceId": "set_follow_up", "components": [
+    {"id": "root", "component": "Card", "child": "body"},
+    {"id": "body", "component": "Column", "children": ["title", "subtitle", "grid1", "grid2", "remind", "footer"]},
+    {"id": "title", "component": "Text", "text": "Set the follow-up", "variant": "h4"},
+    {"id": "subtitle", "component": "Text", "text": "Check the details, then save.", "variant": "caption"},
+    {"id": "grid1", "component": "Row", "children": ["lead", "when"]},
+    {"id": "lead", "component": "TextField", "label": "Lead", "value": {"path": "/form/lead"}, "weight": 1},
+    {"id": "when", "component": "TextField", "label": "When", "value": {"path": "/form/when"}, "weight": 1},
+    {"id": "grid2", "component": "Row", "children": ["who", "note"]},
+    {"id": "who", "component": "TextField", "label": "Salesperson", "value": {"path": "/form/salesperson"}, "weight": 1},
+    {"id": "note", "component": "TextField", "label": "Note", "value": {"path": "/form/note"}, "weight": 1},
+    {"id": "remind", "component": "CheckBox", "label": "Remind me the morning before", "value": {"path": "/form/remind"}},
+    {"id": "footer", "component": "Row", "children": ["save", "cancel"]},
+    {"id": "save", "component": "Button", "variant": "primary", "child": "save_label", "action": {"event": {"name": "save_follow_up", "context": {"form": {"path": "/form"}}}}},
+    {"id": "save_label", "component": "Text", "text": "Save follow-up"},
+    {"id": "cancel", "component": "Button", "variant": "borderless", "child": "cancel_label", "action": {"event": {"name": "cancel"}}},
+    {"id": "cancel_label", "component": "Text", "text": "Cancel"}
+  ]}},
+  {"version": "v0.9.1", "updateDataModel": {"surfaceId": "set_follow_up", "path": "/form", "value": {
+    "lead": "Ahmad F.", "when": "2026-09-06", "salesperson": "Zul", "note": "Ask about trade-in", "remind": true
+  }}}
+]

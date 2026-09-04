@@ -1,0 +1,22 @@
+# surya engine: the zeron headless engine serving the network.
+# Installed by deploy/install-engine.sh into ~/.config/systemd/user/.
+# Settings live in ~/.config/surya/engine.env (bind address, port, data dir).
+# The shared token is generated on first start under the data dir
+# (ipc-token); `surya-engine token` prints it.
+[Unit]
+Description=surya engine (zeron headless) on the network
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+EnvironmentFile=%h/.config/surya/engine.env
+ExecStart=%h/.local/bin/zeron headless
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

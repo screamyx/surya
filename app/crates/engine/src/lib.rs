@@ -845,7 +845,7 @@ impl Engine {
 
         // A daemon exists to serve this port, so a bind failure is fatal here —
         // unlike the headed app, which can still work over its in-process
-        // transport (see `serve_ipc`).
+        // transport (see `ipc::serve`).
         let (stop_tx, mut stop_rx) = tokio::sync::mpsc::unbounded_channel();
         let service: Arc<dyn RpcService> = Arc::new(HeadlessRpc {
             inner: runtime.core().rpc_service(),

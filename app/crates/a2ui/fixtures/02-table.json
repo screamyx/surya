@@ -1,0 +1,33 @@
+[
+  {"version": "v0.9.1", "createSurface": {"surfaceId": "leads_no_follow_up", "catalogId": "https://a2ui.org/specification/v0_9_1/catalogs/basic/catalog.json"}},
+  {"version": "v0.9.1", "updateComponents": {"surfaceId": "leads_no_follow_up", "components": [
+    {"id": "root", "component": "Card", "child": "body"},
+    {"id": "body", "component": "Column", "children": ["title", "subtitle", "header", "rows", "footer"]},
+    {"id": "title", "component": "Text", "text": "Leads with no follow-up date", "variant": "h4"},
+    {"id": "subtitle", "component": "Text", "text": {"call": "formatString", "args": {"value": "${/count} leads, oldest first"}}, "variant": "caption"},
+    {"id": "header", "component": "Row", "children": ["h_lead", "h_car", "h_in", "h_who"]},
+    {"id": "h_lead", "component": "Text", "text": "Lead", "variant": "caption", "weight": 1},
+    {"id": "h_car", "component": "Text", "text": "Car", "variant": "caption", "weight": 1},
+    {"id": "h_in", "component": "Text", "text": "Came in", "variant": "caption", "weight": 1},
+    {"id": "h_who", "component": "Text", "text": "Salesperson", "variant": "caption", "weight": 1},
+    {"id": "rows", "component": "List", "direction": "vertical", "children": {"componentId": "row", "path": "/leads"}},
+    {"id": "row", "component": "Row", "children": ["c_lead", "c_car", "c_in", "c_who"]},
+    {"id": "c_lead", "component": "Text", "text": {"path": "lead"}, "variant": "h5", "weight": 1},
+    {"id": "c_car", "component": "Text", "text": {"path": "car"}, "weight": 1},
+    {"id": "c_in", "component": "Text", "text": {"path": "cameIn"}, "weight": 1},
+    {"id": "c_who", "component": "Text", "text": {"path": "salesperson"}, "weight": 1},
+    {"id": "footer", "component": "Row", "children": ["set", "all"]},
+    {"id": "set", "component": "Button", "variant": "primary", "child": "set_label", "action": {"event": {"name": "set_follow_ups", "context": {"leads": {"path": "/leads"}}}}},
+    {"id": "set_label", "component": "Text", "text": "Set follow-ups"},
+    {"id": "all", "component": "Button", "variant": "borderless", "child": "all_label", "action": {"event": {"name": "show_all_leads"}}},
+    {"id": "all_label", "component": "Text", "text": "Show all leads"}
+  ]}},
+  {"version": "v0.9.1", "updateDataModel": {"surfaceId": "leads_no_follow_up", "value": {
+    "count": 3,
+    "leads": [
+      {"lead": "Ahmad F.", "car": "Alphard SC", "cameIn": "2 days ago", "salesperson": "Zul"},
+      {"lead": "Mei Ling", "car": "Vellfire ZG", "cameIn": "4 days ago", "salesperson": "Farah"},
+      {"lead": "Rajesh K.", "car": "Harrier Z", "cameIn": "6 days ago", "salesperson": "Zul"}
+    ]
+  }}}
+]
