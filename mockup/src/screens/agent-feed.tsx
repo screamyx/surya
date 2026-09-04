@@ -1,9 +1,10 @@
 // Screen: agent feed. Feature 1 - chat with Claude Code: tool calls, diffs, A2UI cards,
 // subagents, and the two things that stop the run: a permission ask and a question.
+// Round two adds the three controls the daemon actually has: switch model, stop, resume a session.
 import { useMemo, useRef, useState } from "react"
 import { Link, useParams } from "react-router"
 import { motion } from "motion/react"
-import { ArrowUp, FolderTree, Monitor, Square } from "lucide-react"
+import { ArrowUp, FolderTree, History, Monitor, Play, Sparkles, Square, StopCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupTextarea } from "@/components/ui/input-group"
@@ -12,6 +13,10 @@ import { SlashPalette } from "@/screens/agent-feed/slash"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import { StatusBadge } from "@/components/status"
 import { A2UICard } from "@/screens/agent-feed/a2ui-card"
+import { ModelSheet, modelName, type Effort } from "@/screens/agent-feed/model-sheet"
+import { SessionsSheet } from "@/screens/agent-feed/sessions-sheet"
+import { StopDialog } from "@/screens/agent-feed/stop-dialog"
+import { SystemLine, type SystemRow } from "@/screens/agent-feed/system-line"
 import {
   AssistantEvent, DiffEvent, FeedRow, PermissionEvent, QuestionEvent, SubagentEvent, ThinkingEvent, ToolRow, UserEvent, CommandEvent } from "@/screens/agent-feed/events"
 import { pop, stagger } from "@/motion"
@@ -34,9 +39,13 @@ const events: FeedEvent[] = (() => {
   return out
 })()
 
-function HeaderStrip({ ws, name, model, summary, status, startedAt }: {
+// The mockup's "now". Anything you do in this screen lands at this minute.
+const now = "2026-09-05T01:14:00+08:00"
+
+function HeaderStrip({ ws, name, model, summary, status, startedAt, stopped, onStop, onResume, onSessions }: {
   ws: string; name: string; model: string; summary: string
   status: Parameters<typeof StatusBadge>[0]["status"]; startedAt: string
+  stopped: boolean; onStop: () => void; onResume: () => void; onSessions: () => void
 }) {
   return (
     <div className="bg-background/95 sticky top-12 z-20 border-b backdrop-blur">
@@ -44,16 +53,27 @@ function HeaderStrip({ ws, name, model, summary, status, startedAt }: {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="font-heading text-base font-medium">{name}</h1>
-            <StatusBadge status={status} />
+            <StatusBadge status={stopped ? "failed" : status} />
             <Badge variant="outline" className="hidden font-mono md:inline-flex">{model}</Badge>
             <span className="text-muted-foreground hidden text-xs md:inline">started {fmtTime(startedAt)}</span>
           </div>
           <p className="text-muted-foreground mt-1 text-sm">{summary}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button size="sm" variant="outline" aria-label="Stop the agent" className="text-destructive border-destructive/30 hover:bg-destructive/10">
-            <Square data-icon="inline-start" />
-            <span className="max-sm:sr-only">Stop</span>
+          {stopped ? (
+            <Button size="sm" variant="outline" onClick={onResume} aria-label="Resume the agent" className="max-sm:size-8 max-sm:px-0">
+              <Play data-icon="inline-start" />
+              <span className="max-sm:sr-only">Resume</span>
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={onStop} aria-label="Stop the agent" className="text-destructive border-destructive/30 hover:bg-destructive/10 max-sm:size-8 max-sm:px-0">
+              <Square data-icon="inline-start" />
+              <span className="max-sm:sr-only">Stop</span>
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={onSessions} aria-label="Sessions with this agent" className="max-sm:size-8 max-sm:px-0">
+            <History data-icon="inline-start" />
+            <span className="max-sm:sr-only">Sessions</span>
           </Button>
           <Button size="sm" variant="ghost" nativeButton={false} render={<Link to={`/w/${ws}/files`} />} className="hidden md:inline-flex">
             <FolderTree data-icon="inline-start" />Open files
@@ -67,19 +87,27 @@ function HeaderStrip({ ws, name, model, summary, status, startedAt }: {
   )
 }
 
-function Composer({ model }: { model: string }) {
+function Composer({ model, onModel }: { model: string; onModel: () => void }) {
   const [text, setText] = useState("")
   const ref = useRef<HTMLTextAreaElement>(null)
   const open = text.startsWith("/") && !text.includes(" ")
   const pick = (name: string) => { setText(`/${name} `); ref.current?.focus() }
+  // A menu command never becomes text. surya draws the sheet and sends the line for you.
+  const menu = () => { setText(""); onModel() }
   return (
     <div className="bg-background/95 sticky bottom-0 z-20 border-t px-4 pt-3 pb-20 backdrop-blur md:pb-3">
       <div className="relative mx-auto max-w-3xl">
-        {open && <SlashPalette query={text.slice(1)} onPick={pick} Command={Command} CommandList={CommandList} CommandGroup={CommandGroup} CommandItem={CommandItem} CommandEmpty={CommandEmpty} />}
+        {open && <SlashPalette query={text.slice(1)} onPick={pick} onMenu={menu} Command={Command} CommandList={CommandList} CommandGroup={CommandGroup} CommandItem={CommandItem} CommandEmpty={CommandEmpty} />}
         <InputGroup>
           <InputGroupTextarea ref={ref} name="reply" rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder="Reply, ask for the next thing, or type / for a command" />
           <InputGroupAddon align="block-end" className="border-t">
-            <Badge variant="outline" className="font-mono">model: {model.replace("claude-", "")}</Badge>
+            <Badge
+              variant="outline"
+              className="hover:bg-muted cursor-pointer font-mono"
+              render={<button type="button" onClick={onModel} aria-label="Change the model" />}
+            >
+              model: {model.replace("claude-", "")}
+            </Badge>
             <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
               <KbdGroup><Kbd>⌘</Kbd><Kbd>↵</Kbd></KbdGroup> to send · <Kbd>/</Kbd> commands
             </span>
@@ -114,15 +142,43 @@ export function AgentFeedScreen() {
   const agent = useMemo(() => agents.find((a) => a.id === id) ?? agents[0], [id])
   const [key] = useState(() => `${ws}-${id}`)
 
+  const [model, setModel] = useState(agent.model)
+  const [effort, setEffort] = useState<Effort>("high")
+  const [modelOpen, setModelOpen] = useState(false)
+  const [sessionsOpen, setSessionsOpen] = useState(false)
+  const [stopOpen, setStopOpen] = useState(false)
+  const [stopped, setStopped] = useState(false)
+  const [rows, setRows] = useState<SystemRow[]>([])
+
+  const add = (row: SystemRow) => setRows((r) => [...r, row])
+
+  // The wording is what Claude Code itself replies to "/model <id>", probed 2026-09-05.
+  const switchModel = (next: string, level: Effort) => {
+    setModel(next)
+    setEffort(level)
+    setModelOpen(false)
+    add({ id: `sys-model-${rows.length}`, text: `Set model to ${modelName(next)} for this session only`, at: now, Icon: Sparkles })
+  }
+
+  const stop = () => {
+    setStopped(true)
+    setStopOpen(false)
+    add({ id: `sys-stop-${rows.length}`, text: `Stopped by you at ${fmtTime(now)} · the running Bash was interrupted`, Icon: StopCircle })
+  }
+
   return (
     <div className="flex min-h-[calc(100vh-3rem)] flex-col">
       <HeaderStrip
         ws={ws}
         name={agent.name}
-        model={agent.model}
+        model={model}
         summary={agent.summary}
         status={agent.status}
         startedAt={agent.startedAt}
+        stopped={stopped}
+        onStop={() => setStopOpen(true)}
+        onResume={() => setStopped(false)}
+        onSessions={() => setSessionsOpen(true)}
       />
       <motion.div
         key={key}
@@ -142,8 +198,17 @@ export function AgentFeedScreen() {
             </FeedRow>
           ),
         )}
+        {rows.map((r) => (
+          <motion.div key={r.id} variants={pop} initial="hidden" animate="show">
+            <SystemLine row={r} />
+          </motion.div>
+        ))}
       </motion.div>
-      <Composer model={agent.model} />
+      <Composer model={model} onModel={() => setModelOpen(true)} />
+
+      <ModelSheet open={modelOpen} onOpenChange={setModelOpen} model={model} effort={effort} onSwitch={switchModel} />
+      <SessionsSheet open={sessionsOpen} onOpenChange={setSessionsOpen} name={agent.name} sessions={agent.sessions} />
+      <StopDialog open={stopOpen} onOpenChange={setStopOpen} name={agent.name} onConfirm={stop} />
     </div>
   )
 }

@@ -1,5 +1,6 @@
 // The A2UI catalog renderer. One card type per branch, all built from stock shadcn,
 // so an agent answer and a surya panel are the same design system.
+import { useId } from "react"
 import { Copy, ExternalLink, Share2, TrendingUp } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -70,21 +71,23 @@ function TableCard({ card }: { card: Extract<CardSample, { type: "table" }> }) {
 }
 
 function FormCard({ card }: { card: Extract<CardSample, { type: "form" }> }) {
+  // Two form cards can sit on the same page, so the field ids have to be unique per card.
+  const uid = useId()
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm font-medium">{card.title}</p>
       {card.fields.map((f) => (
         <div key={f.label} className="grid gap-1.5">
-          <Label htmlFor={`a2ui-${f.label}`}>{f.label}</Label>
+          <Label htmlFor={`${uid}-${f.label}`}>{f.label}</Label>
           {f.type === "select" ? (
             <Select defaultValue={f.value}>
-              <SelectTrigger id={`a2ui-${f.label}`} className="w-full"><SelectValue /></SelectTrigger>
+              <SelectTrigger id={`${uid}-${f.label}`} className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {(f.options ?? []).map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
               </SelectContent>
             </Select>
           ) : (
-            <Input id={`a2ui-${f.label}`} type={f.type === "date" ? "date" : "text"} defaultValue={f.value} />
+            <Input id={`${uid}-${f.label}`} type={f.type === "date" ? "date" : "text"} defaultValue={f.value} />
           )}
         </div>
       ))}

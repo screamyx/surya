@@ -3,12 +3,9 @@ import { motion } from "motion/react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cards } from "@/data"
 import { rise, stagger } from "@/motion"
-import type { CardSample } from "@/data"
 import { A2UICard } from "@/screens/catalog/cards"
-
-// data.ts names the photo shape after the first thing it was sampled with. The catalog
-// shows what the shape actually is.
-const shapeName = (card: CardSample) => ("photo" in card ? "record" : card.type)
+import { shapeName } from "@/screens/catalog/shape"
+import { WorkspaceCardSections } from "@/screens/catalog/workspace-cards"
 
 const steps = [
   "The agent answers with a small piece of JSON, not with a web page.",
@@ -22,7 +19,7 @@ export function CatalogScreen() {
       <header className="flex flex-col gap-1">
         <h1 className="font-heading text-2xl font-semibold tracking-tight md:text-3xl">Cards agents can show you</h1>
         <p className="text-muted-foreground text-sm">Agents pick from this catalog. They cannot draw anything else.</p>
-        <p className="text-muted-foreground text-sm">Six built-in shapes. A workspace can add its own cards.</p>
+        <p className="text-muted-foreground text-sm">Six built-in shapes. Each workspace adds its own cards on top.</p>
       </header>
 
       <motion.div
@@ -45,7 +42,9 @@ export function CatalogScreen() {
         ))}
       </motion.div>
 
-      <Card className="mt-6">
+      <WorkspaceCardSections />
+
+      <Card className="mt-8">
         <CardHeader>
           <CardTitle>How a card gets here</CardTitle>
         </CardHeader>

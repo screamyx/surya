@@ -189,6 +189,45 @@ Probed on 2026-09-05, writeup `docs/probes/headless-controls-2026-09-05.md`.
 
 Slash commands come in three classes: pass-through (most), menu with a text form (`/model`, `/effort`, the GUI opens a sheet and sends the text), and menu with no headless form (`/mcp`, `/plugin`, `/permissions`, `/config`, the GUI owns the screen over Claude Code's own files).
 
+## 17. A fourth agent state: stopped
+
+Ruled by the front desk on 2026-09-05 02:15 under the owner's autonomy order, while adding the seven mockup gaps.
+
+An agent that crashed, hit a rate limit, ran out of context, or was stopped by you is `failed`, shown as "Stopped".
+It counts as "needs you": it rolls up the tree like a question does, it appears in the Needs You inbox with the reason, the detail and a Retry button, and the workspace row goes red.
+It is not a variant of "needs you" because the action differs: a question wants an answer, a stopped agent wants Retry or Give up.
+The `failure` record carries `reason`, `detail`, `retryable`.
+
+## 18. surya is a public project, nothing in it is specific to one person or one network
+
+Owner, 2026-09-05 02:26: "i plan to publicize this repo one day, so it should not be too specific on my case."
+
+- Reaching a daemon: localhost, LAN, Tailscale, or any reverse proxy. Tailscale is never required.
+- Auth is the daemon's own: a pairing code shown once, exchanged for a token the app keeps. Network identity is a bonus, not the gate.
+- Remote install runs over plain SSH from any daemon. Tailscale SSH is one case of it. A copy-paste installer line is always the fallback.
+- Install line and update channel live on a project domain, not a company one.
+- Sample data uses made-up people and hosts. One example workspace may keep a car dealer flavour so screens feel real. No real email, hostname, or agent id in the repo.
+- agb, herdr, luvus, spawn-agent and the rest of the owner's fleet tooling are not dependencies and are not mentioned in product code or README.
+- Before going public: a license file, and decisions.md kept with "the owner" in place of a name.
+
+Servers, from decision talk on 02:22 to 02:25: a server is a daemon. Servers are the top of the tree, then workspaces, then agents. The server level hides when there is only one. Add server is an in-app flow: pick or type a host, checks with Fix buttons, install over SSH with the log streaming into the card, done. Adding an agent happens where you are: a plus on the workspace row, a button in the workspace tab bar, and "spawn under this agent" on an agent row.
+
+## 19. Agent-to-agent mail is first class
+
+Owner, 2026-09-05 02:27: "agb is first class too, agent-to-agent comms are essentials to my workflow".
+
+surya ships its own agent mail, built into the daemon, with the concepts the owner's workflow already depends on:
+- Addresses: an agent id, a workspace channel, a server channel.
+- Send: a `send_message` tool every agent has, and a compose box in the GUI.
+- Receive: the daemon delivers mail as the agent's next turn. No polling, no parking.
+- Ack: automatic when the turn that carried the mail completes; a manual "seen" ack remains.
+- Reserve on spawn: an agent spawned through surya has an address before it starts, so mail queues instead of failing.
+- Liveness: the agent tree.
+
+The owner's agb bus is one implementation of the same idea and may bridge to surya through a private adapter. It is not a dependency, per decision 18.
+
+GUI surfaces: mail rows in the agent feed (from, delivery id, acked mark), sends as tool rows, Send message on agent rows, a Messages tab per workspace with the channel and direct threads.
+
 ## Open
 
 None at day zero.

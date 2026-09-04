@@ -15,7 +15,7 @@ import { StatusDot } from "@/components/status"
 import { byPriority, inbox, needsYouCount, rollup, workspaces, type Agent } from "@/data"
 import { cn } from "@/lib/utils"
 
-const needsYou = inbox.filter((i) => i.kind === "permission" || i.kind === "question").length
+const needsYou = inbox.filter((i) => i.kind === "permission" || i.kind === "question" || i.kind === "failed").length
 
 // One row per agent. Spawned agents nest under their spawner, folded by default unless one of them needs you.
 function AgentRow({ a, ws }: { a: Agent; ws: string }) {

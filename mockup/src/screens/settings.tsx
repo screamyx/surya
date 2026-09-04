@@ -1,5 +1,5 @@
 // Screen: settings. Account, the daemon on the tailnet, notifications, models, look, workspaces.
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { motion } from "motion/react"
 import { Monitor, MoonStar, Plus, RotateCw, Sun } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import { McpPanel } from "@/screens/settings/mcp"
+import { PluginsPanel } from "@/screens/settings/plugins"
+import { readTheme, setTheme, type Theme } from "@/screens/settings/theme"
 import { settings, workspaces } from "@/data"
 import { rise, stagger } from "@/motion"
 
@@ -38,7 +41,15 @@ function Toggle({ id, label, description, defaultChecked }: { id: string; label:
 
 export function SettingsScreen() {
   const [model, setModel] = useState(settings.models[0])
-  const [theme, setTheme] = useState<string[]>(["system"])
+  const [theme, setThemeState] = useState<string[]>(["system"])
+
+  // The saved choice only exists in the browser, so read it after mount and mirror it in the group.
+  useEffect(() => setThemeState([readTheme()]), [])
+  const pickTheme = (next: string[]) => {
+    if (!next.length) return
+    setThemeState(next)
+    setTheme(next[0] as Theme)
+  }
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6 md:py-8">
@@ -80,6 +91,10 @@ export function SettingsScreen() {
             </CardContent>
           </Card>
         </motion.div>
+
+        <motion.div variants={rise}><McpPanel /></motion.div>
+
+        <motion.div variants={rise}><PluginsPanel /></motion.div>
 
         <motion.div variants={rise}>
           <Card>
@@ -132,12 +147,12 @@ export function SettingsScreen() {
           <Card>
             <CardHeader><CardTitle>Appearance</CardTitle></CardHeader>
             <CardContent>
-              <ToggleGroup value={theme} onValueChange={(v) => v.length && setTheme(v as string[])} variant="outline" spacing={0}>
+              <ToggleGroup value={theme} onValueChange={(v) => pickTheme(v as string[])} variant="outline" spacing={0}>
                 <ToggleGroupItem value="light"><Sun data-icon="inline-start" />Light</ToggleGroupItem>
                 <ToggleGroupItem value="dark"><MoonStar data-icon="inline-start" />Dark</ToggleGroupItem>
                 <ToggleGroupItem value="system"><Monitor data-icon="inline-start" />System</ToggleGroupItem>
               </ToggleGroup>
-              <p className="text-muted-foreground mt-3 text-sm">Theme is tokens only, restyle by changing them.</p>
+              <p className="text-muted-foreground mt-3 text-sm">Stock shadcn tokens. Dark is the same components with different tokens, nothing else changes.</p>
             </CardContent>
           </Card>
         </motion.div>

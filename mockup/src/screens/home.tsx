@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
 import { Textarea } from "@/components/ui/textarea"
-import { StatusDot } from "@/components/status"
+import { StatusBadge, StatusDot } from "@/components/status"
 import { agentById, agents, inbox, settings, tasks, workspaces, type Workspace } from "@/data"
 import { rise, stagger } from "@/motion"
 
-const needsYou = inbox.filter((i) => i.kind === "permission" || i.kind === "question")
+// A stopped agent needs you as much as a question does, so it lands in the same list.
+const needsYou = inbox.filter((i) => i.kind === "permission" || i.kind === "question" || i.kind === "failed")
 
 const wsLinks = (id: string) => [
   { to: `/w/${id}/agents`, icon: Sparkles, label: "Agents" },
@@ -35,7 +36,10 @@ function NeedsYouCard() {
         {needsYou.map((i) => (
           <Item key={i.id} variant="outline" className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
             <ItemContent>
-              <ItemTitle>{i.title}</ItemTitle>
+              <ItemTitle className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0">{i.title}</span>
+                {i.kind === "failed" && <StatusBadge status="failed" />}
+              </ItemTitle>
               <ItemDescription>
                 {agentById(i.agentId).name} in {i.workspaceId}
               </ItemDescription>
@@ -107,7 +111,7 @@ function StartCard() {
         <CardDescription>One sentence is enough. An agent picks it up.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-3 xl:flex-row xl:items-end">
-        <Textarea placeholder="Remind me the morning after a lead comes in" className="min-h-20 flex-1" />
+        <Textarea placeholder="Add a Ship button to the result page" className="min-h-20 flex-1" />
         <Button nativeButton={false} className="h-11 w-full sm:h-8 xl:h-11 xl:max-w-40" render={<Link to="/new" />}>
           Start
           <ArrowRight data-icon="inline-end" />

@@ -1,17 +1,24 @@
 // The slash palette. Opens when the composer starts with "/". The list is what Claude Code reported for this
 // workspace: built-ins, user skills, project skills, plugins. surya adds nothing of its own.
+// One row behaves differently: /model is a menu command, so it opens the model sheet instead of
+// typing text into the box. See decision 16 in docs/decisions.md.
 import type { ComponentType } from "react"
 import { motion } from "motion/react"
 import { Badge } from "@/components/ui/badge"
 import { Kbd } from "@/components/ui/kbd"
+import { SlidersHorizontal } from "lucide-react"
 import { pop } from "@/motion"
 import { slashCommands, type SlashCommand, type SlashSource } from "@/data"
 
 type Cmp = ComponentType<any>
 const order: SlashSource[] = ["project skill", "user skill", "plugin", "built-in"]
 
-export function SlashPalette({ query, onPick, Command, CommandList, CommandGroup, CommandItem, CommandEmpty }: {
-  query: string; onPick: (name: string) => void; Command: Cmp; CommandList: Cmp; CommandGroup: Cmp; CommandItem: Cmp; CommandEmpty: Cmp
+// Commands surya draws a menu for. Everything else is sent to the agent as typed.
+const menuCommands = ["model"]
+
+export function SlashPalette({ query, onPick, onMenu, Command, CommandList, CommandGroup, CommandItem, CommandEmpty }: {
+  query: string; onPick: (name: string) => void; onMenu: (name: string) => void
+  Command: Cmp; CommandList: Cmp; CommandGroup: Cmp; CommandItem: Cmp; CommandEmpty: Cmp
 }) {
   const q = query.toLowerCase()
   const hits = slashCommands.filter((c) => c.name.includes(q) || c.description.toLowerCase().includes(q))
@@ -27,7 +34,15 @@ export function SlashPalette({ query, onPick, Command, CommandList, CommandGroup
           <CommandEmpty>No command matches. Send it as text instead.</CommandEmpty>
           {groups.map((g) => (
             <CommandGroup key={g.src} heading={label(g.src)}>
-              {g.items.map((c) => <Row key={c.name} c={c} onPick={onPick} CommandItem={CommandItem} />)}
+              {g.items.map((c) => (
+                <Row
+                  key={c.name}
+                  c={c}
+                  menu={menuCommands.includes(c.name)}
+                  onPick={menuCommands.includes(c.name) ? onMenu : onPick}
+                  CommandItem={CommandItem}
+                />
+              ))}
             </CommandGroup>
           ))}
         </CommandList>
@@ -40,11 +55,18 @@ function label(s: SlashSource) {
   return { "project skill": "This workspace", "user skill": "Your skills", plugin: "Plugins", "built-in": "Claude Code" }[s]
 }
 
-function Row({ c, onPick, CommandItem }: { c: SlashCommand; onPick: (n: string) => void; CommandItem: Cmp }) {
+function Row({ c, menu, onPick, CommandItem }: {
+  c: SlashCommand; menu: boolean; onPick: (n: string) => void; CommandItem: Cmp
+}) {
   return (
     <CommandItem value={c.name} onSelect={() => onPick(c.name)} className="gap-3">
       <span className="shrink-0 font-mono text-[13px] whitespace-nowrap">/{c.name}</span>
-      {c.args && <span className="text-muted-foreground hidden truncate font-mono text-xs sm:inline">{c.args}</span>}
+      {c.args && !menu && <span className="text-muted-foreground hidden truncate font-mono text-xs sm:inline">{c.args}</span>}
+      {menu && (
+        <span className="text-muted-foreground hidden items-center gap-1 text-xs sm:flex">
+          <SlidersHorizontal className="size-3" />opens a menu
+        </span>
+      )}
       <span className="text-muted-foreground ml-auto hidden max-w-[50%] truncate text-xs sm:inline">{c.description}</span>
       <Badge variant="outline" className="ml-auto h-4 shrink-0 px-1.5 text-[10px] sm:hidden">{c.source}</Badge>
     </CommandItem>
