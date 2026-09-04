@@ -40,6 +40,7 @@ use crate::settings::archived::ArchivedPage;
 use crate::settings::devices::DevicesPage;
 use crate::settings::harnesses::HarnessesPage;
 use crate::settings::notifications::{NotificationsEvent, NotificationsPage};
+use crate::settings::servers::{ServersEvent, ServersPage};
 use crate::settings::shortcuts::{ShortcutsEvent, ShortcutsPage};
 use crate::settings::{
     self, CHAT_PANEL_MIN, JUMP_SLOTS, KeymapConfig, RIGHT_PANE_DEFAULT, RIGHT_PANE_MIN,
@@ -49,6 +50,7 @@ use crate::settings::{
 };
 use crate::state::{
     AppState, ConnectionStatus, EngineBootConfig, EngineMode, GatePhase, Indicator, OrgRow,
+    RemoteEngineTarget,
     format_time_ago, org_name_valid, parse_orgs, sort_memberships,
 };
 use crate::terminal::panel::{TerminalPanel, ToggleTerminal, clamp_terminal_height};
@@ -324,6 +326,8 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsSection {
     Devices,
+    /// Remote engines this app can drive over the network.
+    Servers,
     /// Which harnesses the composer offers (enable/disable toggles).
     Harnesses,
     /// Per-provider CLI accounts (login, usage) — labeled "Accounts".
@@ -335,8 +339,9 @@ pub enum SettingsSection {
 }
 
 impl SettingsSection {
-    pub const ALL: [SettingsSection; 7] = [
+    pub const ALL: [SettingsSection; 8] = [
         SettingsSection::Devices,
+        SettingsSection::Servers,
         SettingsSection::Harnesses,
         SettingsSection::Agents,
         SettingsSection::Appearance,
@@ -350,6 +355,7 @@ impl SettingsSection {
     pub fn label(self) -> &'static str {
         match self {
             SettingsSection::Devices => "Devices",
+            SettingsSection::Servers => "Servers",
             SettingsSection::Harnesses => "Agents",
             SettingsSection::Agents => "Accounts",
             SettingsSection::Appearance => "Appearance",
@@ -1035,6 +1041,8 @@ pub struct Shell {
     /// Route history behind the titlebar back/forward buttons (§ nav history).
     nav: NavHistory,
     devices_page: Option<Entity<DevicesPage>>,
+    servers_page: Option<Entity<ServersPage>>,
+    servers_sub: Option<Subscription>,
     archived_page: Option<Entity<ArchivedPage>>,
     appearance_page: Option<Entity<AppearancePage>>,
     notifications_page: Option<Entity<NotificationsPage>>,
@@ -1315,6 +1323,8 @@ impl Shell {
             route,
             nav,
             devices_page: None,
+            servers_page: None,
+            servers_sub: None,
             archived_page: None,
             appearance_page: None,
             notifications_page: None,
@@ -2252,6 +2262,64 @@ impl Shell {
         AppState::bootstrap(self.state.clone(), self.boot.clone(), cx);
     }
 
+    /// Swap the engine the whole app talks to: a saved server (`Some`) or the
+    /// local engine (`None`). An embedded engine drains and releases its data
+    /// dir first; a network engine is simply left running for whoever else
+    /// drives it. Then every view rebuilds from the new engine's data.
+    fn switch_engine(&mut self, target: Option<RemoteEngineTarget>, cx: &mut Context<Self>) {
+        if self.runtime_change_task.is_some() {
+            return;
+        }
+        if self.boot.remote == target && self.state.read(cx).engine().is_some() {
+            return;
+        }
+        self.boot.remote = target;
+        self.runtime_change_error = None;
+        let engine = self.state.read(cx).engine().cloned();
+        let ipc_port = self.boot.ipc_port;
+        let data_dir = self.data_dir.clone();
+        let transition = Tokio::spawn(cx, async move {
+            let Some(engine) = engine else {
+                return Ok::<(), String>(());
+            };
+            let embedded = engine.mode() == EngineMode::InProcess;
+            engine.shutdown().await;
+            if embedded
+                && let Err(error) =
+                    wait_for_remote_engine_shutdown(ipc_port, &data_dir, RUNTIME_CHANGE_TIMEOUT)
+                        .await
+            {
+                // The remote dial does not need the local port; log and go on.
+                tracing::warn!(%error, "embedded engine did not release cleanly before switching");
+            }
+            Ok(())
+        });
+        let state = self.state.clone();
+        let boot = self.boot.clone();
+        self.runtime_change_task = Some(cx.spawn(async move |this, cx| {
+            let result = match transition.await {
+                Ok(result) => result,
+                Err(error) => Err(error.to_string()),
+            };
+            this.update(cx, |shell, cx| {
+                shell.runtime_change_task = None;
+                match result {
+                    Ok(()) => {
+                        shell.space_boot_applied = false;
+                        state.update(cx, |state, cx| state.prepare_runtime_replacement(cx));
+                        AppState::bootstrap(state.clone(), boot, cx);
+                    }
+                    Err(error) => {
+                        shell.runtime_change_error = Some(error.into());
+                        cx.notify();
+                    }
+                }
+            })
+            .ok();
+        }));
+        cx.notify();
+    }
+
     // ---- routes / settings ----
 
     /// Close the user menu through the exit animation (no-op when closed).
@@ -2392,6 +2460,33 @@ impl Shell {
                     self.devices_page = Some(cx.new(|cx| DevicesPage::new(state, cx)));
                 }
                 match &self.devices_page {
+                    Some(page) => page.clone().into_any_element(),
+                    None => Empty.into_any_element(),
+                }
+            }
+            SettingsSection::Servers => {
+                if self.servers_page.is_none() {
+                    let state = self.state.clone();
+                    let servers = self.settings.servers.clone();
+                    let active = self.settings.active_server.clone();
+                    let page = cx.new(|cx| ServersPage::new(state, servers, active, cx));
+                    self.servers_sub = Some(cx.subscribe(
+                        &page,
+                        |this: &mut Shell, _, event: &ServersEvent, cx| match event {
+                            ServersEvent::Changed { servers, active } => {
+                                this.settings.servers = servers.clone();
+                                this.settings.active_server = active.clone();
+                                this.schedule_save(cx);
+                                cx.notify();
+                            }
+                            ServersEvent::Connect(target) => {
+                                this.switch_engine(target.clone(), cx);
+                            }
+                        },
+                    ));
+                    self.servers_page = Some(page);
+                }
+                match &self.servers_page {
                     Some(page) => page.clone().into_any_element(),
                     None => Empty.into_any_element(),
                 }
@@ -3709,6 +3804,7 @@ impl Shell {
     ) -> AnyElement {
         let section_icon = |item: SettingsSection| match item {
             SettingsSection::Devices => icons::MONITOR,
+            SettingsSection::Servers => icons::GLOBAL,
             SettingsSection::Harnesses => icons::WIDGET,
             SettingsSection::Agents => icons::KEY_MINIMALISTIC,
             SettingsSection::Appearance => icons::TUNING,
@@ -7848,6 +7944,9 @@ mod tests {
         let boot = EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: port,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             org_id: None,

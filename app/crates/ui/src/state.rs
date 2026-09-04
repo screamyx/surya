@@ -34,7 +34,9 @@ use zeron_proto::{
     AuthState, ChangeRequestSummary, Chat, ChatIndicator, CheckoutChangeRequestStatus, Device,
     EngineInfo, HarnessId, Session, Space, WorkspaceScope,
 };
-use zeron_rpc::{RpcClient, RpcError, RpcReply, RpcService, connect_ws, memory_client, methods};
+use zeron_rpc::{
+    RpcClient, RpcError, RpcReply, RpcService, connect_ws_with_token, memory_client, methods,
+};
 
 use crate::change_requests::{
     ChangeRequestClientState, ChangeRequestWatchKey, desired_watch_targets, watch_params,
@@ -44,13 +46,37 @@ use crate::change_requests::{
 // Engine handle
 // ---------------------------------------------------------------------------
 
+/// A remote engine to drive instead of a local one: `zeron headless --bind`
+/// on another machine, reached directly over whatever network both are on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteEngineTarget {
+    /// `ws://host:port`.
+    pub url: String,
+    /// Shared IPC token (`zeron status` on the engine's machine prints it).
+    pub token: Option<String>,
+    /// Display name from the Servers list; `None` for a `--engine` flag.
+    pub name: Option<String>,
+}
+
+impl RemoteEngineTarget {
+    pub fn label(&self) -> String {
+        self.name.clone().unwrap_or_else(|| self.url.clone())
+    }
+}
+
 /// Everything needed to reach (or start) an engine.
 #[derive(Debug, Clone)]
 pub struct EngineBootConfig {
     /// Data directory for the embedded engine (`~/.zeron`).
     pub data_dir: PathBuf,
-    /// Localhost IPC port to probe / serve.
+    /// IPC port to probe / serve.
     pub ipc_port: u16,
+    /// Bind address the embedded engine serves other viewports on.
+    pub ipc_bind: std::net::IpAddr,
+    /// Explicit IPC token for the embedded engine's socket.
+    pub ipc_token: Option<String>,
+    /// Dial this engine and never embed. `None` = probe loopback, else embed.
+    pub remote: Option<RemoteEngineTarget>,
     /// Edge base URL for the embedded engine.
     pub edge_url: String,
     /// Bearer for edge room joins; `None` runs offline.
@@ -232,6 +258,10 @@ impl EngineHandle {
         static BOOTSTRAP_GATE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
         let _gate = BOOTSTRAP_GATE.lock().await;
 
+        if let Some(remote) = &config.remote {
+            return Self::attach_remote(remote).await;
+        }
+
         if let Some(handle) = Self::attach_to_daemon(config.ipc_port).await {
             return Ok(handle);
         }
@@ -242,6 +272,8 @@ impl EngineHandle {
             edge_url: config.edge_url,
             edge_token: config.edge_token,
             ipc_port: config.ipc_port,
+            ipc_bind: config.ipc_bind,
+            ipc_token: config.ipc_token,
             default_harness: config.default_harness,
             org_id: config.org_id,
             workos_client_id: config.workos_client_id,
@@ -293,7 +325,7 @@ impl EngineHandle {
         //
         // Best-effort — losing the bind race with another engine costs other
         // viewports, not this one.
-        let ipc_task = match zeron_engine::serve_ipc(engine_config.ipc_port, service).await {
+        let ipc_task = match zeron_engine::ipc::serve(&engine_config.ipc(), service).await {
             Ok(task) => Some(task),
             Err(err) => {
                 tracing::warn!(
@@ -393,49 +425,8 @@ impl EngineHandle {
             return None;
         }
         tracing::info!(%url, "engine daemon detected; connecting");
-        match connect_ws(&url).await {
-            Ok(client) => match query_engine_info(&client).await {
-                Ok(engine_info) => {
-                    let client = Arc::new(client);
-                    let (state_tx, state_rx) =
-                        tokio::sync::watch::channel(DeferredEngineState::Waiting);
-                    let lifecycle_client = client.clone();
-                    let lifecycle_task = tokio::spawn(async move {
-                        let state = match lifecycle_client
-                            .call(methods::ENGINE_READY, serde_json::json!({}))
-                            .await
-                        {
-                            Ok(_) => DeferredEngineState::Ready,
-                            // EngineReady was added after EngineInfo. An older daemon
-                            // that does not expose the barrier is already assembled.
-                            Err(RpcError::UnknownMethod(method))
-                                if method == methods::ENGINE_READY =>
-                            {
-                                DeferredEngineState::Ready
-                            }
-                            Err(err) => DeferredEngineState::Failed(err.to_string()),
-                        };
-                        state_tx.send_replace(state);
-                    });
-                    Some(EngineHandle {
-                        inner: Arc::new(RemoteEngine {
-                            client,
-                            url,
-                            lifecycle_task: tokio::sync::Mutex::new(Some(lifecycle_task)),
-                        }),
-                        engine_info,
-                        deferred_state: Some(state_rx),
-                    })
-                }
-                Err(err) => {
-                    tracing::warn!(
-                        %url,
-                        error = %err,
-                        "listener did not provide engine identity; embedding instead"
-                    );
-                    None
-                }
-            },
+        match Self::attach(&url, None).await {
+            Ok(handle) => Some(handle),
             // Something is on the port but it is not an engine (or it is
             // wedged). Fall through and embed: a stranger holding 27654
             // should cost other viewports, not this window.
@@ -444,6 +435,60 @@ impl EngineHandle {
                 None
             }
         }
+    }
+
+    /// Dial a remote engine. Unlike the loopback probe there is no fallback:
+    /// the user asked for that server, so a failure is reported, not papered
+    /// over by embedding a local engine they did not want.
+    async fn attach_remote(remote: &RemoteEngineTarget) -> anyhow::Result<EngineHandle> {
+        tracing::info!(url = %remote.url, name = ?remote.name, "dialing remote engine");
+        Self::attach(&remote.url, remote.token.as_deref())
+            .await
+            .map_err(|err| anyhow::anyhow!("{}: {err}", remote.label()))
+    }
+
+    /// Connect over WebSocket, read the engine identity, and watch the socket:
+    /// readiness first, then closure, which flips the handle to Failed so the
+    /// app reconnects from scratch instead of retrying dead subscriptions.
+    async fn attach(url: &str, token: Option<&str>) -> Result<EngineHandle, RpcError> {
+        let client = connect_ws_with_token(url, token).await?;
+        let engine_info = query_engine_info(&client).await?;
+        let client = Arc::new(client);
+        let (state_tx, state_rx) = tokio::sync::watch::channel(DeferredEngineState::Waiting);
+        let lifecycle_client = client.clone();
+        let lifecycle_url = url.to_string();
+        let lifecycle_task = tokio::spawn(async move {
+            let state = match lifecycle_client
+                .call(methods::ENGINE_READY, serde_json::json!({}))
+                .await
+            {
+                Ok(_) => DeferredEngineState::Ready,
+                // EngineReady was added after EngineInfo. An older daemon
+                // that does not expose the barrier is already assembled.
+                Err(RpcError::UnknownMethod(method)) if method == methods::ENGINE_READY => {
+                    DeferredEngineState::Ready
+                }
+                Err(err) => DeferredEngineState::Failed(err.to_string()),
+            };
+            let ready = matches!(state, DeferredEngineState::Ready);
+            state_tx.send_replace(state);
+            if ready {
+                lifecycle_client.closed().await;
+                tracing::warn!(url = %lifecycle_url, "engine connection closed");
+                state_tx.send_replace(DeferredEngineState::Failed(format!(
+                    "connection to {lifecycle_url} closed"
+                )));
+            }
+        });
+        Ok(EngineHandle {
+            inner: Arc::new(RemoteEngine {
+                client,
+                url: url.to_string(),
+                lifecycle_task: tokio::sync::Mutex::new(Some(lifecycle_task)),
+            }),
+            engine_info,
+            deferred_state: Some(state_rx),
+        })
     }
 
     pub fn client(&self) -> &RpcClient {
@@ -648,6 +693,11 @@ pub struct AppState {
     pub data_dir: Option<PathBuf>,
     engine: Option<EngineHandle>,
     watch_tasks: Vec<Task<()>>,
+    /// The configuration the last bootstrap used; a lost remote connection
+    /// re-bootstraps from it.
+    boot_config: Option<EngineBootConfig>,
+    reconnect_task: Option<Task<()>>,
+    reconnect_attempts: u32,
     transcript_task: Option<Task<()>>,
     change_requests: ChangeRequestClientState,
     change_request_tasks: HashMap<ChangeRequestWatchKey, Task<()>>,
@@ -696,6 +746,9 @@ impl AppState {
             data_dir: None,
             engine: None,
             watch_tasks: Vec::new(),
+            boot_config: None,
+            reconnect_task: None,
+            reconnect_attempts: 0,
             transcript_task: None,
             change_requests: ChangeRequestClientState::default(),
             change_request_tasks: HashMap::new(),
@@ -1388,11 +1441,14 @@ impl AppState {
     /// tokio, then attach subscriptions. Safe to call again after `Failed`.
     pub fn bootstrap(state: Entity<AppState>, config: EngineBootConfig, cx: &mut App) {
         let data_dir = config.data_dir.clone();
+        let stored = config.clone();
         state.update(cx, |s, cx| {
             s.connection = ConnectionStatus::Connecting;
             s.workspace_scope = None;
             s.auth = None;
             s.data_dir = Some(data_dir);
+            s.boot_config = Some(stored);
+            s.reconnect_task = None;
             cx.notify();
         });
         let boot = Tokio::spawn(cx, EngineHandle::bootstrap(config));
@@ -1425,6 +1481,7 @@ impl AppState {
         self.workspace_scope = Some(engine_info.workspace_scope);
         self.local_device_id = Some(engine_info.device_id.clone());
         self.engine = Some(handle.clone());
+        self.reconnect_attempts = 0;
         let mut watch_tasks = Vec::with_capacity(8);
         if let Some(task) = spawn_deferred_engine_watch(cx, handle.clone()) {
             watch_tasks.push(task);
@@ -1684,19 +1741,65 @@ fn spawn_deferred_engine_watch(
 ) -> Option<Task<()>> {
     let mut deferred = handle.deferred_state()?;
     Some(cx.spawn(async move |this, cx| {
-        let Err(failure) = wait_for_deferred_engine(&mut deferred).await else {
-            return;
+        // Keep watching past Ready: a remote handle flips to Failed again
+        // when its socket closes, and that is the reconnect trigger.
+        let mut was_ready = false;
+        let failure = loop {
+            let current = { deferred.borrow().clone() };
+            match current {
+                DeferredEngineState::Waiting => {}
+                DeferredEngineState::Ready => was_ready = true,
+                DeferredEngineState::Failed(message) => break message,
+            }
+            if deferred.changed().await.is_err() {
+                return;
+            }
         };
-        tracing::error!(error = %failure, "engine assembly failed after attachment");
+        if was_ready {
+            tracing::warn!(error = %failure, "engine connection lost after attachment");
+        } else {
+            tracing::error!(error = %failure, "engine assembly failed after attachment");
+        }
         // Embedded handles release their IPC listener before exposing Retry;
         // remote handles stop their completed readiness probe.
         handle.shutdown().await;
         this.update(cx, |state, cx| {
             state.connection = ConnectionStatus::Failed(failure);
+            if was_ready {
+                state.schedule_remote_reconnect(cx);
+            }
             cx.notify();
         })
         .ok();
     }))
+}
+
+impl AppState {
+    /// A remote engine's socket closed after it had been attached: reconnect
+    /// from scratch with a short backoff (2s, 4s, 8s, 8s…), leaving Failed on
+    /// screen between attempts. Initial dial failures never loop: a wrong host
+    /// or token needs the user, not a retry.
+    fn schedule_remote_reconnect(&mut self, cx: &mut Context<Self>) {
+        let Some(config) = self
+            .boot_config
+            .clone()
+            .filter(|config| config.remote.is_some())
+        else {
+            return;
+        };
+        let attempt = self.reconnect_attempts.min(2);
+        self.reconnect_attempts = self.reconnect_attempts.saturating_add(1);
+        let delay = std::time::Duration::from_secs(2u64 << attempt);
+        let label = config.remote.as_ref().map(RemoteEngineTarget::label);
+        tracing::info!(?delay, engine = ?label, "reconnecting to remote engine");
+        self.reconnect_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(delay).await;
+            let Some(state) = this.upgrade() else {
+                return;
+            };
+            let _ = cx.update(|cx| AppState::bootstrap(state, config, cx));
+        }));
+    }
 }
 
 /// Chats watch. Boot selection is the shell's job (it lands on the first
@@ -2074,6 +2177,7 @@ fn spawn_subagent_watch(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zeron_rpc::connect_ws;
     use chrono::TimeDelta;
     use zeron_engine::{EngineCore, default_registry};
     // `SessionStatus` is only needed to build the fixtures below — the module
@@ -2160,6 +2264,9 @@ mod tests {
         let handle = EngineHandle::bootstrap(EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: port,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             org_id: None,
@@ -2190,6 +2297,9 @@ mod tests {
         let handle = EngineHandle::bootstrap(EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: free_port().await,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None, // offline
             org_id: None,
@@ -2228,6 +2338,9 @@ mod tests {
         let error = match EngineHandle::bootstrap(EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: port,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             org_id: None,
@@ -2283,6 +2396,9 @@ mod tests {
         let handle = EngineHandle::bootstrap(EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: port,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             org_id: None,
@@ -2321,6 +2437,9 @@ mod tests {
         let handle = EngineHandle::bootstrap(EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: port,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None, // offline
             org_id: None,
@@ -2363,6 +2482,9 @@ mod tests {
         let config = EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: port,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None, // offline
             org_id: None,
@@ -2423,6 +2545,9 @@ mod tests {
         let handle = EngineHandle::bootstrap(EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: port,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             org_id: None,
@@ -2450,6 +2575,9 @@ mod tests {
         let handle = EngineHandle::bootstrap(EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: free_port().await,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             org_id: None,
@@ -2501,6 +2629,9 @@ mod tests {
         let handle = EngineHandle::bootstrap(EngineBootConfig {
             data_dir: dir.path().to_path_buf(),
             ipc_port: free_port().await,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             org_id: None,
@@ -2559,6 +2690,9 @@ mod tests {
         let handle = EngineHandle::bootstrap(EngineBootConfig {
             data_dir: ui_dir.path().to_path_buf(),
             ipc_port: port,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
+            remote: None,
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             org_id: None,
