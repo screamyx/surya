@@ -262,7 +262,9 @@ impl EngineHandle {
             return Self::attach_remote(remote).await;
         }
 
-        if let Some(handle) = Self::attach_to_daemon(config.ipc_port).await {
+        if let Some(handle) =
+            Self::attach_to_daemon(config.ipc_port, config.ipc_token.as_deref()).await
+        {
             return Ok(handle);
         }
 
@@ -294,7 +296,12 @@ impl EngineHandle {
                         return Err(err.into());
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                    if let Some(handle) = Self::attach_to_daemon(engine_config.ipc_port).await {
+                    if let Some(handle) = Self::attach_to_daemon(
+                        engine_config.ipc_port,
+                        engine_config.ipc_token.as_deref(),
+                    )
+                    .await
+                    {
                         return Ok(handle);
                     }
                 }
@@ -413,8 +420,10 @@ impl EngineHandle {
 
     /// Probe the IPC port and, if a live engine answers, attach as a remote
     /// viewport. `None` means embed: nothing listening, a non-engine listener,
-    /// or a listener without an identity.
-    async fn attach_to_daemon(ipc_port: u16) -> Option<EngineHandle> {
+    /// or a listener without an identity. The token rides along: a loopback
+    /// daemon started with `ZERON_IPC_TOKEN` refuses bare dials, and embedding
+    /// a second engine over its data dir is exactly the wrong fallback.
+    async fn attach_to_daemon(ipc_port: u16, token: Option<&str>) -> Option<EngineHandle> {
         let url = format!("ws://127.0.0.1:{ipc_port}");
         let probe = tokio::time::timeout(
             std::time::Duration::from_millis(750),
@@ -425,7 +434,7 @@ impl EngineHandle {
             return None;
         }
         tracing::info!(%url, "engine daemon detected; connecting");
-        match Self::attach(&url, None).await {
+        match Self::attach(&url, token).await {
             Ok(handle) => Some(handle),
             // Something is on the port but it is not an engine (or it is
             // wedged). Fall through and embed: a stranger holding 27654
