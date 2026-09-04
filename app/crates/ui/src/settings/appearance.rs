@@ -2455,15 +2455,16 @@ mod tests {
     #[test]
     fn registry_offers_both_appearances_and_keeps_single_dark_families_valid() {
         let registry = ThemeRegistry::builtin();
+        // 11 and 21 since the Surya family joined the built-ins.
         assert_eq!(
             registry
                 .variants_for(zeron_theme::Appearance::Light)
                 .count(),
-            10
+            11
         );
         assert_eq!(
             registry.variants_for(zeron_theme::Appearance::Dark).count(),
-            20
+            21
         );
     }
 
