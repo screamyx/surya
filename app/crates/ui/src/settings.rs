@@ -269,6 +269,10 @@ pub struct UiSettings {
     pub keymap: KeymapConfig,
     /// Light/dark preference. Defaults to following the OS.
     pub appearance: crate::appearance::AppearanceMode,
+    /// Motion preference. Defaults to following the OS accessibility setting
+    /// (PARITY 1.12).
+    #[serde(default)]
+    pub motion: crate::motion::MotionMode,
     /// Interface and conversational-prose family. Device-local by design.
     pub ui_font_family: crate::typography::UiFontFamily,
     /// Base size for interface and conversational prose. Code-related surfaces
@@ -318,6 +322,7 @@ impl Default for UiSettings {
             terminal_open: false,
             keymap: KeymapConfig::default(),
             appearance: crate::appearance::AppearanceMode::default(),
+            motion: crate::motion::MotionMode::default(),
             ui_font_family: crate::typography::UiFontFamily::default(),
             ui_font_size: crate::typography::UiFontSize::default(),
             theme_selection: zeron_theme::ThemeSelection::default(),

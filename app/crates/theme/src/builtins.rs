@@ -12,6 +12,7 @@ pub fn builtin_registry() -> &'static ThemeRegistry {
     static REGISTRY: OnceLock<ThemeRegistry> = OnceLock::new();
     REGISTRY.get_or_init(|| ThemeRegistry {
         families: vec![
+            family("surya", "Surya", vec![surya_light(), surya_dark()]),
             family("zeron", "Zeron", vec![zeron_light(), zeron_dark()]),
             family(
                 "vscode-default",
@@ -235,6 +236,110 @@ const ANSI_LIGHT: [&str; 16] = [
     "#1f1f1f", "#dc2626", "#16a34a", "#b45309", "#2563eb", "#9333ea", "#0e7490", "#3f3f46",
     "#71717a", "#b91c1c", "#15803d", "#92400e", "#1d4ed8", "#7e22ce", "#155e75", "#18181b",
 ];
+
+// ---------------------------------------------------------------------------
+// Surya — the fork's own look (decision 22)
+// ---------------------------------------------------------------------------
+//
+// Warm workshop, light first. Craft's paper in light, Raycast's depth in dark.
+// The canvas is `shell`: in light it is parchment and the panels sit on it as
+// near-white cards; in dark it is the darkest plane and the cards climb out of
+// it. That inversion is deliberate and is why these are seeds of their own
+// rather than a tint of the Zeron pair, whose dark canvas is *lighter* than its
+// content panel.
+//
+// One accent, terracotta, carried from the pre-fork design brief. Neutrals are
+// warm (hue held near 30-40 deg) so nothing reads as the default cool grey.
+
+/// ANSI for the light terminal: warm-shifted, still AA on the parchment.
+const ANSI_SURYA_LIGHT: [&str; 16] = [
+    "#2a2622", "#b4342a", "#3a6b45", "#8a5a12", "#2f5f8f", "#7a4b8c", "#2b6b73", "#5c554c",
+    "#8a8177", "#8f2a22", "#2e5637", "#6e480f", "#26506f", "#5f3a6d", "#22555c", "#1c1917",
+];
+
+/// ANSI for the dark terminal: same hues, lifted for a near-black ground.
+const ANSI_SURYA_DARK: [&str; 16] = [
+    "#26221f", "#e8836b", "#7fb98d", "#e0b062", "#7fb0e0", "#c095d8", "#6fc4c9", "#d6cec3",
+    "#4d4740", "#f0a894", "#a3d0ad", "#eec98c", "#a5c9ee", "#d5b3e6", "#98d9dd", "#f5f1ea",
+];
+
+fn surya_light() -> ThemeVariant {
+    variant(Seeds {
+        id: "surya-light",
+        family_id: "surya",
+        name: "Surya Light",
+        appearance: Appearance::Light,
+        // Opaque by default: the fork must look right without a compositor
+        // blur, because the window may not be transparent (the browser pane
+        // may pin Zed's gpui, which has no backdrop filter). Glass is a
+        // preference the user can still turn on.
+        treatment: SurfaceTreatment::Opaque,
+        // Panels: warm off-white, never #ffffff.
+        background: "#fdfcfa",
+        // Canvas behind the floating panels: parchment.
+        shell: "#eae5dc",
+        // Chips and pills proud of a panel.
+        raised: "#f4f0e9",
+        card: "#fdfcfa",
+        // Warm off-black, never #000000.
+        text: "#26221e",
+        muted: "#6a6157",
+        faint: "#8b8176",
+        accent: "#b4552d",
+        danger: "#b4342a",
+        warning: "#8a5a12",
+        success: "#3a6b45",
+        terminal_background: "#f7f4ee",
+        ansi: ANSI_SURYA_LIGHT,
+        syntax: [
+            "#8b8176", "#b4552d", "#3a6b45", "#8a5a12", "#7a4b8c", "#2f5f8f", "#9c4a6b", "#26221e",
+            "#6a6157", "#9c4a6b", "#2b6b73", "#8f2a22",
+        ],
+        source: source(
+            "surya-light",
+            "native",
+            "https://github.com/screamyx/surya",
+            "decision-22",
+            "MIT",
+        ),
+    })
+}
+
+fn surya_dark() -> ThemeVariant {
+    variant(Seeds {
+        id: "surya-dark",
+        family_id: "surya",
+        name: "Surya Dark",
+        appearance: Appearance::Dark,
+        treatment: SurfaceTreatment::Opaque,
+        // Panels climb out of the canvas.
+        background: "#17150f",
+        // Canvas: the darkest plane, warm.
+        shell: "#0d0b09",
+        raised: "#2a251d",
+        card: "#17150f",
+        text: "#ece6dc",
+        muted: "#a49a8c",
+        faint: "#867d70",
+        accent: "#e08a5a",
+        danger: "#e8836b",
+        warning: "#e0b062",
+        success: "#7fb98d",
+        terminal_background: "#100e0b",
+        ansi: ANSI_SURYA_DARK,
+        syntax: [
+            "#867d70", "#e08a5a", "#7fb98d", "#e0b062", "#c095d8", "#7fb0e0", "#e2809f", "#ece6dc",
+            "#a49a8c", "#e2809f", "#6fc4c9", "#f0a894",
+        ],
+        source: source(
+            "surya-dark",
+            "native",
+            "https://github.com/screamyx/surya",
+            "decision-22",
+            "MIT",
+        ),
+    })
+}
 
 fn zeron_dark() -> ThemeVariant {
     variant(Seeds {

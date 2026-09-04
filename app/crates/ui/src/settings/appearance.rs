@@ -544,6 +544,67 @@ fn surface_choice(
         .child(surface_label(surface))
 }
 
+/// One of the three motion choices. Same chip as [`surface_choice`] — the row
+/// sits directly under Glass and a second chip shape there would read as two
+/// different controls doing the same job.
+fn motion_choice(
+    theme: &Theme,
+    mode: crate::motion::MotionMode,
+    selected: bool,
+) -> gpui::Stateful<gpui::Div> {
+    div()
+        .id(SharedString::from(format!(
+            "appearance-motion-{}",
+            mode.label().to_lowercase()
+        )))
+        .h(px(30.0))
+        .px(px(10.0))
+        .rounded(px(7.0))
+        .border_1()
+        .border_color(if selected { theme.accent } else { theme.border })
+        .bg(if selected {
+            theme.accent_wash
+        } else {
+            theme.surface_raised.opacity(0.28)
+        })
+        .text_size(crate::typography::ui_rems(11.5))
+        .font_weight(if selected {
+            gpui::FontWeight::MEDIUM
+        } else {
+            gpui::FontWeight::NORMAL
+        })
+        .text_color(if selected {
+            theme.accent
+        } else {
+            theme.text_muted
+        })
+        .flex()
+        .items_center()
+        .cursor_pointer()
+        .when(!selected, |control| {
+            control.hover(|style| style.bg(theme.surface_raised_hover))
+        })
+        .child(mode.label())
+}
+
+/// What the row says under "Motion", so the user can tell what `System`
+/// currently resolves to instead of guessing.
+fn motion_helper(mode: crate::motion::MotionMode) -> &'static str {
+    match mode {
+        crate::motion::MotionMode::System => {
+            if crate::motion::system_reduced_motion() {
+                "Following this machine, which asks for reduced motion."
+            } else {
+                "Following this machine, which asks for full motion."
+            }
+        }
+        crate::motion::MotionMode::Full => "Panels slide and fade at full travel.",
+        crate::motion::MotionMode::Reduced => {
+            "Panels change state without travel. Feedback stays."
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Corners {
     All,
@@ -1979,6 +2040,24 @@ impl Render for AppearancePage {
                 ))
             })
             .collect::<Vec<_>>();
+        let current_motion = crate::settings::current(cx).motion;
+        let motion_controls = crate::motion::MotionMode::ALL
+            .into_iter()
+            .map(|mode| {
+                motion_choice(&theme, mode, mode == current_motion).on_click(cx.listener(
+                    move |_, _, _, cx| {
+                        crate::motion::apply_motion_mode(mode, cx);
+                        crate::settings::update(
+                            crate::settings::SavePolicy::Immediate,
+                            cx,
+                            |settings| settings.motion = mode,
+                        );
+                        cx.refresh_windows();
+                        cx.notify();
+                    },
+                ))
+            })
+            .collect::<Vec<_>>();
         let surface_controls = SurfacePreference::ALL
             .into_iter()
             .map(|surface| {
@@ -2047,6 +2126,34 @@ impl Render for AppearancePage {
                         .items_center()
                         .gap(px(6.0))
                         .children(surface_controls),
+                )
+                .into_any_element(),
+        );
+        settings_rows.push(
+            widgets::card_row(&theme, false)
+                .child(widgets::row_tile(&theme, icons::TUNING))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(widgets::row_title(&theme, "Motion"))
+                        .child(widgets::meta_line(
+                            &theme,
+                            vec![
+                                div()
+                                    .child(SharedString::from(motion_helper(current_motion)))
+                                    .into_any_element(),
+                            ],
+                        )),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .ml(px(10.0))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.0))
+                        .children(motion_controls),
                 )
                 .into_any_element(),
         );

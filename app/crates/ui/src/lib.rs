@@ -36,6 +36,7 @@ pub mod settings;
 pub mod shell;
 pub mod sound;
 pub mod state;
+pub mod surya;
 pub mod syntax_cache;
 pub mod terminal;
 pub mod theme;
@@ -139,6 +140,10 @@ pub fn run_app(config: UiConfig) {
             cx,
         );
         theme_library::init(data_dir.clone(), cx);
+        // Before any window: gpui snaps `with_animation` elements when the
+        // flag is set, so installing it after the first paint would play the
+        // boot splash at full travel for a user who asked for none.
+        motion::apply_motion_mode(ui_settings.motion, cx);
         appearance::init(
             ui_settings.appearance,
             ui_settings.theme_selection,

@@ -640,6 +640,108 @@ pub fn reduced_motion(cx: &App) -> bool {
     cx.reduce_motion()
 }
 
+// ---------------------------------------------------------------------------
+// Reduced motion (PARITY 1.12)
+// ---------------------------------------------------------------------------
+
+/// The user's motion preference. Persisted in `ui-settings.json`, and the
+/// switch PARITY 1.12 records as missing.
+///
+/// gpui owns a process-wide reduced-motion flag and honours it inside
+/// `with_animation`, but it defaults to `false` and reads no OS setting on any
+/// platform, so before this nothing ever set it: every accessibility
+/// preference on the machine was ignored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MotionMode {
+    /// Follow the operating system's reduce-motion setting.
+    #[default]
+    System,
+    /// Full motion, whatever the OS says.
+    Full,
+    /// Cut travel everywhere. Elements land in their end state.
+    Reduced,
+}
+
+impl MotionMode {
+    pub const ALL: [Self; 3] = [Self::System, Self::Full, Self::Reduced];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::System => "System",
+            Self::Full => "Full",
+            Self::Reduced => "Reduced",
+        }
+    }
+
+    /// Resolve against what the OS reports.
+    pub fn resolve(self, system_reduced: bool) -> bool {
+        match self {
+            Self::System => system_reduced,
+            Self::Full => false,
+            Self::Reduced => true,
+        }
+    }
+}
+
+/// What the OS asks for. Read once at boot and cached: none of the three
+/// platforms gives gpui a change notification for it, so re-reading on every
+/// render would spend a syscall (or a subprocess, on Linux) per frame for a
+/// value that changes when a user visits a settings panel.
+pub fn system_reduced_motion() -> bool {
+    static SYSTEM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *SYSTEM.get_or_init(probe_system_reduced_motion)
+}
+
+/// macOS: the accessibility display preference, the same flag Safari maps to
+/// CSS `prefers-reduced-motion`.
+#[cfg(target_os = "macos")]
+fn probe_system_reduced_motion() -> bool {
+    use objc::runtime::{Object, YES};
+    use objc::{class, msg_send, sel, sel_impl};
+    unsafe {
+        let workspace: *mut Object = msg_send![class!(NSWorkspace), sharedWorkspace];
+        if workspace.is_null() {
+            return false;
+        }
+        let reduce: objc::runtime::BOOL =
+            msg_send![workspace, accessibilityDisplayShouldReduceMotion];
+        reduce == YES
+    }
+}
+
+/// Linux: GNOME's `enable-animations`, which is what the desktop
+/// portal reports as `prefers-reduced-motion` to browsers and Electron apps.
+/// Absent gsettings (a bare WM, a container) we assume full motion, which is
+/// the same thing every other toolkit does there.
+#[cfg(target_os = "linux")]
+fn probe_system_reduced_motion() -> bool {
+    let Ok(output) = std::process::Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.interface", "enable-animations"])
+        .output()
+    else {
+        return false;
+    };
+    String::from_utf8_lossy(&output.stdout).trim() == "false"
+}
+
+/// Windows: `SPI_GETCLIENTAREAANIMATION` is the documented client-area
+/// animation preference, but reading it needs a `windows` crate dependency
+/// this crate does not carry. Until it does, Windows follows the explicit
+/// choice only, and `System` there means full motion.
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn probe_system_reduced_motion() -> bool {
+    false
+}
+
+/// Install the resolved preference into gpui. Call at boot and after any
+/// change to the setting.
+pub fn apply_motion_mode(mode: MotionMode, cx: &mut App) {
+    let reduced = mode.resolve(system_reduced_motion());
+    tracing::debug!(?mode, reduced, "motion: applying preference");
+    set_reduced_motion(cx, reduced);
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -662,6 +764,30 @@ mod tests {
     }
 
     use super::*;
+
+    /// The switch PARITY 1.12 asks for: three states, and only `System` is
+    /// allowed to consult the machine.
+    #[test]
+    fn motion_mode_resolves_against_the_os() {
+        for system in [false, true] {
+            assert_eq!(MotionMode::Full.resolve(system), false);
+            assert_eq!(MotionMode::Reduced.resolve(system), true);
+            assert_eq!(MotionMode::System.resolve(system), system);
+        }
+        assert_eq!(MotionMode::default(), MotionMode::System);
+    }
+
+    #[test]
+    fn motion_mode_round_trips_through_settings_json() {
+        for (mode, json) in [
+            (MotionMode::System, "\"system\""),
+            (MotionMode::Full, "\"full\""),
+            (MotionMode::Reduced, "\"reduced\""),
+        ] {
+            assert_eq!(serde_json::to_string(&mode).unwrap(), json);
+            assert_eq!(serde_json::from_str::<MotionMode>(json).unwrap(), mode);
+        }
+    }
 
     fn assert_close(actual: f32, expected: f32, tol: f32, ctx: &str) {
         assert!(

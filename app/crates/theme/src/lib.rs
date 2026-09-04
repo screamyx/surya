@@ -400,8 +400,8 @@ pub struct ThemeSelection {
 impl Default for ThemeSelection {
     fn default() -> Self {
         Self {
-            light: "zeron-light".into(),
-            dark: "zeron-dark".into(),
+            light: "surya-light".into(),
+            dark: "surya-dark".into(),
         }
     }
 }
@@ -554,9 +554,9 @@ impl ThemeRegistry {
         self.variant(selection.variant_id(appearance))
             .or_else(|| {
                 self.variant(if appearance.is_dark() {
-                    "zeron-dark"
+                    "surya-dark"
                 } else {
-                    "zeron-light"
+                    "surya-light"
                 })
             })
             .expect("the built-in registry always contains both Zeron variants")
@@ -811,7 +811,7 @@ mod tests {
     #[test]
     fn builtins_have_complete_provenance_and_no_validation_errors() {
         let registry = ThemeRegistry::builtin();
-        assert_eq!(registry.families.len(), 19);
+        assert_eq!(registry.families.len(), 20);
         assert!(registry.variant("zeron-light").is_some());
         assert!(registry.variant("zeron-dark").is_some());
         let errors: Vec<_> = registry
@@ -822,6 +822,50 @@ mod tests {
         assert!(errors.is_empty(), "{errors:#?}");
     }
 
+    /// The fork's own pair must exist, be the shipped default, and hold the
+    /// contrast the taste doctrine asks for: off-black on warm white, never
+    /// pure #000 on pure #fff.
+    #[test]
+    fn surya_is_the_default_pair_and_holds_its_contrast() {
+        let registry = ThemeRegistry::builtin();
+        let selection = ThemeSelection::default();
+        assert_eq!(selection.light, "surya-light");
+        assert_eq!(selection.dark, "surya-dark");
+
+        for id in ["surya-light", "surya-dark"] {
+            let variant = registry.variant(id).expect("surya variant is built in");
+            let colors = &variant.colors;
+            assert_ne!(colors.background, Color::WHITE, "{id}: pure white panel");
+            assert_ne!(colors.background, Color::BLACK, "{id}: pure black panel");
+
+            let body = colors.text.contrast(colors.background);
+            assert!(body >= 12.0, "{id}: body text {body:.2}:1 under 12:1");
+            let muted = colors.text_muted.contrast(colors.background);
+            assert!(muted >= 4.5, "{id}: muted text {muted:.2}:1 under AA");
+            let accent = variant.accent.primary.contrast(colors.background);
+            assert!(accent >= 3.0, "{id}: accent {accent:.2}:1 under 3:1");
+
+            // The canvas and the panel must be visibly different planes: the
+            // floating layout has nothing else to separate a card from the
+            // sheet it rests on.
+            let step = colors.shell.contrast(colors.background);
+            assert!(step >= 1.10, "{id}: canvas/panel step {step:.3} too flat");
+        }
+
+        // Light first: the canvas recedes *behind* the panel in light and the
+        // panel climbs *out of* the canvas in dark. Same idea, mirrored.
+        let light = registry.variant("surya-light").expect("light");
+        let dark = registry.variant("surya-dark").expect("dark");
+        assert!(
+            light.colors.shell.luminance() < light.colors.background.luminance(),
+            "light canvas should be darker than the panel"
+        );
+        assert!(
+            dark.colors.shell.luminance() < dark.colors.background.luminance(),
+            "dark canvas should be darker than the panel"
+        );
+    }
+
     #[test]
     fn visual_fixture_matrix_covers_every_variant_and_scene() {
         let registry = ThemeRegistry::builtin();
@@ -830,7 +874,7 @@ mod tests {
             .iter()
             .map(|family| family.variants.len())
             .sum::<usize>();
-        assert_eq!(variants, 30);
-        assert_eq!(variants * VisualFixture::ALL.len(), 300);
+        assert_eq!(variants, 32);
+        assert_eq!(variants * VisualFixture::ALL.len(), 320);
     }
 }
