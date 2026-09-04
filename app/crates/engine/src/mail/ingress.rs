@@ -113,9 +113,7 @@ fn start_socket(mail: Mail, path: PathBuf) -> std::io::Result<tokio::task::JoinH
                         Ok(Some(receipt)) => serde_json::to_string(&receipt)
                             .unwrap_or_else(|_| "{\"ids\":[]}".into()),
                         Ok(None) => continue,
-                        Err(err) => {
-                            serde_json::json!({ "error": err.to_string() }).to_string()
-                        }
+                        Err(err) => serde_json::json!({ "error": err.to_string() }).to_string(),
                     };
                     if write
                         .write_all(format!("{reply}\n").as_bytes())
@@ -189,10 +187,7 @@ fn read_from(path: &Path, offset: u64) -> std::io::Result<(Vec<String>, u64)> {
     Ok((lines, offset + consumed as u64))
 }
 
-async fn accept(
-    mail: &Mail,
-    line: &str,
-) -> Result<Option<super::MailReceipt>, crate::EngineError> {
+async fn accept(mail: &Mail, line: &str) -> Result<Option<super::MailReceipt>, crate::EngineError> {
     if line.trim().is_empty() {
         return Ok(None);
     }

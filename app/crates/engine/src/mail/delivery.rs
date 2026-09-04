@@ -106,7 +106,8 @@ impl Mail {
             .await?;
         let now = chrono::Utc::now().timestamp_millis();
         for message in &queued {
-            self.store().mark_delivered(&message.id, now, Some(&run_id))?;
+            self.store()
+                .mark_delivered(&message.id, now, Some(&run_id))?;
         }
         self.publish_feed();
         tracing::info!(

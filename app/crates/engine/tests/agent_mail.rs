@@ -156,7 +156,9 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
         core.workspace
             .create_chat(chat, Some(SPACE), Some(&core.device_id), None, None)
             .expect("chat");
-        core.workspace.rename_chat(chat, "Pre-titled").expect("title");
+        core.workspace
+            .rename_chat(chat, "Pre-titled")
+            .expect("title");
     }
 
     // Both agents run once, so each has a live session and a run
@@ -237,10 +239,8 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     wait_for(
         || {
             let all = core.mail.list(None).unwrap();
-            ids.iter().all(|id| {
-                all.iter()
-                    .any(|m| &m.id == id && m.delivered_at.is_some())
-            })
+            ids.iter()
+                .all(|id| all.iter().any(|m| &m.id == id && m.delivered_at.is_some()))
         },
         "both fan-out copies delivered",
     )
@@ -249,10 +249,7 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     let delivered_fanout = {
         let all = core.mail.list(None).unwrap();
         ids.iter()
-            .filter(|id| {
-                all.iter()
-                    .any(|m| &&m.id == id && m.delivered_at.is_some())
-            })
+            .filter(|id| all.iter().any(|m| &&m.id == id && m.delivered_at.is_some()))
             .count()
     };
     println!("proof 2: sent=1 delivered={delivered_fanout}");

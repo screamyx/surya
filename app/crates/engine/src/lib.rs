@@ -290,7 +290,12 @@ impl EngineCore {
         let spaces_sync = SpacesSync::start(repos.clone(), workspace.clone(), &device_id);
         // Mail rides the profile's store root, a sibling of the docs database,
         // so it inherits the same local/synced boundary.
-        let mail = Mail::open(profile.store_root(), &device_id, sessions.clone(), doc_host.clone())?;
+        let mail = Mail::open(
+            profile.store_root(),
+            &device_id,
+            sessions.clone(),
+            doc_host.clone(),
+        )?;
         mail.start_pump();
         Ok(Self {
             sessions,
