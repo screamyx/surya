@@ -312,12 +312,18 @@ fn surya_dark() -> ThemeVariant {
         name: "Surya Dark",
         appearance: Appearance::Dark,
         treatment: SurfaceTreatment::Opaque,
-        // Panels climb out of the canvas.
-        background: "#17150f",
+        // Panels climb out of the canvas. The step is wide for a dark theme
+        // on purpose: a floating card has nothing but this tone difference,
+        // a hairline and a shadow to lift it, and a shadow does almost no
+        // work on a near-black ground.
+        background: "#232019",
         // Canvas: the darkest plane, warm.
-        shell: "#0d0b09",
-        raised: "#2a251d",
-        card: "#17150f",
+        shell: "#0b0a08",
+        raised: "#3a342b",
+        // A step ABOVE the panel, unlike the light pair where card == panel.
+        // Dark separates layers by climbing; light separates them with the
+        // hairline and the shadow.
+        card: "#2e2922",
         text: "#ece6dc",
         muted: "#a49a8c",
         faint: "#867d70",

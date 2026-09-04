@@ -847,15 +847,29 @@ mod tests {
 
             // The canvas and the panel must be visibly different planes: the
             // floating layout has nothing else to separate a card from the
-            // sheet it rests on.
+            // sheet it rests on. Both appearances are held to the same number
+            // — the dark pair needs a wider raw step to reach it, which is
+            // the point.
             let step = colors.shell.contrast(colors.background);
-            assert!(step >= 1.10, "{id}: canvas/panel step {step:.3} too flat");
+            assert!(step >= 1.20, "{id}: canvas/panel step {step:.3} too flat");
         }
+
+        let light = registry.variant("surya-light").expect("light");
+        let dark = registry.variant("surya-dark").expect("dark");
+
+        // A card resting on a panel: dark climbs above the panel fill, light
+        // stays level with it and separates by hairline and shadow instead.
+        assert!(
+            dark.colors.card.luminance() > dark.colors.background.luminance(),
+            "dark float card must climb above the panel it sits on"
+        );
+        assert_eq!(
+            light.colors.card, light.colors.background,
+            "light float card sits level with the panel by design"
+        );
 
         // Light first: the canvas recedes *behind* the panel in light and the
         // panel climbs *out of* the canvas in dark. Same idea, mirrored.
-        let light = registry.variant("surya-light").expect("light");
-        let dark = registry.variant("surya-dark").expect("dark");
         assert!(
             light.colors.shell.luminance() < light.colors.background.luminance(),
             "light canvas should be darker than the panel"

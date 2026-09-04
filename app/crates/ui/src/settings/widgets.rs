@@ -34,17 +34,23 @@ pub fn page_header(theme: &Theme, title: &str, count: Option<usize>) -> gpui::Di
         .flex_row()
         .items_baseline()
         .gap(px(10.0))
+        // The page title is the one display moment on a settings page. 16px
+        // over 14px body was a timid step that read as a bolded row.
         .child(
             div()
-                .text_size(crate::typography::ui_rems(16.0))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_size(crate::surya::TITLE.rems())
+                .line_height(crate::surya::TITLE.line_height())
+                .font_weight(crate::surya::TITLE.weight)
                 .text_color(theme.text)
                 .child(SharedString::from(title.to_string())),
         )
         .when_some(count, |el, count| {
             el.child(
                 div()
-                    .text_size(crate::typography::ui_rems(13.0))
+                    .text_size(crate::surya::CAPTION.rems())
+                    .font_weight(crate::surya::CAPTION.weight)
+                    // Tabular: this count changes in place.
+                    .font_features(crate::surya::tabular())
                     .text_color(theme.text_muted.opacity(0.7))
                     .child(SharedString::from(format!("{count}"))),
             )

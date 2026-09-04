@@ -43,10 +43,12 @@ use crate::typography::ui_rems;
 
 /// Margin between the window edge and the outermost panel.
 ///
-/// 10px, not 16: the panels are the app. A wider margin turns the canvas into
-/// a frame and costs a line of the transcript at 1100x700, which is the small
-/// window the layout has to survive.
-pub const CANVAS_INSET: f32 = 10.0;
+/// 16, twice the seam between two panels. It started at 10, and a render of
+/// the layout at 1440x900 showed why that was wrong: at 10 against a seam of
+/// 8, the window margin and the gap between two cards read as the same
+/// measurement, so the panels looked evenly scattered rather than grouped
+/// inside a frame. Outer must beat inner by enough to see.
+pub const CANVAS_INSET: f32 = 16.0;
 
 /// Gap between two adjacent panels. Reads as one seam, not two margins.
 pub const PANEL_GAP: f32 = 8.0;
@@ -167,6 +169,20 @@ pub fn panel_bg(theme: &Theme) -> Hsla {
     theme.bg
 }
 
+/// The fill of a card resting ON a panel: the file browser over the right
+/// pane.
+///
+/// It is a separate tone, not the panel fill again, because the two
+/// appearances separate layers differently. Light lifts with the border and
+/// the shadow and can leave the fill alone; dark has to climb, and a dark
+/// float painted in the panel's own tone disappears into it. That is exactly
+/// what a 1440x900 render of the layout showed: in dark the file card was
+/// invisible against the pane behind it while the same card read fine in
+/// light. `surface_card` is the theme's own answer to that ladder.
+pub fn float_bg(theme: &Theme) -> Hsla {
+    theme.surface_card
+}
+
 /// The canvas the panels float on.
 pub fn canvas_bg(theme: &Theme) -> Hsla {
     theme.surface
@@ -181,8 +197,12 @@ pub fn panel(theme: &Theme, elevation: Elevation) -> gpui::Div {
         Elevation::Panel => PANEL_RADIUS,
         Elevation::Float => FLOAT_RADIUS,
     };
+    let fill = match elevation {
+        Elevation::Panel => panel_bg(theme),
+        Elevation::Float => float_bg(theme),
+    };
     gpui::div()
-        .bg(panel_bg(theme))
+        .bg(fill)
         .rounded(px(radius))
         .border_1()
         .border_color(theme.border)
@@ -350,7 +370,11 @@ mod tests {
     /// between two panels.
     #[test]
     fn spacing_hierarchy_holds() {
-        assert!(CANVAS_INSET > PANEL_GAP);
+        // Not merely larger: large enough to read as a different measurement.
+        assert!(
+            CANVAS_INSET >= 2.0 * PANEL_GAP,
+            "window margin {CANVAS_INSET} does not clearly beat the panel seam {PANEL_GAP}"
+        );
         assert!(PANEL_GAP >= PANEL_PAD);
     }
 

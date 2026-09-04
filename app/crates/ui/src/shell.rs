@@ -5552,10 +5552,14 @@ impl Shell {
                                 .text_color(theme.text.opacity(0.09)),
                         )
                         .child(
+                            // The one display moment in the app: an empty
+                            // window with a single thing to do. 16px medium
+                            // read as a slightly bold row, not as a headline.
                             div()
                                 .mt(px(24.0))
-                                .text_size(crate::typography::ui_rems(16.0))
-                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_size(crate::surya::DISPLAY.rems())
+                                .line_height(crate::surya::DISPLAY.line_height())
+                                .font_weight(crate::surya::DISPLAY.weight)
                                 .text_color(theme.text)
                                 .child(SharedString::from("Add a project to get started")),
                         )
@@ -7392,7 +7396,7 @@ impl Render for Shell {
             .bg(frost)
             .text_color(text)
             .font_family(font)
-            .text_size(crate::typography::ui_rems(14.0))
+            .text_size(crate::surya::BODY.rems())
             .on_drag_move(cx.listener(Self::on_sidebar_drag))
             .on_drag_move(cx.listener(Self::on_right_pane_drag))
             .on_drag_move(cx.listener(Self::on_terminal_drag))
