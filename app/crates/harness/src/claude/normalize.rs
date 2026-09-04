@@ -4,6 +4,7 @@
 use serde_json::Value;
 use zeron_proto::{AgentEvent, DoneStatus, HarnessId, TodoItem, ToolCall};
 
+use super::surya::SHOW_CARD_TOOL;
 use super::wire::{ContentBlock, Frame};
 
 /// Human-readable text for the CLI's assistant-level error codes. These arrive
@@ -67,11 +68,15 @@ fn opt_str_field(input: &Value, key: &str) -> Option<String> {
     input.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
-/// Lift a `show_card` tool_use out as [`AgentEvent::Card`] instead of a
-/// tool chip. v1 reads the card from the tool_use INPUT (an A2UI envelope
-/// list, one envelope, or the shorthand — see [`crate::cards`]); the card
-/// store lookup by `card_id` on the tool_result is the surya-mcp seat's
-/// follow-up and lands in this same function. `None` for every other tool.
+/// Lift a `show_card` tool_use out as [`AgentEvent::Card`] straight from the
+/// tool_use INPUT (an A2UI envelope list, one envelope, or the shorthand —
+/// see [`crate::cards`]). `None` for every other tool.
+///
+/// This is the FALLBACK. The primary path reads the sidecar's own record from
+/// the card store on the tool_result, which carries the normalized envelope
+/// list and the surface id the sidecar actually used. The input lift is what
+/// runs when there is no store to read: a run without surya options, an older
+/// sidecar, or a card the sidecar refused to record.
 pub(crate) fn card_tool_use(name: &str, id: &str, input: &Value) -> Option<AgentEvent> {
     if !crate::cards::is_card_tool(name) {
         return None;
@@ -207,6 +212,16 @@ fn is_synthetic_user_text(text: &str) -> bool {
 /// boundary (it resets accumulated parts), so one run ⇒ one `SessionStarted`;
 /// the wake turn's own frames flow through and the engine's parked-session
 /// resume turns them into the done→Working→done wake.
+/// A `show_card` call waiting on its result.
+struct HeldCard {
+    tool_use_id: String,
+    /// The tool chip this call would have shown, kept for the failure path.
+    chip: AgentEvent,
+    /// The card read out of the call's own input, used when the store is
+    /// silent.
+    from_input: Option<AgentEvent>,
+}
+
 pub(crate) struct Normalizer {
     saw_init: bool,
     /// Background-agent ids (`task_started.task_id`) → the spawning Agent
@@ -227,6 +242,17 @@ pub(crate) struct Normalizer {
     assistant_message_id: String,
     /// Last session id seen (init or result) — used for synthetic Dones.
     pub session_id: Option<String>,
+    /// Where the surya sidecar records the cards it drew. `None` when the run
+    /// carried no surya options, and then no card is ever looked up.
+    card_store: Option<std::path::PathBuf>,
+    /// `show_card` calls awaiting their result, held back so a drawn card
+    /// does not also show a tool chip above it. Each entry carries the chip it
+    /// would have emitted and the card lifted from the call's own input, used
+    /// when the card store has nothing. On a non-error result the chip is
+    /// dropped and a Card takes its place; on an error the chip is flushed,
+    /// because a card that could not be drawn must not vanish silently.
+    /// Insertion order is kept so a flush reads in call order.
+    open_card_tools: Vec<HeldCard>,
 }
 
 impl Normalizer {
@@ -237,7 +263,40 @@ impl Normalizer {
             agent_spawn_tools: std::collections::HashSet::new(),
             assistant_message_id: new_message_id(),
             session_id: None,
+            card_store: None,
+            open_card_tools: Vec::new(),
         }
+    }
+
+    /// Point the normalizer at the card store the sidecar writes for this run.
+    pub fn with_card_store(mut self, store: Option<std::path::PathBuf>) -> Self {
+        self.card_store = store;
+        self
+    }
+
+    /// The Card event for a resolved `show_card` call, when there is one.
+    fn card_for(&self, tool_use_id: &str) -> Option<AgentEvent> {
+        let store = self.card_store.as_ref()?;
+        crate::claude::surya::read_card(store, tool_use_id)
+    }
+
+    /// Take the held-back `show_card` call for this result, if it is one.
+    fn take_card_call(&mut self, tool_use_id: &str) -> Option<HeldCard> {
+        let at = self
+            .open_card_tools
+            .iter()
+            .position(|held| held.tool_use_id == tool_use_id)?;
+        Some(self.open_card_tools.remove(at))
+    }
+
+    /// Every `show_card` call still waiting on a result. A turn that ends
+    /// mid-card (an interrupt, a crash) flushes their chips so the transcript
+    /// still shows what the agent tried to do.
+    fn flush_card_calls(&mut self) -> Vec<AgentEvent> {
+        std::mem::take(&mut self.open_card_tools)
+            .into_iter()
+            .map(|held| held.chip)
+            .collect()
     }
 
     /// Rotate the assistant message id for a steer boundary; returns
@@ -423,13 +482,23 @@ impl Normalizer {
                     .blocks()
                     .filter(|b: &ContentBlock| b.kind == "tool_use")
                     .flat_map(|b| {
-                        // A `show_card` call is a Card event, not a chip.
-                        let call = card_tool_use(&b.name, &b.id, &b.input).unwrap_or_else(|| {
-                            AgentEvent::ToolCall {
-                                id: b.id.clone(),
-                                call: decode_tool_use(&b.name, &b.input),
-                            }
-                        });
+                        let chip = AgentEvent::ToolCall {
+                            id: b.id.clone(),
+                            call: decode_tool_use(&b.name, &b.input),
+                        };
+                        // A show_card call is held back: the card it draws
+                        // replaces its chip, unless the call fails.
+                        let from_input = card_tool_use(&b.name, &b.id, &b.input);
+                        let call = if from_input.is_some() {
+                            self.open_card_tools.push(HeldCard {
+                                tool_use_id: b.id.clone(),
+                                chip,
+                                from_input,
+                            });
+                            None
+                        } else {
+                            Some(chip)
+                        };
                         // A spawn's `prompt` is the subagent's opening user
                         // message — the wire never echoes it on the child
                         // feed (child user frames carry tool results and
@@ -469,7 +538,7 @@ impl Normalizer {
                                 ))
                             })
                             .flatten();
-                        std::iter::once(call).chain(opening).chain(steer)
+                        call.into_iter().chain(opening).chain(steer)
                     })
                     .collect();
                 // A failed turn (usage limit, billing, auth, overloaded, …)
@@ -526,16 +595,41 @@ impl Normalizer {
                     );
                     return out;
                 }
-                f.message
+                let results: Vec<ContentBlock> = f
+                    .message
                     .blocks()
                     .filter(|b: &ContentBlock| b.kind == "tool_result")
-                    .map(|b| AgentEvent::ToolResult {
+                    .collect();
+                let mut out = Vec::with_capacity(results.len());
+                for b in results {
+                    let is_error = b.is_error.unwrap_or(false);
+                    let held = self.take_card_call(&b.tool_use_id);
+                    if let Some(held) = held {
+                        // The sidecar's own record wins: it carries the
+                        // normalized envelope list and the surface id the
+                        // sidecar actually used. The call's input is the
+                        // fallback when there is no store to read.
+                        let card = (!is_error)
+                            .then(|| self.card_for(&b.tool_use_id).or(held.from_input))
+                            .flatten();
+                        if let Some(card) = card {
+                            // The card IS the answer: neither the call nor its
+                            // result appears, so no chip sits above it.
+                            out.push(card);
+                            continue;
+                        }
+                        // The call failed, or nothing could be read back at
+                        // all. Show the pair so the attempt is not invisible.
+                        out.push(held.chip);
+                    }
+                    out.push(AgentEvent::ToolResult {
                         id: b.tool_use_id.clone(),
-                        is_error: b.is_error.unwrap_or(false),
+                        is_error,
                         output: None,
                         diff: None,
-                    })
-                    .collect()
+                    });
+                }
+                out
             }
 
             // A claude.ai plan window was hit. A hard `rejected` blocks the
@@ -622,7 +716,12 @@ impl Normalizer {
                         session_id: f.session_id,
                     }
                 };
-                vec![usage, done]
+                // A show_card call whose result never arrived (an interrupt,
+                // a crash) still gets its chip, ahead of the turn's end.
+                let mut out = self.flush_card_calls();
+                out.push(usage);
+                out.push(done);
+                out
             }
 
             // Control frames are handled by the run loop, not normalized.
@@ -681,9 +780,9 @@ mod tests {
         ));
     }
 
-    /// A `show_card` tool_use (bare or MCP-prefixed) becomes a Card event
-    /// carrying the input JSON, never a tool chip; its later tool_result is
-    /// an ordinary resolved result the fold ignores (no chip to resolve).
+    /// A `show_card` tool_use (bare or MCP-prefixed) becomes a Card event,
+    /// never a tool chip. The card lands on the call's tool_result, and with
+    /// no card store configured it is lifted from the call's own input.
     #[test]
     fn show_card_tool_use_is_a_card_event() {
         let card = json!({"surfaceId": "s1", "components": [{"id": "root", "component": "Text", "text": "hi"}]});
@@ -691,7 +790,10 @@ mod tests {
             let raw = format!(
                 r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","id":"toolu_card","name":"{name}","input":{card}}}]}}}}"#
             );
-            let ev = normalize_one(&raw);
+            let result = format!(
+                r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"toolu_card","is_error":false}}]}}}}"#
+            );
+            let ev = normalize_all(&[&raw, &result]);
             assert!(
                 matches!(&ev[0], AgentEvent::Card { card_id, surface_id, tool_use_id, a2ui }
                     if card_id == "toolu_card" && surface_id == "s1" && tool_use_id == "toolu_card"
@@ -704,15 +806,29 @@ mod tests {
             );
         }
         // A `{"card": ...}` wrapper unwraps, and an explicit card_id wins.
-        let wrapped = normalize_one(
+        let wrapped = normalize_all(&[
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"show_card","input":{"card_id":"card-9","card":[{"createSurface":{"surfaceId":"w","catalogId":"c"}}]}}]}}"#,
-        );
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":false}]}}"#,
+        ]);
         assert!(matches!(&wrapped[0], AgentEvent::Card { card_id, surface_id, a2ui, .. } if card_id == "card-9" && surface_id == "w" && a2ui.len() == 1));
         // Other MCP tools stay chips.
         let other = normalize_one(
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t3","name":"mcp__surya__open_file","input":{}}]}}"#,
         );
         assert!(matches!(&other[0], AgentEvent::ToolCall { call: ToolCall::Mcp { .. }, .. }));
+    }
+
+    /// Feed several frames through ONE normalizer: a card spans two frames
+    /// (the call, then its result), so a fresh normalizer per frame loses the
+    /// held-back call between them.
+    fn normalize_all(raws: &[&str]) -> Vec<AgentEvent> {
+        let mut norm = Normalizer::new();
+        raws.iter()
+            .flat_map(|raw| {
+                let frame = crate::claude::wire::parse_frame(raw).expect("frame parses");
+                norm.normalize(frame, false)
+            })
+            .collect()
     }
 
     fn normalize_one(raw: &str) -> Vec<AgentEvent> {

@@ -34,6 +34,18 @@ case "$first" in
   emit '{"type":"result","subtype":"success","result":"done!","errors":[],"usage":{"input_tokens":10,"output_tokens":20},"session_id":"sess-1","total_cost_usd":0.01}'
   ;;
 
+*scenario:card*)
+  # A surya show_card call and its result, plus a second one that FAILS, plus
+  # an ordinary tool: proves the Card event follows its own result, only for a
+  # non-error result, and never for a tool that is not show_card.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","mcp__surya__show_card"],"cwd":"/tmp","session_id":"sess-card"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_card_ok","name":"mcp__surya__show_card","input":{"card":{"shape":"approval","title":"Run it?"}}}]}}'
+  emit '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_card_ok","is_error":false}]}}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_card_bad","name":"mcp__surya__show_card","input":{"card":{"shape":"chart"}}},{"type":"tool_use","id":"toolu_bash","name":"Bash","input":{"command":"ls"}}]}}'
+  emit '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_card_bad","is_error":true},{"type":"tool_result","tool_use_id":"toolu_bash","is_error":false}]}}'
+  emit '{"type":"result","subtype":"success","result":"done!","errors":[],"session_id":"sess-card"}'
+  ;;
+
 *scenario:wake*)
   # Eager-done + wake, the live-verified 2.1.228 background-subagent shape:
   # the parent turn settles with result #1 while the subagent still runs;

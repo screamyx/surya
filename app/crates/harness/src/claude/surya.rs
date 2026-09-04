@@ -29,6 +29,11 @@ const SYSTEM_APPEND: &str = include_str!("../../../../assets/surya-system-append
 /// `mcp__surya__send_message` is the only way an agent reaches another agent.
 pub const DENIED_TOOLS: &str = "SendMessage,ListAgents";
 
+/// The tool name Claude Code exposes for the sidecar's `show_card`. The
+/// normalizer watches for it; the app's transcript detection uses the same
+/// string.
+pub const SHOW_CARD_TOOL: &str = "mcp__surya__show_card";
+
 /// The MCP server name. Tool ids the model sees are `mcp__surya__<tool>`; the
 /// app's transcript detection depends on this string.
 pub const SERVER_NAME: &str = "surya";
@@ -158,6 +163,42 @@ pub fn prepare(options: &SuryaOptions, cwd: &str) -> Option<SuryaFiles> {
     })
 }
 
+/// Read back the card the sidecar recorded for one `show_card` tool call.
+///
+/// The store is append-only JSON lines and a card is looked up by the
+/// `tool_use_id` the sidecar stamped on it, so the match is exact: no
+/// ordering guess, no parsing of the tool result text. The scan runs backwards
+/// because the card just written is the last line.
+pub fn read_card(store: &Path, tool_use_id: &str) -> Option<zeron_proto::AgentEvent> {
+    if tool_use_id.is_empty() {
+        return None;
+    }
+    let body = std::fs::read_to_string(store).ok()?;
+    let record: Value = body
+        .lines()
+        .rev()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .find(|record| record["tool_use_id"] == tool_use_id)?;
+    Some(zeron_proto::AgentEvent::Card {
+        card_id: record["card_id"].as_str()?.to_string(),
+        surface_id: record["surface_id"].as_str()?.to_string(),
+        tool_use_id: tool_use_id.to_string(),
+        a2ui: record["a2ui"].as_array()?.clone(),
+    })
+}
+
+/// Where the sidecar was told to write cards for this run. Mirrors the
+/// sidecar's own defaulting so the harness reads the file the sidecar wrote.
+pub fn card_store(options: &SuryaOptions) -> PathBuf {
+    if let Some(path) = options.card_store.as_ref().filter(|p| !p.is_empty()) {
+        return PathBuf::from(path);
+    }
+    match std::env::var_os("HOME") {
+        Some(home) => PathBuf::from(home).join(".surya").join("cards.jsonl"),
+        None => std::env::temp_dir().join("surya").join("cards.jsonl"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,5 +259,43 @@ mod tests {
         // SURYA_MCP_EXECUTABLE and PATH are not ours to clear inside a test
         // process, so this only asserts the explicit option does not panic.
         let _ = prepare(&options, "");
+    }
+
+    #[test]
+    fn a_card_is_found_by_its_tool_use_id_not_by_position() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("cards.jsonl");
+        let lines = [
+            json!({"card_id":"card_a","surface_id":"s_a","tool_use_id":"toolu_1","a2ui":[{"x":1}]}),
+            json!({"card_id":"card_b","surface_id":"s_b","tool_use_id":"toolu_2","a2ui":[{"x":2}]}),
+        ];
+        std::fs::write(
+            &store,
+            lines.iter().map(|l| l.to_string()).collect::<Vec<_>>().join("\n"),
+        )
+        .unwrap();
+
+        let event = read_card(&store, "toolu_1").expect("the first card is still reachable");
+        let zeron_proto::AgentEvent::Card { card_id, a2ui, .. } = event else {
+            panic!("read_card returns a Card");
+        };
+        assert_eq!(card_id, "card_a");
+        assert_eq!(a2ui, vec![json!({"x": 1})]);
+
+        assert!(read_card(&store, "toolu_missing").is_none());
+        assert!(read_card(&store, "").is_none(), "no id, no lookup");
+        assert!(read_card(&dir.path().join("absent.jsonl"), "toolu_1").is_none());
+    }
+
+    #[test]
+    fn a_malformed_line_does_not_hide_the_cards_around_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("cards.jsonl");
+        std::fs::write(
+            &store,
+            "{ truncated\n{\"card_id\":\"card_a\",\"surface_id\":\"s\",\"tool_use_id\":\"t1\",\"a2ui\":[]}\n",
+        )
+        .unwrap();
+        assert!(read_card(&store, "t1").is_some());
     }
 }
