@@ -1,0 +1,27 @@
+[
+  {"version": "v0.9.1", "createSurface": {"surfaceId": "vehicle_kss_0412", "catalogId": "https://a2ui.org/specification/v0_9_1/catalogs/basic/catalog.json"}},
+  {"version": "v0.9.1", "updateComponents": {"surfaceId": "vehicle_kss_0412", "components": [
+    {"id": "root", "component": "Card", "child": "body"},
+    {"id": "body", "component": "Column", "children": ["photo", "head", "meta", "footer"]},
+    {"id": "photo", "component": "Image", "url": {"path": "/photo"}, "variant": "header", "fit": "cover", "description": "Stock photo"},
+    {"id": "head", "component": "Row", "justify": "spaceBetween", "align": "start", "children": ["head_left", "price"]},
+    {"id": "head_left", "component": "Column", "weight": 1, "children": ["title", "badges"]},
+    {"id": "title", "component": "Text", "text": {"path": "/title"}, "variant": "h4"},
+    {"id": "badges", "component": "Row", "align": "center", "children": ["stock_no", "status"]},
+    {"id": "stock_no", "component": "Text", "text": {"call": "formatString", "args": {"value": "`${/stockNo}`"}}, "variant": "caption"},
+    {"id": "status", "component": "Text", "text": {"path": "/status"}, "variant": "caption"},
+    {"id": "price", "component": "Text", "text": {"path": "/price"}, "variant": "h4"},
+    {"id": "meta", "component": "Row", "justify": "spaceBetween", "children": ["days", "of"]},
+    {"id": "days", "component": "Text", "text": {"call": "formatString", "args": {"value": "${/days} days on the lot"}}, "variant": "caption"},
+    {"id": "of", "component": "Text", "text": "of 90", "variant": "caption"},
+    {"id": "footer", "component": "Row", "children": ["follow_ups", "open_listing"]},
+    {"id": "follow_ups", "component": "Button", "variant": "primary", "child": "follow_ups_label", "action": {"event": {"name": "set_follow_ups", "context": {"stockNo": {"path": "/stockNo"}}}}},
+    {"id": "follow_ups_label", "component": "Text", "text": "Set follow-ups"},
+    {"id": "open_listing", "component": "Button", "child": "open_listing_label", "action": {"event": {"name": "open_listing", "context": {"stockNo": {"path": "/stockNo"}}}}},
+    {"id": "open_listing_label", "component": "Text", "text": "Open the listing"}
+  ]}},
+  {"version": "v0.9.1", "updateDataModel": {"surfaceId": "vehicle_kss_0412", "value": {
+    "stockNo": "KSS-0412", "title": "2021 Toyota Alphard 2.5 SC", "price": "RM 268,800", "days": 34,
+    "status": "In stock", "photo": "fixture://vehicle-photo.jpg"
+  }}}
+]

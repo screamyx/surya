@@ -94,6 +94,7 @@ pub trait Harness: Send + Sync {
 }
 
 pub mod acp;
+pub mod cards;
 pub(crate) mod adapter_install;
 pub mod claude;
 pub mod codex;

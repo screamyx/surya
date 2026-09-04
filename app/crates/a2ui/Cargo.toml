@@ -1,0 +1,13 @@
+[package]
+name = "surya-a2ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "A2UI v0.9.1 cards for surya: parser, typed model, data binding, and a GPUI renderer over comet's theme tokens"
+
+[dependencies]
+zeron-proto.workspace = true
+gpui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
