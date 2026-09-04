@@ -94,7 +94,7 @@ function ServerGroup({ srv, current }: { srv: Server; current: string }) {
   const off = srv.state !== "online"
   return (
     <Collapsible defaultOpen={mine || (srv.home && !off)} render={<SidebarGroup className="py-1" />}>
-      <CollapsibleTrigger render={<SidebarGroupLabel className="hover:bg-sidebar-accent w-full cursor-pointer justify-start gap-2 rounded-md" />}>
+      <CollapsibleTrigger nativeButton={false} render={<SidebarGroupLabel className="hover:bg-sidebar-accent w-full cursor-pointer justify-start gap-2 rounded-md" />}>
         <ChevronRight className="size-3 transition-transform data-[panel-open]:rotate-90" />
         <ServerIcon className="size-3.5" />
         <span className={cn("truncate", off && "text-muted-foreground")}>{srv.name}</span>
