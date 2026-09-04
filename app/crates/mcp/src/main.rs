@@ -2,7 +2,8 @@
 //!
 //! Three tools (decision 5, "surya abilities reach the agent as MCP servers"):
 //! `show_card` draws an A2UI card in the app, `send_message` posts agent mail,
-//! `list_cards` says which card shapes exist here. The harness launches this
+//! `list_cards` says which card shapes exist here. `list_tasks`, `create_task`
+//! and `update_task` (`tasks.rs`) read and write the workspace task board. The harness launches this
 //! binary through Claude Code's own `--mcp-config`, so nothing about Claude
 //! Code is forked or patched.
 //!
@@ -19,6 +20,7 @@ mod config;
 mod mail;
 mod protocol;
 mod shapes;
+mod tasks;
 
 use std::io::{BufRead, Write};
 
