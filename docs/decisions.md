@@ -177,6 +177,18 @@ Cards and Settings sit at the bottom of the rail.
 
 Applied to the mockup on 2026-09-05 01:50.
 
+## 16. How the daemon drives Claude Code, probed
+
+Probed on 2026-09-05, writeup `docs/probes/headless-controls-2026-09-05.md`.
+
+- The daemon runs `claude -p` with stream-json in and out, `--permission-prompts host` and `--permission-prompt-tool stdio`. The second flag is what makes permission asks and AskUserQuestion arrive as `can_use_tool` control requests the GUI can answer. Without it they never come.
+- Model switch mid-session works by sending `/model <name>` as a turn. The model picker sheet sends that text.
+- Stop is a `control_request` `interrupt`. The running command dies within 2 seconds. Declare `perTaskStopAffordance` at initialize so an interrupt does not also kill the agent's background tasks.
+- Daemon restart is `--resume <session-id>`. The session id comes from the init event and is stored per agent.
+- The initialize response is the source of the slash palette and of any pending asks a reconnecting client must re-render.
+
+Slash commands come in three classes: pass-through (most), menu with a text form (`/model`, `/effort`, the GUI opens a sheet and sends the text), and menu with no headless form (`/mcp`, `/plugin`, `/permissions`, `/config`, the GUI owns the screen over Claude Code's own files).
+
 ## Open
 
 None at day zero.
