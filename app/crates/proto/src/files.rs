@@ -147,9 +147,14 @@ pub enum FileRead {
         /// Total line count of the file, so a ranged read can page.
         lines: u64,
     },
-    Binary { size: u64 },
+    Binary {
+        size: u64,
+    },
     /// Larger than the read cap; not sent.
-    TooLarge { size: u64, max: u64 },
+    TooLarge {
+        size: u64,
+        max: u64,
+    },
 }
 
 /// `FilesWrite` params. `expectedHash` absent means "create; refuse if a
@@ -167,7 +172,10 @@ pub struct FileWriteParams {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum FileWrite {
-    Saved { hash: String, size: u64 },
+    Saved {
+        hash: String,
+        size: u64,
+    },
     /// The bytes on disk no longer match `expectedHash`. What is there now
     /// comes back so the editor can show the conflict.
     Refused {

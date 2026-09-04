@@ -58,8 +58,18 @@ fn tree_lists_tracked_and_new_skips_ignored_and_carries_status() {
     let src = top.entries.iter().find(|e| e.path == "src").unwrap();
     assert_eq!(src.kind, FileKind::Dir);
     assert!(src.has_children);
-    assert_eq!(src.status, "M", "a directory carries the strongest status under it");
-    assert_eq!(top.entries.iter().find(|e| e.path == "notes.md").unwrap().status, "?");
+    assert_eq!(
+        src.status, "M",
+        "a directory carries the strongest status under it"
+    );
+    assert_eq!(
+        top.entries
+            .iter()
+            .find(|e| e.path == "notes.md")
+            .unwrap()
+            .status,
+        "?"
+    );
     assert!(!paths.contains(&"target"), "ignored dirs stay invisible");
     assert!(!paths.contains(&".git"));
 
@@ -67,9 +77,27 @@ fn tree_lists_tracked_and_new_skips_ignored_and_carries_status() {
     let sub = files::tree(&j, "src", 1).unwrap();
     let sp: Vec<&str> = sub.entries.iter().map(|e| e.path.as_str()).collect();
     assert_eq!(sp, vec!["src/deep", "src/main.rs"]);
-    assert_eq!(sub.entries.iter().find(|e| e.path == "src/main.rs").unwrap().status, "M");
-    assert_eq!(sub.entries.iter().find(|e| e.path == "src/deep").unwrap().status, "");
-    println!("tree: asked=2 answered=2 entries_top={} entries_src={}", top.entries.len(), sub.entries.len());
+    assert_eq!(
+        sub.entries
+            .iter()
+            .find(|e| e.path == "src/main.rs")
+            .unwrap()
+            .status,
+        "M"
+    );
+    assert_eq!(
+        sub.entries
+            .iter()
+            .find(|e| e.path == "src/deep")
+            .unwrap()
+            .status,
+        ""
+    );
+    println!(
+        "tree: asked=2 answered=2 entries_top={} entries_src={}",
+        top.entries.len(),
+        sub.entries.len()
+    );
 }
 
 #[test]
@@ -92,7 +120,11 @@ fn tree_of_2k_file_repo_under_100ms_after_warm_up() {
     let j = jail(&dir);
 
     let warm = files::tree(&j, "", 8).unwrap();
-    let files_seen = warm.entries.iter().filter(|e| e.kind == FileKind::File).count();
+    let files_seen = warm
+        .entries
+        .iter()
+        .filter(|e| e.kind == FileKind::File)
+        .count();
     assert!(files_seen >= 2000, "files={files_seen}");
     assert!(!warm.entries.iter().any(|e| e.path.starts_with("target")));
     assert!(!warm.truncated);
@@ -160,12 +192,32 @@ async fn watch_emits_on_external_edits() {
     // Create + delete arrive with their kinds.
     let fresh = d.join("src/new.rs");
     std::fs::write(&fresh, "x\n").unwrap();
-    let batch = tokio::time::timeout(Duration::from_secs(3), batches.next()).await.unwrap().unwrap();
-    assert!(batch.events.iter().any(|e| e.path == "src/new.rs" && e.kind == FileEventKind::Create), "{:?}", batch.events);
+    let batch = tokio::time::timeout(Duration::from_secs(3), batches.next())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        batch
+            .events
+            .iter()
+            .any(|e| e.path == "src/new.rs" && e.kind == FileEventKind::Create),
+        "{:?}",
+        batch.events
+    );
     tokio::time::sleep(Duration::from_millis(250)).await;
     std::fs::remove_file(&fresh).unwrap();
-    let batch = tokio::time::timeout(Duration::from_secs(3), batches.next()).await.unwrap().unwrap();
-    assert!(batch.events.iter().any(|e| e.path == "src/new.rs" && e.kind == FileEventKind::Delete), "{:?}", batch.events);
+    let batch = tokio::time::timeout(Duration::from_secs(3), batches.next())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        batch
+            .events
+            .iter()
+            .any(|e| e.path == "src/new.rs" && e.kind == FileEventKind::Delete),
+        "{:?}",
+        batch.events
+    );
     drop(batches);
 }
 
@@ -173,7 +225,13 @@ async fn watch_emits_on_external_edits() {
 fn read_gives_hash_ranges_and_detects_binary() {
     let dir = repo();
     let j = jail(&dir);
-    let FileRead::Text { text, hash, size, lines } = files::read(&j, "src/main.rs", None).unwrap() else {
+    let FileRead::Text {
+        text,
+        hash,
+        size,
+        lines,
+    } = files::read(&j, "src/main.rs", None).unwrap()
+    else {
         panic!("text")
     };
     assert_eq!(text, "fn main() {}\n");
@@ -192,8 +250,14 @@ fn read_gives_hash_ranges_and_detects_binary() {
 
     // Ignored by git, but a direct read by path still works: the tree hides
     // it, the jail does not.
-    assert_eq!(files::read(&j, "target/out.bin", None).unwrap(), FileRead::Binary { size: 3 });
-    assert!(files::read(&j, "src", None).is_err(), "a directory is not readable");
+    assert_eq!(
+        files::read(&j, "target/out.bin", None).unwrap(),
+        FileRead::Binary { size: 3 }
+    );
+    assert!(
+        files::read(&j, "src", None).is_err(),
+        "a directory is not readable"
+    );
     println!("read: asked=4 answered=4");
 }
 
@@ -215,11 +279,18 @@ fn write_with_stale_hash_is_refused_and_fresh_hash_saves() {
             refused += 1;
             assert!(reason.contains("changed on disk"), "{reason}");
             assert_eq!(text.as_deref(), Some("fn main() { agent }\n"));
-            assert_eq!(hash.as_deref(), Some(files::content_hash(b"fn main() { agent }\n").as_str()));
+            assert_eq!(
+                hash.as_deref(),
+                Some(files::content_hash(b"fn main() { agent }\n").as_str())
+            );
         }
         other => panic!("{other:?}"),
     }
-    assert_eq!(std::fs::read_to_string(&f).unwrap(), "fn main() { agent }\n", "nothing clobbered");
+    assert_eq!(
+        std::fs::read_to_string(&f).unwrap(),
+        "fn main() { agent }\n",
+        "nothing clobbered"
+    );
     println!("write stale: asked={asked} refused={refused}");
     assert_eq!((asked, refused), (1, 1));
 
@@ -227,7 +298,9 @@ fn write_with_stale_hash_is_refused_and_fresh_hash_saves() {
     let FileRead::Text { hash: h2, .. } = files::read(&j, "src/main.rs", None).unwrap() else {
         panic!("text")
     };
-    let FileWrite::Saved { hash: h3, size } = files::write(&j, "src/main.rs", "fn main() { me }\n", Some(&h2)).unwrap() else {
+    let FileWrite::Saved { hash: h3, size } =
+        files::write(&j, "src/main.rs", "fn main() { me }\n", Some(&h2)).unwrap()
+    else {
         panic!("saved")
     };
     assert_ne!(h2, h3);
@@ -236,14 +309,24 @@ fn write_with_stale_hash_is_refused_and_fresh_hash_saves() {
 
     // Create needs no hash; creating over an existing file is refused; a
     // hash against a missing file is refused.
-    assert!(matches!(files::write(&j, "src/fresh.rs", "x\n", None).unwrap(), FileWrite::Saved { .. }));
-    assert!(matches!(files::write(&j, "src/fresh.rs", "y\n", None).unwrap(), FileWrite::Refused { .. }));
-    assert!(matches!(files::write(&j, "src/gone.rs", "y\n", Some("00")).unwrap(), FileWrite::Refused { reason, .. } if reason.contains("gone")));
+    assert!(matches!(
+        files::write(&j, "src/fresh.rs", "x\n", None).unwrap(),
+        FileWrite::Saved { .. }
+    ));
+    assert!(matches!(
+        files::write(&j, "src/fresh.rs", "y\n", None).unwrap(),
+        FileWrite::Refused { .. }
+    ));
+    assert!(
+        matches!(files::write(&j, "src/gone.rs", "y\n", Some("00")).unwrap(), FileWrite::Refused { reason, .. } if reason.contains("gone"))
+    );
 
     // CRLF on disk stays CRLF.
     let win = dir.path().join("win.txt");
     std::fs::write(&win, "a\r\nb\r\n").unwrap();
-    let FileRead::Text { hash, .. } = files::read(&j, "win.txt", None).unwrap() else { panic!() };
+    let FileRead::Text { hash, .. } = files::read(&j, "win.txt", None).unwrap() else {
+        panic!()
+    };
     files::write(&j, "win.txt", "a\nb\nc\n", Some(&hash)).unwrap();
     assert_eq!(std::fs::read(&win).unwrap(), b"a\r\nb\r\nc\r\n");
     // No temp file left behind.
@@ -263,14 +346,22 @@ fn paths_outside_the_root_are_refused() {
     let outside = tempfile::tempdir().unwrap();
     std::fs::write(outside.path().join("secret.txt"), "s\n").unwrap();
     #[cfg(unix)]
-    std::os::unix::fs::symlink(outside.path().join("secret.txt"), dir.path().join("link.txt")).unwrap();
+    std::os::unix::fs::symlink(
+        outside.path().join("secret.txt"),
+        dir.path().join("link.txt"),
+    )
+    .unwrap();
     #[cfg(unix)]
     std::os::unix::fs::symlink(outside.path(), dir.path().join("linkdir")).unwrap();
 
     let mut cases: Vec<String> = vec![
         "../secret.txt".into(),
         "src/../../secret.txt".into(),
-        outside.path().join("secret.txt").to_string_lossy().into_owned(),
+        outside
+            .path()
+            .join("secret.txt")
+            .to_string_lossy()
+            .into_owned(),
         "/etc/hostname".into(),
     ];
     #[cfg(unix)]
@@ -291,11 +382,17 @@ fn paths_outside_the_root_are_refused() {
             panic!("{case}: read={read:?} write={write:?} tree={tree:?}");
         }
     }
-    assert_eq!(std::fs::read_to_string(outside.path().join("secret.txt")).unwrap(), "s\n");
+    assert_eq!(
+        std::fs::read_to_string(outside.path().join("secret.txt")).unwrap(),
+        "s\n"
+    );
     println!("jail: asked={asked} refused={refused}");
     assert_eq!(asked, refused);
 
     // The one case that must pass: a plain in-root path, dotted segments and all.
     assert!(files::read(&j, "./src/./main.rs", None).is_ok());
-    assert!(files::tree(&j, "/", 1).is_ok(), "a leading slash is tolerated as root-relative");
+    assert!(
+        files::tree(&j, "/", 1).is_ok(),
+        "a leading slash is tolerated as root-relative"
+    );
 }

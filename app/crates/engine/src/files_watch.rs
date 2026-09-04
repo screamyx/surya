@@ -14,8 +14,8 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use futures::stream::BoxStream;
 use futures::StreamExt as _;
+use futures::stream::BoxStream;
 use notify::Watcher as _;
 use tokio::sync::mpsc;
 use zeron_proto::files::{FileEvent, FileEventKind, FileWatchBatch};
@@ -101,7 +101,10 @@ fn fold(jail: &Jail, filter: &IgnoreFilter, raw: Vec<notify::Event>) -> (Vec<Fil
     let mut events: Vec<FileEvent> = Vec::new();
     let mut truncated = false;
     let mut push = |events: &mut Vec<FileEvent>, ev: FileEvent| {
-        if events.iter().any(|e| e.kind == ev.kind && e.path == ev.path) {
+        if events
+            .iter()
+            .any(|e| e.kind == ev.kind && e.path == ev.path)
+        {
             return;
         }
         if events.len() >= MAX_EVENTS_PER_BATCH {
@@ -133,32 +136,74 @@ fn fold(jail: &Jail, filter: &IgnoreFilter, raw: Vec<notify::Event>) -> (Vec<Fil
             }
             EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
                 for p in event.paths.iter().filter_map(rel) {
-                    push(&mut events, FileEvent { kind: FileEventKind::Delete, path: p, from: None });
+                    push(
+                        &mut events,
+                        FileEvent {
+                            kind: FileEventKind::Delete,
+                            path: p,
+                            from: None,
+                        },
+                    );
                 }
             }
             EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
                 for p in event.paths.iter().filter_map(rel) {
-                    push(&mut events, FileEvent { kind: FileEventKind::Create, path: p, from: None });
+                    push(
+                        &mut events,
+                        FileEvent {
+                            kind: FileEventKind::Create,
+                            path: p,
+                            from: None,
+                        },
+                    );
                 }
             }
             EventKind::Modify(ModifyKind::Name(_)) => {
                 for p in event.paths.iter().filter_map(rel) {
-                    push(&mut events, FileEvent { kind: FileEventKind::Rename, path: p, from: None });
+                    push(
+                        &mut events,
+                        FileEvent {
+                            kind: FileEventKind::Rename,
+                            path: p,
+                            from: None,
+                        },
+                    );
                 }
             }
             EventKind::Create(_) => {
                 for p in event.paths.iter().filter_map(rel) {
-                    push(&mut events, FileEvent { kind: FileEventKind::Create, path: p, from: None });
+                    push(
+                        &mut events,
+                        FileEvent {
+                            kind: FileEventKind::Create,
+                            path: p,
+                            from: None,
+                        },
+                    );
                 }
             }
             EventKind::Remove(_) => {
                 for p in event.paths.iter().filter_map(rel) {
-                    push(&mut events, FileEvent { kind: FileEventKind::Delete, path: p, from: None });
+                    push(
+                        &mut events,
+                        FileEvent {
+                            kind: FileEventKind::Delete,
+                            path: p,
+                            from: None,
+                        },
+                    );
                 }
             }
             EventKind::Modify(_) | EventKind::Any | EventKind::Other => {
                 for p in event.paths.iter().filter_map(rel) {
-                    push(&mut events, FileEvent { kind: FileEventKind::Modify, path: p, from: None });
+                    push(
+                        &mut events,
+                        FileEvent {
+                            kind: FileEventKind::Modify,
+                            path: p,
+                            from: None,
+                        },
+                    );
                 }
             }
         }

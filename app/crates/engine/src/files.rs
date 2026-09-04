@@ -142,7 +142,9 @@ pub fn tree(jail: &Jail, path: &str, depth: u32) -> Result<FileTree, EngineError
             break;
         }
         let abs = entry.path();
-        let Some(rel) = jail.relative(abs) else { continue };
+        let Some(rel) = jail.relative(abs) else {
+            continue;
+        };
         let file_type = entry.file_type();
         let kind = if file_type.is_some_and(|t| t.is_symlink()) {
             FileKind::Symlink
@@ -158,7 +160,9 @@ pub fn tree(jail: &Jail, path: &str, depth: u32) -> Result<FileTree, EngineError
         };
         let has_children = kind == FileKind::Dir
             && entry.depth() as u32 == depth
-            && std::fs::read_dir(abs).map(|mut d| d.next().is_some()).unwrap_or(false);
+            && std::fs::read_dir(abs)
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false);
         let status = match kind {
             FileKind::Dir => strongest_under(&statuses, &rel),
             _ => statuses
@@ -364,14 +368,19 @@ pub fn write(
     }
     let tmp = dir.join(format!(
         ".{}.zeron-{}",
-        abs.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
+        abs.file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default(),
         std::process::id()
     ));
     std::fs::write(&tmp, &bytes)?;
     #[cfg(unix)]
     if let Ok(meta) = std::fs::metadata(&abs) {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(meta.permissions().mode()));
+        let _ = std::fs::set_permissions(
+            &tmp,
+            std::fs::Permissions::from_mode(meta.permissions().mode()),
+        );
     }
     if let Err(e) = std::fs::rename(&tmp, &abs) {
         let _ = std::fs::remove_file(&tmp);
