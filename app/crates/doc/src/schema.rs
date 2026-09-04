@@ -106,6 +106,19 @@ struct DocPartJson {
     /// One-line live tail of the subagent's output (additive).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     subagent_tail: Option<String>,
+    /// A2UI card fields for `kind: "card"` (additive; surya). Old readers
+    /// fall through to an empty text part. `a2ui` is the envelope list;
+    /// `a2ui_ref`/`a2ui_bytes` follow the tool sidecar pattern.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    card_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    surface_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    a2ui: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    a2ui_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    a2ui_bytes: Option<u64>,
 }
 
 /// App parts → doc part json (mirror of `toDocParts`).
@@ -188,6 +201,23 @@ fn to_doc_part(part: &MessagePart) -> Result<DocPartJson, DocError> {
             message: Some(message.clone()),
             ..Default::default()
         },
+        MessagePart::Card {
+            id,
+            card_id,
+            surface_id,
+            a2ui,
+            a2ui_ref,
+            a2ui_bytes,
+        } => DocPartJson {
+            id: id.clone(),
+            kind: "card".into(),
+            card_id: Some(card_id.clone()),
+            surface_id: Some(surface_id.clone()),
+            a2ui: a2ui.as_ref().map(|v| serde_json::Value::Array(v.clone())),
+            a2ui_ref: a2ui_ref.clone(),
+            a2ui_bytes: *a2ui_bytes,
+            ..Default::default()
+        },
     })
 }
 
@@ -238,8 +268,19 @@ fn from_doc_part(p: DocPartJson) -> MessagePart {
             text: p.reasoning.unwrap_or_default(),
         },
         "notice" => MessagePart::Notice {
-            id: p.id,
-            text: p.text.unwrap_or_default(),
+            id: p.id.clone(),
+            text: p.text.clone().unwrap_or_default(),
+        },
+        "card" => MessagePart::Card {
+            id: p.id.clone(),
+            card_id: p.card_id.unwrap_or_else(|| p.id.clone()),
+            surface_id: p.surface_id.unwrap_or_default(),
+            a2ui: p.a2ui.and_then(|v| match v {
+                serde_json::Value::Array(items) => Some(items),
+                other => Some(vec![other]),
+            }),
+            a2ui_ref: p.a2ui_ref,
+            a2ui_bytes: p.a2ui_bytes,
         },
         _ => MessagePart::Text {
             id: p.id,
@@ -711,6 +752,21 @@ fn push_part(parts: &LoroList, part: &MessagePart) -> Result<(), DocError> {
     if let Some(subagent_tail) = &doc_part.subagent_tail {
         map.insert("subagentTail", subagent_tail.as_str())?;
     }
+    if let Some(card_id) = &doc_part.card_id {
+        map.insert("cardId", card_id.as_str())?;
+    }
+    if let Some(surface_id) = &doc_part.surface_id {
+        map.insert("surfaceId", surface_id.as_str())?;
+    }
+    if let Some(a2ui) = &doc_part.a2ui {
+        map.insert("a2ui", loro_value_from_json(a2ui))?;
+    }
+    if let Some(a2ui_ref) = &doc_part.a2ui_ref {
+        map.insert("a2uiRef", a2ui_ref.as_str())?;
+    }
+    if let Some(a2ui_bytes) = doc_part.a2ui_bytes {
+        map.insert("a2uiBytes", a2ui_bytes as i64)?;
+    }
     Ok(())
 }
 
@@ -1107,6 +1163,21 @@ fn update_part_fields(map: &LoroMap, part: &MessagePart) -> Result<(), DocError>
     if let Some(subagent_tail) = &doc_part.subagent_tail {
         map.insert("subagentTail", subagent_tail.as_str())?;
     }
+    if let Some(card_id) = &doc_part.card_id {
+        map.insert("cardId", card_id.as_str())?;
+    }
+    if let Some(surface_id) = &doc_part.surface_id {
+        map.insert("surfaceId", surface_id.as_str())?;
+    }
+    if let Some(a2ui) = &doc_part.a2ui {
+        map.insert("a2ui", loro_value_from_json(a2ui))?;
+    }
+    if let Some(a2ui_ref) = &doc_part.a2ui_ref {
+        map.insert("a2uiRef", a2ui_ref.as_str())?;
+    }
+    if let Some(a2ui_bytes) = doc_part.a2ui_bytes {
+        map.insert("a2uiBytes", a2ui_bytes as i64)?;
+    }
     if let Some(text) = &doc_part.text {
         // Defensive path only — the fold never rewrites earlier text.
         if let Some(loro::ValueOrContainer::Container(loro::Container::Text(t))) = map.get("text") {
@@ -1199,6 +1270,53 @@ mod tests {
             }]
         );
         assert_eq!(doc.chat_id().as_deref(), Some("chat-1"));
+    }
+
+    /// A card part survives the doc: written as kind "card" with its JSON,
+    /// read back as the same part, both through push_message and through
+    /// the streaming segment writer.
+    #[test]
+    fn card_parts_round_trip_through_the_doc() {
+        let card = vec![serde_json::json!({"updateComponents": {"surfaceId": "s", "components": [{"id": "root", "component": "Text", "text": "hi"}]}})];
+        let part = MessagePart::Card {
+            id: "toolu_card".into(),
+            card_id: "card-1".into(),
+            surface_id: "s".into(),
+            a2ui: Some(card.clone()),
+            a2ui_ref: None,
+            a2ui_bytes: None,
+        };
+        let doc = SessionDoc::init("chat-cards").unwrap();
+        let mut entry = user_entry("m1", "see the card");
+        entry.role = MessageRole::Assistant;
+        entry.parts.push(part.clone());
+        doc.push_message(&entry).unwrap();
+        let entries = doc.read_entries().unwrap();
+        assert_eq!(entries[0].parts[1], part);
+
+        let mut w = SegmentWriter::begin(&doc, "e2", "dev", 1).unwrap();
+        w.sync(&[MessagePart::Text { id: "t0".into(), text: "Here:".into() }, part.clone()])
+            .unwrap();
+        let entries = doc.read_entries().unwrap();
+        let streamed = entries.iter().find(|e| e.id == "e2").expect("streamed entry");
+        assert_eq!(streamed.parts[1], part);
+        // A refreshed card (same id, new JSON) lands in place.
+        let card2 = vec![serde_json::json!({"updateComponents": {"surfaceId": "s", "components": []}})];
+        w.sync(&[
+            MessagePart::Text { id: "t0".into(), text: "Here:".into() },
+            MessagePart::Card {
+                id: "toolu_card".into(),
+                card_id: "card-1".into(),
+                surface_id: "s".into(),
+                a2ui: Some(card2.clone()),
+                a2ui_ref: None,
+                a2ui_bytes: None,
+            },
+        ])
+        .unwrap();
+        let entries = doc.read_entries().unwrap();
+        let streamed = entries.iter().find(|e| e.id == "e2").unwrap();
+        assert!(matches!(&streamed.parts[1], MessagePart::Card { a2ui, .. } if a2ui.as_ref() == Some(&card2)), "{:?}", streamed.parts);
     }
 
     #[test]

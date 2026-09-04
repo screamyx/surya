@@ -207,6 +207,24 @@ pub enum MessagePart {
         id: String,
         text: String,
     },
+    /// An agent-drawn A2UI card (surya decision 4). `a2ui` is the envelope
+    /// list the UI parses with `surya-a2ui`; `id` is the tool_use id of the
+    /// `show_card` call that drew it. Large cards follow the tool-output
+    /// pattern: `a2ui` omitted, `a2ui_ref` + `a2ui_bytes` set (sidecar,
+    /// not wired yet). Old readers degrade the part to invisible empty
+    /// text (unknown doc kind).
+    #[serde(rename_all = "camelCase")]
+    Card {
+        id: String,
+        card_id: String,
+        surface_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        a2ui: Option<Vec<serde_json::Value>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        a2ui_ref: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        a2ui_bytes: Option<u64>,
+    },
 }
 
 impl MessagePart {
@@ -217,7 +235,8 @@ impl MessagePart {
             | MessagePart::Tool { id, .. }
             | MessagePart::Input { id, .. }
             | MessagePart::Notice { id, .. }
-            | MessagePart::Error { id, .. } => id,
+            | MessagePart::Error { id, .. }
+            | MessagePart::Card { id, .. } => id,
         }
     }
 
@@ -246,6 +265,9 @@ impl MessagePart {
                 serde_json::to_vec(questions).map_or(0, |v| v.len())
             }
             MessagePart::Error { message, .. } => message.len(),
+            MessagePart::Card { a2ui, .. } => a2ui
+                .as_ref()
+                .map_or(0, |v| serde_json::to_vec(v).map_or(0, |b| b.len())),
         }
     }
 }
@@ -397,6 +419,35 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                 out.push(MessagePart::Error {
                     id,
                     message: message.clone(),
+                });
+            }
+        }
+        // A card refreshes in place when its id already exists (the harness
+        // re-emits on retry, like ToolCall), otherwise appends. It breaks the
+        // trailing text block the way a tool call does.
+        AgentEvent::Card {
+            card_id,
+            surface_id,
+            tool_use_id,
+            a2ui,
+        } => {
+            if let Some(existing) = out.iter_mut().find(|p| p.id() == tool_use_id) {
+                *existing = MessagePart::Card {
+                    id: tool_use_id.clone(),
+                    card_id: card_id.clone(),
+                    surface_id: surface_id.clone(),
+                    a2ui: Some(a2ui.clone()),
+                    a2ui_ref: None,
+                    a2ui_bytes: None,
+                };
+            } else {
+                out.push(MessagePart::Card {
+                    id: tool_use_id.clone(),
+                    card_id: card_id.clone(),
+                    surface_id: surface_id.clone(),
+                    a2ui: Some(a2ui.clone()),
+                    a2ui_ref: None,
+                    a2ui_bytes: None,
                 });
             }
         }
@@ -683,6 +734,32 @@ pub fn join_continuations(entries: Vec<Vec<MessagePart>>) -> Vec<MessagePart> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A Card event appends a card part, breaks the text block like a tool
+    /// call, and refreshes in place when its id repeats (retry idempotence).
+    #[test]
+    fn card_event_folds_to_a_card_part_and_refreshes_in_place() {
+        let mut parts = Vec::new();
+        fold_event_into_parts(&mut parts, &AgentEvent::TextDelta { text: "Here:".into() });
+        let card = vec![serde_json::json!({"updateComponents": {"surfaceId": "s", "components": [{"id": "root", "component": "Text", "text": "hi"}]}})];
+        let event = |a2ui: Vec<serde_json::Value>| AgentEvent::Card {
+            card_id: "card-1".into(),
+            surface_id: "s".into(),
+            tool_use_id: "toolu_1".into(),
+            a2ui,
+        };
+        fold_event_into_parts(&mut parts, &event(card.clone()));
+        fold_event_into_parts(&mut parts, &AgentEvent::TextDelta { text: "after".into() });
+        assert_eq!(parts.len(), 3, "{parts:?}");
+        assert!(matches!(&parts[1], MessagePart::Card { id, card_id, a2ui, .. } if id == "toolu_1" && card_id == "card-1" && a2ui.as_ref() == Some(&card)));
+        assert!(matches!(&parts[2], MessagePart::Text { text, .. } if text == "after"));
+        let card2 = vec![serde_json::json!({"updateComponents": {"surfaceId": "s", "components": []}})];
+        fold_event_into_parts(&mut parts, &event(card2.clone()));
+        assert_eq!(parts.len(), 3);
+        assert!(matches!(&parts[1], MessagePart::Card { a2ui, .. } if a2ui.as_ref() == Some(&card2)));
+        assert_eq!(parts[1].id(), "toolu_1");
+        assert_eq!(parts[1].byte_len(), serde_json::to_vec(&card2).unwrap().len());
+    }
 
     fn text_delta(s: &str) -> AgentEvent {
         AgentEvent::TextDelta { text: s.into() }

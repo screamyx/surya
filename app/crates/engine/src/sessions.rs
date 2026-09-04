@@ -1860,7 +1860,7 @@ async fn drive_run(
                     &event,
                     AgentEvent::ToolCall { id, .. }
                         if id == zeron_proto::LIVE_PLAN_TOOL_ID || !seen_tools.contains(id)
-                ));
+                ) || matches!(&event, AgentEvent::Card { .. }));
             if self_continued {
                 tracing::info!(
                     chat = %chat_id,

@@ -473,6 +473,21 @@ pub enum AgentEvent {
     UserMessage {
         text: String,
     },
+    /// An agent-drawn A2UI card (surya decision 4): the harness saw a
+    /// `show_card` tool call and lifted it out as a card instead of a tool
+    /// chip. `a2ui` is the A2UI v0.9.1 envelope list (`createSurface`,
+    /// `updateComponents`, optional `updateDataModel`) `surya-a2ui` parses;
+    /// `card_id` is the card store key (the tool_use id when there is no
+    /// store), `surface_id` the A2UI surface, `tool_use_id` the call that
+    /// drew it — the doc part keys on the latter so a retry refreshes in
+    /// place.
+    #[serde(rename_all = "camelCase")]
+    Card {
+        card_id: String,
+        surface_id: String,
+        tool_use_id: String,
+        a2ui: Vec<serde_json::Value>,
+    },
     /// An event belonging to a SUBAGENT's nested transcript, attributed to
     /// the spawning tool call (`parent_tool_use_id` = the parent-feed
     /// `ToolCall::id` that launched it). Never folded into the parent chat
