@@ -32,6 +32,7 @@ fn harness() -> AcpHarness {
 
 fn request(prompt: &str) -> RunRequest {
     RunRequest {
+        surya: None,
         prompt: prompt.into(),
         harness: None,
         model: Some("grok-4.5".into()),

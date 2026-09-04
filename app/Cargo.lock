@@ -6578,6 +6578,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "surya-mcp"
+version = "0.2.34"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "uuid",
+]
+
+[[package]]
 name = "sval"
 version = "2.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
