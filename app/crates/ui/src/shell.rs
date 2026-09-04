@@ -1453,15 +1453,56 @@ impl Shell {
         // pending attachment and freeze upload progress at <pct>, so the
         // thumbnail progress ring can be styled/screenshotted (a real upload
         // is too fast to pause).
-        if let Some(dir) = self.debug_cards.take() {
-            let entries = crate::cards::demo_entries(std::path::Path::new(&dir));
-            tracing::info!(target: "surya_a2ui", asked = entries.len(), dir = %dir, "demo cards seeded");
-            state.update(cx, |s, cx| {
-                s.selected_chat = Some("demo-cards".into());
-                s.transcript = entries;
-                s.transcript_replayed = true;
-                cx.notify();
-            });
+        // The seed waits for the chat list (a fresh boot's `apply_chats`
+        // drops any selection it does not know) and re-arms whenever a
+        // later chat frame drops it again: the demo chat is not in the
+        // engine's list, so it is re-inserted alongside.
+        if let Some(dir) = self.debug_cards.clone() {
+            let (synced, lost) = {
+                let s = state.read(cx);
+                (
+                    s.chats_synced,
+                    s.selected_chat.as_deref() != Some("demo-cards"),
+                )
+            };
+            if synced && lost {
+                let entries = crate::cards::demo_entries(std::path::Path::new(&dir));
+                tracing::info!(target: "surya_a2ui", asked = entries.len(), dir = %dir, "demo cards seeded");
+                state.update(cx, |s, cx| {
+                    if !s.chats.iter().any(|c| c.id == "demo-cards") {
+                        s.chats.insert(
+                            0,
+                            zeron_proto::Chat {
+                                id: "demo-cards".into(),
+                                device_id: s
+                                    .local_device_id
+                                    .clone()
+                                    .unwrap_or_else(|| "local".into()),
+                                title: Some("A2UI cards demo".into()),
+                                archived: false,
+                                cwd: None,
+                                branch: None,
+                                checkout_id: None,
+                                source_context: None,
+                                config: None,
+                                last_message_preview: None,
+                                last_message_at: None,
+                                created_at: chrono::Utc::now(),
+                                harness_session_id: None,
+                                harness_session_cwd: None,
+                                space_id: None,
+                                last_seen_at: None,
+                                room_gen: Default::default(),
+                            },
+                        );
+                    }
+                    s.auto_selected = true;
+                    s.selected_chat = Some("demo-cards".into());
+                    s.transcript = entries;
+                    s.transcript_replayed = true;
+                    cx.notify();
+                });
+            }
         }
         if let Some(spec) = self.debug_upload.clone()
             && let Some(chat_id) = state.read(cx).selected_chat.clone()
