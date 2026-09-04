@@ -15,6 +15,7 @@ zeron-rpc.workspace = true
 zeron-update.workspace = true
 zeron-syntax.workspace = true
 zeron-theme.workspace = true
+surya-a2ui.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
 gpui_tokio.workspace = true
