@@ -4739,6 +4739,17 @@ impl Composer {
         }
     }
 
+    /// Send `text` as the user's turn without touching the input: a card
+    /// button's answer (`[card:<id>] <action> <payload>`), typed by a tap.
+    /// A live run is steered, an idle chat resumed, exactly like Enter.
+    pub fn send_text(&mut self, text: String, cx: &mut Context<Self>) {
+        if text.trim().is_empty() || self.send_blocked(cx) {
+            return;
+        }
+        let steer = self.run_live(cx);
+        self.send(text, steer, cx);
+    }
+
     /// Queue a Run (or Steer) doc command with an optimistic echo. New chats
     /// thread the picked config in: worktree creation (when the isolated toggle
     /// is on), `Mutate createChat` with the `ChatConfig` + cwd, and the model /

@@ -954,6 +954,13 @@ pub enum RowKind {
     ErrorChip {
         message: SharedString,
     },
+    /// An agent-drawn A2UI card (surya decision 4), parsed once per row
+    /// change; the version is a hash of the card JSON, so the row (and its
+    /// measured height) only re-splices when the card itself changes.
+    Card {
+        card_id: SharedString,
+        card: Arc<surya_a2ui::Card>,
+    },
 }
 
 /// A transcript row: stable id + content version (diff key) + block payload.
@@ -1369,6 +1376,21 @@ pub fn rows_for_entry(
                             kind: RowKind::ErrorChip {
                                 // Harness-generated; the chip is one line.
                                 message: single_line(message).into(),
+                            },
+                            entry_id: entry_id.clone(),
+                            timestamp: None,
+                            copy_text: None,
+                        });
+                    }
+                    MessagePart::Card { id: part_id, json } => {
+                        let bytes = serde_json::to_vec(json).unwrap_or_default();
+                        rows.push(Row {
+                            id: format!("{}#{}", entry.id, part_id).into(),
+                            version: fnv1a(&bytes) << 1,
+                            turn_start: false,
+                            kind: RowKind::Card {
+                                card_id: part_id.clone().into(),
+                                card: Arc::new(surya_a2ui::parse_card(json)),
                             },
                             entry_id: entry_id.clone(),
                             timestamp: None,
@@ -2315,6 +2337,11 @@ pub struct Transcript {
     /// recently (click "Show full output" after a diff → see the output).
     blob_fetch_order: HashMap<SharedString, u64>,
     blob_fetch_counter: u64,
+    /// Per-card local state (two-way bindings, tab selection, field focus),
+    /// keyed by row id and stamped with the row version so a changed card
+    /// starts fresh. Render-local like `folds` — never part of the row
+    /// fingerprint.
+    card_states: HashMap<SharedString, (u64, surya_a2ui::CardState)>,
     _observe: Subscription,
 }
 
@@ -2338,6 +2365,12 @@ pub enum TranscriptEvent {
         doc_id: String,
         title: String,
         frozen: bool,
+    },
+    /// A card button was pressed: the shell forwards it to the agent as a
+    /// user turn in the v1 wire form (`CardAction::to_wire`).
+    CardAction {
+        chat_id: String,
+        action: zeron_proto::CardAction,
     },
 }
 
@@ -2465,6 +2498,7 @@ impl Transcript {
             blob_details: HashMap::new(),
             blob_fetch_order: HashMap::new(),
             blob_fetch_counter: 0,
+            card_states: HashMap::new(),
             _observe: observe,
         };
         this.sync(cx);
@@ -3412,6 +3446,7 @@ impl Transcript {
             self.tree_cache.clear();
             self.folds.clear();
             self.veils.clear();
+            self.card_states.clear();
             self.render_cache.borrow_mut().clear();
             self.highlights.entries.clear();
             self.copied_message = None;
@@ -4378,6 +4413,10 @@ impl Transcript {
                 input_chip(header.clone(), *resolved, &theme)
             }
             RowKind::ErrorChip { message } => error_chip(message.clone(), &theme),
+            RowKind::Card { card, .. } => {
+                let card = card.clone();
+                self.render_card_row(ix, &row.id, row.version, &card, &theme, window, cx)
+            }
         };
 
         // Hover-revealed metadata strip: a RESERVED 32px lane under the
@@ -4503,6 +4542,103 @@ impl Transcript {
                     .children(trailer),
             )
             .into_any_element()
+    }
+
+    /// One A2UI card row through `surya-a2ui`'s renderer. The card state
+    /// is created on first render (with a focus handle for its fields) and
+    /// replaced when the row version changes; clicks and keystrokes come
+    /// back through [`Self::on_card_event`].
+    fn render_card_row(
+        &mut self,
+        ix: usize,
+        row_id: &SharedString,
+        version: u64,
+        card: &Arc<surya_a2ui::Card>,
+        theme: &Theme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let stale = self
+            .card_states
+            .get(row_id)
+            .is_none_or(|(v, _)| *v != version);
+        if stale {
+            let state = surya_a2ui::CardState::new(card).with_focus(cx.focus_handle());
+            self.card_states.insert(row_id.clone(), (version, state));
+        }
+        let card_theme = crate::cards::card_theme(theme);
+        let weak = cx.entity().downgrade();
+        let key = row_id.clone();
+        let on_event: surya_a2ui::render::OnEvent = Rc::new(move |event, window, cx| {
+            if let Some(transcript) = weak.upgrade() {
+                transcript.update(cx, |this, cx| this.on_card_event(&key, event, window, cx));
+            }
+        });
+        let (_, state) = self.card_states.get(row_id).expect("card state just inserted");
+        let el = surya_a2ui::Renderer {
+            card,
+            state,
+            theme: &card_theme,
+            key: row_id.clone(),
+            on_event,
+        }
+        .render();
+        crate::cards::log_render(ix, row_id, card, &self.list, window);
+        el
+    }
+
+    fn on_card_event(
+        &mut self,
+        row_id: &SharedString,
+        event: surya_a2ui::CardEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        use surya_a2ui::CardEvent;
+        match event {
+            CardEvent::Action(action) => {
+                tracing::info!(
+                    target: "surya_a2ui",
+                    card = %action.card_id,
+                    action = %action.name,
+                    wire = %action.to_wire(),
+                    "card action"
+                );
+                cx.emit(TranscriptEvent::CardAction {
+                    chat_id: self.chat_id.clone().unwrap_or_default(),
+                    action,
+                });
+            }
+            CardEvent::Function { call, args } => {
+                // The one local function worth honouring; http(s) only, as
+                // the catalog guide requires.
+                if call == "openUrl"
+                    && let Some(url) = args.get("url").and_then(|v| v.as_str())
+                    && (url.starts_with("https://") || url.starts_with("http://"))
+                {
+                    cx.open_url(url);
+                }
+            }
+            other => {
+                let Some((_, state)) = self.card_states.get_mut(row_id) else {
+                    return;
+                };
+                if !state.apply(&other) {
+                    return;
+                }
+                if let CardEvent::Focus(Some(_)) = &other
+                    && let Some(handle) = state.focus.clone()
+                {
+                    handle.focus(window, cx);
+                }
+                // A toggle or tab switch can change the card's height: the
+                // list must re-measure this row, not just repaint it.
+                if let Some(ix) = self.rows.iter().position(|r| &r.id == row_id) {
+                    self.list.remeasure_items(ix..ix + 1);
+                }
+                cx.notify();
+            }
+        }
     }
 
     fn copy_message(&mut self, entry_id: SharedString, text: SharedString, cx: &mut Context<Self>) {

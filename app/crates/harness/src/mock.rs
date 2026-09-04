@@ -176,6 +176,16 @@ impl Harness for MockHarness {
         let mock_table = std::env::var("ZERON_MOCK_TABLE")
             .ok()
             .is_some_and(|v| !v.is_empty() && v != "0");
+        // Dev/testing knob: `ZERON_MOCK_CARDS=<dir>` appends one A2UI card
+        // per `*.json` fixture in <dir> (sorted), each after a one-line
+        // reply — the data-side way to put card rows on screen through the
+        // whole harness → engine → doc → transcript path. `fixture://x`
+        // URLs become `file://<dir>/x`.
+        let card_events: Vec<AgentEvent> = std::env::var("ZERON_MOCK_CARDS")
+            .ok()
+            .filter(|dir| !dir.is_empty())
+            .map(|dir| mock_card_events(std::path::Path::new(&dir)))
+            .unwrap_or_default();
         let done_ix = self
             .script
             .iter()
@@ -504,6 +514,7 @@ impl Harness for MockHarness {
             .chain(code_event)
             .chain(table_event)
             .chain(mend_event)
+            .chain(card_events.clone())
             .chain(error_event)
             .chain(tail.iter().cloned())
             .map(Ok)
@@ -576,4 +587,43 @@ impl Harness for MockHarness {
             })
             .boxed())
     }
+}
+
+/// The `ZERON_MOCK_CARDS` fixtures as events: a one-line reply, then the
+/// card, per file. Unreadable files are skipped with a warning.
+fn mock_card_events(dir: &std::path::Path) -> Vec<AgentEvent> {
+    let Ok(read) = std::fs::read_dir(dir) else {
+        tracing::warn!(dir = %dir.display(), "ZERON_MOCK_CARDS: cannot read dir");
+        return Vec::new();
+    };
+    let mut paths: Vec<_> = read
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .collect();
+    paths.sort();
+    let base = format!("file://{}/", dir.display());
+    let mut out = Vec::new();
+    for (ix, path) in paths.iter().enumerate() {
+        let Ok(text) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&text.replace("fixture://", &base))
+        else {
+            tracing::warn!(path = %path.display(), "ZERON_MOCK_CARDS: not JSON");
+            continue;
+        };
+        let stem = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        out.push(AgentEvent::TextDelta {
+            text: format!("\n\nCard {}: `{stem}`\n\n", ix + 1),
+        });
+        out.push(AgentEvent::Card {
+            id: format!("card-{stem}"),
+            json,
+        });
+    }
+    out
 }

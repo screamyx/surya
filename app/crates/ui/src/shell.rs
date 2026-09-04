@@ -1123,6 +1123,7 @@ pub struct Shell {
     debug_dialog: Option<String>,
     debug_gate: Option<GatePhase>,
     debug_upload: Option<String>,
+    debug_cards: Option<String>,
     sidebar_tween: Option<WidthTween>,
     right_tween: Option<WidthTween>,
     /// Mirrors `right_tween` only for takeover entry/exit, allowing the visible
@@ -1276,6 +1277,10 @@ impl Shell {
         // send on the selected chat (echo bubble + frozen thumbnail progress
         // ring) — display-only; a real upload can't be paused for a capture.
         let debug_upload = std::env::var("ZERON_DEMO_UPLOAD").ok();
+        // `ZERON_DEMO_CARDS=<dir>` seeds the transcript with one assistant
+        // turn per A2UI fixture in <dir> (surya proof knob: cards render
+        // without an engine or a typed prompt).
+        let debug_cards = std::env::var("ZERON_DEMO_CARDS").ok();
         let debug_gate = match std::env::var("ZERON_FORCE_GATE").ok().as_deref() {
             Some("signin") => Some(GatePhase::SignIn),
             Some("org") => Some(GatePhase::OrgGate),
@@ -1364,6 +1369,7 @@ impl Shell {
             debug_dialog,
             debug_gate,
             debug_upload,
+            debug_cards,
             sidebar_tween: None,
             right_tween: None,
             right_takeover_content_tween: None,
@@ -1447,6 +1453,16 @@ impl Shell {
         // pending attachment and freeze upload progress at <pct>, so the
         // thumbnail progress ring can be styled/screenshotted (a real upload
         // is too fast to pause).
+        if let Some(dir) = self.debug_cards.take() {
+            let entries = crate::cards::demo_entries(std::path::Path::new(&dir));
+            tracing::info!(target: "surya_a2ui", asked = entries.len(), dir = %dir, "demo cards seeded");
+            state.update(cx, |s, cx| {
+                s.selected_chat = Some("demo-cards".into());
+                s.transcript = entries;
+                s.transcript_replayed = true;
+                cx.notify();
+            });
+        }
         if let Some(spec) = self.debug_upload.clone()
             && let Some(chat_id) = state.read(cx).selected_chat.clone()
         {
@@ -1986,6 +2002,14 @@ impl Shell {
                     *frozen,
                     cx,
                 );
+            }
+            // A card button's answer goes to the agent as the user's turn,
+            // through the composer's send path so a live run is steered and
+            // an idle one resumed exactly as a typed message would.
+            TranscriptEvent::CardAction { action, .. } => {
+                let wire = action.to_wire();
+                self.composer
+                    .update(cx, |composer, cx| composer.send_text(wire, cx));
             }
         }
     }

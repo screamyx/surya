@@ -674,6 +674,26 @@ pub fn join_continuations(entries: Vec<Vec<MessagePart>>) -> Vec<MessagePart> {
 mod tests {
     use super::*;
 
+    /// A Card event appends a card part, breaks the text block like a tool
+    /// call, and refreshes in place when its id repeats (retry idempotence).
+    #[test]
+    fn card_event_folds_to_a_card_part_and_refreshes_in_place() {
+        let mut parts = Vec::new();
+        fold_event_into_parts(&mut parts, &AgentEvent::TextDelta { text: "Here:".into() });
+        let card = serde_json::json!({"components": [{"id": "root", "component": "Text", "text": "hi"}]});
+        fold_event_into_parts(&mut parts, &AgentEvent::Card { id: "c1".into(), json: card.clone() });
+        fold_event_into_parts(&mut parts, &AgentEvent::TextDelta { text: "after".into() });
+        assert_eq!(parts.len(), 3, "{parts:?}");
+        assert!(matches!(&parts[1], MessagePart::Card { id, json } if id == "c1" && *json == card));
+        assert!(matches!(&parts[2], MessagePart::Text { text, .. } if text == "after"));
+        let card2 = serde_json::json!({"components": []});
+        fold_event_into_parts(&mut parts, &AgentEvent::Card { id: "c1".into(), json: card2.clone() });
+        assert_eq!(parts.len(), 3);
+        assert!(matches!(&parts[1], MessagePart::Card { json, .. } if *json == card2));
+        assert_eq!(parts[1].id(), "c1");
+        assert_eq!(parts[1].byte_len(), serde_json::to_vec(&card2).unwrap().len());
+    }
+
     fn text_delta(s: &str) -> AgentEvent {
         AgentEvent::TextDelta { text: s.into() }
     }

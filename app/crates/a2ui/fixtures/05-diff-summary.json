@@ -1,0 +1,29 @@
+[
+  {"version": "v0.9.1", "createSurface": {"surfaceId": "what_changed", "catalogId": "https://a2ui.org/specification/v0_9_1/catalogs/basic/catalog.json"}},
+  {"version": "v0.9.1", "updateComponents": {"surfaceId": "what_changed", "components": [
+    {"id": "root", "component": "Card", "child": "body"},
+    {"id": "body", "component": "Column", "children": ["head", "note", "files", "divider", "footer"]},
+    {"id": "head", "component": "Row", "justify": "spaceBetween", "align": "center", "children": ["title", "totals"]},
+    {"id": "title", "component": "Text", "text": "What changed", "variant": "h4"},
+    {"id": "totals", "component": "Text", "text": {"call": "formatString", "args": {"value": "**+${/added}** -${/removed}"}}, "variant": "caption"},
+    {"id": "note", "component": "Text", "text": {"path": "/note"}, "variant": "caption"},
+    {"id": "files", "component": "List", "direction": "vertical", "children": {"componentId": "file", "path": "/files"}},
+    {"id": "file", "component": "Row", "justify": "spaceBetween", "align": "center", "children": ["path", "stats"]},
+    {"id": "path", "component": "Text", "text": {"call": "formatString", "args": {"value": "`${path}`"}}, "variant": "caption", "weight": 1},
+    {"id": "stats", "component": "Text", "text": {"call": "formatString", "args": {"value": "+${added} -${removed}"}}, "variant": "caption"},
+    {"id": "divider", "component": "Divider"},
+    {"id": "footer", "component": "Row", "children": ["open_pr", "open_editor"]},
+    {"id": "open_pr", "component": "Button", "variant": "primary", "child": "open_pr_label", "action": {"event": {"name": "open_pr"}}},
+    {"id": "open_pr_label", "component": "Text", "text": "Open PR"},
+    {"id": "open_editor", "component": "Button", "variant": "borderless", "child": "open_editor_label", "action": {"event": {"name": "open_in_editor", "context": {"path": "backend/app/Models/Lead.php"}}}},
+    {"id": "open_editor_label", "component": "Text", "text": "Open in editor"}
+  ]}},
+  {"version": "v0.9.1", "updateDataModel": {"surfaceId": "what_changed", "value": {
+    "added": 64, "removed": 0, "note": "Two new columns, one job, no route changes.",
+    "files": [
+      {"path": "backend/app/Models/Lead.php", "added": 12, "removed": 0},
+      {"path": "backend/database/migrations/2026_09_05_000001_add_follow_up_to_leads.php", "added": 28, "removed": 0},
+      {"path": "backend/app/Jobs/SendFollowUpReminder.php", "added": 24, "removed": 0}
+    ]
+  }}}
+]

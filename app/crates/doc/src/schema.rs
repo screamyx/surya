@@ -1209,6 +1209,42 @@ mod tests {
         assert_eq!(doc.chat_id().as_deref(), Some("chat-1"));
     }
 
+    /// A card part survives the doc: written as kind "card" with its JSON,
+    /// read back as the same part, both through push_message and through
+    /// the streaming segment writer.
+    #[test]
+    fn card_parts_round_trip_through_the_doc() {
+        let card = serde_json::json!({"surfaceId": "s", "components": [{"id": "root", "component": "Text", "text": "hi"}]});
+        let part = MessagePart::Card {
+            id: "toolu_card".into(),
+            json: card.clone(),
+        };
+        let doc = SessionDoc::init("chat-cards").unwrap();
+        let mut entry = user_entry("m1", "see the card");
+        entry.role = MessageRole::Assistant;
+        entry.parts.push(part.clone());
+        doc.push_message(&entry).unwrap();
+        let entries = doc.read_entries().unwrap();
+        assert_eq!(entries[0].parts[1], part);
+
+        let mut w = SegmentWriter::begin(&doc, "e2", "dev", 1).unwrap();
+        w.sync(&[MessagePart::Text { id: "t0".into(), text: "Here:".into() }, part.clone()])
+            .unwrap();
+        let entries = doc.read_entries().unwrap();
+        let streamed = entries.iter().find(|e| e.id == "e2").expect("streamed entry");
+        assert_eq!(streamed.parts[1], part);
+        // A refreshed card (same id, new JSON) lands in place.
+        let card2 = serde_json::json!({"components": []});
+        w.sync(&[
+            MessagePart::Text { id: "t0".into(), text: "Here:".into() },
+            MessagePart::Card { id: "toolu_card".into(), json: card2.clone() },
+        ])
+        .unwrap();
+        let entries = doc.read_entries().unwrap();
+        let streamed = entries.iter().find(|e| e.id == "e2").unwrap();
+        assert!(matches!(&streamed.parts[1], MessagePart::Card { json, .. } if *json == card2), "{:?}", streamed.parts);
+    }
+
     #[test]
     fn segment_sync_persists_subagent_chip_fields_on_live_parts() {
         // The eager-done world's OTHER path: the chip mutates while its

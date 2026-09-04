@@ -67,6 +67,32 @@ fn opt_str_field(input: &Value, key: &str) -> Option<String> {
     input.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
+/// The tool names whose call IS an A2UI card (surya decision 14: agents
+/// draw cards as `show_card` tool calls, never as reply text). Bare or
+/// MCP-prefixed (`mcp__surya__show_card`, or any server's `__show_card`).
+pub(crate) fn is_card_tool(name: &str) -> bool {
+    name == "show_card" || name.ends_with("__show_card")
+}
+
+/// Lift a `show_card` tool_use out as [`AgentEvent::Card`] instead of a
+/// tool chip. The input is the card JSON itself, or `{"card": ...}` /
+/// `{"json": "..."}` wrappers a tool schema may impose; `surya-a2ui` parses
+/// whichever arrives. `None` for every other tool.
+pub(crate) fn card_tool_use(name: &str, id: &str, input: &Value) -> Option<AgentEvent> {
+    if !is_card_tool(name) {
+        return None;
+    }
+    let json = input
+        .get("card")
+        .or_else(|| input.get("json"))
+        .cloned()
+        .unwrap_or_else(|| input.clone());
+    Some(AgentEvent::Card {
+        id: id.to_owned(),
+        json,
+    })
+}
+
 /// Decode a Claude `tool_use` block (name + input) into a typed [`ToolCall`].
 pub(crate) fn decode_tool_use(name: &str, input: &Value) -> ToolCall {
     match name {
@@ -367,10 +393,12 @@ impl Normalizer {
                             )),
                             "tool_use" => Some(tag(
                                 parent,
-                                AgentEvent::ToolCall {
-                                    id: b.id.clone(),
-                                    call: decode_tool_use(&b.name, &b.input),
-                                },
+                                card_tool_use(&b.name, &b.id, &b.input).unwrap_or_else(|| {
+                                    AgentEvent::ToolCall {
+                                        id: b.id.clone(),
+                                        call: decode_tool_use(&b.name, &b.input),
+                                    }
+                                }),
                             )),
                             _ => None,
                         })
@@ -397,10 +425,13 @@ impl Normalizer {
                     .blocks()
                     .filter(|b: &ContentBlock| b.kind == "tool_use")
                     .flat_map(|b| {
-                        let call = AgentEvent::ToolCall {
-                            id: b.id.clone(),
-                            call: decode_tool_use(&b.name, &b.input),
-                        };
+                        // A `show_card` call is a Card event, not a chip.
+                        let call = card_tool_use(&b.name, &b.id, &b.input).unwrap_or_else(|| {
+                            AgentEvent::ToolCall {
+                                id: b.id.clone(),
+                                call: decode_tool_use(&b.name, &b.input),
+                            }
+                        });
                         // A spawn's `prompt` is the subagent's opening user
                         // message — the wire never echoes it on the child
                         // feed (child user frames carry tool results and
@@ -650,6 +681,38 @@ mod tests {
             decode_tool_use("Mystery", &json!({})),
             ToolCall::Unknown { .. }
         ));
+    }
+
+    /// A `show_card` tool_use (bare or MCP-prefixed) becomes a Card event
+    /// carrying the input JSON, never a tool chip; its later tool_result is
+    /// an ordinary resolved result the fold ignores (no chip to resolve).
+    #[test]
+    fn show_card_tool_use_is_a_card_event() {
+        let card = json!({"surfaceId": "s1", "components": [{"id": "root", "component": "Text", "text": "hi"}]});
+        for name in ["show_card", "mcp__surya__show_card"] {
+            let raw = format!(
+                r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","id":"toolu_card","name":"{name}","input":{card}}}]}}}}"#
+            );
+            let ev = normalize_one(&raw);
+            assert!(
+                matches!(&ev[0], AgentEvent::Card { id, json } if id == "toolu_card" && *json == card),
+                "{name}: {ev:?}"
+            );
+            assert!(
+                !ev.iter().any(|e| matches!(e, AgentEvent::ToolCall { .. })),
+                "{name}: no chip expected, got {ev:?}"
+            );
+        }
+        // A `{"card": ...}` wrapper unwraps to the card itself.
+        let wrapped = normalize_one(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"show_card","input":{"card":{"components":[]}}}]}}"#,
+        );
+        assert!(matches!(&wrapped[0], AgentEvent::Card { json, .. } if *json == json!({"components": []})));
+        // Other MCP tools stay chips.
+        let other = normalize_one(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t3","name":"mcp__surya__open_file","input":{}}]}}"#,
+        );
+        assert!(matches!(&other[0], AgentEvent::ToolCall { call: ToolCall::Mcp { .. }, .. }));
     }
 
     fn normalize_one(raw: &str) -> Vec<AgentEvent> {
