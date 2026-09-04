@@ -390,6 +390,15 @@ enum MutateParams {
         #[serde(default)]
         at: Option<i64>,
     },
+    // Task board (`crate::tasks`): one board per space, any device writes.
+    CreateTask(crate::tasks::CreateTaskParams),
+    UpdateTask(crate::tasks::UpdateTaskParams),
+    #[serde(rename_all = "camelCase")]
+    DeleteTask { task_id: String },
+    /// Board position — a float rank; the moved task takes the midpoint of
+    /// its new neighbours so one row changes.
+    #[serde(rename_all = "camelCase")]
+    ReorderTask { task_id: String, rank: f64 },
 }
 
 pub struct EngineRpc {
@@ -860,6 +869,22 @@ impl EngineRpc {
                     .map_err(failed)
                     .map(drop)
             }
+            MutateParams::CreateTask(params) => {
+                self.workspace.create_task(params).map_err(failed).map(drop)
+            }
+            MutateParams::UpdateTask(params) => {
+                self.workspace.update_task(params).map_err(failed).map(drop)
+            }
+            MutateParams::DeleteTask { task_id } => self
+                .workspace
+                .delete_task(&task_id)
+                .map_err(failed)
+                .map(drop),
+            MutateParams::ReorderTask { task_id, rank } => self
+                .workspace
+                .reorder_task(&task_id, rank)
+                .map_err(failed)
+                .map(drop),
         }
     }
 }
@@ -1274,6 +1299,13 @@ impl RpcService for EngineRpc {
             methods::WATCH_SPACES => Ok(RpcReply::Stream(watch_stream(
                 self.workspace.watch_spaces(),
             ))),
+            methods::WATCH_TASKS => {
+                let p: crate::tasks::WatchTasksParams = parse_params(params)?;
+                Ok(RpcReply::Stream(crate::tasks::watch_tasks_stream(
+                    self.workspace.watch_tasks(),
+                    p.space_id,
+                )))
+            }
             methods::WATCH_SESSIONS => {
                 // Local live statuses merged with remote devices' workspace rows.
                 let merged = self
