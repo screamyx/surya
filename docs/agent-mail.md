@@ -100,3 +100,20 @@ devices, and auth.
 | `app/crates/engine/src/mail/rpc.rs` | 99 | the four calls |
 | `app/apps/zeron/src/mail_cli.rs` | 113 | the CLI shim |
 | `app/crates/engine/tests/agent_mail.rs` | 275 | the proof |
+
+## Proof
+
+`cargo test -p zeron-engine --test agent_mail`, 2 passed 0 failed, 2026-09-05:
+
+```
+unknown recipient: sent=1 delivered=0 acked=0
+proof 1: sent=1 delivered=1 acked=1
+proof 2: sent=1 recipients=2 ids=2
+proof 2: sent=1 delivered=2
+```
+
+Proof 1 asserts B's transcript carries the literal
+`[MAIL <id> from chat-a] please check the diff` as a user entry, that the row
+records the run that carried it, and that the ack lands only after that turn
+ends. Proof 2 asserts each of the two agents carries its own copy with its own
+delivery id.
