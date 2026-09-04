@@ -177,25 +177,22 @@ pub fn watch_tasks_stream(
             None => tasks.to_vec(),
         }
     };
-    futures::stream::unfold(
-        (rx, None::<Vec<Task>>),
-        move |(mut rx, last)| {
-            let select = select.clone();
-            async move {
-                loop {
-                    if last.is_some() {
-                        rx.changed().await.ok()?;
-                    }
-                    let next = select(&rx.borrow_and_update());
-                    // Skip republishes that did not touch this board.
-                    if last.as_ref() == Some(&next) {
-                        continue;
-                    }
-                    let value = serde_json::to_value(&next).ok()?;
-                    return Some((value, (rx, Some(next))));
+    futures::stream::unfold((rx, None::<Vec<Task>>), move |(mut rx, last)| {
+        let select = select.clone();
+        async move {
+            loop {
+                if last.is_some() {
+                    rx.changed().await.ok()?;
                 }
+                let next = select(&rx.borrow_and_update());
+                // Skip republishes that did not touch this board.
+                if last.as_ref() == Some(&next) {
+                    continue;
+                }
+                let value = serde_json::to_value(&next).ok()?;
+                return Some((value, (rx, Some(next))));
             }
-        },
-    )
+        }
+    })
     .boxed()
 }

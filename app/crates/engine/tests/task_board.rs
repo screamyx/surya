@@ -54,7 +54,10 @@ async fn two_clients_one_creates_the_other_sees_it_and_the_tool_updates_it() {
 
     // B watches the board first: the initial snapshot is empty.
     let mut board_b = client_b
-        .subscribe(methods::WATCH_TASKS, serde_json::json!({ "spaceId": "space-1" }))
+        .subscribe(
+            methods::WATCH_TASKS,
+            serde_json::json!({ "spaceId": "space-1" }),
+        )
         .await
         .expect("subscribe WatchTasks");
     let initial = next_board(&mut board_b).await;
@@ -113,7 +116,10 @@ async fn two_clients_one_creates_the_other_sees_it_and_the_tool_updates_it() {
         .filter(|t| t.id == "t-1" && t.status == TaskStatus::Running)
         .count();
     println!("updates=1 emitted={emitted_count}");
-    assert_eq!(emitted_count, 1, "watch emits the status change: {emitted:?}");
+    assert_eq!(
+        emitted_count, 1,
+        "watch emits the status change: {emitted:?}"
+    );
     assert_eq!(emitted[0].owner.as_deref(), Some("agent-7"));
     assert!(emitted[0].updated_at >= emitted[0].created_at);
 
@@ -125,7 +131,10 @@ async fn two_clients_one_creates_the_other_sees_it_and_the_tool_updates_it() {
         )
         .await
         .expect("create_task");
-    let new_id = made["id"].as_str().expect("tool returns the id").to_string();
+    let new_id = made["id"]
+        .as_str()
+        .expect("tool returns the id")
+        .to_string();
     let board = next_board(&mut board_b).await;
     let ids: Vec<&str> = board.iter().map(|t| t.id.as_str()).collect();
     assert_eq!(ids, ["t-1", new_id.as_str()]);
@@ -154,7 +163,12 @@ async fn reorder_keeps_board_order_across_a_restart() {
         let core = assemble(&data);
         let client = zeron_rpc::memory_client(core.rpc_service());
         create_space(&client, &core.device_id).await;
-        for (id, title) in [("t-1", "one"), ("t-2", "two"), ("t-3", "three"), ("t-4", "four")] {
+        for (id, title) in [
+            ("t-1", "one"),
+            ("t-2", "two"),
+            ("t-3", "three"),
+            ("t-4", "four"),
+        ] {
             client
                 .call(
                     methods::MUTATE,

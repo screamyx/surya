@@ -5,9 +5,10 @@
 //! calls [`TaskTools::call`] with the tool name and the JSON arguments and
 //! forwards the JSON result. [`tool_specs`] is the `tools/list` entry set.
 //!
-//! Wiring (one line each in the server's tool table):
-//!   `mod tasks;` … `specs.extend(tasks::tool_specs());` …
-//!   `name if tasks::handles(name) => tasks::TaskTools::connect().await?.call(name, args).await`
+//! The server is synchronous stdio; [`call_blocking`] runs one tool call on a
+//! throwaway current-thread runtime. `workspace` defaults to the
+//! `SURYA_WORKSPACE` the harness put in the server's env, so an agent can
+//! omit it.
 //!
 //! Semantics live in the engine (`zeron_engine::tasks`); this file only shapes
 //! arguments and answers for an agent.
@@ -40,6 +41,29 @@ pub fn handles(name: &str) -> bool {
     matches!(name, LIST_TASKS | CREATE_TASK | UPDATE_TASK)
 }
 
+/// One tool call from the synchronous server loop: dial the engine, run the
+/// call, tear the runtime down. Cheap enough per call (one loopback socket).
+pub fn call_blocking(
+    default_workspace: Option<&str>,
+    name: &str,
+    mut args: Value,
+) -> Result<Value, String> {
+    if let Some(obj) = args.as_object_mut()
+        && obj
+            .get("workspace")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+        && let Some(workspace) = default_workspace.filter(|w| !w.is_empty())
+    {
+        obj.insert("workspace".into(), json!(workspace));
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| format!("tokio runtime: {e}"))?;
+    runtime.block_on(async { TaskTools::connect().await?.call(name, args).await })
+}
+
 /// MCP `tools/list` entries: `{name, description, inputSchema}`.
 pub fn tool_specs() -> Vec<Value> {
     let status = json!({
@@ -53,9 +77,9 @@ pub fn tool_specs() -> Vec<Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "workspace": {"type": "string", "description": "Space id of the board."},
+                    "workspace": {"type": "string", "description": "Space id of the board. Default: this session's workspace."},
                 },
-                "required": ["workspace"],
+                "required": [],
             },
         }),
         json!({
@@ -64,13 +88,13 @@ pub fn tool_specs() -> Vec<Value> {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "workspace": {"type": "string", "description": "Space id of the board."},
+                    "workspace": {"type": "string", "description": "Space id of the board. Default: this session's workspace."},
                     "title": {"type": "string"},
                     "notes": {"type": "string"},
                     "owner": {"type": "string", "description": "Agent id, or 'user'. Default: unowned."},
                     "status": status,
                 },
-                "required": ["workspace", "title"],
+                "required": ["title"],
             },
         }),
         json!({
@@ -160,9 +184,15 @@ impl TaskTools {
     async fn update_task(&self, args: Value) -> Result<Value, String> {
         let id = required_str(&args, "id")?;
         let mut params = json!({ "op": "updateTask", "taskId": id });
-        copy_optional(&args, &mut params, &["status", "notes", "owner", "title", "links"]);
+        copy_optional(
+            &args,
+            &mut params,
+            &["status", "notes", "owner", "title", "links"],
+        );
         if params.as_object().map_or(0, |o| o.len()) == 2 {
-            return Err("update_task needs at least one of status, notes, owner, title, links".into());
+            return Err(
+                "update_task needs at least one of status, notes, owner, title, links".into(),
+            );
         }
         self.client
             .call(methods::MUTATE, params)
@@ -210,12 +240,9 @@ mod tests {
     #[test]
     fn specs_name_the_three_tools_with_required_fields() {
         let specs = tool_specs();
-        let names: Vec<&str> = specs
-            .iter()
-            .map(|s| s["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = specs.iter().map(|s| s["name"].as_str().unwrap()).collect();
         assert_eq!(names, [LIST_TASKS, CREATE_TASK, UPDATE_TASK]);
-        assert_eq!(specs[1]["inputSchema"]["required"], json!(["workspace", "title"]));
+        assert_eq!(specs[1]["inputSchema"]["required"], json!(["title"]));
         assert!(names.iter().all(|n| handles(n)));
         assert!(!handles("show_card"));
     }
@@ -223,6 +250,9 @@ mod tests {
     #[test]
     fn engine_url_prefers_explicit_override() {
         // Environment is process-global; test the derivation without setting it.
-        assert_eq!(format!("ws://127.0.0.1:{DEFAULT_IPC_PORT}"), "ws://127.0.0.1:27654");
+        assert_eq!(
+            format!("ws://127.0.0.1:{DEFAULT_IPC_PORT}"),
+            "ws://127.0.0.1:27654"
+        );
     }
 }

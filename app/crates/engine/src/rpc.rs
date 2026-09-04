@@ -391,8 +391,15 @@ enum MutateParams {
         at: Option<i64>,
     },
     // Task board (`crate::tasks`): one board per space, any device writes.
-    CreateTask(crate::tasks::CreateTaskParams),
-    UpdateTask(crate::tasks::UpdateTaskParams),
+    // Struct variants with a flattened body, so the enum stays uniform.
+    CreateTask {
+        #[serde(flatten)]
+        params: crate::tasks::CreateTaskParams,
+    },
+    UpdateTask {
+        #[serde(flatten)]
+        params: crate::tasks::UpdateTaskParams,
+    },
     #[serde(rename_all = "camelCase")]
     DeleteTask { task_id: String },
     /// Board position — a float rank; the moved task takes the midpoint of
@@ -887,10 +894,10 @@ impl EngineRpc {
                     .map_err(failed)
                     .map(drop)
             }
-            MutateParams::CreateTask(params) => {
+            MutateParams::CreateTask { params } => {
                 self.workspace.create_task(params).map_err(failed).map(drop)
             }
-            MutateParams::UpdateTask(params) => {
+            MutateParams::UpdateTask { params } => {
                 self.workspace.update_task(params).map_err(failed).map(drop)
             }
             MutateParams::DeleteTask { task_id } => self
