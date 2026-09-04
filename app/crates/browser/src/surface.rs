@@ -57,6 +57,46 @@ fn notify_resized() {
 /// The last frame on screen, so the one before it can leave the atlas.
 static LAST: Mutex<Option<(u64, Arc<RenderImage>)>> = Mutex::new(None);
 
+/// The surface plus every listener that carries a person's mouse and
+/// keyboard into the page. Clicking it takes the keyboard, as clicking a page
+/// in Chrome does; `focus` is the pane's handle for that.
+pub fn panel(focus: &gpui::FocusHandle) -> gpui::AnyElement {
+    use gpui::{InteractiveElement as _, MouseButton};
+    if crate::disabled() {
+        return surface();
+    }
+    let taker = focus.clone();
+    let mut panel = div()
+        .id("browser-surface")
+        .size_full()
+        .track_focus(focus)
+        .on_any_mouse_down(move |event, window, cx| {
+            if !taker.is_focused(window) {
+                window.focus(&taker, cx);
+                crate::events::set_focus(true);
+            }
+            crate::events::mouse_down(event);
+        })
+        .on_mouse_move(|event, _, _| crate::events::mouse_moved(event.position, &event.modifiers))
+        .on_scroll_wheel(|event, _, _| crate::events::scroll(event))
+        .on_key_down(|event, _, cx| {
+            // A chord the pane acted on itself, F5 or alt+left, must not also
+            // reach the page.
+            if crate::events::key_down(event) {
+                cx.stop_propagation();
+            }
+        })
+        .on_key_up(|event, _, _| crate::events::key_up(event));
+    for button in [MouseButton::Left, MouseButton::Right, MouseButton::Middle] {
+        panel = panel
+            .on_mouse_up(button, |event, _, _| crate::events::mouse_up(event))
+            // A drag that ends outside the pane still has to end, or the page
+            // keeps the button down forever.
+            .on_mouse_up_out(button, |event, _, _| crate::events::mouse_up(event));
+    }
+    panel.child(surface()).into_any_element()
+}
+
 /// The page pixels, filling whatever bounds the parent gives them.
 pub fn surface() -> gpui::AnyElement {
     if crate::disabled() {
@@ -73,6 +113,10 @@ pub fn surface() -> gpui::AnyElement {
             if let Ok(mut o) = ORIGIN.lock() {
                 *o = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
             }
+            crate::events::set_origin(
+                f32::from(bounds.origin.x).round() as i32,
+                f32::from(bounds.origin.y).round() as i32,
+            );
             // Three separate swaps, then the OR: `||` short-circuits and a
             // DPI change on an unchanged size would be dropped.
             let dw = VIEW_W.swap(w, Ordering::AcqRel) != w;

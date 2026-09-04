@@ -18,14 +18,17 @@
 
 mod cef_app;
 mod client;
+mod events;
+pub mod input;
 mod page;
 mod pump;
 mod render;
 mod surface;
 
+pub use events::counters as input_counters;
 pub use page::{navigate_to, page, Page};
 pub use pump::{counters, pump};
-pub use surface::{surface, surface_origin};
+pub use surface::{panel, surface, surface_origin};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -180,6 +183,12 @@ pub fn reload() {
     }
 }
 
+pub fn reload_ignoring_cache() {
+    if let Some(b) = client::browser() {
+        b.reload_ignore_cache();
+    }
+}
+
 pub fn stop() {
     if let Some(b) = client::browser() {
         b.stop_load();
@@ -188,7 +197,5 @@ pub fn stop() {
 
 /// Keyboard focus into or out of the page.
 pub fn set_focus(on: bool) {
-    if let Some(host) = client::host() {
-        host.set_focus(i32::from(on));
-    }
+    events::set_focus(on);
 }

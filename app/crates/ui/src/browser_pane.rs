@@ -16,6 +16,9 @@ pub const BAR_HEIGHT: f32 = 36.0;
 pub struct BrowserPane {
     /// The URL field's keyboard focus.
     bar_focus: FocusHandle,
+    /// The page's keyboard focus: clicking the page takes it, and keys go
+    /// to Chromium while it holds it.
+    page_focus: FocusHandle,
     /// What the person has typed so far, or `None` while the bar shows the
     /// page's own address.
     typed: Option<String>,
@@ -25,6 +28,7 @@ impl BrowserPane {
     pub fn new(cx: &mut Context<Self>) -> Self {
         Self {
             bar_focus: cx.focus_handle(),
+            page_focus: cx.focus_handle(),
             typed: None,
         }
     }
@@ -118,7 +122,11 @@ impl Render for BrowserPane {
             .items_center()
             .cursor_text()
             .track_focus(&self.bar_focus)
-            .on_click(move |_, window, cx| window.focus(&bar_focus, cx))
+            .on_click(move |_, window, cx| {
+                window.focus(&bar_focus, cx);
+                // The bar has the keyboard now, not the page.
+                surya_browser::set_focus(false);
+            })
             .on_key_down(cx.listener(Self::on_bar_key))
             .child(
                 div()
@@ -192,6 +200,13 @@ impl Render for BrowserPane {
             .child(bar)
             .child(hairline)
             .children(error)
-            .child(div().flex_1().min_h_0().w_full().bg(gpui::white()).child(surya_browser::surface()))
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .bg(gpui::white())
+                    .child(surya_browser::panel(&self.page_focus)),
+            )
     }
 }
