@@ -233,6 +233,26 @@ Cross-server mail is day one: an agent on one server messages an agent on anothe
 Size: one table, one `send_message` MCP tool, one delivery rule in the run loop, one CLI shim, one forwarding call, one screen.
 agb's own repo may go public; surya does not depend on it.
 
+## 20. The flows change with the research, and the look stays warm
+
+Owner, 02:52: "im still not satisfied with the mockup. it looks too ai-generated."
+Owner, 03:01: "not only the UI, the UX needs massive improvement. now im thinking for him to send researchers to scout other ADEs and find out how they do it."
+Owner, 03:58, picking from the coordinator's options: "All three flows + phone cut" and "Keep warm workshop".
+
+Grounding: `docs/research/synthesis.md`, written from twelve products and 55 screenshots (`docs/research/*.md`).
+Its headline: "Eight of the ten products have no 'needs you' queue at all."
+The inbox is the one idea the field lacks, so it becomes the spine of the app.
+
+What changes in the mockup, and then in the product:
+1. Home is the attention queue: what needs you at full weight, then what is running, then what is done and unshipped. Workspace and server are labels and filters, not the top grouping. The quiet state says nothing needs attention.
+2. The agent session is one surface with panes: transcript, changed files, diff, live preview. Feed, Files and Preview stop being separate top-level routes. Result stays a distinct surface for the ship decision only.
+3. A permission answer can become a rule. Every permission card carries a second, quieter action of the shape "Always allow migrations in project-jag", and Settings gains the approval-policy page those rules live on.
+4. The phone cuts rather than shrinks. Supervising, answering and reviewing stay. The editor and the file tree are desktop only.
+
+The look: the warm-workshop direction from `docs/design-brief.md` stays. Parchment canvas, warm neutrals, one terracotta accent, serif page titles, anchored on the kit's Claude design system file. Every new layout is designed to it.
+
+Decisions 11 (the seven 1.0 features) and 15 (rail and agent tree) still hold; this decision changes where the features sit, not whether they ship.
+
 ## Open
 
 None at day zero.
