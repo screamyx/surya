@@ -48,7 +48,7 @@ use std::path::PathBuf;
 use futures::StreamExt as _;
 use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 
-pub use state::EngineBootConfig;
+pub use state::{EngineBootConfig, RemoteEngineTarget};
 pub use zeron_proto::HarnessId;
 
 /// Everything the headed binary passes in (config/env resolution lives in
@@ -57,8 +57,15 @@ pub use zeron_proto::HarnessId;
 pub struct UiConfig {
     /// Data directory — engine stores + `ui-settings.json`.
     pub data_dir: PathBuf,
-    /// Localhost IPC port: connect if an engine daemon is listening, embed if not.
+    /// IPC port: connect if an engine daemon is listening, embed if not.
     pub ipc_port: u16,
+    /// Bind address the embedded engine serves other viewports on.
+    pub ipc_bind: std::net::IpAddr,
+    /// Explicit IPC token for the embedded engine's socket.
+    pub ipc_token: Option<String>,
+    /// `--engine`: dial this remote engine and never embed. Beats the saved
+    /// active server in `ui-settings.json`.
+    pub engine: Option<RemoteEngineTarget>,
     /// Edge base URL for the embedded engine.
     pub edge_url: String,
     /// Edge bearer; `None` runs offline.
@@ -75,10 +82,15 @@ pub struct UiConfig {
 }
 
 impl UiConfig {
-    fn boot(&self) -> EngineBootConfig {
+    /// The boot configuration with the engine choice resolved by the caller
+    /// (`--engine`, the saved active server, or local).
+    fn boot_with(&self, remote: Option<RemoteEngineTarget>) -> EngineBootConfig {
         EngineBootConfig {
             data_dir: self.data_dir.clone(),
             ipc_port: self.ipc_port,
+            ipc_bind: self.ipc_bind,
+            ipc_token: self.ipc_token.clone(),
+            remote,
             edge_url: self.edge_url.clone(),
             edge_token: self.edge_token.clone(),
             org_id: self.org_id.clone(),
@@ -126,9 +138,16 @@ pub fn run_app(config: UiConfig) {
     app.run(move |cx: &mut App| {
         // NB: pinned-rev API — `gpui_tokio::init(cx)` free function (not `Tokio::init`).
         gpui_tokio::init(cx);
-        let data_dir = config.boot().data_dir.clone();
+        let data_dir = config.data_dir.clone();
         let ui_settings = settings::UiSettings::load(&data_dir);
         settings::init(ui_settings.clone(), data_dir.clone(), cx);
+        // `--engine` wins; otherwise the saved active server; otherwise local.
+        let boot = config.boot_with(
+            config
+                .engine
+                .clone()
+                .or_else(|| ui_settings.active_server_entry().map(settings::ServerEntry::target)),
+        );
         let font_availability = typography::register_fonts(cx);
         // Typography first: theme installation reads the effective family, so
         // the first frame has the final font and palette without a flash.
@@ -159,7 +178,7 @@ pub fn run_app(config: UiConfig) {
             }
         })
         .detach();
-        state::AppState::bootstrap(state.clone(), config.boot(), cx);
+        state::AppState::bootstrap(state.clone(), boot.clone(), cx);
 
         // Graceful teardown: an in-process engine drains live runs and flushes
         // doc snapshots before the process exits (remote engines outlive us).
@@ -180,9 +199,9 @@ pub fn run_app(config: UiConfig) {
 
         cx.set_global(ReopenState {
             state: state.clone(),
-            boot: config.boot(),
+            boot: boot.clone(),
         });
-        open_main_window(state, config.boot(), cx);
+        open_main_window(state, boot, cx);
         // Native menu bar — macOS gets the standard app menu (About/Services/
         // Hide/Quit ⌘Q), Edit clipboard verbs routed to the focused input, and
         // a Window menu (⌘M/⌘W). Without this, `NSApp.mainMenu` stays nil: no
