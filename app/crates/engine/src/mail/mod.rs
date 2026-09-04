@@ -111,14 +111,34 @@ impl Mail {
         body: &str,
         to_device: Option<&str>,
     ) -> Result<MailReceipt, crate::EngineError> {
+        self.send_with_id(from, to, body, to_device, None).await
+    }
+
+    /// [`Self::send`] carrying a delivery id the caller already minted. The
+    /// surya-mcp seat's `send_message` hands its agent an id before the engine
+    /// ever sees the record, so that id has to be the one `Mail.Ack` takes. A
+    /// fan-out needs one id per row, so extra recipients get `<id>-2`, `<id>-3`
+    /// and so on; the first row keeps the id as written.
+    pub async fn send_with_id(
+        &self,
+        from: &str,
+        to: &str,
+        body: &str,
+        to_device: Option<&str>,
+        delivery_id: Option<&str>,
+    ) -> Result<MailReceipt, crate::EngineError> {
         let address = MailAddress::parse(to).map_err(crate::EngineError::Other)?;
         let recipients = self.resolve(&address);
         let to_device = to_device.unwrap_or(&self.inner.device_id).to_string();
         let now = chrono::Utc::now().timestamp_millis();
         let mut ids = Vec::with_capacity(recipients.len());
-        for agent in &recipients {
+        for (index, agent) in recipients.iter().enumerate() {
             let message = MailMessage {
-                id: new_mail_id(),
+                id: match (delivery_id, index) {
+                    (Some(id), 0) => id.to_string(),
+                    (Some(id), n) => format!("{id}-{}", n + 1),
+                    (None, _) => new_mail_id(),
+                },
                 from: from.to_string(),
                 to: to.to_string(),
                 to_agent: agent.clone(),

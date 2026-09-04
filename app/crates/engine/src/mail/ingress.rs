@@ -9,7 +9,11 @@
 //!   there is no runtime dir, tailed from its end so a restart does not
 //!   redeliver history.
 //!
-//! Record: `{"from":"…","to":"…","body":"…","toDevice":"…"?}`.
+//! Record, as `surya-mcp`'s `send_message` writes it (`crates/mcp/src/mail.rs`):
+//! `{"delivery_id":"d_…","from":"…","to":"…","workspace":"…","text":"…"}`.
+//! `body` is accepted for `text`, and `toDevice` for cross-server addressing.
+//! The seat's `delivery_id` becomes the row id, so the id the tool already
+//! handed the agent is the one `Mail.Ack` takes.
 
 use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -41,9 +45,16 @@ struct MailRecord {
     #[serde(default = "unknown_sender")]
     from: String,
     to: String,
-    body: String,
+    /// The seat writes `text`; `body` is the same field under the engine's name.
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    text: Option<String>,
     #[serde(default)]
     to_device: Option<String>,
+    /// Minted by the seat's tool and already returned to the sending agent.
+    #[serde(default, alias = "delivery_id")]
+    delivery_id: Option<String>,
 }
 
 fn unknown_sender() -> String {
@@ -193,12 +204,17 @@ async fn accept(mail: &Mail, line: &str) -> Result<Option<super::MailReceipt>, c
     }
     let record: MailRecord = serde_json::from_str(line)
         .map_err(|e| crate::EngineError::Other(format!("bad mail record: {e}")))?;
+    let body = record
+        .text
+        .or(record.body)
+        .ok_or_else(|| crate::EngineError::Other("mail record has no text".into()))?;
     let receipt = mail
-        .send(
+        .send_with_id(
             &record.from,
             &record.to,
-            &record.body,
+            &body,
             record.to_device.as_deref(),
+            record.delivery_id.as_deref(),
         )
         .await?;
     Ok(Some(receipt))
@@ -207,6 +223,20 @@ async fn accept(mail: &Mail, line: &str) -> Result<Option<super::MailReceipt>, c
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_seats_record_shape_parses() {
+        // Verbatim from crates/mcp/src/mail.rs.
+        // `r##` and not `r#`: the address `"#demo` would close a single-hash
+        // raw string.
+        let line = r##"{"delivery_id":"d_abc","from":"seat-1","to":"#demo",
+            "workspace":"/repo","text":"the migration is ready","at":"2026-09-05T00:00:00Z"}"##;
+        let record: MailRecord = serde_json::from_str(line).expect("parses");
+        assert_eq!(record.delivery_id.as_deref(), Some("d_abc"));
+        assert_eq!(record.text.as_deref(), Some("the migration is ready"));
+        assert_eq!(record.from, "seat-1");
+        assert_eq!(record.to, "#demo");
+    }
 
     #[test]
     fn tail_reads_only_whole_appended_lines() {

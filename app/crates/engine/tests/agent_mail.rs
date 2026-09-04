@@ -127,6 +127,7 @@ fn request(prompt: &str) -> RunRequest {
         attachments: Vec::new(),
         worktree: None,
         resume: None,
+        surya: None,
     }
 }
 
@@ -289,6 +290,47 @@ async fn mail_to_an_unknown_agent_queues_instead_of_failing() {
     let (sent, delivered, acked) = core.mail.counts().expect("counts");
     println!("unknown recipient: sent={sent} delivered={delivered} acked={acked}");
     assert_eq!((sent, delivered, acked), (1, 0, 0));
+
+    core.shutdown().await;
+}
+
+/// The surya-mcp seat's record shape, straight through the engine: its
+/// `delivery_id` becomes the row id, and `text` is the body.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_seats_delivery_id_becomes_the_row_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let registry = HarnessRegistry::new();
+    registry.register(Arc::new(EchoHarness));
+    let core = EngineCore::assemble(
+        &tmp.path().join("data"),
+        Arc::new(registry),
+        HarnessId::Mock,
+        None,
+    )
+    .expect("engine core assembles");
+
+    let receipt = core
+        .mail
+        .send_with_id(
+            "seat-1",
+            "seat-2",
+            "the migration is ready",
+            None,
+            Some("d_abc"),
+        )
+        .await
+        .expect("send");
+    assert_eq!(receipt.ids, vec!["d_abc".to_string()]);
+    let row = core
+        .mail
+        .list(Some("seat-2"))
+        .unwrap()
+        .into_iter()
+        .next()
+        .expect("row");
+    assert_eq!(row.id, "d_abc");
+    assert_eq!(row.body, "the migration is ready");
+    assert!(core.mail.ack("d_abc").expect("ack"), "the seat's id acks");
 
     core.shutdown().await;
 }
