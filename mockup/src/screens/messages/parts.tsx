@@ -1,6 +1,6 @@
 // The pieces a thread is made of: one message row, the delivery mark under it,
 // and the muted block of mail an agent exchanged with other agents.
-import { ArrowRight, Check, ChevronRight } from "lucide-react"
+import { ArrowLeftRight, ArrowRight, Check, ChevronRight } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -82,8 +82,10 @@ export function CrossBlock({ id, groups }: { id: string; groups: { other: string
         <Collapsible key={g.other}>
           <CollapsibleTrigger className="text-muted-foreground hover:text-foreground group flex w-full items-center gap-1.5 text-xs transition-colors">
             <ChevronRight className="size-3 transition-transform group-data-[panel-open]:rotate-90" />
-            <span className="font-medium">{id} ↔ {g.other}</span>
-            <span>{g.rows.length} messages</span>
+            <span className="font-medium">{id}</span>
+            <ArrowLeftRight className="size-3" />
+            <span className="font-medium">{g.other}</span>
+            <span>{g.rows.length === 1 ? "1 message" : `${g.rows.length} messages`}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="divide-y border-l pl-3">

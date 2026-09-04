@@ -18,7 +18,7 @@ import { SessionsSheet } from "@/screens/agent-feed/sessions-sheet"
 import { StopDialog } from "@/screens/agent-feed/stop-dialog"
 import { SystemLine, type SystemRow } from "@/screens/agent-feed/system-line"
 import {
-  AssistantEvent, DiffEvent, FeedRow, PermissionEvent, QuestionEvent, SubagentEvent, ThinkingEvent, ToolRow, UserEvent, CommandEvent } from "@/screens/agent-feed/events"
+  AssistantEvent, DiffEvent, FeedRow, MailInEvent, MailOutEvent, PermissionEvent, QuestionEvent, SubagentEvent, ThinkingEvent, ToolRow, UserEvent, CommandEvent } from "@/screens/agent-feed/events"
 import { pop, stagger } from "@/motion"
 import { agents, feed, fmtTime, inbox, type FeedEvent } from "@/data"
 
@@ -133,6 +133,8 @@ function EventBody({ e, ws, name }: { e: FeedEvent; ws: string; name: string }) 
     case "question": return <QuestionEvent e={e} />
     case "permission": return <PermissionEvent e={e} name={name} />
     case "command": return <CommandEvent e={e} />
+    case "mail-out": return <MailOutEvent e={e} />
+    case "mail-in": return <MailInEvent e={e} />
   }
 }
 

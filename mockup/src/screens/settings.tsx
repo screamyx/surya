@@ -1,7 +1,7 @@
-// Screen: settings. Account, the daemon on the tailnet, notifications, models, look, workspaces.
+// Screen: settings. Account, the servers running the daemon, notifications, models, look, workspaces.
 import { useEffect, useState } from "react"
 import { motion } from "motion/react"
-import { Monitor, MoonStar, Plus, RotateCw, Sun } from "lucide-react"
+import { Monitor, MoonStar, Plus, Sun } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -14,8 +14,9 @@ import { Switch } from "@/components/ui/switch"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { McpPanel } from "@/screens/settings/mcp"
 import { PluginsPanel } from "@/screens/settings/plugins"
+import { ServersPanel } from "@/screens/settings/servers"
 import { readTheme, setTheme, type Theme } from "@/screens/settings/theme"
-import { settings, workspaces } from "@/data"
+import { serverById, settings, workspaces } from "@/data"
 import { rise, stagger } from "@/motion"
 
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
@@ -55,7 +56,7 @@ export function SettingsScreen() {
     <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6 md:py-8">
       <header className="flex flex-col gap-1">
         <h1 className="font-heading text-2xl font-semibold tracking-tight md:text-3xl">Settings</h1>
-        <p className="text-muted-foreground text-sm">Your account, the machine that runs the agents, and how surya reaches you.</p>
+        <p className="text-muted-foreground text-sm">Your account, the machines that run the agents, and how surya reaches you.</p>
       </header>
 
       <motion.div variants={stagger} initial="hidden" animate="show" className="mt-6 flex flex-col gap-4">
@@ -72,25 +73,7 @@ export function SettingsScreen() {
           </Card>
         </motion.div>
 
-        <motion.div variants={rise}>
-          <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-2">
-              <div className="flex flex-col gap-1">
-                <CardTitle>Daemon</CardTitle>
-                <CardDescription>The machine your agents run on. It keeps working when you close the app.</CardDescription>
-              </div>
-              <Badge variant="secondary" className="shrink-0 gap-1.5"><span className="bg-primary size-1.5 animate-pulse rounded-full" />Running</Badge>
-            </CardHeader>
-            <CardContent>
-              <Row label="Host" value={settings.daemon.host} mono />
-              <Row label="surya version" value={settings.daemon.version} mono />
-              <Row label="Claude Code version" value={settings.daemon.claude} mono />
-              <Row label="Up for" value={settings.daemon.uptime} />
-              <Separator className="my-3" />
-              <Button variant="outline" className="h-9 md:h-8"><RotateCw data-icon="inline-start" />Restart daemon</Button>
-            </CardContent>
-          </Card>
-        </motion.div>
+        <motion.div variants={rise}><ServersPanel /></motion.div>
 
         <motion.div variants={rise}><McpPanel /></motion.div>
 
@@ -161,7 +144,7 @@ export function SettingsScreen() {
           <Card>
             <CardHeader>
               <CardTitle>Workspaces</CardTitle>
-              <CardDescription>Each one is a folder on the daemon. Agents are grouped by workspace.</CardDescription>
+              <CardDescription>Each one is a folder on a server. Agents are grouped by workspace.</CardDescription>
             </CardHeader>
             <CardContent>
               <ItemGroup className="gap-1">
@@ -169,7 +152,7 @@ export function SettingsScreen() {
                   <Item key={w.id} variant="outline" className="flex-nowrap">
                     <ItemContent className="min-w-0">
                       <ItemTitle>{w.name}<Badge variant="outline">{w.branch}</Badge></ItemTitle>
-                      <ItemDescription className="truncate font-mono">{w.worktree}</ItemDescription>
+                      <ItemDescription className="truncate font-mono">{serverById(w.serverId).name}:{w.worktree}</ItemDescription>
                     </ItemContent>
                     <ItemActions>
                       <Button variant="ghost" size="sm" className="h-9 md:h-7">Remove</Button>

@@ -1,6 +1,6 @@
 // Screen: new ask. Feature 1 - pick a workspace, type one sentence, an agent starts.
 import { useState } from "react"
-import { Link } from "react-router"
+import { Link, useSearchParams } from "react-router"
 import { motion } from "motion/react"
 import { ArrowRight, GitBranch, GitPullRequest, Play, TestTube } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Toggle } from "@/components/ui/toggle"
 import { StatusDot } from "@/components/status"
 import { pop, rise, stagger } from "@/motion"
-import { agents, settings, tasks, workspaces } from "@/data"
+import { agents, serverById, settings, tasks, workspaces } from "@/data"
 
 const modes = ["Build", "Plan only", "Ask questions first"]
 
@@ -33,6 +33,12 @@ const recent = ["t-1", "t-2", "t-4"]
   .map((id) => tasks.find((t) => t.id === id)!)
   .map((t) => ({ task: t, agent: agents.find((a) => a.id === t.agentId)! }))
 
+// A workspace only means something with its server in front of it once there is more than one.
+const wsLabel = (id: string) => {
+  const w = workspaces.find((x) => x.id === id)
+  return w ? `${serverById(w.serverId).name} / ${w.name}` : id
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-1.5">
@@ -43,8 +49,15 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 export function NewAskScreen() {
+  // The rail, the tab bar and the workspace cards all link here as /new?ws=<id>.
+  const [params] = useSearchParams()
+  const asked = params.get("ws")
+  const preset = workspaces.some((w) => w.id === asked) ? asked! : workspaces[0].id
+
   const [ask, setAsk] = useState("")
+  const [ws, setWs] = useState(preset)
   const [on, setOn] = useState<Record<string, boolean>>(Object.fromEntries(switches.map((s) => [s.id, s.on])))
+  const picked = workspaces.find((w) => w.id === ws)!
 
   return (
     <motion.div
@@ -56,6 +69,11 @@ export function NewAskScreen() {
       <motion.div variants={rise} className="space-y-1">
         <h1 className="font-heading text-2xl font-medium tracking-tight">What do you want done?</h1>
         <p className="text-muted-foreground text-sm">One sentence is enough. The agent asks if it needs more.</p>
+        {asked && (
+          <p className="text-muted-foreground text-sm">
+            Starting in {picked.name} on {serverById(picked.serverId).name}
+          </p>
+        )}
       </motion.div>
 
       <motion.div variants={rise}>
@@ -71,11 +89,11 @@ export function NewAskScreen() {
 
       <motion.div variants={rise} className="grid gap-3 sm:grid-cols-3">
         <Field label="Workspace">
-          <Select defaultValue={workspaces[0].id}>
+          <Select value={ws} onValueChange={(v) => setWs(v as string)}>
             <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>
               {workspaces.map((w) => (
-                <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                <SelectItem key={w.id} value={w.id}>{wsLabel(w.id)}</SelectItem>
               ))}
             </SelectContent>
           </Select>

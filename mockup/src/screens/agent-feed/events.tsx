@@ -2,7 +2,7 @@
 import { useState } from "react"
 import { Link } from "react-router"
 import { motion } from "motion/react"
-import { Check, ChevronRight, FileDiff, ShieldAlert, Sparkles, X } from "lucide-react"
+import { Check, ChevronRight, FileDiff, Mail, Send, ShieldAlert, Sparkles, X } from "lucide-react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -265,5 +265,68 @@ export function CommandEvent({ e }: { e: Of<"command"> }) {
         <Stamp at={e.at} />
       </div>
     </div>
+  )
+}
+
+// Mail this agent sent. Compact like a tool row: the address, the first line, the delivery id.
+export function MailOutEvent({ e }: { e: Of<"mail-out"> }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="space-y-2">
+      <Item
+        variant="outline"
+        size="sm"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); setOpen((v) => !v) } }}
+        className="hover:bg-muted flex-nowrap gap-2 py-2 cursor-pointer"
+      >
+        <ChevronRight className={cn("text-muted-foreground size-3.5 shrink-0 transition-transform", open && "rotate-90")} />
+        <Send className="text-muted-foreground size-3.5 shrink-0" />
+        <span className="shrink-0 text-xs">sent to <span className="font-medium">{e.to}</span></span>
+        <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">{e.text}</span>
+        <Stamp at={e.at} className="hidden sm:inline" />
+        <span className="text-muted-foreground shrink-0 font-mono text-xs">{e.deliveryId}</span>
+        {e.delivered && (
+          <span className="text-muted-foreground flex shrink-0 items-center gap-1 text-xs">
+            <Check className="size-3.5" />
+            <span className="hidden sm:inline">delivered</span>
+          </span>
+        )}
+      </Item>
+      {open && (
+        <motion.div variants={fade} initial="hidden" animate="show">
+          <p className="text-muted-foreground border-l pl-3 text-sm leading-relaxed">{e.text}</p>
+        </motion.div>
+      )}
+    </div>
+  )
+}
+
+// Mail that arrived. The daemon delivered it as this agent's next turn, so it reads in full.
+export function MailInEvent({ e }: { e: Of<"mail-in"> }) {
+  const [acked, setAcked] = useState(e.acked)
+  return (
+    <Card size="sm">
+      <CardHeader className="flex flex-wrap items-center gap-2">
+        <Mail className="text-muted-foreground size-4 shrink-0" />
+        <CardTitle className="text-sm">from {e.from}</CardTitle>
+        <Badge variant="outline" className="font-mono text-xs">{e.deliveryId}</Badge>
+        <Stamp at={e.at} className="ml-auto" />
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm leading-relaxed">{e.text}</p>
+      </CardContent>
+      <CardFooter className="justify-between gap-2">
+        <span className="text-muted-foreground text-xs">Arrived as this agent's next turn</span>
+        {acked ? (
+          <Badge variant="secondary" className="gap-1"><Check />acked</Badge>
+        ) : (
+          <Button size="xs" variant="outline" onClick={() => setAcked(true)}>Ack</Button>
+        )}
+      </CardFooter>
+    </Card>
   )
 }

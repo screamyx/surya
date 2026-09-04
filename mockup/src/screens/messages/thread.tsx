@@ -16,7 +16,7 @@ function ThreadHeader({ t, onBack }: { t: Thread; onBack?: () => void }) {
   return (
     <div className="flex items-center gap-2.5 border-b px-4 py-3">
       {onBack && (
-        <Button size="icon-sm" variant="ghost" onClick={onBack} aria-label="Back to all threads" className="-ml-1 shrink-0 md:hidden">
+        <Button size="icon-sm" variant="ghost" onClick={onBack} aria-label="Back to all threads" className="-ml-1 shrink-0 lg:hidden">
           <ArrowLeft />
         </Button>
       )}
@@ -56,7 +56,7 @@ function Composer({ t, onSend }: { t: Thread; onSend: (text: string) => void }) 
       />
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-muted-foreground min-w-0 flex-1 text-xs">{lands}</p>
-        <Button size="sm" onClick={send} disabled={!text.trim()} className="max-sm:h-10 max-sm:w-full">
+        <Button size="sm" onClick={send} disabled={!text.trim()} className="shrink-0 max-sm:h-10">
           <Send data-icon="inline-start" />
           Send
         </Button>
@@ -78,8 +78,8 @@ export function ThreadView({ t, sent, onSend, onBack }: {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ThreadHeader t={t} onBack={onBack} />
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
-        <motion.div key={t.id} variants={stagger} initial="hidden" animate="show" className="mx-auto flex max-w-3xl flex-col gap-5">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5">
+        <motion.div key={t.id} variants={stagger} initial="hidden" animate="show" className="mx-auto mt-auto flex w-full max-w-3xl flex-col gap-5">
           {rows.map((m) => (
             <motion.div key={m.id} variants={rise}>
               <MessageRow m={m} />

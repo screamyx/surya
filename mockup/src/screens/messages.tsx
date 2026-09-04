@@ -47,10 +47,10 @@ export function MessagesScreen() {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        <div className={cn("min-h-0 w-full shrink-0 overflow-y-auto md:w-70 md:border-r", openOnPhone && "max-md:hidden")}>
+        <div className={cn("min-h-0 w-full shrink-0 overflow-y-auto lg:w-70 lg:border-r", openOnPhone && "max-lg:hidden")}>
           <ThreadList threads={threads} selected={selected} onSelect={open} />
         </div>
-        <div className={cn("min-h-0 min-w-0 flex-1 flex-col", openOnPhone ? "flex" : "hidden md:flex")}>
+        <div className={cn("min-h-0 min-w-0 flex-1 flex-col", openOnPhone ? "flex" : "hidden lg:flex")}>
           <ThreadView t={thread} sent={mine} onSend={send} onBack={() => setOpenOnPhone(false)} />
         </div>
       </div>

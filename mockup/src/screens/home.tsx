@@ -1,16 +1,17 @@
-// Screen: / - workspaces overview, agents grouped by workspace.
+// Screen: / - servers, then their workspaces, then the agents in each.
 // The first thing you see on your phone: what needs him, then what every workspace is doing.
 import { Link } from "react-router"
 import { motion } from "motion/react"
-import { ArrowRight, FolderTree, ListTodo, Monitor, Sparkles } from "lucide-react"
+import { ArrowRight, FolderTree, ListTodo, Monitor, RefreshCw, Server as ServerIcon, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/components/ui/item"
 import { Textarea } from "@/components/ui/textarea"
 import { StatusBadge, StatusDot } from "@/components/status"
-import { agentById, agents, inbox, settings, tasks, workspaces, type Workspace } from "@/data"
+import { agentById, agents, inbox, servers, settings, tasks, workspaces, type Server, type Workspace } from "@/data"
 import { rise, stagger } from "@/motion"
+import { cn } from "@/lib/utils"
 
 // A stopped agent needs you as much as a question does, so it lands in the same list.
 const needsYou = inbox.filter((i) => i.kind === "permission" || i.kind === "question" || i.kind === "failed")
@@ -103,6 +104,60 @@ function WorkspaceCard({ w }: { w: Workspace }) {
   )
 }
 
+// Servers are the top of the tree (decision 18). One server, no heading; more than one, group under it.
+const grouped = servers.length > 1
+
+function ServerHeading({ s, count }: { s: Server; count: number }) {
+  const off = s.state !== "online"
+  return (
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+      <ServerIcon className={cn("size-4 shrink-0", off ? "text-muted-foreground" : "text-foreground")} />
+      <h2 className={cn("font-heading text-sm font-medium", off && "text-muted-foreground")}>{s.name}</h2>
+      {s.home && <Badge variant="secondary">home</Badge>}
+      <span className="flex items-center gap-1.5">
+        <span className={cn("size-1.5 rounded-full", s.state === "online" ? "bg-primary" : s.state === "installing" ? "bg-primary animate-pulse" : "bg-border")} />
+        <span className="text-muted-foreground text-xs">{s.state}</span>
+      </span>
+      <span className="text-muted-foreground text-xs">· {count} {count === 1 ? "workspace" : "workspaces"}</span>
+    </div>
+  )
+}
+
+function OfflineCard({ s }: { s: Server }) {
+  return (
+    <Card className="bg-muted/30 border-dashed">
+      <CardContent className="flex flex-col items-start gap-3 py-6">
+        <p className="text-muted-foreground text-sm">{s.name} is offline.</p>
+        <Button variant="ghost" size="sm" className="h-9 md:h-8">
+          <RefreshCw data-icon="inline-start" />
+          Check again
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ServerSection({ s }: { s: Server }) {
+  const mine = workspaces.filter((w) => w.serverId === s.id)
+  return (
+    <div className="flex flex-col gap-2.5">
+      <ServerHeading s={s} count={mine.length} />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {mine.map((w) => (
+          <motion.div key={w.id} variants={rise} className="min-w-0">
+            <WorkspaceCard w={w} />
+          </motion.div>
+        ))}
+        {mine.length === 0 && (
+          <motion.div variants={rise} className="min-w-0">
+            <OfflineCard s={s} />
+          </motion.div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function StartCard() {
   return (
     <Card className="h-full">
@@ -127,7 +182,7 @@ export function HomeScreen() {
       <div>
         <h1 className="font-heading text-2xl font-semibold tracking-tight">Good morning, {settings.user.name}</h1>
         <p className="text-muted-foreground text-sm">
-          {workspaces.length} workspaces, {agents.length} agents, {needsYou.length} things need you
+          {grouped && `${servers.length} servers, `}{workspaces.length} workspaces, {agents.length} agents, {needsYou.length} things need you
         </p>
       </div>
 
@@ -137,16 +192,24 @@ export function HomeScreen() {
             <NeedsYouCard />
           </motion.div>
         )}
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {workspaces.map((w) => (
-            <motion.div key={w.id} variants={rise} className="min-w-0">
-              <WorkspaceCard w={w} />
+        {grouped ? (
+          servers.map((s) => (
+            <motion.div key={s.id} variants={rise}>
+              <ServerSection s={s} />
             </motion.div>
-          ))}
-          <motion.div variants={rise} className="xl:col-span-3">
-            <StartCard />
-          </motion.div>
-        </div>
+          ))
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {workspaces.map((w) => (
+              <motion.div key={w.id} variants={rise} className="min-w-0">
+                <WorkspaceCard w={w} />
+              </motion.div>
+            ))}
+          </div>
+        )}
+        <motion.div variants={rise}>
+          <StartCard />
+        </motion.div>
       </motion.div>
     </div>
   )

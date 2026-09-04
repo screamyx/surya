@@ -1,6 +1,7 @@
 // The four steps of the add-server flow. Decision 18: plain SSH from any daemon,
 // a copy-paste installer line is always the fallback, nothing assumes one person's network.
-import { motion } from "motion/react"
+import { useState } from "react"
+import { AnimatePresence, motion } from "motion/react"
 import { Check, Copy, KeyRound, Search, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +11,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemTitle }
 import { Progress } from "@/components/ui/progress"
 import { Spinner } from "@/components/ui/spinner"
 import { osIcon } from "@/screens/settings/servers"
+import { servers } from "@/data"
 import { pop, rise, stagger } from "@/motion"
 import { cn } from "@/lib/utils"
 
@@ -80,6 +82,7 @@ function CheckIcon({ state }: { state: CheckState }) {
 }
 
 export function StepChecks({ host, loggedIn, onLogin }: { host: string; loggedIn: boolean; onLogin: () => void }) {
+  const [fixing, setFixing] = useState(false)
   const rows: { id: string; label: string; note: string; state: CheckState }[] = [
     { id: "ssh", label: "Reachable over SSH", note: `key accepted as you@${host}`, state: "ok" },
     { id: "claude", label: "Claude Code installed", note: "claude 2.1.260 on PATH", state: "ok" },
@@ -104,25 +107,27 @@ export function StepChecks({ host, loggedIn, onLogin }: { host: string; loggedIn
             </ItemContent>
             {r.state === "failed" && (
               <ItemActions>
-                <Button variant="outline" size="sm" className="h-9 md:h-7">Fix</Button>
+                <Button variant="outline" size="sm" className="h-9 md:h-7" onClick={() => setFixing(true)}>Fix</Button>
               </ItemActions>
             )}
           </Item>
 
-          {r.id === "login" && r.state === "failed" && (
-            <motion.div variants={pop} initial="hidden" animate="show">
-              <Card size="sm" className="bg-muted/40">
-                <CardContent className="flex flex-col gap-3">
-                  <p className="text-sm leading-relaxed">
-                    surya starts <code className="font-mono">claude setup-token</code> on the machine and shows you the login link. Tap it, sign in, come back.
-                  </p>
-                  <Button className="h-9 w-fit md:h-8" onClick={onLogin}>
-                    <KeyRound data-icon="inline-start" />Start login
-                  </Button>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
+          <AnimatePresence>
+            {r.id === "login" && r.state === "failed" && fixing && (
+              <motion.div variants={pop} initial="hidden" animate="show" exit="hidden">
+                <Card size="sm" className="bg-muted/40">
+                  <CardContent className="flex flex-col gap-3">
+                    <p className="text-sm leading-relaxed">
+                      surya starts <code className="font-mono">claude setup-token</code> on the machine and shows you the login link. Tap it, sign in, come back.
+                    </p>
+                    <Button className="h-9 w-fit md:h-8" onClick={onLogin}>
+                      <KeyRound data-icon="inline-start" />Start login
+                    </Button>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       ))}
     </motion.div>
@@ -137,9 +142,9 @@ const log = (host: string) => [
   "writing ~/.config/surya/daemon.toml",
   "found claude 2.1.260 on PATH",
   "minting a daemon token with claude setup-token",
-  "registering the service so it starts on boot",
+  "adding a boot service so it survives a restart",
   "starting the daemon on port 4791",
-  "waiting for it to answer",
+  `registering with ${servers.find((s) => s.home)!.name}, your home server`,
 ]
 
 export function StepInstall({ host }: { host: string }) {
@@ -159,7 +164,7 @@ export function StepInstall({ host }: { host: string }) {
             className={cn("flex items-start gap-2 font-mono text-xs leading-relaxed", i === lines.length - 1 ? "text-foreground" : "text-muted-foreground")}
           >
             {i === lines.length - 1 && <Spinner className="mt-0.5 size-3 shrink-0" />}
-            <span className="min-w-0 break-all">{l}</span>
+            <span className="min-w-0 break-words">{l}</span>
           </motion.p>
         ))}
       </motion.div>
@@ -179,7 +184,7 @@ export function StepInstall({ host }: { host: string }) {
 export function StepDone({ host, onClose }: { host: string; onClose: () => void }) {
   return (
     <motion.div variants={pop} initial="hidden" animate="show" className="flex flex-col items-center gap-4 py-8 text-center">
-      <span className="bg-primary/10 text-primary grid size-16 place-items-center rounded-full">
+      <span className="bg-primary text-primary-foreground grid size-16 place-items-center rounded-full">
         <Check className="size-8" />
       </span>
       <div className="flex flex-col gap-1">
