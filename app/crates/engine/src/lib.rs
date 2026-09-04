@@ -24,6 +24,7 @@ pub mod doc_host;
 pub mod files;
 pub mod files_watch;
 pub mod instance_lock;
+pub mod ipc;
 pub mod local_import;
 pub mod profile;
 pub mod registry;
@@ -105,8 +106,14 @@ pub struct EngineConfig {
     /// Explicit development bearer for edge room joins. Synced WorkOS runtimes
     /// obtain their bearer from [`Auth`]; development stays offline when this is absent.
     pub edge_token: Option<String>,
-    /// Localhost IPC port for the UI.
+    /// IPC port for the UI.
     pub ipc_port: u16,
+    /// IPC bind address. Loopback by default; anything else needs a token
+    /// (see [`ipc`]).
+    pub ipc_bind: std::net::IpAddr,
+    /// Explicit IPC token (`ZERON_IPC_TOKEN`). `None` = data-dir file when the
+    /// bind is not loopback, open socket when it is.
+    pub ipc_token: Option<String>,
     /// Harness for doc-command runs on chats without a workspace `config` row.
     pub default_harness: HarnessId,
     /// Workspace-doc org (`ws/{orgId}` room). `None` = `$ZERON_ORG_ID` or the dev default.
@@ -114,6 +121,18 @@ pub struct EngineConfig {
     pub org_id: Option<String>,
     /// WorkOS client id — enables real auth; `None` = dev mode (bearer = `edge_token`).
     pub workos_client_id: Option<String>,
+}
+
+impl EngineConfig {
+    /// The IPC socket policy this configuration describes.
+    pub fn ipc(&self) -> ipc::IpcConfig {
+        ipc::IpcConfig {
+            bind: self.ipc_bind,
+            port: self.ipc_port,
+            token: self.ipc_token.clone(),
+            data_dir: self.data_dir.clone(),
+        }
+    }
 }
 
 /// The assembled engine core — also constructible without the IPC server for tests
@@ -832,7 +851,7 @@ impl Engine {
             inner: runtime.core().rpc_service(),
             stop_tx,
         });
-        let server = serve_ipc(config.ipc_port, service).await?;
+        let server = ipc::serve(&config.ipc(), service).await?;
 
         tokio::select! {
             result = shutdown_signal() => result?,
@@ -885,27 +904,6 @@ async fn shutdown_signal() -> std::io::Result<()> {
     {
         tokio::signal::ctrl_c().await
     }
-}
-
-/// Serve the typed RPC on the localhost IPC port.
-///
-/// Both engines call this: the headless daemon, and the headed app's embedded
-/// engine. That second case is the point — an embedded engine that keeps the
-/// port to itself forces anyone wanting a second viewport (the terminal app) to
-/// stop the desktop app, start a daemon, and start it again in the right order.
-/// Serving here means any viewport can just attach.
-///
-/// Localhost only, exactly as before: this widens *which process* can serve the
-/// port, not who can reach it.
-pub async fn serve_ipc(
-    port: u16,
-    service: std::sync::Arc<dyn zeron_rpc::RpcService>,
-) -> std::io::Result<tokio::task::JoinHandle<()>> {
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await?;
-    tracing::info!(port, "IPC server listening");
-    Ok(tokio::spawn(zeron_rpc::serve_ws_listener(
-        listener, service,
-    )))
 }
 
 /// Block until the WorkOS session is signed in AND org-scoped. On a TTY, print the
