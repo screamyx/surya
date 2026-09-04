@@ -212,25 +212,26 @@ Owner, 2026-09-05 02:26: "i plan to publicize this repo one day, so it should no
 
 Servers, from decision talk on 02:22 to 02:25: a server is a daemon. Servers are the top of the tree, then workspaces, then agents. The server level hides when there is only one. Add server is an in-app flow: pick or type a host, checks with Fix buttons, install over SSH with the log streaming into the card, done. Adding an agent happens where you are: a plus on the workspace row, a button in the workspace tab bar, and "spawn under this agent" on an agent row.
 
-## 19. Agent-to-agent mail is first class
+## 19. Agent mail is first class, and thin
 
 Owner, 2026-09-05 02:27: "agb is first class too, agent-to-agent comms are essentials to my workflow".
+Owner, 02:28: "the comm tools will mimic agb - no agent-to-agent prompt (only as fallback), and use native claude/codex messaging tool."
+Owner, 02:35, after weighing a full port of agb: "thin it is, and cross-server mail is day one".
 
-surya ships its own agent mail, built into the daemon, with the concepts the owner's workflow already depends on:
-- Addresses: an agent id, a workspace channel, a server channel.
-- Send: a `send_message` tool every agent has, and a compose box in the GUI.
-- Receive: the daemon delivers mail as the agent's next turn. No polling, no parking.
-- Ack: automatic when the turn that carried the mail completes; a manual "seen" ack remains.
-- Reserve on spawn: an agent spawned through surya has an address before it starts, so mail queues instead of failing.
-- Liveness: the agent tree.
+surya is the host of every agent, so mail needs no broker, no wake service, no pane binding.
+The daemon keeps one table of messages and delivers a message by injecting it into the recipient's next turn: queued while a turn runs, delivered the moment it ends, all pending mail in order as one turn.
+Prompting an agent's pane is the fallback only.
 
-Owner, 2026-09-05 02:28: "the comm tools will mimic agb - no agent-to-agent prompt (only as fallback), and use native claude/codex messaging tool."
-Owner, 02:29: "maybe just port agb to surya. im ok with publicizing agb, nothing in there i dont want to share."
+What stays from agb, because the owner's briefs and skills depend on it:
+- Addresses: an agent id, `#workspace`, `#server`.
+- A delivery id on every message. Ack is automatic when the carrying turn completes; a manual "seen" ack remains.
+- Reserve on spawn: the address exists the moment the agent is created, so mail queues instead of failing.
+- The words: a thin `agb` command that calls the daemon over its local socket keeps `agb send`, `agb drain`, `agb ack` working in every existing skill.
 
-So: agb is ported into surya, not reimplemented from scratch. Its model comes over whole: stable agent ids, reserve before spawn, a broker with per-agent mailboxes, drain and ack by delivery id, channels, recap lines, liveness by process, and wake v2 where mail lands as a native inbound turn (a Claude cross-session message, a Codex app-server turn). Prompting another agent's pane is the fallback only, never the path. The `agb` CLI stays as the shell surface so agents keep using `agb send`, `agb drain`, `agb ack`. agb's own repo becomes public alongside surya. Decision 18 stands for everything else: no herdr, no luvus, no tailnet assumptions.
-Owner, 02:30: "the problem is integrating agb into surya, but plan/build is for another day." The mockup shows what mail looks like. The port itself is its own plan, not part of the 1.0 mockup work.
+Cross-server mail is day one: an agent on one server messages an agent on another and the daemons forward over the same authenticated HTTP the app uses.
 
-GUI surfaces: mail rows in the agent feed (from, delivery id, acked mark), sends as tool rows, Send message on agent rows, a Messages tab per workspace with the channel and direct threads.
+Size: one table, one `send_message` MCP tool, one delivery rule in the run loop, one CLI shim, one forwarding call, one screen.
+agb's own repo may go public; surya does not depend on it.
 
 ## Open
 
