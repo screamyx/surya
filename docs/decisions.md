@@ -137,6 +137,13 @@ Restyling later is a token change, never a component rewrite, so no component ma
 Motion is first class: agent activity, cards arriving, files lighting up, panel transitions, all through one motion library, never hand-rolled.
 Every screen is reviewed on phone and desktop before it merges.
 
+## 13. Build rules
+
+Owner, 2026-09-05 01:02: "build rule: keep every file thin, 500 loc max".
+
+Every file 500 lines max, in the mockup and in the real app.
+The mockup at `mockup/` is the ground truth for builders of the real app, stock shadcn "base-nova" preset on neutral, tokens only.
+
 ## Open
 
 None at day zero.
