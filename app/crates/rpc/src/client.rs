@@ -42,6 +42,9 @@ pub struct RpcClient {
     shared: Arc<Shared>,
     next_id: AtomicU64,
     reader: tokio::task::JoinHandle<()>,
+    /// Flips to `true` once the transport closed and every pending call was
+    /// failed. A remote viewport watches this to reconnect from scratch.
+    closed: tokio::sync::watch::Receiver<bool>,
 }
 
 /// Checked stream receiver whose drop immediately cancels the server task.
@@ -93,6 +96,7 @@ impl RpcClient {
         });
         let reader_shared = shared.clone();
         let reader_out = out.clone();
+        let (closed_tx, closed) = tokio::sync::watch::channel(false);
         let reader = tokio::spawn(async move {
             while let Some(payload) = inbound.recv().await {
                 for line in payload.lines() {
@@ -129,12 +133,31 @@ impl RpcClient {
                 }
                 // Stream item receivers end by sender drop.
             }
+            let _ = closed_tx.send(true);
         });
         Self {
             out,
             shared,
             next_id: AtomicU64::new(1),
             reader,
+            closed,
+        }
+    }
+
+    /// `true` once the underlying transport has closed. Calls and subscribes
+    /// on a closed client fail with [`RpcError::Closed`]; nothing reconnects
+    /// on its own.
+    pub fn is_closed(&self) -> bool {
+        *self.closed.borrow()
+    }
+
+    /// Resolve once the transport closes (immediately if it already has).
+    pub async fn closed(&self) {
+        let mut rx = self.closed.clone();
+        while !*rx.borrow() {
+            if rx.changed().await.is_err() {
+                return;
+            }
         }
     }
 
@@ -338,10 +361,30 @@ const CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Dial a WebSocket RPC server (`ws://127.0.0.1:{ipc_port}`).
 pub async fn connect_ws(url: &str) -> Result<RpcClient, RpcError> {
-    let (ws, _) = tokio::time::timeout(CONNECT_TIMEOUT, tokio_tungstenite::connect_async(url))
-        .await
-        .map_err(|_| RpcError::Transport(format!("timed out dialing {url}")))?
-        .map_err(|e| RpcError::Transport(e.to_string()))?;
+    connect_ws_with_token(url, None).await
+}
+
+/// Dial a WebSocket RPC endpoint, presenting `Authorization: Bearer <token>`
+/// when a token is given. Engines bound off loopback require one
+/// (`zeron_rpc::serve_ws_listener_with_auth`); loopback engines ignore it.
+pub async fn connect_ws_with_token(url: &str, token: Option<&str>) -> Result<RpcClient, RpcError> {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+    let mut request = url
+        .into_client_request()
+        .map_err(|e| RpcError::Transport(format!("bad engine url {url}: {e}")))?;
+    if let Some(token) = token.map(str::trim).filter(|t| !t.is_empty()) {
+        let value = format!("Bearer {token}")
+            .parse()
+            .map_err(|_| RpcError::Transport("ipc token is not a valid header value".into()))?;
+        request.headers_mut().insert("authorization", value);
+    }
+    let (ws, _) = tokio::time::timeout(
+        CONNECT_TIMEOUT,
+        tokio_tungstenite::connect_async(request),
+    )
+    .await
+    .map_err(|_| RpcError::Transport(format!("timed out dialing {url}")))?
+    .map_err(|e| RpcError::Transport(e.to_string()))?;
     let (mut sink, mut stream) = ws.split();
     let (out_tx, mut out_rx) = mpsc::channel::<String>(256);
     let (in_tx, in_rx) = mpsc::channel::<String>(256);

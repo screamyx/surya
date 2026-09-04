@@ -17,12 +17,26 @@ struct Cli {
     /// Open a Zeron conversation URL.
     #[arg(value_name = "URL")]
     open_url: Option<String>,
+    /// Drive a remote engine instead of starting one here: `ws://host:port`
+    /// (`ZERON_ENGINE`). The engine must run `zeron headless --bind <addr>`.
+    #[arg(long, value_name = "WS_URL")]
+    engine: Option<String>,
+    /// Shared IPC token for `--engine` (`ZERON_ENGINE_TOKEN`); printed by
+    /// `zeron status` on the engine's machine.
+    #[arg(long, value_name = "TOKEN")]
+    engine_token: Option<String>,
 }
 
 #[derive(Subcommand)]
 enum Command {
     /// Run the engine without a UI (local-only unless a saved session enables sync).
-    Headless,
+    Headless {
+        /// IP address to serve the RPC socket on (`ZERON_BIND`). Default
+        /// loopback; any other address requires an IPC token (generated under
+        /// the data dir on first start, shown by `zeron status`).
+        #[arg(long, value_name = "ADDR")]
+        bind: Option<String>,
+    },
     /// Sign in and enable sync on the next engine start.
     Login,
     /// Remove the saved session and return to local-only on the next start.
@@ -139,7 +153,7 @@ fn main() -> anyhow::Result<()> {
     // journald on every snapshot export — enough to fill a disk on a
     // long-running headless host. Quiet them by default (RUST_LOG still
     // overrides the whole filter).
-    let long_running = matches!(&cli.command, None | Some(Command::Headless));
+    let long_running = matches!(&cli.command, None | Some(Command::Headless { .. }));
     let default_filter = if long_running {
         "info,loro_internal=warn,loro=warn"
     } else {
@@ -181,28 +195,28 @@ fn main() -> anyhow::Result<()> {
     }
 
     match cli.command {
-        Some(Command::Headless) => {
+        Some(Command::Headless { bind }) => {
             let runtime = tokio::runtime::Runtime::new()?;
             runtime.block_on(async {
-                let engine = zeron_engine::Engine::new(engine_config_from_env());
+                let engine = zeron_engine::Engine::new(engine_config_from_env(bind.as_deref()));
                 engine.run().await
             })
         }
         Some(Command::Login) => {
             let runtime = tokio::runtime::Runtime::new()?;
-            runtime.block_on(auth_cli::login(engine_config_from_env()))
+            runtime.block_on(auth_cli::login(engine_config_from_env(None)))
         }
         Some(Command::Logout) => {
             let runtime = tokio::runtime::Runtime::new()?;
-            runtime.block_on(auth_cli::logout(engine_config_from_env()))
+            runtime.block_on(auth_cli::logout(engine_config_from_env(None)))
         }
         Some(Command::Status) => {
             let runtime = tokio::runtime::Runtime::new()?;
-            runtime.block_on(auth_cli::status(engine_config_from_env()))
+            runtime.block_on(auth_cli::status(engine_config_from_env(None)))
         }
         Some(Command::Sync) => {
             let runtime = tokio::runtime::Runtime::new()?;
-            runtime.block_on(sync_cli(engine_config_from_env().ipc_port))
+            runtime.block_on(sync_cli(engine_config_from_env(None).ipc()))
         }
         Some(Command::Mail { command }) => {
             let runtime = tokio::runtime::Runtime::new()?;
@@ -222,7 +236,7 @@ fn main() -> anyhow::Result<()> {
             runtime.block_on(update_cli::update(&edge_url_from_env(), check))
         }
         Some(Command::Daemon { command }) => match command {
-            DaemonCommand::Install => daemon::install(&engine_config_from_env().data_dir),
+            DaemonCommand::Install => daemon::install(&engine_config_from_env(None).data_dir),
             DaemonCommand::Uninstall => daemon::uninstall(),
             DaemonCommand::Start => daemon::start(),
             DaemonCommand::Stop => daemon::stop(),
@@ -231,8 +245,17 @@ fn main() -> anyhow::Result<()> {
         },
         None => {
             let edge_token = std::env::var("ZERON_EDGE_TOKEN").ok();
-            // Headed: the UI probes ZERON_IPC_PORT and connects to a running
-            // daemon, or embeds the engine in-process (ARCHITECTURE §1).
+            // Headed: `--engine` dials a remote engine; otherwise the UI probes
+            // ZERON_IPC_PORT and connects to a running daemon, or embeds the
+            // engine in-process (ARCHITECTURE §1).
+            let engine = cli
+                .engine
+                .or_else(|| env_non_empty("ZERON_ENGINE"))
+                .map(|url| zeron_ui::RemoteEngineTarget {
+                    url,
+                    token: cli.engine_token.or_else(|| env_non_empty("ZERON_ENGINE_TOKEN")),
+                    name: None,
+                });
             zeron_ui::run_app(zeron_ui::UiConfig {
                 data_dir: std::env::var_os("ZERON_DATA_DIR")
                     .map(std::path::PathBuf::from)
@@ -241,6 +264,9 @@ fn main() -> anyhow::Result<()> {
                     .ok()
                     .and_then(|p| p.parse().ok())
                     .unwrap_or(27654),
+                ipc_bind: bind_from_env(None),
+                ipc_token: env_non_empty("ZERON_IPC_TOKEN"),
+                engine,
                 edge_url: edge_url_from_env(),
                 workos_client_id: workos_client_id_from_env(&edge_token),
                 edge_token,
@@ -253,10 +279,33 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
+fn env_non_empty(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+}
+
+/// `--bind` beats `ZERON_BIND`; both default to loopback. A value that is not
+/// an IP address is a hard error: silently falling back to loopback would look
+/// like "the app cannot reach the server" from the other machine.
+fn bind_from_env(flag: Option<&str>) -> std::net::IpAddr {
+    let raw = flag
+        .map(str::to_string)
+        .or_else(|| env_non_empty(zeron_engine::ipc::BIND_ENV));
+    match zeron_engine::ipc::parse_bind(raw.as_deref()) {
+        Ok(bind) => bind,
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(2);
+        }
+    }
+}
+
 /// The env-resolved engine configuration shared by `headless`, `login`,
 /// `logout`, and `status` — one resolution so the CLI auth commands always
 /// operate on the exact session the daemon will load.
-fn engine_config_from_env() -> zeron_engine::EngineConfig {
+fn engine_config_from_env(bind_flag: Option<&str>) -> zeron_engine::EngineConfig {
     // Dev-mode bearer (no WorkOS): an explicit token enables sync.
     let edge_token = std::env::var("ZERON_EDGE_TOKEN").ok();
     zeron_engine::EngineConfig {
@@ -268,6 +317,8 @@ fn engine_config_from_env() -> zeron_engine::EngineConfig {
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(27654),
+        ipc_bind: bind_from_env(bind_flag),
+        ipc_token: env_non_empty(zeron_engine::ipc::TOKEN_ENV),
         default_harness: harness_from_env(),
         // WorkOS mode: the signed-in session's org wins; ZERON_ORG_ID (dev
         // default "dev-org") scopes the workspace room otherwise.
@@ -311,12 +362,13 @@ fn dirs_data_dir() -> std::path::PathBuf {
 /// `zeron sync`: dial the running engine's IPC and print per-room sync state.
 /// The introspection surface every 2026-08 incident was missing — "is this
 /// device's workspace room actually receiving?" as a one-liner.
-async fn sync_cli(ipc_port: u16) -> anyhow::Result<()> {
-    let client = zeron_rpc::connect_ws(&format!("ws://127.0.0.1:{ipc_port}"))
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!("no engine listening on 127.0.0.1:{ipc_port} ({e}) — is zeron running?")
-        })?;
+async fn sync_cli(ipc: zeron_engine::ipc::IpcConfig) -> anyhow::Result<()> {
+    let client = ipc.connect().await.map_err(|e| {
+        anyhow::anyhow!(
+            "no engine listening on {} ({e}) — is zeron running?",
+            ipc.dial_addr()
+        )
+    })?;
     let status = client
         .call(zeron_rpc::methods::SYNC_STATUS, serde_json::json!({}))
         .await
