@@ -25,6 +25,8 @@ fn config(
         edge_url,
         edge_token: edge_token.map(str::to_string),
         ipc_port: 0,
+        ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+        ipc_token: None,
         default_harness: HarnessId::Mock,
         org_id: None,
         workos_client_id: workos_client_id.map(str::to_string),

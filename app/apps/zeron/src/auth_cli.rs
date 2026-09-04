@@ -161,9 +161,8 @@ pub async fn logout(config: EngineConfig) -> anyhow::Result<()> {
 pub async fn status(config: EngineConfig) -> anyhow::Result<()> {
     let auth = Engine::build_auth(&config).await;
     let next_scope = Engine::initial_workspace_scope(&auth);
-    let scope = live_engine_scope(config.ipc_port)
-        .await
-        .unwrap_or(next_scope);
+    let ipc = config.ipc();
+    let scope = live_engine_scope(&ipc).await.unwrap_or(next_scope);
     let account = account_status(scope, &auth.state());
     println!("Data dir: {}", config.data_dir.display());
     println!("Edge:     {}", config.edge_url);
@@ -173,17 +172,34 @@ pub async fn status(config: EngineConfig) -> anyhow::Result<()> {
         Some(pid) => println!("Engine:   running (pid {pid})"),
         None => println!("Engine:   not running"),
     }
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], config.ipc_port));
-    let ipc = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500));
+    let addr = ipc.dial_addr();
+    let probe = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(500));
     println!(
-        "IPC:      {} 127.0.0.1:{}",
-        if ipc.is_ok() {
+        "IPC:      {} {addr}",
+        if probe.is_ok() {
             "listening on"
         } else {
             "not listening on"
         },
-        config.ipc_port
     );
+    // Remote viewports need the bind address and the token; print both so
+    // the other machine's setup is one copy-paste away.
+    println!(
+        "Bind:     {} ({})",
+        ipc.bind,
+        if ipc.is_loopback() {
+            "loopback only; set ZERON_BIND to serve the network"
+        } else {
+            "network; token required"
+        }
+    );
+    if ipc.enforces_token() {
+        match ipc.resolve_token() {
+            Ok(Some(token)) => println!("Token:    {token}"),
+            Ok(None) => println!("Token:    none"),
+            Err(err) => println!("Token:    unavailable ({err})"),
+        }
+    }
     if !account.healthy {
         std::process::exit(1);
     }
@@ -193,10 +209,8 @@ pub async fn status(config: EngineConfig) -> anyhow::Result<()> {
 /// Prefer the immutable scope of a live runtime. Falling back to the next-boot
 /// derivation is correct when no engine is listening and tolerant of old
 /// daemons that predate EngineInfo.
-async fn live_engine_scope(ipc_port: u16) -> Option<WorkspaceScope> {
-    let client = zeron_rpc::connect_ws(&format!("ws://127.0.0.1:{ipc_port}"))
-        .await
-        .ok()?;
+async fn live_engine_scope(ipc: &zeron_engine::ipc::IpcConfig) -> Option<WorkspaceScope> {
+    let client = ipc.connect().await.ok()?;
     let value = client
         .call(zeron_rpc::methods::ENGINE_INFO, serde_json::json!({}))
         .await
@@ -230,6 +244,8 @@ mod tests {
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             ipc_port: 0,
+            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_token: None,
             default_harness: HarnessId::Mock,
             org_id: None,
             workos_client_id: Some("client_test".into()),
