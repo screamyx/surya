@@ -130,7 +130,12 @@ Ships first class in 1.0 as feature 8: the look.
 The whole app is React.
 Components come from shadcn/ui on Tailwind, or an equivalent, never hand-rolled.
 The A2UI catalog is built from the same shadcn components, so agent cards and surya panels are one design system.
-A design direction is chosen and written down before the first screen is built, and every screen is reviewed against it.
+Owner, 2026-09-05 00:55: "i think we build using the native shadcn design, and then we can redesign by changing the tokens. motions are also first class."
+
+Build on the stock shadcn look, unchanged.
+Restyling later is a token change, never a component rewrite, so no component may carry a hard-coded colour, radius, or spacing.
+Motion is first class: agent activity, cards arriving, files lighting up, panel transitions, all through one motion library, never hand-rolled.
+Every screen is reviewed on phone and desktop before it merges.
 
 ## Open
 
