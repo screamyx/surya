@@ -8,6 +8,7 @@
 //! box switches the list to `FilesSearch` results; enter there opens the
 //! highlighted match.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use gpui::{
@@ -38,7 +39,9 @@ pub struct FileTreeView {
     matches: Option<Vec<FileSearchMatch>>,
     focus: FocusHandle,
     scroll: UniformListScrollHandle,
-    load_tasks: Vec<Task<()>>,
+    /// One in-flight listing per directory; a newer request for the same
+    /// directory replaces (cancels) the older one, never a different one.
+    load_tasks: HashMap<String, Task<()>>,
     search_task: Option<Task<()>>,
     _watch_task: Task<()>,
     _filter_events: Subscription,
@@ -66,7 +69,7 @@ impl FileTreeView {
             matches: None,
             focus: cx.focus_handle(),
             scroll: UniformListScrollHandle::new(),
-            load_tasks: Vec::new(),
+            load_tasks: HashMap::new(),
             search_task: None,
             _watch_task: watch_task,
             _filter_events: filter_events,
@@ -83,10 +86,9 @@ impl FileTreeView {
         self.loads_asked += 1;
         let engine = self.engine.clone();
         let params = serde_json::json!({ "spaceId": self.space_id, "path": dir, "depth": 1 });
-        if self.load_tasks.len() > 64 {
-            self.load_tasks.drain(..32);
-        }
-        self.load_tasks.push(cx.spawn(async move |this, cx| {
+        let key = dir.to_string();
+        let done_key = key.clone();
+        let task = cx.spawn(async move |this, cx| {
             let result = engine.client().call(methods::FILES_TREE, params).await;
             let _ = this.update(cx, |this, cx| {
                 this.loads_answered += 1;
@@ -96,9 +98,11 @@ impl FileTreeView {
                 }) {
                     this.model.apply_tree(&tree);
                 }
+                this.load_tasks.remove(&done_key);
                 cx.notify();
             });
-        }));
+        });
+        self.load_tasks.insert(key, task);
     }
 
     fn spawn_watch(engine: EngineHandle, space_id: String, cx: &mut Context<Self>) -> Task<()> {
