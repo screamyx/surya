@@ -48,6 +48,7 @@ fn init_env() {
 
 fn run_request(prompt: &str) -> RunRequest {
     RunRequest {
+        surya: None,
         prompt: prompt.into(),
         harness: None,
         model: None,

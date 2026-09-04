@@ -5206,6 +5206,7 @@ impl Composer {
                 } else {
                     SessionCommandPayload::Run {
                         request: RunRequest {
+                            surya: None,
                             prompt: content.clone(),
                             harness: resolved.harness,
                             model: resolved.model.clone(),
