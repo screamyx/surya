@@ -268,6 +268,25 @@ The second engine is a real Chrome owned by the daemon, painted into the pane as
 
 The pane shows which engine is active. App is the default when the workspace has a dev server; Browser is one tap away and remembers its last URL.
 
+## 22. surya is a fork of comet, native on GPUI, with haktui's browser, editor and tree
+
+Owner, 05:31: "stop surya-unslop. im heading to a new design direction".
+Owner, 05:35, three sketches (rail card, main feed with A2UI, floating composer; a right pane with a URL bar for browser or editor; a floating file browser over it) with "inspiration: raycast, craft, cleanshot" and the gpui-kit docs.
+Owner, 05:37, on github.com/zeronsh/comet: "bro's done like 80 of the work".
+Owner, 05:40: "haktui has its own editor and tree, its good enough. go on the fork."
+
+What this replaces:
+- Decision 1 (Agent SDK wrap) and decision 10 (Bun daemon): comet's engine is a Rust daemon that runs Claude Code over stream-json, headed or headless, one binary. The Agent SDK is not used. Bun stays only for tooling.
+- Decision 12 (React on shadcn): the app is native GPUI. The twelve-surface React mockup under `mockup/` is frozen as a design reference and the record of the flows; it does not ship.
+- Decision 21's engines: the preview is haktui's CEF module composited into the GPUI window, any site, agents over CDP, pins from haktui. No proxy, no extension, no streaming.
+
+What stays: every product rule in decisions 4 to 9, 11, 13 to 20 (A2UI cards, MCP tools, shared preview, persistence, workspaces, the seven 1.0 features, thin files, no business in surya, rail and agent tree, headless controls, stopped state, public repo and servers, thin mail, the research flows).
+
+Layout, from the sketches: floating rounded panels on a soft canvas. Rail card, main feed, composer pill, right pane for browser or editor with a URL bar, file browser as a floating card over it. Three states: chat alone, chat plus right pane, chat plus right pane plus files. Light first like Craft, dark as good as Raycast, following the system.
+
+Sources: `app/` is zeronsh/comet v0.2.34 (fe35546), MIT, added as a git subtree so upstream can be pulled. Browser, editor and file tree come from `~/git/haktui` (`crates/haktui/src/browser/`, `haktui_files`, the editor column), which already build on this box and on the owner's Mac.
+Comet pins wingleeio's gpui fork for glass effects; haktui pins Zed's. Making haktui's modules build on comet's fork is the first engineering risk and the first task.
+
 ## Open
 
 None at day zero.
