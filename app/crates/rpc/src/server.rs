@@ -136,12 +136,25 @@ async fn handle_request(
 }
 
 /// Accept WebSocket connections forever, serving each with `service`.
+/// Open socket: no token check. Only ever bind this to loopback.
 pub async fn serve_ws_listener(listener: TcpListener, service: Arc<dyn RpcService>) {
+    serve_ws_listener_with_auth(listener, service, None).await
+}
+
+/// Like [`serve_ws_listener`], but when `token` is `Some` every handshake must
+/// carry `Authorization: Bearer <token>` or it is refused with 401. This is
+/// what makes a non-loopback bind safe: the socket is reachable over the
+/// network, so possession of the shared token is the whole gate.
+pub async fn serve_ws_listener_with_auth(
+    listener: TcpListener,
+    service: Arc<dyn RpcService>,
+    token: Option<Arc<str>>,
+) {
     loop {
         match listener.accept().await {
             Ok((stream, peer)) => {
-                tracing::debug!(%peer, "rpc: connection accepted");
-                tokio::spawn(serve_ws_socket(stream, service.clone()));
+                tracing::debug!(%peer, "rpc: tcp connection accepted");
+                tokio::spawn(serve_ws_socket(stream, peer, service.clone(), token.clone()));
             }
             Err(err) => {
                 tracing::warn!(error = %err, "rpc: accept failed");
@@ -151,7 +164,38 @@ pub async fn serve_ws_listener(listener: TcpListener, service: Arc<dyn RpcServic
     }
 }
 
-async fn serve_ws_socket(stream: TcpStream, service: Arc<dyn RpcService>) {
+/// Constant-time check of an `Authorization` header value against the shared
+/// token. Accepts `Bearer <token>` only; a missing header never matches.
+pub fn authorization_matches(header: Option<&[u8]>, token: &str) -> bool {
+    let Some(header) = header else {
+        return false;
+    };
+    let Some(presented) = header
+        .strip_prefix(b"Bearer ")
+        .or_else(|| header.strip_prefix(b"bearer "))
+    else {
+        return false;
+    };
+    let presented = presented.trim_ascii();
+    let expected = token.as_bytes();
+    // Length leaks nothing useful (the token length is fixed by the generator),
+    // but the byte comparison itself must not short-circuit.
+    if presented.len() != expected.len() {
+        return false;
+    }
+    presented
+        .iter()
+        .zip(expected)
+        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+        == 0
+}
+
+async fn serve_ws_socket(
+    stream: TcpStream,
+    peer: std::net::SocketAddr,
+    service: Arc<dyn RpcService>,
+    token: Option<Arc<str>>,
+) {
     // Native viewports dial this socket with a bare `connect_async` and send
     // no `Origin` header. A browser always attaches `Origin` to a WebSocket
     // handshake and cannot forge or suppress it from script, and WebSockets
@@ -161,10 +205,12 @@ async fn serve_ws_socket(stream: TcpStream, service: Arc<dyn RpcService>) {
     //
     // The large `Err` (ErrorResponse) is the shape tungstenite's Callback
     // trait requires; it can't be boxed away here.
+    let auth_label = if token.is_some() { "token" } else { "open" };
     #[allow(clippy::result_large_err)]
-    let reject_cross_origin = |req: &HandshakeRequest, resp: HandshakeResponse| {
+    let gate = |req: &HandshakeRequest, resp: HandshakeResponse| {
         if let Some(origin) = req.headers().get("origin") {
             tracing::warn!(
+                %peer,
                 origin = %String::from_utf8_lossy(origin.as_bytes()),
                 "rpc: rejecting handshake carrying an Origin header (cross-origin browser dial)"
             );
@@ -172,15 +218,27 @@ async fn serve_ws_socket(stream: TcpStream, service: Arc<dyn RpcService>) {
             *err.status_mut() = StatusCode::FORBIDDEN;
             return Err(err);
         }
+        if let Some(token) = token.as_deref() {
+            let header = req.headers().get("authorization").map(|v| v.as_bytes());
+            if !authorization_matches(header, token) {
+                tracing::warn!(%peer, "rpc: rejecting handshake without a valid IPC token");
+                let mut err = ErrorResponse::new(Some("ipc token required".to_string()));
+                *err.status_mut() = StatusCode::UNAUTHORIZED;
+                return Err(err);
+            }
+        }
         Ok(resp)
     };
-    let ws = match tokio_tungstenite::accept_hdr_async(stream, reject_cross_origin).await {
+    let ws = match tokio_tungstenite::accept_hdr_async(stream, gate).await {
         Ok(ws) => ws,
         Err(err) => {
-            tracing::warn!(error = %err, "rpc: websocket handshake failed");
+            tracing::warn!(%peer, error = %err, "rpc: websocket handshake failed");
             return;
         }
     };
+    // The one line to grep for when proving a remote viewport reached this
+    // engine: peer address plus which gate admitted it.
+    tracing::info!(%peer, auth = auth_label, "rpc: connection accepted");
     let (mut sink, mut ws_stream) = ws.split();
     let (out_tx, mut out_rx) = mpsc::channel::<String>(256);
     let (in_tx, in_rx) = mpsc::channel::<String>(256);
@@ -215,4 +273,21 @@ async fn serve_ws_socket(stream: TcpStream, service: Arc<dyn RpcService>) {
 
     serve_connection(service, out_tx, in_rx).await;
     pump.abort();
+    tracing::info!(%peer, "rpc: connection closed");
+}
+
+#[cfg(test)]
+mod auth_tests {
+    use super::authorization_matches;
+
+    #[test]
+    fn bearer_token_must_match_exactly() {
+        assert!(authorization_matches(Some(b"Bearer abc123"), "abc123"));
+        assert!(authorization_matches(Some(b"bearer abc123"), "abc123"));
+        assert!(!authorization_matches(Some(b"Bearer abc124"), "abc123"));
+        assert!(!authorization_matches(Some(b"Bearer abc12"), "abc123"));
+        assert!(!authorization_matches(Some(b"abc123"), "abc123"));
+        assert!(!authorization_matches(Some(b"Basic abc123"), "abc123"));
+        assert!(!authorization_matches(None, "abc123"));
+    }
 }

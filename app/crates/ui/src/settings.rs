@@ -21,6 +21,7 @@ pub mod composer;
 pub mod devices;
 pub mod harnesses;
 pub mod notifications;
+pub mod servers;
 pub mod shortcuts;
 pub mod widgets;
 
@@ -291,6 +292,48 @@ pub struct UiSettings {
     /// [`Self::accent`], and never write it again.
     #[serde(default, rename = "accentColor", skip_serializing)]
     legacy_accent_color: Option<crate::theme::AccentColor>,
+    /// Remote engines this app can drive (Settings → Servers). Device-local:
+    /// the token is a secret for this machine, never synced.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub servers: Vec<ServerEntry>,
+    /// Id of the server dialed at boot; `None` = the local engine (probe the
+    /// loopback port, else embed).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_server: Option<String>,
+}
+
+/// One saved remote engine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerEntry {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+}
+
+impl ServerEntry {
+    pub fn url(&self) -> String {
+        format!("ws://{}:{}", self.host, self.port)
+    }
+
+    pub fn target(&self) -> crate::state::RemoteEngineTarget {
+        crate::state::RemoteEngineTarget {
+            url: self.url(),
+            token: self.token.clone(),
+            name: Some(self.name.clone()),
+        }
+    }
+}
+
+impl UiSettings {
+    /// The saved server the app should dial at boot, if any.
+    pub fn active_server_entry(&self) -> Option<&ServerEntry> {
+        let id = self.active_server.as_deref()?;
+        self.servers.iter().find(|server| server.id == id)
+    }
 }
 
 impl Default for UiSettings {
@@ -327,6 +370,8 @@ impl Default for UiSettings {
             accent: zeron_theme::AccentSelection::default(),
             surface: zeron_theme::SurfacePreference::default(),
             legacy_accent_color: None,
+            servers: Vec::new(),
+            active_server: None,
         }
     }
 }
@@ -834,6 +879,8 @@ mod tests {
             accent: zeron_theme::AccentSelection::Preset(zeron_theme::AccentPreset::Cyan),
             surface: zeron_theme::SurfacePreference::Frosted,
             legacy_accent_color: None,
+            servers: Vec::new(),
+            active_server: None,
         };
         settings.save(dir.path()).unwrap();
         let json = std::fs::read_to_string(UiSettings::path(dir.path())).unwrap();
