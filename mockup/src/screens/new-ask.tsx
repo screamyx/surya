@@ -90,7 +90,7 @@ export function NewAskScreen() {
       <motion.div variants={rise} className="grid gap-3 sm:grid-cols-3">
         <Field label="Workspace">
           <Select value={ws} onValueChange={(v) => setWs(v as string)}>
-            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="w-full"><SelectValue>{(v) => wsLabel(v as string)}</SelectValue></SelectTrigger>
             <SelectContent>
               {workspaces.map((w) => (
                 <SelectItem key={w.id} value={w.id}>{wsLabel(w.id)}</SelectItem>

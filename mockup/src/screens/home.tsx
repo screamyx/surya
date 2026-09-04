@@ -126,7 +126,7 @@ function ServerHeading({ s, count }: { s: Server; count: number }) {
 function OfflineCard({ s }: { s: Server }) {
   return (
     <Card className="bg-muted/30 border-dashed">
-      <CardContent className="flex flex-col items-start gap-3 py-6">
+      <CardContent className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-muted-foreground text-sm">{s.name} is offline.</p>
         <Button variant="ghost" size="sm" className="h-9 md:h-8">
           <RefreshCw data-icon="inline-start" />
