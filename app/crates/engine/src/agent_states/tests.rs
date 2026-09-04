@@ -272,8 +272,10 @@ fn a_child_needing_you_rolls_up_the_parent_row() {
         }
     );
     assert_eq!(row(&rows, "parent").needs_you_children, 1);
-    // Worst-first sort puts the child ahead of its parent.
-    assert_eq!(rows[0].id, child);
+    // Both rows now rank as needs-you, so their relative order is by
+    // recency, not by depth — the rail nests from `parent_id`, not from
+    // this list's order.
+    assert!(rows.iter().all(|r| r.rolled_up.needs_you()));
 
     s.close_questions("input-1");
     assert_eq!(row(&s.states(), "parent").rolled_up, AgentState::Working);

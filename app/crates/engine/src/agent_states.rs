@@ -296,6 +296,10 @@ impl AgentStates {
             let mut nodes = lock(&self.inner.nodes);
             let node = Self::entry(&mut nodes, chat_id, chat_id);
             node.updated_at = Some(Utc::now());
+            // The run is over, so the row must stop reading Working even if
+            // the session-status transition has not landed yet. Without this
+            // a finished chat shows a spinner for as long as that lag lasts.
+            node.session = Some(SessionStatus::Idle);
             match status {
                 DoneStatus::Completed => {
                     node.finished_unseen = true;
@@ -450,11 +454,16 @@ impl AgentStates {
     }
 
     /// Rebuild both watch snapshots from the current signals.
+    ///
+    /// `send_replace`, never `send`: a `watch::Sender::send` with no live
+    /// receiver returns an error AND leaves the old value in place, so the
+    /// snapshot the next subscriber reads would be stale. The engine's own
+    /// session watch takes the same care.
     fn recompute(&self) {
         let needs_you = self.build_needs_you();
         let states = self.build_states(&needs_you);
-        let _ = self.inner.states_tx.send(states);
-        let _ = self.inner.needs_you_tx.send(needs_you);
+        self.inner.states_tx.send_replace(states);
+        self.inner.needs_you_tx.send_replace(needs_you);
     }
 
     fn build_needs_you(&self) -> Vec<NeedsYouItem> {
@@ -568,6 +577,11 @@ impl AgentStates {
                 updated_at: node.updated_at.unwrap_or_else(Utc::now),
             });
         }
+        // Rank first (decision 15: needs you, working, done, idle), then
+        // most recent, then id so the order never flickers between
+        // recomputes. A parent and its child share a rank once the child
+        // rolls up, so this is a rank HINT for top-level rows — the tree
+        // shape lives in `parent_id`, and the rail nests from that.
         rows.sort_by(|a, b| {
             a.rolled_up
                 .sort_rank()

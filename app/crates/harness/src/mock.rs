@@ -595,13 +595,15 @@ impl Harness for MockHarness {
                         if let Some(ask) = ask {
                             if gate.ask(ask).await == PermissionDecision::Deny {
                                 // A refused tool ends the scripted turn the
-                                // way a real refusal ends a run.
+                                // way a real refusal ends a run: nothing after
+                                // the refusal was ever going to happen.
                                 let done = Ok(AgentEvent::Done {
                                     status: DoneStatus::Interrupted,
                                     result: None,
                                     error: None,
                                     session_id: None,
                                 });
+                                rest = Vec::new().into_iter();
                                 return Some((done, (rest, gate)));
                             }
                             continue;

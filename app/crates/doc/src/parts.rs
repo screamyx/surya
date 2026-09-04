@@ -197,6 +197,16 @@ pub enum MessagePart {
         id: String,
         message: String,
     },
+    /// A system line: not the agent speaking, but the app saying what it did.
+    /// Today that is "allowed by rule <name>" when an always-allow rule
+    /// answered a permission without waking anyone (surya decision 20).
+    /// Carries its body in `text` on purpose — a client that does not know
+    /// this kind falls back to rendering `text` as prose, which is exactly
+    /// the sentence we want it to show.
+    Notice {
+        id: String,
+        text: String,
+    },
 }
 
 impl MessagePart {
@@ -206,13 +216,16 @@ impl MessagePart {
             | MessagePart::Reasoning { id, .. }
             | MessagePart::Tool { id, .. }
             | MessagePart::Input { id, .. }
+            | MessagePart::Notice { id, .. }
             | MessagePart::Error { id, .. } => id,
         }
     }
 
     pub fn byte_len(&self) -> usize {
         match self {
-            MessagePart::Text { text, .. } | MessagePart::Reasoning { text, .. } => text.len(),
+            MessagePart::Text { text, .. }
+            | MessagePart::Reasoning { text, .. }
+            | MessagePart::Notice { text, .. } => text.len(),
             MessagePart::Tool {
                 call,
                 output,
@@ -442,9 +455,32 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
         // AvailableCommands feeds the engine's per-harness command cache, not
         // the transcript. UserMessage becomes its own doc ENTRY (the engine's
         // subagent sink writes it), never a part of the assistant message.
+        // A permission the user still has to answer is NOT a transcript
+        // part: it lives in the needs-you inbox until it is answered
+        // (surya decision 20). What belongs here is the record that a rule
+        // answered one on the user's behalf, so the transcript never has a
+        // silent gap where a tool was approved.
+        AgentEvent::PermissionResolved {
+            request_id,
+            rule: Some(rule),
+            ..
+        } => {
+            let id = format!("{request_id}-rule");
+            if !out
+                .iter()
+                .any(|p| matches!(p, MessagePart::Notice { id: existing, .. } if existing == &id))
+            {
+                out.push(MessagePart::Notice {
+                    id,
+                    text: format!("allowed by rule {rule}"),
+                });
+            }
+        }
         AgentEvent::AssistantMessageCompleted { .. }
         | AgentEvent::Usage { .. }
         | AgentEvent::AvailableCommands { .. }
+        | AgentEvent::PermissionRequested { .. }
+        | AgentEvent::PermissionResolved { .. }
         | AgentEvent::UserMessage { .. } => {}
     }
 }
