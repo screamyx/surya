@@ -11,6 +11,7 @@ if not defined HOME set "HOME=%USERPROFILE%"
 set "SURYA_HOME=%APPDATA%\surya"
 set "ZERON_DATA_DIR=%SURYA_HOME%\data"
 if not exist "%ZERON_DATA_DIR%" mkdir "%ZERON_DATA_DIR%"
+set "SURYA_EXTRA_ARGS=%*"
 set "ENGINE_ARGS="
 if exist "%SURYA_HOME%\servers.json" (
   for /f "usebackq delims=" %%L in (`powershell -NoProfile -Command "$j = Get-Content -Raw '%SURYA_HOME%\servers.json' | ConvertFrom-Json; if ($j.engine) { $a = '--engine ' + $j.engine; if ($j.token) { $a += ' --engine-token ' + $j.token }; $a }"`) do set "ENGINE_ARGS=%%L"
