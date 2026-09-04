@@ -1,5 +1,5 @@
 // Screen: / - workspaces overview, agents grouped by workspace.
-// The first thing Azani sees on his phone: what needs him, then what every workspace is doing.
+// The first thing you see on your phone: what needs him, then what every workspace is doing.
 import { Link } from "react-router"
 import { motion } from "motion/react"
 import { ArrowRight, FolderTree, ListTodo, Monitor, Sparkles } from "lucide-react"

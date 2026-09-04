@@ -1,8 +1,21 @@
 // Shared fake data for the surya 1.0 RC mockup. Builders read from here, never edit.
 export type AgentStatus = "working" | "needs-you" | "failed" | "done" | "idle"
 
+export type Server = {
+  id: string
+  name: string
+  host: string
+  os: "linux" | "mac" | "windows"
+  state: "online" | "offline" | "installing"
+  home: boolean // the daemon this app was opened from; keeps the server list
+  daemonVersion?: string
+  claudeVersion?: string
+  uptime?: string
+}
+
 export type Workspace = {
   id: string
+  serverId: string
   name: string
   repo: string
   branch: string
@@ -88,6 +101,11 @@ export type FeedEvent =
   | { id: string; kind: "permission"; at: string; tool: string; command: string; decided?: "approved" | "rejected" }
   | { id: string; kind: "question"; at: string; question: string; options: string[]; answered?: string }
   | { id: string; kind: "command"; at: string; name: string; args: string; source: SlashSource; description: string }
+  | { id: string; kind: "mail-in"; at: string; from: string; text: string; deliveryId: string; acked: boolean }
+  | { id: string; kind: "mail-out"; at: string; to: string; text: string; deliveryId: string; delivered: boolean }
+
+// Agent mail. An address is an agent id or a channel ("#project-jag" for a workspace, "#studio" for a server).
+export type Message = { id: string; from: string; to: string; text: string; at: string; deliveryId: string; acked: boolean }
 
 export type { SlashCommand, SlashSource } from "./slash-data"
 import type { SlashSource } from "./slash-data"
@@ -102,32 +120,42 @@ export type CardSample =
 
 export const now = "2026-09-05T01:12:00+08:00"
 
+export const servers: Server[] = [
+  { id: "studio", name: "studio", host: "studio.local", os: "linux", state: "online", home: true, daemonVersion: "0.1.0", claudeVersion: "2.1.260", uptime: "3d 4h" },
+  { id: "laptop", name: "laptop", host: "laptop.local", os: "mac", state: "online", home: false, daemonVersion: "0.1.0", claudeVersion: "2.1.258", uptime: "6h" },
+  { id: "office-pc", name: "office-pc", host: "office-pc.local", os: "windows", state: "offline", home: false },
+]
+export const serverById = (id: string) => servers.find((s) => s.id === id)!
+
 export const workspaces: Workspace[] = [
   {
     id: "project-jag",
+    serverId: "studio",
     name: "project-jag",
     repo: "screamyx/project-jag",
     branch: "v2",
     worktree: "/store/agent-worktrees/lead-follow-up",
-    previewUrl: "https://pc-ajim.tail82fec1.ts.net:8457",
+    previewUrl: "http://localhost:8000",
     agents: [],
   },
   {
     id: "surya",
+    serverId: "studio",
     name: "surya",
     repo: "screamyx/surya",
     branch: "main",
     worktree: "/home/user/git/surya",
-    previewUrl: "http://pc-ajim.tail82fec1.ts.net:4790",
+    previewUrl: "http://localhost:4790",
     agents: [],
   },
   {
     id: "kss-marketing",
+    serverId: "laptop",
     name: "kss-marketing",
     repo: "screamyx/kss-marketing",
     branch: "main",
     worktree: "/home/user/git/kss-marketing",
-    previewUrl: "https://videos.tail82fec1.ts.net",
+    previewUrl: "http://localhost:3000",
     agents: [],
   },
 ]
@@ -360,6 +388,17 @@ import { cards } from "./cards-data"
 export { slashCommands } from "./slash-data"
 
 
+export const messages: Message[] = [
+  { id: "m-1", from: "you", to: "raven", text: "Spec is in specs/behaviors/crm-lead-follow-up.md. Use the service class for writes, never raw SQL.", at: "2026-09-05T00:41:30+08:00", deliveryId: "d-4f1a", acked: true },
+  { id: "m-2", from: "raven", to: "raven-tests", text: "BRIEF: run the Pest suite for the follow-up migration and the reminder job. Report the count and any failing test name.", at: "2026-09-05T00:44:10+08:00", deliveryId: "d-7c02", acked: true },
+  { id: "m-3", from: "raven-tests", to: "raven", text: "REPORT tests: 12 of 14 green. Two failing on timezone, the reminder fires at 00:00 UTC instead of 08:00 KL.", at: "2026-09-05T01:11:50+08:00", deliveryId: "d-9b3e", acked: false },
+  { id: "m-4", from: "kite", to: "#project-jag", text: "Heads up: I am editing SendFollowUpReminder.php for the next 10 minutes. Stay off it.", at: "2026-09-05T01:05:00+08:00", deliveryId: "d-a114", acked: true },
+  { id: "m-5", from: "raven-review", to: "raven", text: "REPORT review: migration fine. One nit, the casts() array should list follow_up_note as string. Left as a comment.", at: "2026-09-05T01:09:30+08:00", deliveryId: "d-c5d0", acked: true },
+  { id: "m-6", from: "heron", to: "#project-jag", text: "PR #648 is open and CI is green. Anyone touching UploadTile.tsx, rebase first.", at: "2026-09-05T00:38:00+08:00", deliveryId: "d-e77b", acked: true },
+  { id: "m-7", from: "you", to: "#project-jag", text: "Reminder time is 08:00 KL. kite, that answers your question.", at: "2026-09-05T01:12:30+08:00", deliveryId: "d-f201", acked: false },
+]
+export const unreadFor = (agentId: string) => messages.filter((m) => m.to === agentId && !m.acked).length
+
 export const feed: FeedEvent[] = [
   { id: "f-1", kind: "user", at: "2026-09-05T00:41:00+08:00", text: "Add the two follow-up fields to leads, with the reminder the morning after. Spec is in specs/behaviors/crm-lead-follow-up.md." },
   { id: "f-2", kind: "thinking", at: "2026-09-05T00:41:04+08:00", text: "Reading the spec and the Lead model before touching anything." },
@@ -369,10 +408,12 @@ export const feed: FeedEvent[] = [
   { id: "f-6", kind: "diff", at: "2026-09-05T00:42:10+08:00", file: "backend/app/Models/Lead.php", added: 12, removed: 0, hunk: "@@ -8,6 +8,18 @@\n     protected $fillable = [\n         'customer_id',\n         'vehicle_id',\n         'source',\n+        'next_follow_up_at',\n+        'follow_up_note',\n     ];\n+\n+    protected function casts(): array\n+    {\n+        return [\n+            'next_follow_up_at' => 'datetime',\n+        ];\n+    }" },
   { id: "f-7", kind: "diff", at: "2026-09-05T00:42:40+08:00", file: "backend/database/migrations/2026_09_05_000001_add_follow_up_to_leads.php", added: 28, removed: 0, hunk: "@@ -0,0 +1,28 @@\n+<?php\n+\n+use Illuminate\\Database\\Migrations\\Migration;\n+use Illuminate\\Database\\Schema\\Blueprint;\n+use Illuminate\\Support\\Facades\\Schema;\n+\n+return new class extends Migration\n+{\n+    public function up(): void\n+    {\n+        Schema::table('leads', function (Blueprint $table) {\n+            $table->timestamp('next_follow_up_at')->nullable();\n+            $table->string('follow_up_note')->nullable();\n+        });\n+    }\n+};" },
   { id: "f-8", kind: "subagent", at: "2026-09-05T00:44:00+08:00", name: "Explore", summary: "Found how the PWA lead card reads its fields: LeadCard.tsx, LeadResource.php", events: 9 },
+  { id: "f-8b", kind: "mail-out", at: "2026-09-05T00:44:10+08:00", to: "raven-tests", text: "BRIEF: run the Pest suite for the follow-up migration and the reminder job. Report the count and any failing test name.", deliveryId: "d-7c02", delivered: true },
   { id: "f-9", kind: "card", at: "2026-09-05T00:45:30+08:00", card: cards[1] },
   { id: "f-10", kind: "assistant", at: "2026-09-05T00:45:40+08:00", text: "Three leads have no follow-up date today. After the migration I can set them to tomorrow 08:00 if you want." },
   { id: "f-10b", kind: "command", at: "2026-09-05T01:09:20+08:00", name: "tdd", args: "the reminder job, red first", source: "plugin", description: "Build the feature test-first, red green refactor" },
   { id: "f-10c", kind: "assistant", at: "2026-09-05T01:09:30+08:00", text: "Writing the failing test first, then the job." },
+  { id: "f-10d", kind: "mail-in", at: "2026-09-05T01:09:30+08:00", from: "raven-review", text: "REPORT review: migration fine. One nit, the casts() array should list follow_up_note as string. Left as a comment.", deliveryId: "d-c5d0", acked: true },
   { id: "f-11", kind: "tool", at: "2026-09-05T01:09:50+08:00", tool: "Bash", input: "docker compose exec -T app php vendor/bin/pest tests/Feature/FollowUpReminderTest.php", output: "PASS  Tests\\Feature\\FollowUpReminderTest\n✓ sends one reminder the morning after\n✓ skips leads with no date\n\nTests: 2 passed (4 assertions)\nDuration: 1.92s", ms: 2410, ok: true },
   { id: "f-12", kind: "permission", at: "2026-09-05T01:10:12+08:00", tool: "Bash", command: "docker compose exec -T app php artisan migrate --force" },
 ]

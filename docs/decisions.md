@@ -224,7 +224,10 @@ surya ships its own agent mail, built into the daemon, with the concepts the own
 - Reserve on spawn: an agent spawned through surya has an address before it starts, so mail queues instead of failing.
 - Liveness: the agent tree.
 
-The owner's agb bus is one implementation of the same idea and may bridge to surya through a private adapter. It is not a dependency, per decision 18.
+Owner, 2026-09-05 02:28: "the comm tools will mimic agb - no agent-to-agent prompt (only as fallback), and use native claude/codex messaging tool."
+Owner, 02:29: "maybe just port agb to surya. im ok with publicizing agb, nothing in there i dont want to share."
+
+So: agb is ported into surya, not reimplemented from scratch. Its model comes over whole: stable agent ids, reserve before spawn, a broker with per-agent mailboxes, drain and ack by delivery id, channels, recap lines, liveness by process, and wake v2 where mail lands as a native inbound turn (a Claude cross-session message, a Codex app-server turn). Prompting another agent's pane is the fallback only, never the path. The `agb` CLI stays as the shell surface so agents keep using `agb send`, `agb drain`, `agb ack`. agb's own repo becomes public alongside surya. Decision 18 stands for everything else: no herdr, no luvus, no tailnet assumptions.
 
 GUI surfaces: mail rows in the agent feed (from, delivery id, acked mark), sends as tool rows, Send message on agent rows, a Messages tab per workspace with the channel and direct threads.
 

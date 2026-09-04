@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useParams } from "react-router"
-import { FolderTree, ListTodo, Monitor, Sparkles } from "lucide-react"
+import { FolderTree, ListTodo, Mail, Monitor, Plus, Sparkles } from "lucide-react"
+import { Link } from "react-router"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { workspaceById } from "@/data"
 
@@ -12,6 +14,7 @@ export function WorkspaceLayout() {
     { to: `/w/${w.id}/tasks`, icon: ListTodo, label: "Tasks" },
     { to: `/w/${w.id}/preview`, icon: Monitor, label: "Preview" },
     { to: `/w/${w.id}/files`, icon: FolderTree, label: "Files" },
+    { to: `/w/${w.id}/messages`, icon: Mail, label: "Messages" },
   ]
   return (
     <>
@@ -22,6 +25,10 @@ export function WorkspaceLayout() {
             {t.label}
           </NavLink>
         ))}
+        <Button size="sm" variant="outline" nativeButton={false} render={<Link to={`/new?ws=${w.id}`} />} className="ml-auto shrink-0">
+          <Plus data-icon="inline-start" />
+          <span className="hidden sm:inline">New agent</span>
+        </Button>
       </div>
       <Outlet />
     </>

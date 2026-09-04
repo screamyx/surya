@@ -1,6 +1,6 @@
 export const settings = {
-  user: { name: "Azani", email: "muhd.azani@gmail.com", auth: "claude.ai OAuth, Max plan" },
-  daemon: { host: "pc-ajim.tail82fec1.ts.net", version: "0.1.0", claude: "2.1.260", uptime: "3d 4h" },
+  user: { name: "Alex Tan", email: "alex@example.com", auth: "claude.ai OAuth, Max plan" },
+  daemon: { host: "studio.local", version: "0.1.0", claude: "2.1.260", uptime: "3d 4h" },
   notifications: { push: true, needsYou: true, results: true, quietFrom: "23:30", quietTo: "07:30" },
   models: ["claude-fable-5-1", "claude-opus-5", "claude-sonnet-5", "gpt-5.6-sol"],
 }

@@ -13,6 +13,7 @@ import { FilesScreen } from "@/screens/files"
 import { CatalogScreen } from "@/screens/catalog"
 import { NewAskScreen } from "@/screens/new-ask"
 import { SettingsScreen } from "@/screens/settings"
+import { MessagesScreen } from "@/screens/messages"
 
 export const surfaces = [
   { path: "/", name: "Home", feature: "workspaces overview, agents grouped by workspace" },
@@ -25,6 +26,7 @@ export const surfaces = [
   { path: "/catalog", name: "Cards", feature: "6. A2UI catalog" },
   { path: "/w/project-jag/files", name: "Files", feature: "7. File tree and editor" },
   { path: "/w/project-jag/tasks", name: "Tasks", feature: "Task board per workspace" },
+  { path: "/w/project-jag/messages", name: "Messages", feature: "9. Agent mail: channel and direct threads" },
   { path: "/settings", name: "Settings", feature: "daemon, auth, notifications" },
 ]
 
@@ -44,6 +46,7 @@ export function AppRoutes() {
             <Route path="tasks" element={<TasksScreen />} />
             <Route path="preview" element={<PreviewScreen />} />
             <Route path="files" element={<FilesScreen />} />
+            <Route path="messages" element={<MessagesScreen />} />
           </Route>
           <Route path="agent/:id" element={<AgentFeedScreen />} />
           <Route path="result/:id" element={<ResultScreen />} />
