@@ -73,7 +73,7 @@ function Crumbs() {
       <BreadcrumbList>
         <BreadcrumbItem className="hidden md:block"><BreadcrumbLink render={<Link to="/" />}>surya</BreadcrumbLink></BreadcrumbItem>
         {ws && (<><BreadcrumbSeparator className="hidden md:block" /><BreadcrumbItem><BreadcrumbLink render={<Link to={`/w/${ws}/agents`} />}>{ws}</BreadcrumbLink></BreadcrumbItem></>)}
-        {(id || leafLabel[leaf]) && (<><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>{id ?? leafLabel[leaf]}</BreadcrumbPage></BreadcrumbItem></>)}
+        {(id || leafLabel[leaf]) && (<><BreadcrumbSeparator className={ws ? undefined : "hidden md:block"} /><BreadcrumbItem><BreadcrumbPage>{id ?? leafLabel[leaf]}</BreadcrumbPage></BreadcrumbItem></>)}
       </BreadcrumbList>
     </Breadcrumb>
   )
