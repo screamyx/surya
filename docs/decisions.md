@@ -93,6 +93,14 @@ Three consequences for the daemon:
 - A second run on a busy thread calls the same empty abort, so two `claude` processes result. The daemon must serialise runs per agent itself.
 - Replace the in-memory runner if runs must survive a daemon restart.
 
+## 10. Runtime is Bun
+
+Probed on 2026-09-05 with Bun 1.3.14 on the box.
+The real Claude adapter server from the disconnect probe started under `bun run` and listened in 14 ms.
+One run through it, with a Bash tool call, returned the canary `BUN_PROBE_OK_42` and reached RUN_FINISHED, server errors=0.
+The Agent SDK README documents Bun outright, including `bun build --compile` and an `extractFromBunfs` helper for the bundled binary.
+Node stays as the fallback, nothing in the stack is Bun-only.
+
 ## Open
 
 None at day zero.
