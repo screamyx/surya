@@ -101,6 +101,27 @@ One run through it, with a Bash tool call, returned the canary `BUN_PROBE_OK_42`
 The Agent SDK README documents Bun outright, including `bun build --compile` and an `extractFromBunfs` helper for the bundled binary.
 Node stays as the fallback, nothing in the stack is Bun-only.
 
+## 11. The 1.0 promise and what ships first class
+
+Owner, 2026-09-05 00:51, on A2UI, file tree and editor: "must ship as first class on the get go. these are what seperate us from the other generic harness."
+
+The 1.0 promise: you can start work from your phone, leave, and come back to either a finished result or one clear question waiting for you.
+
+Ships first class in 1.0:
+1. Ask in a sentence: pick a workspace, type the ask, an agent starts.
+2. Needs You inbox with push: every permission ask and agent question in one list, tap to answer.
+3. Plain status per agent: working, needs you, done, plus a one-line human summary.
+4. Preview with pins: tap the app, type a note, the pin becomes a task.
+5. Result you can act on: plain-words summary, diff, Ship button through PR to merged.
+6. A2UI cards: agent answers rendered from a surya catalog, not raw HTML.
+7. File tree and editor: browse the workspace, open and edit files, see the agent's edits land live.
+
+Invisible but required: sessions never lost, task board per workspace, a stop that kills the process, phone first on the tailnet.
+
+Cut from 1.0: terminal panel, luvus module, leases, merge train, multi-user accounts.
+
+Release candidate bar: the owner runs a real project-jag task end to end from a phone, no terminal, no developer beside him, and the result merges.
+
 ## Open
 
 None at day zero.
