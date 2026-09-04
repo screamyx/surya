@@ -253,6 +253,21 @@ The look: the warm-workshop direction from `docs/design-brief.md` stays. Parchme
 
 Decisions 11 (the seven 1.0 features) and 15 (rail and agent tree) still hold; this decision changes where the features sit, not whether they ship.
 
+## 21. The preview has two engines, and a third-party site is non-negotiable
+
+Owner, 04:58: "a browsable third party site is non-negotiable bro. just use something like ocic to connect to the iframe or something".
+
+Decision 6 stands for the app you are building: proxy plus iframe, bridge script, DOM pins, native scroll.
+It cannot show a third-party site: most sites forbid framing by header, and a cross-origin frame is sealed against pins and element picking. Proxying a third-party site to strip that breaks logins and is not pursued.
+
+The second engine is a real Chrome owned by the daemon, painted into the pane as a frame stream over the Chrome DevTools Protocol, with mouse, keyboard and scroll forwarded back.
+- Any URL loads. The profile persists on the daemon, so the user signs in once, from any device, phone included.
+- The agent drives the same Chrome over the same protocol, so decision 6's "one view, two drivers" holds for both engines.
+- Pins still resolve to a selector: the daemon asks Chrome which element is under the click, and stores selector plus crop as before.
+- open-claude-in-chrome is a connection option inside this engine, "use my desktop Chrome", for sites only the user's own signed-in profile can reach; it needs that desktop awake and cannot paint the tab on a phone, so it is never the default.
+
+The pane shows which engine is active. App is the default when the workspace has a dev server; Browser is one tap away and remembers its last URL.
+
 ## Open
 
 None at day zero.
