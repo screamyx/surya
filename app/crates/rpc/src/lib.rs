@@ -65,6 +65,17 @@ pub mod methods {
     /// current value first, then every change — the connection pill /
     /// composer-honesty / queued-badge feed. No params; IPC-only.
     pub const WATCH_CONNECTIVITY: &str = "WatchConnectivity";
+    // Agent mail (decision 19). Addresses are an agent id or `#workspace`;
+    // every accepted send returns one delivery id per resolved recipient.
+    /// `{from, to, body, toDevice?}` → `{ids, recipients}`. IPC-only.
+    pub const MAIL_SEND: &str = "Mail.Send";
+    /// `{agent?}` → `{messages}`. Without `agent`, the recent feed.
+    pub const MAIL_LIST: &str = "Mail.List";
+    /// `{id}` → `{acked}` — the manual "seen"; turn completion acks on its own.
+    pub const MAIL_ACK: &str = "Mail.Ack";
+    /// `{messages}` now, then a fresh list on every mail change — the
+    /// Messages pane's feed. No params; IPC-only.
+    pub const WATCH_MAIL: &str = "WatchMail";
     /// In-flight queued-attachment transfers (`zeron_proto::TransferProgress`
     /// list): current set first, then a fresh snapshot per landed chunk —
     /// the sending thumbnail's percent-ring feed. No params; IPC-only.

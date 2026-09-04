@@ -23,6 +23,7 @@ pub mod diff_sync;
 pub mod doc_host;
 pub mod instance_lock;
 pub mod local_import;
+pub mod mail;
 pub mod profile;
 pub mod registry;
 pub mod repos;
@@ -46,6 +47,7 @@ pub use diff_sync::{
 };
 pub use doc_host::{ChatDocHandle, DocHost, DocHostConfig, EdgeConfig};
 pub use instance_lock::InstanceLock;
+pub use mail::{Mail, MailIngress, MailIngressPaths, MailMessage, MailReceipt, MailState};
 pub use profile::EngineProfile;
 pub use registry::{HarnessDescriptor, HarnessRegistry, default_registry};
 pub use repos::{CheckoutIdentity, Repos, worktree_branch_from_title};
@@ -75,6 +77,8 @@ pub enum EngineError {
     Journal(#[from] run_journal::JournalError),
     #[error("store: {0}")]
     Store(#[from] zeron_sync::StoreError),
+    #[error("mail: {0}")]
+    Mail(#[from] mail::MailStoreError),
     #[error("harness: {0}")]
     Harness(#[from] zeron_harness::HarnessError),
     #[error("io: {0}")]
@@ -116,6 +120,8 @@ pub struct EngineConfig {
 /// and the in-process (headed) mode.
 pub struct EngineCore {
     pub sessions: SessionsEngine,
+    /// Agent mail: one table, delivery into the recipient's next turn.
+    pub mail: Mail,
     pub doc_host: DocHost,
     pub workspace: WorkspaceHost,
     pub registry: Arc<HarnessRegistry>,
@@ -282,8 +288,13 @@ impl EngineCore {
             turn_diff.note_turn_start(chat_id, cwd);
         }));
         let spaces_sync = SpacesSync::start(repos.clone(), workspace.clone(), &device_id);
+        // Mail rides the profile's store root, a sibling of the docs database,
+        // so it inherits the same local/synced boundary.
+        let mail = Mail::open(profile.store_root(), &device_id, sessions.clone(), doc_host.clone())?;
+        mail.start_pump();
         Ok(Self {
             sessions,
+            mail,
             doc_host,
             workspace,
             registry,
@@ -425,7 +436,8 @@ impl EngineCore {
             self.agent_accounts.clone(),
             self.workspace_scope,
         )
-        .with_auth(self.auth());
+        .with_auth(self.auth())
+        .with_mail(self.mail.clone());
         if let Some(links) = self.links() {
             rpc = rpc.with_links(links);
         }
