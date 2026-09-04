@@ -179,7 +179,7 @@ export function AppShell() {
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" render={<Link to="/" />}>
                 <div className="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg"><Sparkles className="size-4" /></div>
-                <div className="grid flex-1 text-left leading-tight"><span className="truncate font-semibold">surya</span><span className="text-muted-foreground truncate text-xs">{servers.filter((x) => x.state === "online").length} servers · {workspaces.length} workspaces</span></div>
+                <div className="grid flex-1 text-left leading-tight"><span className="truncate font-semibold">surya</span><span className="text-muted-foreground truncate text-xs">{servers.length} servers · {workspaces.length} workspaces</span></div>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
