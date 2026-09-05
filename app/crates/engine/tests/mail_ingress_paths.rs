@@ -5,9 +5,11 @@
 //! engine watched another, and mail simply stopped arriving with no error on
 //! either side. That is the failure mode worth a test.
 //!
-//! Its own binary because it sets process-global environment variables, and
-//! CI runs `cargo test --jobs 2`: siblings in one binary are threads in one
-//! process, so a sibling reading the environment would see this test's values.
+//! One test in its own binary, because it sets process-global environment
+//! variables. libtest runs the tests in a binary as threads in one process, so
+//! a sibling reading the environment would see this test's values, and CI runs
+//! `cargo test --jobs 2`. The tripwire that would otherwise sit here lives in
+//! `mail_ingress_sidecar_names.rs`.
 
 use std::path::PathBuf;
 
@@ -16,9 +18,9 @@ use zeron_engine::MailIngressPaths;
 /// The sidecar's resolution, restated from `crates/mcp/src/config.rs`.
 ///
 /// `surya-mcp` is a binary-only crate, so this cannot call the real function.
-/// `the_sidecar_still_reads_these_names` below is the tripwire for that: it
-/// fails if the sidecar stops naming these variables, which is when this
-/// restatement would silently go stale.
+/// `mail_ingress_sidecar_names.rs` is the tripwire for that: it fails if the
+/// sidecar stops naming these variables, which is when this restatement would
+/// silently go stale.
 fn sidecar_paths() -> (PathBuf, PathBuf) {
     let env_path = |k: &str| {
         std::env::var_os(k)
@@ -27,7 +29,7 @@ fn sidecar_paths() -> (PathBuf, PathBuf) {
     };
     let runtime_dir = || match env_path("XDG_RUNTIME_DIR") {
         Some(dir) => dir.join("surya"),
-        None => std::env::temp_dir().join(format!("surya-{}", unsafe { libc::getuid() })),
+        None => std::env::temp_dir().join(format!("surya-{}", current_uid())),
     };
     let home_dir = || match env_path("HOME") {
         Some(home) => home.join(".surya"),
@@ -37,6 +39,19 @@ fn sidecar_paths() -> (PathBuf, PathBuf) {
         env_path("SURYA_MAIL_SOCKET").unwrap_or_else(|| runtime_dir().join("mail.sock")),
         env_path("SURYA_MAIL_LOG").unwrap_or_else(|| home_dir().join("mail.jsonl")),
     )
+}
+
+/// `getuid(2)` off unix does not exist. The sidecar and `ingress.rs` both
+/// suffix the temp dir with `$USERNAME` there, so this restatement does too.
+#[cfg(unix)]
+fn current_uid() -> String {
+    // SAFETY: getuid(2) reads a process attribute and cannot fail.
+    unsafe { libc::getuid() }.to_string()
+}
+
+#[cfg(not(unix))]
+fn current_uid() -> String {
+    std::env::var("USERNAME").unwrap_or_else(|_| "user".into())
 }
 
 fn assert_agrees(what: &str) {
@@ -60,8 +75,8 @@ fn assert_agrees(what: &str) {
 
 #[test]
 fn both_sides_land_on_the_same_paths() {
-    // SAFETY: this binary holds one test, so nothing else in the process reads
-    // the environment while it is being changed.
+    // SAFETY: this binary holds this one test and no other thread, so nothing
+    // else in the process reads the environment while it is being changed.
     unsafe {
         // 1. An explicit override, the case that was broken: the sidecar
         //    honoured these and the engine did not, so an operator who set
@@ -105,24 +120,4 @@ fn both_sides_land_on_the_same_paths() {
         std::env::remove_var("HOME");
     }
     assert_agrees("no runtime dir and no home");
-}
-
-/// The tripwire for the restatement above: if the sidecar stops reading these
-/// names, `sidecar_paths` is describing a resolution that no longer exists and
-/// the agreement it checks is worthless.
-#[test]
-fn the_sidecar_still_reads_these_names() {
-    let config = concat!(env!("CARGO_MANIFEST_DIR"), "/../mcp/src/config.rs");
-    let source = std::fs::read_to_string(config).expect("read the sidecar's config");
-    for name in [
-        "SURYA_MAIL_SOCKET",
-        "SURYA_MAIL_LOG",
-        "XDG_RUNTIME_DIR",
-        "HOME",
-    ] {
-        assert!(
-            source.contains(name),
-            "{name} is gone from crates/mcp/src/config.rs: update sidecar_paths() in this file to match"
-        );
-    }
 }

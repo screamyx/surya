@@ -3,11 +3,15 @@
 //! The MCP server's `send_message` tool writes one JSON record per message.
 //! Two ways in, both live at once:
 //!
-//! - a unix socket, default `$XDG_RUNTIME_DIR/surya/mail.sock` — one JSON
-//!   object per line, the reply is `{"ids":[...],"recipients":[...]}`;
-//! - an append-only file, default `~/.surya/mail.jsonl` — the fallback when
-//!   there is no runtime dir, tailed from its end so a restart does not
-//!   redeliver history.
+//! - a unix socket, `$SURYA_MAIL_SOCKET` else `$XDG_RUNTIME_DIR/surya/mail.sock`
+//!   — one JSON object per line, the reply is
+//!   `{"ids":[...],"recipients":[...]}`. Unix only;
+//! - an append-only file, `$SURYA_MAIL_LOG` else `~/.surya/mail.jsonl`, tailed
+//!   from its end so a restart does not redeliver history. Always on, and the
+//!   only way in on Windows.
+//!
+//! Both paths resolve exactly as the sidecar resolves them; see
+//! [`MailIngressPaths::detect`].
 //!
 //! Record, as `surya-mcp`'s `send_message` writes it (`crates/mcp/src/mail.rs`):
 //! `{"delivery_id":"d_…","from":"…","to":"…","workspace":"…","text":"…"}`.
