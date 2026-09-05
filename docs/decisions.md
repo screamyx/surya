@@ -326,6 +326,18 @@ Context: raven told the owner the Windows zip does not carry the browser (build.
 - Owners: surya-cef2 (crate, CEF packaging step in build.ps1, dtry proof), surya-remote (rest of build.ps1, boot-dial timeout, cmd quoting, final zip). One builder on dtry at a time, agreed over agb.
 - The cut order in the 12:44 handoff is amended: the browser pane on Windows is no longer cuttable. If it is not painting by 2026-09-06 09:00, raven escalates to the owner instead of cutting.
 
+## 26. The look goes back to comet's; the features stay
+
+Owner ruling, 2026-09-05 19:25, verbatim: "just revert back the gui to how zeron's comet look. can you do that?" and "i mean only the theme, not functionality, features".
+
+Context: the owner saw the RC2 preview screens and did not like the surya look (decision 22's "floating rounded panels on a soft canvas", PR #2's light-first themes, PR #36). This supersedes the layout paragraph of decision 22 and the theme parts of PR #2.
+
+- Default theme is comet's own dark ("Zeron Dark", id comet_dark) with comet's light as the light option; system-follow stays.
+- The surya chrome (canvas inset, floating panels, composer pill restyle, title typography, sidebar cards) is removed from the shell; the new panes (tasks, files, browser, inbox) take comet's tokens.
+- Every feature stays. The motion switch stays (it is a function, not a look).
+- The surya themes and `surya.rs` stay in the tree, selectable but not default, so a reversal is cheap.
+- Owner: surya-theme, branch fix/comet-look, before the 2026-09-06 11:45 freeze; proof = side-by-side with upstream comet at the import commit.
+
 ## Open
 
 None at day zero.
