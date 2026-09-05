@@ -304,9 +304,9 @@ pub(crate) fn render_handler() -> RenderHandler {
 mod tests {
     use super::*;
 
-    fn img() -> Arc<RenderImage> {
+    fn img() -> FrameSource {
         let buf: image::RgbaImage = image::ImageBuffer::from_raw(1, 1, vec![0, 0, 0, 255]).unwrap();
-        Arc::new(RenderImage::new(vec![image::Frame::new(buf)]))
+        FrameSource::Cpu(Arc::new(RenderImage::new(vec![image::Frame::new(buf)])))
     }
 
     #[test]
