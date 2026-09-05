@@ -25,6 +25,13 @@ on:
   schedule:
     - cron: "0 19 * * *"
   workflow_dispatch:
+  # TEMPORARY, removed before this PR merges. A workflow_dispatch can only
+  # run a workflow that already exists on the default branch (the API answers
+  # HTTP 404 "not found on the default branch" for a new one on a feature
+  # branch), so this is the only way to prove the job green before merge.
+  pull_request:
+    paths:
+      - '.github/workflows/browser-nightly.yml'
 
 # Two nightlies must never build into the same CARGO_TARGET_DIR at once, and
 # the second is worth nothing anyway. No cancel-in-progress: a manual run
