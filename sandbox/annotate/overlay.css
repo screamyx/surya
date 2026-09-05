@@ -1,0 +1,98 @@
+
+    :host { all: initial; }
+    * { box-sizing: border-box; font-family: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+    :host {
+      --ink-900:var(--surya-surface); --ink-700:var(--surya-surface-dialog); --ink-600:var(--surya-surface-overlay);
+      --steel-600:var(--surya-border-strong); --steel-500:var(--surya-element-active);
+      --steel-400:var(--surya-text-muted); --steel-100:var(--surya-text);
+      --cream-50:var(--surya-text); --cream-100:var(--surya-text);
+      --brass-500:var(--surya-accent); --brass-ink:var(--surya-on-accent);
+      --sage-300:var(--surya-success); --rust-500:var(--surya-danger);
+      --safe-b: env(safe-area-inset-bottom, 0px);
+    }
+
+    /* --- dock: the always-there control. Bottom-anchored because a live app
+       owns its own header, and on a phone the thumb lives down here. --- */
+    .dock { position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: calc(12px + var(--safe-b)); z-index: 2147483646;
+      display: flex; align-items: center; gap: 8px;
+      background: var(--ink-700); border: 1px solid var(--steel-600); border-radius: 9999px;
+      padding: 6px 8px 6px 12px; box-shadow: 0 8px 28px rgba(0,0,0,.55); max-width: calc(100vw - 24px); }
+    @media (min-width: 768px) { .dock { left: 16px; transform: none; } }
+
+    .mark { font-size: 12px; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--steel-400); white-space: nowrap; }
+    .chip { font-size: 11px; color: var(--steel-100); background: var(--ink-600);
+      border: 1px solid var(--steel-600); border-radius: 9999px; padding: 2px 8px; white-space: nowrap; }
+
+    /* Review switch, rebuilt: track + knob, native accent when armed. */
+    .toggle { display: flex; align-items: center; gap: 8px; cursor: pointer;
+      background: transparent; border: 0; color: var(--cream-100); font-size: 13px;
+      padding: 6px 6px; border-radius: 9999px; min-height: 44px; }
+    .track { width: 34px; height: 20px; border-radius: 9999px; background: var(--steel-500);
+      position: relative; transition: background .15s ease; flex: none; }
+    .knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+      background: var(--cream-50); transition: transform .15s ease; }
+    .toggle[aria-pressed="true"] .track { background: var(--brass-500); }
+    .toggle[aria-pressed="true"] .knob { transform: translateX(14px); }
+
+    .send { border: 0; border-radius: 9999px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+      background: var(--brass-500); color: var(--brass-ink); cursor: pointer; min-height: 44px;
+      white-space: nowrap; display: none; }
+
+    .hl { position: fixed; z-index: 2147483644; pointer-events: none;
+      border: 2px solid var(--brass-500); background: rgba(244,201,93,.10); border-radius: 4px; display: none; }
+
+    /* --- sheet: one surface for writing a pin AND reading one back. On a phone
+       it is a bottom sheet; from md up it is a floating card. No hover anywhere. --- */
+    .scrim { position: fixed; inset: 0; z-index: 2147483646; background: rgba(6,8,12,.55); display: none; }
+    .sheet { position: fixed; z-index: 2147483647; left: 0; right: 0; bottom: 0;
+      background: var(--ink-700); color: var(--cream-100);
+      border-top: 1px solid var(--steel-600); border-radius: 16px 16px 0 0;
+      padding: 14px 14px calc(14px + var(--safe-b)); display: none; flex-direction: column; gap: 10px;
+      box-shadow: 0 -12px 40px rgba(0,0,0,.6); max-height: 80vh; overflow: auto; }
+    @media (min-width: 768px) {
+      .sheet { left: 16px; right: auto; bottom: 64px; width: 380px; border-radius: 14px;
+        border: 1px solid var(--steel-600); }
+    }
+    .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--steel-500);
+      align-self: center; margin-bottom: 2px; }
+    @media (min-width: 768px) { .grab { display: none; } }
+
+    .meta { display: flex; flex-wrap: wrap; gap: 6px; }
+    .meta .chip { font-size: 10px; }
+    .ctx { font-size: 12px; color: var(--steel-100); word-break: break-word; }
+    .ctx .name { color: var(--brass-500); font-weight: 600; }
+    textarea { width: 100%; min-height: 84px; background: var(--ink-900); color: var(--cream-100);
+      border: 1px solid var(--steel-600); border-radius: 10px; padding: 10px; font-size: 16px;
+      resize: vertical; font-family: inherit; }
+    .read { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+    .read .who { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .05em;
+      color: var(--steel-400); margin-bottom: 3px; }
+    .read + .read { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--steel-600); }
+    .row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+    .row button { border: 0; border-radius: 9999px; padding: 10px 16px; font-size: 14px;
+      cursor: pointer; min-height: 44px; }
+    .primary { background: var(--brass-500); color: var(--brass-ink); font-weight: 600; }
+    .ghost { background: var(--ink-600); color: var(--steel-100); }
+    .destructive { background: var(--ink-600); color: var(--rust-500); }
+
+    /* Pins have 44px touch targets. */
+    .pin { position: fixed; z-index: 2147483645; min-width: 44px; height: 44px; border-radius: 9999px;
+      background: var(--brass-500); color: var(--brass-ink); font-size: 13px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+      border: 2px solid var(--ink-900); box-shadow: 0 2px 8px rgba(0,0,0,.5); padding: 0 6px; }
+    .pin.done { background: var(--sage-300); }
+    .pin.replied { background: var(--cream-50); color: var(--ink-900); }
+    .pin.draft { background: var(--steel-500); color: var(--cream-50); border-style: dashed; }
+    .pin.stale { opacity: .45; }
+
+    .toast { position: fixed; left: 50%; transform: translateX(-50%);
+      bottom: calc(64px + var(--safe-b)); z-index: 2147483647; background: var(--ink-600);
+      color: var(--cream-100); border: 1px solid var(--steel-600); border-radius: 9999px;
+      padding: 8px 14px; font-size: 13px; display: none; max-width: calc(100vw - 32px); text-align: center; }
+    @media (min-width: 768px) { .toast { left: 16px; transform: none; text-align: left; } }
+  
+    .dock { flex-wrap: wrap; justify-content: center; }
+    .pin:focus-visible, button:focus-visible { outline: 2px solid white; outline-offset: 2px; }
+    button, textarea { -webkit-tap-highlight-color: transparent; }

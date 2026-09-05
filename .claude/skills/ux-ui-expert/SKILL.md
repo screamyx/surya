@@ -76,6 +76,9 @@ Match the request to the files to load (and the runnable skill, invocable via `/
 | Icon system / icon sizing / icon a11y | `design-component` | `components/icon-system.md` |
 | Cognitive a11y / i18n-RTL / low-vision / WCAG AAA | `a11y-audit` | `accessibility/cognitive.md`, `accessibility/i18n-rtl.md`, `accessibility/vision.md`, `accessibility/wcag-aaa.md` |
 | Critique / taste verdict / "is this actually good" | `/critique` | `.claude/agents/design-critic.md`, `taste/*`; `scripts/taste_audit.mjs`, `scripts/slop_tells.mjs` |
+| Bring a native screen into the surya sandbox | `sandbox-port-in` | `.claude/skills/sandbox-port-in/SKILL.md`; `sandbox/GUIDE.md` -> "Port in, per screen, from Rust to React" |
+| Change a sandbox screen's look in the browser | `sandbox-design` | `.claude/skills/sandbox-design/SKILL.md`; `sandbox/GUIDE.md` -> "Banned constructs and unsupported semantics"; `sandbox/CHANGES.md` |
+| Carry an accepted sandbox diff back to Rust | `sandbox-port-back` | `.claude/skills/sandbox-port-back/SKILL.md`; `sandbox/GUIDE.md` -> "Port back, per screen, from the diff"; `sandbox/CHANGES.md` |
 | Eval the kit itself (cold-start brief -> measured output) | - | `evals/README.md`, `evals/briefs/*`; `node evals/run.mjs` |
 
 Every row also has depth in `.claude/skills/ux-ui-expert/rules/` (see the Rules table below). Load the

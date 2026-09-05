@@ -1,0 +1,30 @@
+{
+  "name": "surya-design-sandbox",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "lint": "node scripts/lint.mjs && node scripts/gen-theme.mjs --check && node scripts/gen-icons.mjs --check && node scripts/lint-examples.mjs",
+    "test": "node --test scripts/*.test.mjs annotate/*.test.mjs",
+    "generate": "node scripts/gen-theme.mjs && node scripts/gen-icons.mjs",
+    "generate:whitelist": "node scripts/gen-whitelist.mjs",
+    "proof": "node scripts/proof.mjs",
+    "proof:annotate": "node annotate/proof.mjs",
+    "audit:states": "node scripts/state-audit.mjs"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "tailwindcss": "^4.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0",
+    "playwright": "^1.58.0"
+  }
+}

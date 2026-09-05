@@ -1,0 +1,316 @@
+{
+  "revision": "a07e9577ec788feb73c06fe7e307a3df8adaa895",
+  "defaultLineHeight": 1.618034,
+  "sources": [
+    {
+      "path": "crates/gpui/src/styled.rs",
+      "sha256": "02867cf3e34756a2d99dc6b5777c758263c07a280f27f527498f17e9ed17f268"
+    },
+    {
+      "path": "crates/gpui_macros/src/styles.rs",
+      "sha256": "5fbd5dac9b7cdc954860a018f6b6925e49c82b4dcfe29424ecea828d47a3ff40"
+    },
+    {
+      "path": "crates/gpui/src/elements/div.rs",
+      "sha256": "a9039d28f58848b6cdccec33463c1a7698202e4f84d4f6c5ad9ad286c821518d"
+    },
+    {
+      "path": "crates/gpui/src/geometry.rs",
+      "sha256": "e4841901151cd2ce42f8599754671bd7ec45ab49ce88e9d0708ba93ee32b7a39"
+    },
+    {
+      "path": "crates/gpui/src/style.rs",
+      "sha256": "d0e09cedcf3861f219d91d16c4e3d96bacee158dc2e0d7c3a371e6cb7ec933ad"
+    }
+  ],
+  "exact": {
+    "flex": ".flex()",
+    "flex-col": ".flex_col()",
+    "flex-row": ".flex_row()",
+    "flex-col-reverse": ".flex_col_reverse()",
+    "flex-row-reverse": ".flex_row_reverse()",
+    "flex-1": ".flex_1()",
+    "flex-auto": ".flex_auto()",
+    "flex-initial": ".flex_initial()",
+    "flex-none": ".flex_none()",
+    "flex-wrap": ".flex_wrap()",
+    "flex-nowrap": ".flex_nowrap()",
+    "items-start": ".items_start()",
+    "items-end": ".items_end()",
+    "items-center": ".items_center()",
+    "items-baseline": ".items_baseline()",
+    "items-stretch": ".items_stretch()",
+    "justify-start": ".justify_start()",
+    "justify-end": ".justify_end()",
+    "justify-center": ".justify_center()",
+    "justify-between": ".justify_between()",
+    "justify-around": ".justify_around()",
+    "justify-evenly": ".justify_evenly()",
+    "self-center": ".self_center()",
+    "self-stretch": ".self_stretch()",
+    "relative": ".relative()",
+    "absolute": ".absolute()",
+    "hidden": ".hidden()",
+    "visible": ".visible()",
+    "invisible": ".invisible()",
+    "overflow-hidden": ".overflow_hidden()",
+    "overflow-x-hidden": ".overflow_x_hidden()",
+    "overflow-y-hidden": ".overflow_y_hidden()",
+    "truncate": ".truncate()",
+    "whitespace-nowrap": ".whitespace_nowrap()",
+    "whitespace-normal": ".whitespace_normal()",
+    "text-left": ".text_left()",
+    "text-center": ".text_center()",
+    "text-right": ".text_right()",
+    "cursor-pointer": ".cursor_pointer()",
+    "cursor-default": ".cursor_default()",
+    "italic": ".italic()",
+    "not-italic": ".not_italic()",
+    "shrink-0": ".flex_shrink_0()",
+    "grow": ".flex_grow_1()",
+    "grow-0": ".flex_grow_0()",
+    "overflow-x-scroll": ".id(\"stable-id\").overflow_x_scroll()",
+    "overflow-y-scroll": ".id(\"stable-id\").overflow_y_scroll()",
+    "w-full": ".w(relative(1.0))",
+    "h-full": ".h(relative(1.0))",
+    "size-full": ".size(relative(1.0))",
+    "min-w-full": ".min_w(relative(1.0))",
+    "min-h-full": ".min_h(relative(1.0))",
+    "max-w-full": ".max_w(relative(1.0))",
+    "max-h-full": ".max_h(relative(1.0))",
+    "m-auto": ".m(auto())",
+    "mx-auto": ".mx(auto())",
+    "my-auto": ".my(auto())",
+    "mt-auto": ".mt(auto())",
+    "mb-auto": ".mb(auto())",
+    "ml-auto": ".ml(auto())",
+    "mr-auto": ".mr(auto())",
+    "w-auto": ".w(auto())",
+    "h-auto": ".h(auto())",
+    "rounded-none": ".rounded(rems(0))",
+    "rounded-sm": ".rounded(rems(0.25))",
+    "rounded-md": ".rounded(rems(0.375))",
+    "rounded-lg": ".rounded(rems(0.5))",
+    "rounded-xl": ".rounded(rems(0.75))",
+    "rounded-full": ".rounded(px(9999.0))",
+    "border": ".border_1()",
+    "border-t": ".border_t_1()",
+    "border-b": ".border_b_1()",
+    "border-l": ".border_l_1()",
+    "border-r": ".border_r_1()",
+    "font-normal": ".font_weight(FontWeight::NORMAL)",
+    "font-medium": ".font_weight(FontWeight::MEDIUM)",
+    "font-semibold": ".font_weight(FontWeight::SEMIBOLD)",
+    "font-bold": ".font_weight(FontWeight::BOLD)",
+    "font-sans": ".font_family(theme.font_sans.clone())",
+    "leading-normal": ".line_height(relative(1.5))",
+    "leading-gpui": ".line_height(phi())",
+    "leading-none": ".line_height(relative(1.0))",
+    "text-ui-10": ".text_size(ui_rems(10.0))",
+    "text-ui-11": ".text_size(ui_rems(11.0))",
+    "text-ui-12": ".text_size(ui_rems(12.0))",
+    "text-ui-13": ".text_size(ui_rems(13.0))",
+    "text-ui-14": ".text_size(ui_rems(14.0))",
+    "text-ui-16": ".text_size(ui_rems(16.0))",
+    "text-ui-20": ".text_size(ui_rems(20.0))",
+    "opacity-0": ".opacity(0)",
+    "opacity-50": ".opacity(0.5)",
+    "opacity-55": ".opacity(0.55)",
+    "opacity-100": ".opacity(1)"
+  },
+  "families": [
+    {
+      "prefix": "p-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".p(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "px-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".px(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "py-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".py(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "pt-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".pt(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "pb-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".pb(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "pl-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".pl(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "pr-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".pr(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "m-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".m(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "mx-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".mx(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "my-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".my(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "mt-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".mt(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "mb-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".mb(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "ml-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".ml(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "mr-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".mr(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "w-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".w(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "h-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".h(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "size-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".size(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "min-w-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".min_w(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "min-h-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".min_h(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "max-w-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".max_w(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "max-h-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".max_h(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "gap-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".gap(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "gap-x-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".gap_x(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "gap-y-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".gap_y(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "top-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".top(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "bottom-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".bottom(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "left-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".left(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "right-",
+      "suffixes": ["0", "0.25", "0.5", "0.75", "1", "1.5", "2", "2.25", "2.5", "3", "3.5", "3.75", "4", "5", "6", "7", "7.5", "8", "9", "9.5", "10", "11", "12", "14", "16", "20", "24", "28", "32", "40", "48", "55", "64", "80", "96", "184"],
+      "gpui": ".right(rems(Number(suffix) / 4))"
+    },
+    {
+      "prefix": "bg-",
+      "suffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "element-hover", "element-active", "border", "border-strong", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "accent-wash", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "warning-wash", "success", "busy", "success-muted", "surface-raised-hover", "band", "input-bg", "selection", "cursor", "caret", "danger-strong", "code-text", "code-wash", "diff-add", "diff-del", "diff-hunk-bg", "wash", "claude-brand"],
+      "alpha": [
+        5,
+        10,
+        14,
+        50,
+        88
+      ],
+      "alphaSuffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "success", "success-muted", "busy", "caret", "danger-strong", "code-text", "diff-add", "diff-del", "wash"],
+      "gpui": ".bg(theme.<suffix_underscored>)",
+      "alphaGpui": ".bg(theme.<suffix_underscored>.opacity(alpha / 100))",
+      "note": "wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand()"
+    },
+    {
+      "prefix": "text-",
+      "suffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "element-hover", "element-active", "border", "border-strong", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "accent-wash", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "warning-wash", "success", "busy", "success-muted", "surface-raised-hover", "band", "input-bg", "selection", "cursor", "caret", "danger-strong", "code-text", "code-wash", "diff-add", "diff-del", "diff-hunk-bg", "wash", "claude-brand"],
+      "alpha": [
+        5,
+        10,
+        14,
+        50,
+        88
+      ],
+      "alphaSuffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "success", "success-muted", "busy", "caret", "danger-strong", "code-text", "diff-add", "diff-del", "wash"],
+      "gpui": ".text_color(theme.<suffix_underscored>)",
+      "alphaGpui": ".text_color(theme.<suffix_underscored>.opacity(alpha / 100))",
+      "note": "wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand()"
+    },
+    {
+      "prefix": "border-",
+      "suffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "element-hover", "element-active", "border", "border-strong", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "accent-wash", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "warning-wash", "success", "busy", "success-muted", "surface-raised-hover", "band", "input-bg", "selection", "cursor", "caret", "danger-strong", "code-text", "code-wash", "diff-add", "diff-del", "diff-hunk-bg", "wash", "claude-brand"],
+      "alpha": [
+        5,
+        10,
+        14,
+        50,
+        88
+      ],
+      "alphaSuffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "success", "success-muted", "busy", "caret", "danger-strong", "code-text", "diff-add", "diff-del", "wash"],
+      "gpui": ".border_color(theme.<suffix_underscored>)",
+      "alphaGpui": ".border_color(theme.<suffix_underscored>.opacity(alpha / 100))",
+      "note": "wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand()"
+    }
+  ],
+  "variants": {
+    "hover:": ".hover(|s| s.<mapped_style>)",
+    "active:": ".active(|s| s.<mapped_style>)",
+    "focus:": ".focus(|s| s.<mapped_style>) with .track_focus(&handle)"
+  },
+  "reactImports": ["useState"],
+  "reactTypeImports": ["ReactNode"],
+  "notes": ["Finite subset, not every fork capability.", "No composed variants.", "Default Tailwind text sizes and shadows intentionally omitted."]
+}
