@@ -87,3 +87,12 @@ Inside the Files tab the tree owns up/down/left/right/enter/escape and the edito
 ## Proof plan (phase 2)
 
 `cargo check -p zeron-ui`, `cargo test -p zeron-ui`, then a 5 s headless run per pane with `ZERON_OPEN_PANE=files|tasks|inbox|browser` (the env knob cef already uses as `ZERON_OPEN_BROWSER`), each printing `started=1 panics=0`.
+
+## Critique round 2 items that land with the wiring (surya-tasks, PR #26)
+
+| Item | Where it goes in phase 2 |
+|---|---|
+| L1 Critical: no rail entries for Home / Needs you / Agents / Tasks / Files (decision 11); shell still reads as comet (`render_sidebar` 3831, `rail.rs:411`) | `render_sidebar`: a fixed entry list above the chat list. Home = clear right pane + scroll feed top; Needs you = `ToggleInbox`; Agents = `AgentsRail` disclosure; Tasks = `RightSurface::Tasks`; Files = `RightSurface::Files`. Same actions as the keys table, so every entry has a key and every key an entry. |
+| L2 Major: transcript `MAX_CONTENT_WIDTH=736` (`transcript.rs:75`) gives 85-90 char lines, ceiling 75 | Not shell wiring. Owner call: 640 px at 14 px body, or 680 px at 15 px body. Left to the theme seat, noted here so it is not lost. |
+| L3 Major: no page-title tier; chat title sits in the 13 px titlebar (`render_title_bar` 3487) | Not shell wiring, but touches `render_main`: a title row in the feed panel (30 px serif, device + branch sub-line) is one `div` at the top of `render_main`, above the inbox slot. Phase 2 adds the slot; the theme seat styles it. |
+| L4 Minor: 600 px of empty rail card under one session | Falls out of L1. |
