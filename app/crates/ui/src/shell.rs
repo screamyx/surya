@@ -360,6 +360,13 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ))
     }));
+    // LAST, and it has to be: the browser pane binds ctrl-tab and cmd-w with
+    // no context, as the bindings above do, and gpui breaks a same-depth tie
+    // by insertion order. Bound earlier, the pane's tab switch would lose to
+    // NextSession. The pane's handlers only exist while it is focused, so
+    // these fall through to the bindings above whenever it is not.
+    #[cfg(feature = "browser")]
+    crate::browser_pane::init(cx);
 }
 
 /// The settings sections (feature-inventory §1.5 routes).
