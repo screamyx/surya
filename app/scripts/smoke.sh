@@ -256,7 +256,10 @@ while before "$DL"; do
   # path is the card carrying the surface id from the tool input.
   card_parts="$(once '"kind":"card"' "$CARD")"
   from_input="$(once '"surfaceId":"s1"' "$CARD")"
-  if [ "$card_parts" = "1" ]; then break; fi
+  # Both, not just the card part. They arrive in one snapshot or two, and
+  # breaking on the part alone reads surfaceId out of a snapshot that may not
+  # carry it yet - which fails from_tool_input while drawn passes.
+  if [ "$card_parts" = "1" ] && [ "$from_input" = "1" ]; then break; fi
   sleep 0.5
 done
 printf '%s\n' "$CARD" >"$WORK/cards.json"
