@@ -25,6 +25,13 @@ use zeron_proto::SuryaOptions;
 /// The prompt append, compiled in so an installed binary needs no asset path.
 const SYSTEM_APPEND: &str = include_str!("../../../../assets/surya-system-append.md");
 
+/// The cards skill, compiled in for the same reason. The append says a card
+/// beats prose and names the six shapes; this carries the JSON for each one
+/// and the A2UI escape hatch. It is a skill rather than more append because
+/// the append rides every turn's system prompt and this is 160 lines the
+/// agent needs only when it actually draws a card.
+const CARDS_SKILL: &str = include_str!("../../../../assets/skills/surya-cards/SKILL.md");
+
 /// Claude Code's own cross-session messaging, denied while surya is host so
 /// `mcp__surya__send_message` is the only way an agent reaches another agent.
 pub const DENIED_TOOLS: &str = "SendMessage,ListAgents";
@@ -38,10 +45,19 @@ pub const SHOW_CARD_TOOL: &str = "mcp__surya__show_card";
 /// app's transcript detection depends on this string.
 pub const SERVER_NAME: &str = "surya";
 
-/// The two generated paths, ready to hand to the CLI.
+/// The generated paths, ready to hand to the CLI.
 pub struct SuryaFiles {
     pub mcp_config: PathBuf,
     pub system_append: PathBuf,
+    /// A one-skill plugin directory. Claude Code loads it with `--plugin-dir`
+    /// and the agent sees `surya:surya-cards` - measured against 2.1.261, the
+    /// skill lands in both the init frame's `skills` and its
+    /// `slash_commands`.
+    ///
+    /// `None` when it could not be written. It is a reference the agent opens
+    /// on demand, so losing it costs the card examples and nothing else -
+    /// the tools, the prompt append and the denied built-ins all still apply.
+    pub plugin_dir: Option<PathBuf>,
 }
 
 /// Locate the `surya-mcp` binary: the explicit option, then
@@ -213,9 +229,21 @@ pub fn prepare_in(root: &Path, options: &SuryaOptions, cwd: &str) -> Option<Sury
         tracing::warn!("could not write {system_append_path:?}: {error}");
         return None;
     }
+    // The cards skill is a reference the agent opens on demand, not a
+    // precondition. Returning None here would drop the WHOLE surya block at
+    // the call site - the MCP config, the prompt append, and the denied
+    // built-in messaging tools with it - so a missing skill would silently
+    // hand the agent back Claude Code's own SendMessage, which decision 19
+    // exists to deny.
+    let plugin_dir = write_cards_plugin(&dir)
+        .inspect_err(|error| {
+            tracing::warn!("could not write the surya cards plugin: {error}");
+        })
+        .ok();
     Some(SuryaFiles {
         mcp_config: mcp_config_path,
         system_append: system_append_path,
+        plugin_dir,
     })
 }
 
@@ -285,6 +313,28 @@ pub fn card_store(options: &SuryaOptions) -> PathBuf {
         Some(home) => PathBuf::from(home).join(".surya").join("cards.jsonl"),
         None => std::env::temp_dir().join("surya").join("cards.jsonl"),
     }
+}
+
+/// Lay the cards skill out as a one-skill plugin, the shape Claude Code's
+/// `--plugin-dir` reads: a `.claude-plugin/plugin.json` naming the skills
+/// folder, and `skills/<name>/SKILL.md`.
+fn write_cards_plugin(dir: &Path) -> std::io::Result<PathBuf> {
+    let plugin = dir.join("plugin");
+    let skill = plugin.join("skills").join("surya-cards");
+    create_private_dir(&skill)?;
+    create_private_dir(&plugin.join(".claude-plugin"))?;
+    std::fs::write(
+        plugin.join(".claude-plugin").join("plugin.json"),
+        json!({
+            "name": SERVER_NAME,
+            "description": "surya's own abilities: the card shapes show_card draws.",
+            "version": env!("CARGO_PKG_VERSION"),
+            "skills": "./skills/",
+        })
+        .to_string(),
+    )?;
+    std::fs::write(skill.join("SKILL.md"), CARDS_SKILL)?;
+    Ok(plugin)
 }
 
 #[cfg(test)]
@@ -401,6 +451,50 @@ mod tests {
         assert!(config["mcpServers"]["surya"].is_object());
         let append = std::fs::read_to_string(&files.system_append).unwrap();
         assert!(append.contains("show_card"), "the append teaches show_card");
+
+        // The skill ships as a plugin because that is what --plugin-dir reads.
+        let plugin_dir = files.plugin_dir.as_ref().expect("the plugin is written");
+        let manifest: Value = serde_json::from_str(
+            &std::fs::read_to_string(plugin_dir.join(".claude-plugin/plugin.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["name"], "surya");
+        assert_eq!(manifest["skills"], "./skills/");
+        let skill =
+            std::fs::read_to_string(plugin_dir.join("skills/surya-cards/SKILL.md")).unwrap();
+        assert!(skill.starts_with("---"), "the skill keeps its frontmatter");
+        assert!(skill.contains("diff-summary"), "and its shape table");
+    }
+
+    /// The bug this guards: `prepare` used to return `None` when the plugin
+    /// write failed, which collapsed the whole surya block at the call site -
+    /// the MCP config, the prompt append AND the denied built-in messaging
+    /// tools went with it, silently handing the agent back Claude Code's own
+    /// SendMessage that decision 19 exists to deny. A missing skill costs the
+    /// card examples and nothing else.
+    #[test]
+    fn a_failed_plugin_write_costs_only_the_skill() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("surya-mcp");
+        std::fs::write(&binary, "").unwrap();
+        let root = dir.path().join("root");
+
+        // A FILE where the plugin wants its directory, so that write fails
+        // while the config and the append succeed.
+        let run_dir = run_dir(&root, "seat/one");
+        create_private_dir(&run_dir).unwrap();
+        std::fs::write(run_dir.join("plugin"), "in the way").unwrap();
+
+        let files = prepare_in(&root, &options(&binary), "")
+            .expect("the run still gets its config and its append");
+        assert!(files.plugin_dir.is_none(), "the skill is the only casualty");
+        assert!(files.mcp_config.exists(), "the MCP config still lands");
+        assert!(
+            std::fs::read_to_string(&files.system_append)
+                .unwrap()
+                .contains("show_card"),
+            "and so does the append"
+        );
     }
 
     #[test]
