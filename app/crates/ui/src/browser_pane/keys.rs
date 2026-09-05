@@ -126,8 +126,8 @@ pub(super) fn zoomed() {
     ZOOMS.fetch_add(1, Ordering::Relaxed);
 }
 
-/// One line, printed after every action the pane takes, so a proof run can
-/// be read off stdout without a screenshot.
+/// The counters, as one string, logged after every action the pane takes so
+/// a proof run can be read from the log without a screenshot.
 pub fn counters() -> String {
     format!(
         "keys={} handled={} typed={} navigated={} tabs_opened={} tabs_closed={} finds={} zooms={}",
