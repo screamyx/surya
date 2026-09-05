@@ -693,6 +693,16 @@ pub struct AppState {
     deep_link_notice: Option<String>,
     /// Joined transcript of the selected chat (continuations folded engine-side).
     pub transcript: Vec<SessionMessageEntry>,
+    /// Question requests answered on this device, from the moment the sheet
+    /// is submitted until the doc frame comes back marked resolved. The
+    /// composer hides its panel on this rather than on the doc, so it lives
+    /// here where the inbox can see it too: a row must not say "answer
+    /// below" about a sheet that is already gone.
+    pub answered_requests: std::collections::HashSet<String>,
+    /// Where the question sheet takes its keys. The inbox's collapsed row
+    /// focuses it, so tapping the row puts the user in the sheet it points
+    /// at. `None` until the composer exists.
+    pub composer_focus: Option<gpui::FocusHandle>,
     /// The selected chat's opening `WatchDocMessages` reset has landed. An
     /// empty transcript is otherwise indistinguishable from the pre-replay
     /// gap after selection, where optimistic echoes may already be visible.
@@ -764,6 +774,8 @@ impl AppState {
             selected_device: None,
             selected_chat: None,
             transcript: Vec::new(),
+            answered_requests: std::collections::HashSet::new(),
+            composer_focus: None,
             transcript_replayed: false,
             echoes: HashMap::new(),
             pending_sends: HashMap::new(),

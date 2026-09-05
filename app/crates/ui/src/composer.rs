@@ -3417,9 +3417,6 @@ pub struct Composer {
     failure_key: Option<String>,
     wizard: Option<Wizard>,
     wizard_focus: FocusHandle,
-    /// Requests already answered locally (suppresses the panel until the doc
-    /// frame marks them resolved).
-    answered_requests: HashSet<String>,
     advance_task: Option<Task<()>>,
     send_task: Option<Task<()>>,
     /// Interrupt/answer commands get their own slot: assigning `send_task`
@@ -3494,6 +3491,12 @@ impl Composer {
     }
 
     pub fn new(state: Entity<AppState>, cx: &mut Context<Self>) -> Self {
+        // Published on AppState: the inbox's collapsed row focuses the sheet
+        // it points at, and it cannot reach this entity to ask for it.
+        let wizard_focus = cx.focus_handle();
+        state.update(cx, |state, _| {
+            state.composer_focus = Some(wizard_focus.clone());
+        });
         let input = cx.new(|cx| {
             let mut input = ComposerInput::new("Do anything…", cx);
             input.enable_mentions();
@@ -3567,8 +3570,7 @@ impl Composer {
             sending: false,
             failure: None,
             wizard: None,
-            wizard_focus: cx.focus_handle(),
-            answered_requests: HashSet::new(),
+            wizard_focus,
             failure_key: None,
             action_task: None,
             advance_task: None,
@@ -4655,7 +4657,13 @@ impl Composer {
 
         // Question panel lifecycle (wizard state cached per request id).
         match pending {
-            Some((request_id, questions)) if !self.answered_requests.contains(&request_id) => {
+            Some((request_id, questions))
+                if !self
+                    .state
+                    .read(cx)
+                    .answered_requests
+                    .contains(&request_id) =>
+            {
                 let same = self
                     .wizard
                     .as_ref()
@@ -4685,7 +4693,11 @@ impl Composer {
                     let transcript = self.state.read(cx).transcript.clone();
                     let released = input_request_resolved(&transcript, &wizard.request_id)
                         || (!transcript.is_empty()
-                            && !self.answered_requests.contains(&wizard.request_id));
+                            && !self
+                                .state
+                                .read(cx)
+                                .answered_requests
+                                .contains(&wizard.request_id));
                     if released {
                         self.wizard = None;
                         cx.emit(ComposerEvent::SheetChanged);
@@ -5447,7 +5459,9 @@ impl Composer {
         };
         cx.emit(ComposerEvent::SheetChanged);
         self.advance_task = None;
-        self.answered_requests.insert(wizard.request_id.clone());
+        self.state.update(cx, |state, _| {
+            state.answered_requests.insert(wizard.request_id.clone());
+        });
         self.input.update(cx, |input, cx| {
             input.set_text("", cx);
             // The panel borrowed the composer input; hand back its identity.
@@ -5477,7 +5491,9 @@ impl Composer {
                     composer.failure = Some(format!("Answer failed: {err}").into());
                     composer.failure_key = Some(failure_chat);
                     // The answer never left this device — put the panel back.
-                    composer.answered_requests.remove(&request_id);
+                    composer.state.update(cx, |state, _| {
+                        state.answered_requests.remove(&request_id);
+                    });
                     cx.notify();
                 })
                 .ok();
@@ -5494,7 +5510,10 @@ impl Composer {
                 let transcript = composer.state.read(cx).transcript.clone();
                 let still_pending = pending_input_request(&transcript)
                     .is_some_and(|(pending_id, _)| pending_id == request_id);
-                if still_pending && composer.answered_requests.remove(&request_id) {
+                let un_hidden = composer
+                    .state
+                    .update(cx, |state, _| state.answered_requests.remove(&request_id));
+                if still_pending && un_hidden {
                     cx.notify();
                 }
             })
