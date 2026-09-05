@@ -40,7 +40,7 @@ impl Mail {
         }
         let mail = self.clone();
         let mut statuses = self.inner.sessions.watch_sessions();
-        tokio::spawn(async move {
+        let pump = tokio::spawn(async move {
             loop {
                 if statuses.changed().await.is_err() {
                     break;
@@ -61,6 +61,11 @@ impl Mail {
                 }
             }
         });
+        *self
+            .inner
+            .pump
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(pump);
     }
 
     /// One delivery pass over every agent holding queued mail for this device.

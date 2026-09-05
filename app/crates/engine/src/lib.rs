@@ -512,6 +512,14 @@ impl EngineCore {
     /// kill live PTYs, stamp our workspace `lastSeenAt`, and flush every open doc
     /// snapshot.
     pub async fn shutdown(&self) {
+        // Mail first: its pump and its ingress listeners hold `Mail` clones,
+        // and those reach the sessions engine and the doc host. A live pump
+        // keeps the whole graph alive after the runtime is replaced.
+        self.mail.shutdown().await;
+        self.mail_ingress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         self.sessions.shutdown().await;
         self.terminals.shutdown();
         self.agent_accounts.shutdown();

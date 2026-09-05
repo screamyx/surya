@@ -65,6 +65,11 @@ pub(crate) struct Inner {
     /// never existed.
     delivering: [tokio::sync::Mutex<()>; DELIVERY_STRIPES],
     pump_started: AtomicBool,
+    /// The delivery pump's task. Held so shutdown can stop it: the pump owns a
+    /// `Mail` clone, and that clone reaches the sessions engine and the doc
+    /// host — a pump left running keeps the whole engine graph alive after the
+    /// runtime is replaced.
+    pump: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl Clone for Mail {
@@ -93,9 +98,25 @@ impl Mail {
                 feed_tx,
                 delivering: std::array::from_fn(|_| tokio::sync::Mutex::new(())),
                 pump_started: AtomicBool::new(false),
+                pump: std::sync::Mutex::new(None),
             }),
         };
         Ok(mail)
+    }
+
+    /// Stop the delivery pump and release the engine handles it holds.
+    /// Idempotent, and safe to call before the pump ever started.
+    pub async fn shutdown(&self) {
+        let pump = self
+            .inner
+            .pump
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        if let Some(pump) = pump {
+            pump.abort();
+            let _ = pump.await;
+        }
     }
 
     pub fn device_id(&self) -> &str {
