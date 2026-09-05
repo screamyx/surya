@@ -449,7 +449,8 @@ fn no_parent() -> cef::sys::cef_window_handle_t {
 /// to `tab` (inline mode: before this returns; threaded mode: later, in
 /// any order). Returns CEF's identifier in inline mode.
 pub(crate) fn open(url: &str, tab: crate::tabs::TabId) -> Option<i32> {
-    let window_info = WindowInfo::default().set_as_windowless(no_parent());
+    let mut window_info = WindowInfo::default().set_as_windowless(no_parent());
+    window_info.shared_texture_enabled = i32::from(crate::zero_copy::ready());
     let browser_settings = BrowserSettings {
         windowless_frame_rate: 60,
         background_color: crate::OPAQUE_WHITE,

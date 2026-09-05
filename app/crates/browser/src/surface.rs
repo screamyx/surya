@@ -12,7 +12,7 @@ use std::time::Instant;
 use cef::ImplBrowserHost as _;
 use gpui::{canvas, div, prelude::*, px, Corners, RenderImage, Window};
 
-use crate::render::{SCALE, VIEW_H, VIEW_W};
+use crate::render::{FrameSource, SCALE, VIEW_H, VIEW_W};
 
 static RESIZES: AtomicU64 = AtomicU64::new(0);
 static UIPAINTS: AtomicU64 = AtomicU64::new(0);
@@ -130,7 +130,17 @@ pub fn surface() -> gpui::AnyElement {
                 println!("browser: view -> {w}x{h} scale={} resizes={n}", sf as f32 / 1000.0);
                 notify_resized();
             }
-            let Some((seq, img)) = crate::render::frame() else { return };
+            let Some((seq, src)) = crate::render::frame() else { return };
+            let img = match src {
+                FrameSource::Cpu(img) => img,
+                // Already on the GPU: the fork's renderer opens the texture
+                // by handle and blits it. Nothing to upload, nothing to drop.
+                #[cfg(windows)]
+                FrameSource::Shared(texture) => {
+                    window.paint_external_texture(bounds, &texture);
+                    return;
+                }
+            };
             let fresh = LAST.lock().ok().map(|l| l.as_ref().map(|(s, _)| *s) != Some(seq)).unwrap_or(true);
             let t0 = Instant::now();
             // comet's fork (e2ddcc6): `paint_image(bounds, radii, image, frame, grayscale)`;
