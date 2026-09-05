@@ -97,6 +97,22 @@ fn store(browser: i32, seq: u64, src: FrameSource, active: i32) {
     }
 }
 
+/// A zero-copy frame whose GPU copy has finished, from `zero_copy`. The
+/// same bookkeeping as `on_paint`: a parked browser's frame is stored and
+/// counted apart; the active browser's moves `PAINTS` and `LAST_SIZE`.
+#[cfg(windows)]
+pub(crate) fn store_shared(browser: i32, texture: gpui::ExternalTexture, width: i32, height: i32) {
+    let active = crate::tabs::active_browser();
+    if browser != active {
+        let seq = BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+        store(browser, seq, FrameSource::Shared(texture), active);
+        return;
+    }
+    let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+    store(browser, n, FrameSource::Shared(texture), active);
+    LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
+}
+
 /// The browser is gone; so is its frame.
 pub(crate) fn forget(browser: i32) {
     if let Ok(mut guard) = FRAMES.lock()
@@ -252,17 +268,7 @@ wrap_render_handler! {
             }
             #[cfg(windows)]
             if let Some(info) = info {
-                let Some(texture) = crate::zero_copy::on_accelerated_paint(info) else { return };
-                let active = crate::tabs::active_browser();
-                if id != active {
-                    let seq = BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-                    store(id, seq, FrameSource::Shared(texture), active);
-                    return;
-                }
-                let (width, height) = (info.extra.coded_size.width, info.extra.coded_size.height);
-                let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-                store(id, n, FrameSource::Shared(texture), active);
-                LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
+                crate::zero_copy::on_accelerated_paint(info, id);
             }
             #[cfg(not(windows))]
             {

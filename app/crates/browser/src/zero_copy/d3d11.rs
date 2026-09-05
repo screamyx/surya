@@ -44,9 +44,13 @@ use windows::Win32::Graphics::Dxgi::{
 /// `(LowPart, HighPart)`.
 pub(crate) type Luid = (u32, i32);
 
-/// How long the GPU gets to finish one copy before the frame is dropped.
-/// A 4K BGRA copy is well under a millisecond on any discrete card.
-const COPY_DEADLINE: Duration = Duration::from_millis(50);
+/// How long the callback waits for the GPU to finish the copy before handing
+/// the frame to the pending queue. The copy itself is far under a
+/// millisecond; what the wait really covers is the GPU process finishing
+/// its own writes to the pooled texture (WDDM serialises the two), and
+/// under an animating page that ran to 12 ms in bursts on an RTX 4080.
+/// CEF's callback is on gpui's main thread, so it must not block that long.
+const CALLBACK_WAIT: Duration = Duration::from_micros(1500);
 
 /// This crate's own D3D11 device. One per process, made on the first
 /// accelerated paint, on the same adapter as gpui's renderer.
@@ -54,24 +58,32 @@ pub(crate) struct Device {
     device: ID3D11Device,
     device1: ID3D11Device1,
     ctx: ID3D11DeviceContext,
-    /// Reused every frame: `End` after the copy, `GetData` until S_OK.
-    fence: ID3D11Query,
     luid: Luid,
     name: String,
 }
 
-/// One frame, copied and finished on the GPU. `handle` is the NT handle gpui
-/// opens the texture with; dropping it releases this side's claim on the
-/// allocation.
+/// One frame, copied on the GPU. `handle` is the NT handle gpui opens the
+/// texture with; dropping it releases this side's claim on the allocation.
+/// `fence` is `None` once the GPU has finished the copy; until then the
+/// frame must not be published (see [`Device::poll`]).
 pub(crate) struct Snapshot {
     pub(crate) handle: OwnedHandle,
     pub(crate) width: u32,
     pub(crate) height: u32,
-    /// Wall time of open + copy + GPU completion, the callback's own cost.
+    fence: Option<ID3D11Query>,
+    /// Wall time of open + create + submit + the bounded wait, the
+    /// callback's own cost.
     pub(crate) took: Duration,
     /// The same, split: open CEF's handle; create the texture and its
     /// handle; submit the copy; wait for the GPU. Microseconds.
     pub(crate) split: [u64; 4],
+}
+
+impl Snapshot {
+    /// The GPU has finished writing this texture.
+    pub(crate) fn complete(&self) -> bool {
+        self.fence.is_none()
+    }
 }
 
 fn err(e: windows::core::Error, what: &str) -> String {
@@ -134,16 +146,10 @@ impl Device {
         let device: ID3D11Device = device.ok_or("D3D11CreateDevice returned no device")?;
         let ctx = ctx.ok_or("D3D11CreateDevice returned no context")?;
         let device1: ID3D11Device1 = device.cast().map_err(|e| err(e, "ID3D11Device1"))?;
-        let fence_desc = D3D11_QUERY_DESC { Query: D3D11_QUERY_EVENT, MiscFlags: 0 };
-        let mut fence = None;
-        unsafe { device.CreateQuery(&fence_desc, Some(&mut fence)) }
-            .map_err(|e| err(e, "CreateQuery"))?;
-        let fence = fence.ok_or("CreateQuery returned nothing")?;
         Ok(Self {
             device,
             device1,
             ctx,
-            fence,
             luid: (desc.AdapterLuid.LowPart, desc.AdapterLuid.HighPart),
             name: adapter_name(&desc),
         })
@@ -157,9 +163,45 @@ impl Device {
         &self.name
     }
 
-    /// Open CEF's pooled texture, copy it into a new texture of this device,
-    /// and return once the GPU has finished the copy. Only then may the
-    /// callback return and the snapshot be published.
+    /// Has the GPU passed `fence`? `GetData` answers S_OK once it has and
+    /// S_FALSE before that; windows-rs folds S_FALSE into Ok, so this reads
+    /// the raw HRESULT through the vtable. Never blocks.
+    fn passed(&self, fence: &ID3D11Query) -> Result<bool, String> {
+        let code = unsafe {
+            (Interface::vtable(&self.ctx).GetData)(
+                Interface::as_raw(&self.ctx),
+                Interface::as_raw(fence),
+                std::ptr::null_mut(),
+                0,
+                0,
+            )
+        };
+        if code == S_OK {
+            Ok(true)
+        } else if code.is_err() {
+            Err(format!("GetData: {code:?}"))
+        } else {
+            Ok(false)
+        }
+    }
+
+    /// Check a snapshot the callback handed over unfinished. Returns true
+    /// once the copy is complete; the snapshot may then be published.
+    pub(crate) fn poll(&self, snap: &mut Snapshot) -> Result<bool, String> {
+        let Some(fence) = snap.fence.as_ref() else { return Ok(true) };
+        if self.passed(fence)? {
+            snap.fence = None;
+        }
+        Ok(snap.complete())
+    }
+
+    /// Open CEF's pooled texture and copy it into a new texture of this
+    /// device. The copy is queued on the GPU and given [`CALLBACK_WAIT`]
+    /// to finish; a snapshot that comes back with `complete() == false`
+    /// goes to the pending queue and is polled from there. The pooled
+    /// texture is only ever read by that queued copy, and the copy has
+    /// been submitted before this returns, which is what CEF's header
+    /// requires of the callback.
     pub(crate) fn snapshot(&self, cef_handle: *mut c_void) -> Result<Snapshot, String> {
         let t0 = Instant::now();
         let src: ID3D11Texture2D = unsafe { self.device1.OpenSharedResource1(HANDLE(cef_handle)) }
@@ -204,37 +246,28 @@ impl Device {
         .map_err(|e| err(e, "CreateSharedHandle"))?;
         // SAFETY: a fresh NT handle this process owns; OwnedHandle closes it.
         let handle = unsafe { OwnedHandle::from_raw_handle(handle.0) };
+        let fence_desc = D3D11_QUERY_DESC { Query: D3D11_QUERY_EVENT, MiscFlags: 0 };
+        let mut fence = None;
+        unsafe { self.device.CreateQuery(&fence_desc, Some(&mut fence)) }
+            .map_err(|e| err(e, "CreateQuery"))?;
+        let fence: ID3D11Query = fence.ok_or("CreateQuery returned nothing")?;
         let t_create = t0.elapsed();
 
         unsafe {
             self.ctx.CopyResource(&dst, &src);
-            self.ctx.End(&self.fence);
+            self.ctx.End(&fence);
             self.ctx.Flush();
         }
         let t_submit = t0.elapsed();
-        // GetData answers S_OK once the GPU has passed the event and S_FALSE
-        // before that. windows-rs folds S_FALSE into Ok, so read the raw
-        // HRESULT through the vtable.
-        loop {
-            let code = unsafe {
-                (Interface::vtable(&self.ctx).GetData)(
-                    Interface::as_raw(&self.ctx),
-                    Interface::as_raw(&self.fence),
-                    std::ptr::null_mut(),
-                    0,
-                    0,
-                )
-            };
-            if code == S_OK {
+        let mut fence = Some(fence);
+        while let Some(f) = fence.as_ref() {
+            if self.passed(f)? {
+                fence = None;
+            } else if t0.elapsed() - t_submit > CALLBACK_WAIT {
                 break;
+            } else {
+                std::thread::yield_now();
             }
-            if code.is_err() {
-                return Err(format!("GetData: {code:?}"));
-            }
-            if t0.elapsed() > COPY_DEADLINE {
-                return Err(format!("copy not finished after {COPY_DEADLINE:?}"));
-            }
-            std::thread::yield_now();
         }
         let took = t0.elapsed();
         let us = |d: Duration| d.as_micros() as u64;
@@ -242,6 +275,7 @@ impl Device {
             handle,
             width: desc.Width,
             height: desc.Height,
+            fence,
             took,
             split: [
                 us(t_open),
