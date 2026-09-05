@@ -18,11 +18,14 @@
 
 mod cef_app;
 mod client;
+mod clock;
 mod events;
 pub mod input;
 mod page;
+mod perf;
 mod pump;
 mod render;
+mod selftest;
 mod surface;
 
 pub use events::counters as input_counters;
@@ -166,6 +169,7 @@ pub fn start(cx: &mut gpui::App, scheme: ColorScheme) {
         return;
     }
     pump::install(cx);
+    selftest::install(cx);
     let url = start_url();
     let made = client::open(&url);
     println!("browser: create asked=1 made={} url={url}", u8::from(made));

@@ -128,6 +128,7 @@ wrap_render_handler! {
             };
             let img = Arc::new(RenderImage::new(vec![image::Frame::new(buf)]));
             let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+            crate::perf::on_paint();
             if let Ok(mut slot) = FRAME.lock() {
                 *slot = Some(FrameBuf { seq: n, img });
             }
