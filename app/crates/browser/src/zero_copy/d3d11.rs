@@ -44,13 +44,12 @@ use windows::Win32::Graphics::Dxgi::{
 /// `(LowPart, HighPart)`.
 pub(crate) type Luid = (u32, i32);
 
-/// How long the callback waits for the GPU to finish the copy before handing
-/// the frame to the pending queue. The copy itself is far under a
-/// millisecond; what the wait really covers is the GPU process finishing
-/// its own writes to the pooled texture (WDDM serialises the two), and
-/// under an animating page that ran to 12 ms in bursts on an RTX 4080.
-/// CEF's callback is on gpui's main thread, so it must not block that long.
-const CALLBACK_WAIT: Duration = Duration::from_micros(1500);
+/// The callback waits for the GPU to finish reading the pooled texture, with
+/// no upper bound: returning earlier would let CEF recycle a texture a
+/// queued copy still reads (cef_render_handler.h 161-167, and D3D11 gives
+/// no cross-process ordering). Past this much waiting a warning is printed
+/// once, so a stalled GPU is visible in the log.
+const SLOW_WAIT: Duration = Duration::from_millis(100);
 
 /// This crate's own D3D11 device. One per process, made on the first
 /// accelerated paint, on the same adapter as gpui's renderer.
@@ -62,28 +61,23 @@ pub(crate) struct Device {
     name: String,
 }
 
-/// One frame, copied on the GPU. `handle` is the NT handle gpui opens the
-/// texture with; dropping it releases this side's claim on the allocation.
-/// `fence` is `None` once the GPU has finished the copy; until then the
-/// frame must not be published (see [`Device::poll`]).
+/// One frame, copied and finished on the GPU. `handle` is the NT handle gpui
+/// opens the texture with; dropping it releases this side's claim on the
+/// allocation.
 pub(crate) struct Snapshot {
     pub(crate) handle: OwnedHandle,
     pub(crate) width: u32,
     pub(crate) height: u32,
-    fence: Option<ID3D11Query>,
-    /// Wall time of open + create + submit + the bounded wait, the
-    /// callback's own cost.
+    /// Wall time of open + create + submit + wait, the callback's own cost.
     pub(crate) took: Duration,
     /// The same, split: open CEF's handle; create the texture and its
     /// handle; submit the copy; wait for the GPU. Microseconds.
     pub(crate) split: [u64; 4],
-}
-
-impl Snapshot {
-    /// The GPU has finished writing this texture.
-    pub(crate) fn complete(&self) -> bool {
-        self.fence.is_none()
-    }
+    /// `SURYA_BROWSER_ZERO_COPY_PROBE=1`: the wait, in microseconds, for a
+    /// second copy between two textures of this device alone. If this stays
+    /// small while `split[3]` bursts, the burst is the GPU process still
+    /// writing the pooled texture, not this device's queue.
+    pub(crate) probe_wait_us: Option<u64>,
 }
 
 fn err(e: windows::core::Error, what: &str) -> String {
@@ -185,24 +179,32 @@ impl Device {
         }
     }
 
-    /// Check a snapshot the callback handed over unfinished. Returns true
-    /// once the copy is complete; the snapshot may then be published.
-    pub(crate) fn poll(&self, snap: &mut Snapshot) -> Result<bool, String> {
-        let Some(fence) = snap.fence.as_ref() else { return Ok(true) };
-        if self.passed(fence)? {
-            snap.fence = None;
+    /// Block until the GPU has passed `fence`. Only a device error ends the
+    /// wait early: the fence guards a read of CEF's pooled texture, which
+    /// must be finished before the callback returns.
+    fn wait(&self, fence: &ID3D11Query, since: Instant) -> Result<(), String> {
+        static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        while !self.passed(fence)? {
+            if since.elapsed() > SLOW_WAIT && !WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                println!("browser: zero_copy: a GPU copy has taken over {SLOW_WAIT:?}; still waiting");
+            }
+            std::thread::yield_now();
         }
-        Ok(snap.complete())
+        Ok(())
     }
 
-    /// Open CEF's pooled texture and copy it into a new texture of this
-    /// device. The copy is queued on the GPU and given [`CALLBACK_WAIT`]
-    /// to finish; a snapshot that comes back with `complete() == false`
-    /// goes to the pending queue and is polled from there. The pooled
-    /// texture is only ever read by that queued copy, and the copy has
-    /// been submitted before this returns, which is what CEF's header
-    /// requires of the callback.
-    pub(crate) fn snapshot(&self, cef_handle: *mut c_void) -> Result<Snapshot, String> {
+    fn make_fence(&self) -> Result<ID3D11Query, String> {
+        let fence_desc = D3D11_QUERY_DESC { Query: D3D11_QUERY_EVENT, MiscFlags: 0 };
+        let mut fence = None;
+        unsafe { self.device.CreateQuery(&fence_desc, Some(&mut fence)) }
+            .map_err(|e| err(e, "CreateQuery"))?;
+        fence.ok_or_else(|| "CreateQuery returned nothing".to_string())
+    }
+
+    /// Open CEF's pooled texture, copy it into a new texture of this device,
+    /// and return once the GPU has finished the copy. Only then may the
+    /// callback return and the snapshot be published.
+    pub(crate) fn snapshot(&self, cef_handle: *mut c_void, probe: bool) -> Result<Snapshot, String> {
         let t0 = Instant::now();
         let src: ID3D11Texture2D = unsafe { self.device1.OpenSharedResource1(HANDLE(cef_handle)) }
             .map_err(|e| err(e, "OpenSharedResource1"))?;
@@ -246,11 +248,7 @@ impl Device {
         .map_err(|e| err(e, "CreateSharedHandle"))?;
         // SAFETY: a fresh NT handle this process owns; OwnedHandle closes it.
         let handle = unsafe { OwnedHandle::from_raw_handle(handle.0) };
-        let fence_desc = D3D11_QUERY_DESC { Query: D3D11_QUERY_EVENT, MiscFlags: 0 };
-        let mut fence = None;
-        unsafe { self.device.CreateQuery(&fence_desc, Some(&mut fence)) }
-            .map_err(|e| err(e, "CreateQuery"))?;
-        let fence: ID3D11Query = fence.ok_or("CreateQuery returned nothing")?;
+        let fence = self.make_fence()?;
         let t_create = t0.elapsed();
 
         unsafe {
@@ -259,24 +257,39 @@ impl Device {
             self.ctx.Flush();
         }
         let t_submit = t0.elapsed();
-        let mut fence = Some(fence);
-        while let Some(f) = fence.as_ref() {
-            if self.passed(f)? {
-                fence = None;
-            } else if t0.elapsed() - t_submit > CALLBACK_WAIT {
-                break;
-            } else {
-                std::thread::yield_now();
-            }
-        }
+        self.wait(&fence, t0)?;
         let took = t0.elapsed();
         let us = |d: Duration| d.as_micros() as u64;
+
+        // The probe: the same copy again, between two textures this device
+        // owns, timed the same way. Nothing else has ever touched either.
+        let probe_wait_us = if probe {
+            let mut scratch_desc = dst_desc;
+            scratch_desc.MiscFlags = 0;
+            let mut scratch = None;
+            unsafe { self.device.CreateTexture2D(&scratch_desc, None, Some(&mut scratch)) }
+                .map_err(|e| err(e, "CreateTexture2D (probe)"))?;
+            let scratch: ID3D11Texture2D = scratch.ok_or("CreateTexture2D (probe) returned nothing")?;
+            let probe_fence = self.make_fence()?;
+            let p0 = Instant::now();
+            unsafe {
+                self.ctx.CopyResource(&scratch, &dst);
+                self.ctx.End(&probe_fence);
+                self.ctx.Flush();
+            }
+            let p_submit = p0.elapsed();
+            self.wait(&probe_fence, p0)?;
+            Some(us(p0.elapsed() - p_submit))
+        } else {
+            None
+        };
+
         Ok(Snapshot {
             handle,
             width: desc.Width,
             height: desc.Height,
-            fence,
             took,
+            probe_wait_us,
             split: [
                 us(t_open),
                 us(t_create - t_open),
