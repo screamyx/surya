@@ -55,6 +55,18 @@ pub(crate) fn on_load_end(id: i32) {
     }
 }
 
+/// A navigation the previous op started (a click on a link, a submit) may
+/// still be in flight when the next op arrives: an agent calls click then
+/// screenshot back to back. Wait for that load to end; return at once when
+/// nothing is loading. The waiter is taken before the check, so a load that
+/// ends in between cannot be missed.
+async fn settle(browser: i32) {
+    let loaded = wait_for_load(browser);
+    if crate::tabs::loading(browser) {
+        loaded.await;
+    }
+}
+
 /// Run one op by name on the active tab. Unknown ops and bad arguments are
 /// errors the agent can read and fix.
 pub async fn run(op: &str, args: &Value) -> Result<Value, String> {
@@ -68,6 +80,9 @@ pub async fn run(op: &str, args: &Value) -> Result<Value, String> {
     let browser = devtools::active();
     if browser == 0 {
         return Err("no browser tab is open in the pane".into());
+    }
+    if op != "browser_open" {
+        settle(browser).await;
     }
     match op {
         "browser_open" => open(browser, str_arg(args, "url")?).await,
@@ -255,7 +270,17 @@ async fn screenshot(browser: i32) -> Result<Value, String> {
     if let Some(host) = devtools::browser(browser).and_then(|b| b.host()) {
         host.invalidate(cef::PaintElementType::VIEW);
     }
-    let result = devtools::call(browser, "Page.captureScreenshot", json!({ "format": "png" })).await?;
+    let capture = || devtools::call(browser, "Page.captureScreenshot", json!({ "format": "png" }));
+    let result = match capture().await {
+        // The click before this one started a navigation CEF had not
+        // reported when `settle` looked (:7 proof9, 2026-09-06 02:14): the
+        // page agent is between documents. Wait for the load, then once more.
+        Err(e) if e.contains("Not attached to an active page") => {
+            settle(browser).await;
+            capture().await?
+        }
+        other => other?,
+    };
     let data = result["data"].as_str().ok_or("Page.captureScreenshot returned no data")?;
     Ok(json!({ "png_base64": data, "mime": "image/png" }))
 }
