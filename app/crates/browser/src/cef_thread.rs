@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use cef::rc::Rc as _;
 use cef::*;
 
 pub(crate) fn threaded() -> bool {
@@ -115,14 +116,14 @@ pub(crate) fn notify_closed() {
     CLOSED.get_or_init(CloseSignal::default).notify();
 }
 
-/// `client::is_open` must include pending async creation requests, so an
+/// `client::is_open_or_pending` must include pending async creation requests, so an
 /// empty browser map before on_after_created cannot finish shutdown early.
 pub(crate) fn wait_until_closed(timeout: Duration) -> bool {
     if threaded() {
-        return CLOSED.get_or_init(CloseSignal::default).wait(timeout, crate::client::is_open);
+        return CLOSED.get_or_init(CloseSignal::default).wait(timeout, crate::client::is_open_or_pending);
     }
     let started = Instant::now();
-    while crate::client::is_open() {
+    while crate::client::is_open_or_pending() {
         if started.elapsed() >= timeout {
             return false;
         }

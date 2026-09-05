@@ -167,16 +167,19 @@ pub fn tab_open(typed: &str) -> TabId {
     let id = with(|t| t.open(&url));
     OPENED.fetch_add(1, Ordering::Relaxed);
     if crate::has_cef() {
+        // Inline mode: `open` returns with the browser made and, through
+        // `on_after_created`, already bound to this tab and on screen.
+        // Threaded mode: the create is posted, `on_after_created` binds it
+        // when it lands; PENDING stays set until then.
         PENDING.store(id, Ordering::Release);
         let browser = crate::client::open(&url);
-        PENDING.store(0, Ordering::Release);
         if let Some(browser) = browser {
+            PENDING.store(0, Ordering::Release);
             with(|t| {
                 if let Some(i) = t.index_of(id) {
                     t.tabs[i].browser = browser;
                 }
             });
-            crate::client::activate(browser);
         }
     }
     println!("browser: tab_open id={id} url={url} tabs={}", count());
@@ -187,7 +190,7 @@ pub fn tab_open(typed: &str) -> TabId {
 /// CEF made the browser for the tab that is being opened. Called from
 /// `on_after_created`, before `open` has returned.
 pub(crate) fn attach_pending(browser: i32) {
-    let id = PENDING.load(Ordering::Acquire);
+    let id = PENDING.swap(0, Ordering::AcqRel);
     if id == 0 {
         return;
     }
@@ -326,13 +329,40 @@ pub fn set_zoom(level: f64) {
             tab.zoom = level;
         }
     });
-    if let Some(host) = crate::client::host() {
-        host.set_zoom_level(level);
-    }
+    let id = active_browser();
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = crate::client::host_of(id) {
+            host.set_zoom_level(level);
+        }
+    });
 }
 
 pub fn zoom() -> f64 {
     with(|t| t.active().map(|t| t.zoom).unwrap_or(0.0))
+}
+
+/// `SURYA_SELFTEST_TABS=<secs>`: that long after start, switch to the first
+/// tab once, from the pump (main thread), so a proof can grab the pane
+/// before and after a tab switch with no strip to click.
+pub(crate) fn selftest_tick() {
+    use std::sync::OnceLock;
+    static AT: OnceLock<Option<std::time::Instant>> = OnceLock::new();
+    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let at = AT.get_or_init(|| {
+        std::env::var("SURYA_SELFTEST_TABS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .map(|secs| std::time::Instant::now() + std::time::Duration::from_secs(secs))
+    });
+    let Some(at) = at else { return };
+    if std::time::Instant::now() < *at || DONE.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        return;
+    }
+    let first = with(|t| t.tabs.first().map(|t| t.id));
+    if let Some(id) = first {
+        tab_activate(id);
+        println!("browser: selftest tabs: activated first tab {id}, active_browser={}", active_browser());
+    }
 }
 
 pub(crate) fn counters() -> String {

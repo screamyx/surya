@@ -140,9 +140,14 @@ pub fn start(cx: &mut gpui::App, scheme: ColorScheme) {
         "browser: cache={cache} helper={}",
         helper.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "(re-exec self)".into())
     );
+    // `SURYA_CEF_THREADED=1` (Windows): CEF runs its own UI thread and the
+    // shell posts to it; otherwise gpui's main thread is CEF's UI thread
+    // and pump.rs drives it. See cef_thread.rs.
+    let threaded = cef_thread::threaded();
     let settings = Settings {
         windowless_rendering_enabled: 1,
-        external_message_pump: 1,
+        multi_threaded_message_loop: i32::from(threaded),
+        external_message_pump: i32::from(!threaded),
         no_sandbox: 1,
         root_cache_path: CefString::from(cache.as_str()),
         persist_session_cookies: 1,
@@ -179,6 +184,13 @@ pub fn start(cx: &mut gpui::App, scheme: ColorScheme) {
     let id = tabs::tab_open(&url);
     let made = tabs::active_browser() != 0;
     println!("browser: create asked=1 made={} url={url} tab={id}", u8::from(made));
+    // `SURYA_BROWSER_URLS=a,b`: more tabs at start, for a proof of the
+    // strip without the strip (the last one opened is the active tab).
+    if let Ok(more) = std::env::var("SURYA_BROWSER_URLS") {
+        for extra in more.split(',').map(str::trim).filter(|u| !u.is_empty()) {
+            tabs::tab_open(extra);
+        }
+    }
     // Kick the loop once so CEF gets going before its first callback.
     pump::schedule_pump(0);
     pump::start_heartbeat();
@@ -202,10 +214,23 @@ pub fn navigate(typed: &str) {
         return;
     }
     tabs::update_active(|p| p.begin_navigation(&url));
-    if let Some(frame) = client::browser().and_then(|b| b.main_frame()) {
-        frame.load_url(Some(&CefString::from(url.as_str())));
-    }
+    let id = tabs::active_browser();
+    cef_thread::on_ui(move || {
+        if let Some(frame) = client::browser_of(id).and_then(|b| b.main_frame()) {
+            frame.load_url(Some(&CefString::from(url.as_str())));
+        }
+    });
     pump::schedule_pump(0);
+}
+
+/// Run `f` against the active tab's browser on CEF's UI thread.
+fn with_active(f: impl FnOnce(&Browser) + Send + 'static) {
+    let id = tabs::active_browser();
+    cef_thread::on_ui(move || {
+        if let Some(b) = client::browser_of(id) {
+            f(&b);
+        }
+    });
 }
 
 /// Find in the active tab; the running count lands in [`Page::find`].
@@ -226,33 +251,23 @@ pub fn stop_find(clear_selection: bool) {
 }
 
 pub fn back() {
-    if let Some(b) = client::browser() {
-        b.go_back();
-    }
+    with_active(|b| b.go_back());
 }
 
 pub fn forward() {
-    if let Some(b) = client::browser() {
-        b.go_forward();
-    }
+    with_active(|b| b.go_forward());
 }
 
 pub fn reload() {
-    if let Some(b) = client::browser() {
-        b.reload();
-    }
+    with_active(|b| b.reload());
 }
 
 pub fn reload_ignoring_cache() {
-    if let Some(b) = client::browser() {
-        b.reload_ignore_cache();
-    }
+    with_active(|b| b.reload_ignore_cache());
 }
 
 pub fn stop() {
-    if let Some(b) = client::browser() {
-        b.stop_load();
-    }
+    with_active(|b| b.stop_load());
 }
 
 /// Keyboard focus into or out of the page.
@@ -295,22 +310,20 @@ pub fn shutdown() {
         return;
     }
     tabs::close_all();
-    let started = std::time::Instant::now();
-    let mut pumps = 0u32;
-    while client::is_open() && started.elapsed() < std::time::Duration::from_secs(3) {
-        do_message_loop_work();
-        pumps += 1;
-        std::thread::sleep(std::time::Duration::from_millis(5));
-    }
-    // A few more turns so CEF finishes its own teardown before shutdown.
-    for _ in 0..20 {
-        do_message_loop_work();
-        std::thread::sleep(std::time::Duration::from_millis(5));
+    let closed = cef_thread::wait_until_closed(std::time::Duration::from_secs(3));
+    // A few more turns so CEF finishes its own teardown before shutdown
+    // (inline mode only: threaded mode's loop is CEF's own).
+    if !cef_thread::threaded() {
+        for _ in 0..20 {
+            do_message_loop_work();
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
     }
     println!(
-        "browser: shutdown closed={} pumps={pumps} {}",
-        u8::from(!client::is_open()),
-        client::lifecycle_counters()
+        "browser: shutdown closed={} {} {}",
+        u8::from(closed),
+        client::lifecycle_counters(),
+        cef_thread::counters()
     );
     // A browser that did not answer in time still had a frame slot.
     render::forget_all();

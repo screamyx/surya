@@ -34,7 +34,8 @@ static WAKE: OnceLock<UnboundedSender<()>> = OnceLock::new();
 
 /// One `do_message_loop_work()`, counted. Main thread only.
 pub(crate) fn work_now() {
-    if crate::disabled() {
+    // Threaded mode: CEF runs its own loop; pumping it from here is wrong.
+    if crate::disabled() || crate::cef_thread::threaded() {
         return;
     }
     WORK_DID.fetch_add(1, Ordering::Relaxed);
@@ -105,6 +106,7 @@ pub(crate) fn install(cx: &mut gpui::App) {
             while let Ok(()) = rx.try_recv() {}
             IDLE_RAN.fetch_add(1, Ordering::Relaxed);
             work_now();
+            crate::tabs::selftest_tick();
             let now = (INPUT_SEQ.load(Ordering::Relaxed), PUMP_ASKS.load(Ordering::Relaxed));
             let frames = crate::render::frames();
             let quiet = now == seen && frames == seen_frames;
