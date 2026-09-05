@@ -50,7 +50,11 @@ loro = "1.13"
 # frames, cross-checked by its js_snapshots tests).
 loro-protocol = "0.3"
 
-# gpui — screamyx/gpui-surya, branch surya/hlsl-edge-fade: wingleeio/zed at
+# gpui — screamyx/gpui-surya, branch surya/external-texture at 3a1800e42e:
+# additive owned Windows D3D11 ExternalTexture paint entry over f910653.
+# CEF activation remains opt-in (SURYA_BROWSER_ZERO_COPY=1 in its integration);
+# this pin alone adds no caller. Proof: docs/probes/external-texture/README.md.
+# The base branch surya/hlsl-edge-fade: wingleeio/zed at
 # e2ddcc68 (kept there as branch wingleeio-e2ddcc68) plus f910653 which adds
 # the EdgeFadeParams field to the HLSL Quad and PolychromeSprite. Without it
 # the Windows structured-buffer stride (192 B per quad from the Rust struct)
@@ -76,14 +80,14 @@ loro-protocol = "0.3"
 # stopped vending CABackdropLayer for Selection — window blur went dead);
 # b68970e rasterizes BackdropBlur in the wgpu renderer (frosted floats on
 # Linux — the Metal path's snapshot/blur/composite, ported).
-gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "f910653f77cc0d5cee9cb874d6c7b06fe5b06e4a" }
-gpui_platform = { git = "https://github.com/screamyx/gpui-surya", rev = "f910653f77cc0d5cee9cb874d6c7b06fe5b06e4a", features = [
+gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "3a1800e42e5ae1f765e7aa9aa64bd69b14c757b9" }
+gpui_platform = { git = "https://github.com/screamyx/gpui-surya", rev = "3a1800e42e5ae1f765e7aa9aa64bd69b14c757b9", features = [
     "wayland",
     "x11",
     "font-kit",
     "runtime_shaders",
 ] }
-gpui_tokio = { git = "https://github.com/screamyx/gpui-surya", rev = "f910653f77cc0d5cee9cb874d6c7b06fe5b06e4a" }
+gpui_tokio = { git = "https://github.com/screamyx/gpui-surya", rev = "3a1800e42e5ae1f765e7aa9aa64bd69b14c757b9" }
 
 # diffs
 similar = "2"
