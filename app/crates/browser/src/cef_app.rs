@@ -48,7 +48,9 @@ fn switches(scheme: ColorScheme) -> Vec<String> {
     // failed the same way). Skipping first run and the default-browser
     // prompt is what an embedded browser wants anyway.
     let mut s = vec!["no-first-run".to_string(), "no-default-browser-check".to_string()];
-    if std::env::var_os("SURYA_CEF_GPU").is_none() {
+    // Zero-copy needs the GPU process: a shared texture comes from its
+    // compositor, so the two switches below would leave the pane blank.
+    if std::env::var_os("SURYA_CEF_GPU").is_none() && !crate::zero_copy::enabled() {
         s.push("disable-gpu".to_string());
         s.push("disable-gpu-compositing".to_string());
     }
