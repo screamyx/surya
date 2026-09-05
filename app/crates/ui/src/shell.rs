@@ -279,6 +279,23 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
     }
     cx.clear_key_bindings();
     crate::composer::init(cx);
+    // The files editor's context rides on the composer's actions and has to
+    // be re-bound here too: a boot-time bind_keys is wiped by the clear above.
+    crate::files::init(cx);
+    // Measured, not assumed: the files editor's Enter binding must be in the
+    // live keymap after the clear (RUST_LOG=info shows the pair).
+    if let Ok(enter) = Keystroke::parse("enter") {
+        let bindings = cx.all_bindings_for_input(&[enter]);
+        let files_editor_bound = bindings
+            .iter()
+            .any(|b| format!("{:?}", b.predicate()).contains("FilesEditor"));
+        tracing::info!(
+            target: "surya_keys",
+            enter_bindings = bindings.len(),
+            files_editor_bound,
+            "keymap applied"
+        );
+    }
     // Fixed app-level shortcuts (Settings on every platform; ⌘Q quit, ⌘W
     // close, ⌘M minimize, ⌘H hide on macOS) — these back the native menu
     // key equivalents and must survive keymap re-application.

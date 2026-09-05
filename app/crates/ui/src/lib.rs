@@ -180,7 +180,9 @@ pub fn run_app(config: UiConfig) {
             cx,
         );
         composer::init(cx);
-        files::init(cx);
+        // files::init runs inside shell::apply_keymap (which clears and
+        // rebuilds the keymap when the shell mounts); binding it here too
+        // would only be discarded.
         terminal::panel::init(cx);
         app_menus::init(cx);
         // CEF before the window: one browser per process, pumped from the
