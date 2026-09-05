@@ -64,7 +64,13 @@ Cargo notes for whoever repeats this: a change inside a git checkout under `CARG
 The first debug build from a warm cargo home and a cold target took 3m18s; the patched rebuild 36s.
 Left on dtry: `E:\surya-cef`, `E:\surya-cef-cargo`, `E:\surya-cef-target`, `E:\surya-cef-*.ps1`, the two shots; the scheduled tasks are deleted and the app is stopped.
 
-## Smallest fix candidate (not applied on any branch)
+## Fixed in RC1 (12:35, release build)
+
+PR #56 pins `screamyx/gpui-surya` f910653 (the three struct lines plus `edge_fade_alpha` ported into both fragments); it is in RC1 main e116422.
+surya-remote's RC1 release exe (`E:\surya-remote-target\release\zeron.exe`, built 12:18:57 from e116422) on the same chat and window as the A/B above, PrintWindow shot `docs/images/dtry-r5-C-rc1-release-e116422.png`: the "reply" and "reply with the single word mango" bubbles, the transcript container card, the "L" avatar circle and the "Thought process" chip all paint.
+Checked elements asked=5, dropped seen=0.
+
+## Fix as shipped (PR #56) and the earlier candidate
 
 Add the field to the two HLSL structs so the stride matches again.
 Ignoring the field in the shader is enough to stop the drops; it just means no per-pixel edge fade on Windows until the fragment shaders learn it like `shaders.wgsl` did.
