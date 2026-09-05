@@ -332,11 +332,43 @@ impl ServerEntry {
     }
 }
 
+/// What the Failed gate may offer after a dial fails, by where the dialed
+/// engine came from (the shell's `boot.remote`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailedDialEscape {
+    /// The local engine (embedded or the loopback daemon) failed: Retry only.
+    None,
+    /// The saved active server failed: the gate can forget it and boot local.
+    ForgetSavedServer,
+    /// `--engine` / `ZERON_ENGINE` (on Windows also the launcher's
+    /// servers.json) failed. The flag beats the saved server at boot, so
+    /// forgetting `active_server` would not stop the next launch from
+    /// redialing it; the gate can only say where to remove it.
+    CommandLine,
+}
+
 impl UiSettings {
     /// The saved server the app should dial at boot, if any.
     pub fn active_server_entry(&self) -> Option<&ServerEntry> {
         let id = self.active_server.as_deref()?;
         self.servers.iter().find(|server| server.id == id)
+    }
+
+    /// Exact match against the saved active entry: `ServerEntry::target` is
+    /// the only way a saved entry becomes a dial, and a `--engine` target
+    /// never carries a saved name, so the same address from the flag still
+    /// reads as the command line.
+    pub fn failed_dial_escape(
+        &self,
+        dialed: Option<&crate::state::RemoteEngineTarget>,
+    ) -> FailedDialEscape {
+        let Some(dialed) = dialed else {
+            return FailedDialEscape::None;
+        };
+        match self.active_server_entry() {
+            Some(entry) if &entry.target() == dialed => FailedDialEscape::ForgetSavedServer,
+            _ => FailedDialEscape::CommandLine,
+        }
     }
 }
 
@@ -923,6 +955,46 @@ mod tests {
         assert!(json.contains(r#""diffWrap": true"#));
         assert_eq!(UiSettings::load(dir.path()), settings);
         assert!(json.contains(r#""codeFencesFitContent": true"#));
+    }
+
+    /// The Failed gate's escape buttons only help when the dialed engine is
+    /// the saved active server (owner lock-out, dtry, 2026-09-05):
+    /// asked=4 right=4.
+    #[test]
+    fn failed_dial_escape_only_forgets_the_saved_server() {
+        let saved = ServerEntry {
+            id: "s1".into(),
+            name: "pc-ajim".into(),
+            host: "pc-ajim".into(),
+            port: 22,
+            token: None,
+        };
+        let mut settings = UiSettings {
+            servers: vec![saved.clone()],
+            active_server: Some("s1".into()),
+            ..UiSettings::default()
+        };
+        assert_eq!(settings.failed_dial_escape(None), FailedDialEscape::None);
+        assert_eq!(
+            settings.failed_dial_escape(Some(&saved.target())),
+            FailedDialEscape::ForgetSavedServer
+        );
+        // `--engine` at the same address still wins over the saved entry at
+        // the next boot, so forgetting the entry would not help.
+        let flag = crate::state::RemoteEngineTarget {
+            url: saved.url(),
+            token: None,
+            name: None,
+        };
+        assert_eq!(
+            settings.failed_dial_escape(Some(&flag)),
+            FailedDialEscape::CommandLine
+        );
+        settings.active_server = None;
+        assert_eq!(
+            settings.failed_dial_escape(Some(&saved.target())),
+            FailedDialEscape::CommandLine
+        );
     }
 
     #[test]

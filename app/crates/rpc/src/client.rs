@@ -444,8 +444,15 @@ mod connect_tests {
             .await
             .err()
             .expect("an SSH banner is not a websocket handshake");
-        assert!(started.elapsed() < Duration::from_secs(4), "took {:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(4),
+            "took {:?}",
+            started.elapsed()
+        );
         assert!(matches!(err, RpcError::Transport(_)), "{err:?}");
+        // The timeout is a Transport error too: make sure this was the
+        // handshake refusing the banner, not the 5 s cap.
+        assert!(!err.to_string().contains("timed out"), "{err}");
     }
 
     /// A port that accepts and then says nothing is capped by CONNECT_TIMEOUT
@@ -464,6 +471,9 @@ mod connect_tests {
             .expect("a silent endpoint must time out");
         assert!(err.to_string().contains("timed out"), "{err}");
         let took = started.elapsed();
-        assert!(took >= Duration::from_secs(4) && took < Duration::from_secs(8), "took {took:?}");
+        assert!(
+            took >= Duration::from_secs(4) && took < Duration::from_secs(8),
+            "took {took:?}"
+        );
     }
 }

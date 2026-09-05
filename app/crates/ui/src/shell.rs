@@ -43,10 +43,10 @@ use crate::settings::notifications::{NotificationsEvent, NotificationsPage};
 use crate::settings::servers::{ServersEvent, ServersPage};
 use crate::settings::shortcuts::{ShortcutsEvent, ShortcutsPage};
 use crate::settings::{
-    self, CHAT_PANEL_MIN, JUMP_SLOTS, KeymapConfig, RIGHT_PANE_DEFAULT, RIGHT_PANE_MIN,
-    SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, SavePolicy, ShortcutId, SidebarOrganization,
-    SidebarSort, TERMINAL_DEFAULT_HEIGHT, UiSettings, badge_combo, jump_hints_visible,
-    platform_combo,
+    self, CHAT_PANEL_MIN, FailedDialEscape, JUMP_SLOTS, KeymapConfig, RIGHT_PANE_DEFAULT,
+    RIGHT_PANE_MIN, SIDEBAR_DEFAULT, SIDEBAR_MAX, SIDEBAR_MIN, SavePolicy, ShortcutId,
+    SidebarOrganization, SidebarSort, TERMINAL_DEFAULT_HEIGHT, UiSettings, badge_combo,
+    jump_hints_visible, platform_combo,
 };
 use crate::state::{
     AppState, ConnectionStatus, EngineBootConfig, EngineMode, GatePhase, Indicator, OrgRow,
@@ -131,6 +131,16 @@ impl SidebarDisclosureMotion {
 /// the shared constructor makes left/right seams mirror each other and avoids
 /// relying on paint order when chrome crosses an animated pane boundary.
 const PANE_RESIZE_HITBOX_TOP: f32 = Theme::TITLEBAR_HEIGHT;
+
+/// Failed gate copy for an engine the app did not pick itself. On Windows the
+/// launcher (deploy/windows/surya.cmd) turns %APPDATA%\surya\servers.json into
+/// `--engine`, so that file is named too.
+const COMMAND_LINE_ENGINE_HINT: &str = if cfg!(windows) {
+    "This server was set by --engine, ZERON_ENGINE or %APPDATA%\\surya\\servers.json. \
+     Remove it there, then start surya again."
+} else {
+    "This server was set by --engine or ZERON_ENGINE. Start zeron without it to use this computer."
+};
 
 fn stable_panel_content_width(target: f32, transition: Option<(f32, f32)>) -> f32 {
     transition.map(|(from, to)| from.max(to)).unwrap_or(target)
@@ -2670,13 +2680,17 @@ impl Shell {
     /// Publish this view's working copy to the central settings store. The
     /// store owns the single debounce task and the only production writer.
     fn schedule_save(&mut self, cx: &mut Context<Self>) {
+        self.save_with(SavePolicy::Debounced, cx);
+    }
+
+    fn save_with(&mut self, policy: SavePolicy, cx: &mut Context<Self>) {
         self.settings.appearance = crate::appearance::mode(cx);
         self.settings.theme_selection = crate::appearance::themes(cx);
         self.settings.accent = crate::appearance::accent(cx);
         self.settings.surface = crate::appearance::surface(cx);
         self.settings.ui_font_family = crate::typography::requested(cx);
         self.settings.ui_font_size = crate::typography::font_size(cx);
-        settings::replace(self.settings.clone(), SavePolicy::Debounced, cx);
+        settings::replace(self.settings.clone(), policy, cx);
     }
 
     fn retry_engine(&mut self, cx: &mut Context<Self>) {
@@ -2691,7 +2705,10 @@ impl Shell {
     /// ui-settings.json by hand.
     fn leave_failed_server(&mut self, open_servers: bool, cx: &mut Context<Self>) {
         self.settings.active_server = None;
-        self.schedule_save(cx);
+        // To disk now, not after the 400 ms debounce: on Windows the window
+        // has been seen dying a few seconds after the Failed gate, and a lost
+        // write would redial the same dead server at the next launch.
+        self.save_with(SavePolicy::Immediate, cx);
         self.switch_engine(None, cx);
         if open_servers {
             self.open_settings(SettingsSection::Servers, cx);
@@ -7577,6 +7594,62 @@ impl Shell {
         cx.notify();
     }
 
+    /// The way past a Failed gate for a remote engine, by where the dial came
+    /// from. A saved server that will not answer must not lock the user out:
+    /// two buttons that need no text editor (owner, dtry, 2026-09-05: a saved
+    /// pc-ajim:22 entry). A `--engine` / `ZERON_ENGINE` target is not the
+    /// app's to forget (lib.rs: the flag beats the saved server), so the gate
+    /// says where to remove it instead.
+    fn render_failed_server_escape(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        match self.settings.failed_dial_escape(self.boot.remote.as_ref()) {
+            FailedDialEscape::None => None,
+            FailedDialEscape::CommandLine => Some(
+                div()
+                    .max_w(px(440.0))
+                    .text_center()
+                    .text_size(crate::typography::ui_rems(12.0))
+                    .text_color(theme.text_muted)
+                    .child(SharedString::from(COMMAND_LINE_ENGINE_HINT))
+                    .into_any_element(),
+            ),
+            FailedDialEscape::ForgetSavedServer => {
+                let hover = theme.glass_hover();
+                let border = theme.border;
+                let text = theme.text;
+                let button = move |id: &'static str, label: &str| {
+                    div()
+                        .id(id)
+                        .px(px(12.0))
+                        .py(px(6.0))
+                        .rounded(px(8.0))
+                        .border_1()
+                        .border_color(border)
+                        .text_size(crate::typography::ui_rems(13.0))
+                        .text_color(text)
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(hover))
+                        .child(SharedString::from(label.to_string()))
+                };
+                Some(
+                    div()
+                        .flex()
+                        .gap(px(Theme::SPACE_MD))
+                        .child(button("use-local-engine", "Use this computer").on_click(
+                            cx.listener(|this, _, _, cx| this.leave_failed_server(false, cx)),
+                        ))
+                        .child(button("fix-server", "Fix the server\u{2026}").on_click(
+                            cx.listener(|this, _, _, cx| this.leave_failed_server(true, cx)),
+                        ))
+                        .into_any_element(),
+                )
+            }
+        }
+    }
+
     fn render_gate_card(&mut self, phase: &GatePhase, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::of(cx).clone();
         let content: AnyElement = match phase {
@@ -7608,36 +7681,7 @@ impl Shell {
                         .on_click(cx.listener(|this, _, _, cx| this.retry_engine(cx)))
                         .child(SharedString::from("Retry")),
                 )
-                // A saved server that will not answer must not lock the user
-                // out: two ways past the gate that do not need a text editor
-                // (owner, dtry, 2026-09-05: a saved pc-ajim:22 entry).
-                .children(self.boot.remote.is_some().then(|| {
-                    let hover = theme.glass_hover();
-                    let button = |id: &'static str, label: &str| {
-                        div()
-                            .id(id)
-                            .px(px(12.0))
-                            .py(px(6.0))
-                            .rounded(px(8.0))
-                            .border_1()
-                            .border_color(theme.border)
-                            .text_size(crate::typography::ui_rems(13.0))
-                            .text_color(theme.text)
-                            .cursor_pointer()
-                            .hover(move |s| s.bg(hover))
-                            .child(SharedString::from(label.to_string()))
-                    };
-                    div()
-                        .flex()
-                        .gap(px(Theme::SPACE_MD))
-                        .child(button("use-local-engine", "Use this computer").on_click(
-                            cx.listener(|this, _, _, cx| this.leave_failed_server(false, cx)),
-                        ))
-                        .child(button("fix-server", "Fix the server\u{2026}").on_click(
-                            cx.listener(|this, _, _, cx| this.leave_failed_server(true, cx)),
-                        ))
-                        .into_any_element()
-                }))
+                .children(self.render_failed_server_escape(&theme, cx))
                 .into_any_element(),
             // Login card (zeron App.tsx Gate): centered card on the grid —
             // logo, "Log in to Zeron", copy, full-width white Log in button.
