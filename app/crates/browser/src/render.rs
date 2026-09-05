@@ -217,6 +217,7 @@ wrap_render_handler! {
                 return;
             }
             let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+            crate::perf::on_paint();
             store(id, n, FrameSource::Cpu(img), active);
             LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
             let us = t0.elapsed().as_micros() as u64;
@@ -262,6 +263,7 @@ wrap_render_handler! {
                 // The texture is the visible part of the paint, not its coded size.
                 let (width, height) = texture.size();
                 let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+                crate::perf::on_paint();
                 store(id, n, FrameSource::Shared(texture), active);
                 LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
             }
