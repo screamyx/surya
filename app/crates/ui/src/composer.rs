@@ -3519,6 +3519,14 @@ enum BatchNotice {
 /// a bad one would stage the image underneath a stale red chip about the last
 /// one. That is why `Clear` exists and why the decision is here rather than
 /// split between the loop and the staging.
+///
+/// `Clear` is not narrow: `self.failure` is one field and the engine notices
+/// write it too ("Not connected to an engine.", and the global "Engine not
+/// connected" that `send` leaves with a null `failure_key`). So a good image
+/// pick also takes one of those down. That is deliberate and it follows the
+/// precedent a successful send already sets, which clears the field outright:
+/// a notice about a past failure should not outlive an action that plainly
+/// worked. It costs nothing either, since the next send re-raises it.
 fn batch_notice(staged: usize, skipped: usize, failed: bool) -> BatchNotice {
     if failed {
         // `add_paths` already wrote the read failure's own message.
@@ -3533,8 +3541,9 @@ fn batch_notice(staged: usize, skipped: usize, failed: bool) -> BatchNotice {
     if staged > 0 {
         return BatchNotice::Clear;
     }
-    // An empty pick: the user cancelled the dialog. Nothing happened, so
-    // nothing should change on screen.
+    // An empty batch: nothing happened, so nothing changes on screen. Not
+    // reachable from the picker, which returns None on cancel, but the drop
+    // and paste paths can hand over an empty list.
     BatchNotice::Leave
 }
 
@@ -6818,7 +6827,10 @@ mod tests {
     fn a_batch_says_why_files_were_left_out_and_clears_up_after_the_last_one() {
         // (staged, skipped, failed) -> what the notice does
         assert_eq!(batch_notice(1, 0, false), BatchNotice::Clear, "all images");
-        assert_eq!(batch_notice(0, 0, false), BatchNotice::Leave, "cancelled");
+        // An empty batch. The picker cannot produce one - it returns None on
+        // cancel and never calls in - but the drop and paste paths can, and
+        // nothing having happened must change nothing on screen.
+        assert_eq!(batch_notice(0, 0, false), BatchNotice::Leave, "empty batch");
         // The bug: one .txt, nothing staged, and the old code said nothing.
         assert!(
             matches!(batch_notice(0, 1, false), BatchNotice::Show(_)),
