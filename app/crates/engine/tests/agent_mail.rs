@@ -31,13 +31,13 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     core.workspace
         .create_space(SPACE, &core.device_id, "/tmp/mail-space", None, false)
         .expect("space");
-    for chat in [CHAT_A, CHAT_B] {
+    // Distinct titles: the envelope header must carry the registry's name for
+    // the SENDING chat, so a shared title would not prove anything.
+    for (chat, title) in [(CHAT_A, "Sender-A"), (CHAT_B, "Reader-B")] {
         core.workspace
             .create_chat(chat, Some(SPACE), Some(&core.device_id), None, None)
             .expect("chat");
-        core.workspace
-            .rename_chat(chat, "Pre-titled")
-            .expect("title");
+        core.workspace.rename_chat(chat, title).expect("title");
     }
 
     // Both agents run once, so each has a live session and a run
@@ -57,13 +57,15 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     // ---- Proof 1: one message, one recipient.
     let receipt = core
         .mail
-        .send_verified(CHAT_A, CHAT_B, "please check the diff", None)
+        .send_from_chat(CHAT_A, CHAT_B, "please check the diff", None)
         .await
         .expect("send");
     assert_eq!(receipt.ids.len(), 1, "one recipient, one delivery id");
     assert_eq!(receipt.recipients, vec![CHAT_B.to_string()]);
     let id = receipt.ids[0].clone();
-    let expected = format!("[MAIL {id} from {CHAT_A}]\n  please check the diff\n[/MAIL {id}]");
+    // The header carries A's REGISTRY TITLE, not the string the caller passed:
+    // send_from_chat resolves the chat and the registry owns the name.
+    let expected = format!("[MAIL {id} from Sender-A]\n  please check the diff\n[/MAIL {id}]");
 
     wait_for(
         || user_texts(&core, CHAT_B).iter().any(|t| t == &expected),
@@ -129,7 +131,7 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     assert_eq!(delivered_fanout, 2);
 
     for (chat, id) in [CHAT_A, CHAT_B].iter().zip(fanout.ids.iter()) {
-        let line = format!("[MAIL {id} from unverified:owner]\n  standup in five\n[/MAIL {id}]");
+        let line = format!("[MAIL {id} from owner]\n  standup in five\n[/MAIL {id}]");
         assert!(
             user_texts(&core, chat).iter().any(|t| t == &line),
             "{chat} must carry its own copy: {line}"

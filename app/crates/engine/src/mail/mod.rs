@@ -25,7 +25,7 @@ use tokio::sync::watch;
 pub use envelope::{MailAddress, MailMessage, MailState};
 pub use ingress::{MailIngress, MailIngressPaths};
 pub use rpc::MailRpc;
-pub use store::{MailStore, MailStoreError};
+pub use store::{MAX_DELIVERY_ATTEMPTS, MailStore, MailStoreError};
 
 use crate::doc_host::DocHost;
 use crate::sessions::SessionsEngine;
@@ -33,6 +33,10 @@ use crate::sessions::SessionsEngine;
 /// How many rows the `WatchMail` feed carries. The pane shows a recent list,
 /// not an archive; `Mail.List` reads the table for anything older.
 const FEED_LIMIT: usize = 200;
+
+/// Delivery lock stripes. 64 is far more than the agents one engine hosts, so
+/// two agents colliding is rare and costs only serialized delivery.
+const DELIVERY_STRIPES: usize = 64;
 
 /// One accepted send, and what it fanned out to.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -54,10 +58,12 @@ pub(crate) struct Inner {
     sessions: SessionsEngine,
     doc_host: DocHost,
     feed_tx: watch::Sender<Vec<MailMessage>>,
-    /// One lock per agent, so the pump and a fresh send never dispatch the
-    /// same queued rows twice — and delivering to a slow agent never blocks
-    /// delivery to every other one.
-    delivering: std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// Delivery locks, striped by recipient: the pump and a fresh send never
+    /// dispatch the same queued rows twice, and a slow agent blocks only the
+    /// agents that share its stripe. A fixed array, not a map keyed by agent —
+    /// a map grows with every address ever mailed, including the ones that
+    /// never existed.
+    delivering: [tokio::sync::Mutex<()>; DELIVERY_STRIPES],
     pump_started: AtomicBool,
 }
 
@@ -85,11 +91,10 @@ impl Mail {
                 sessions,
                 doc_host,
                 feed_tx,
-                delivering: std::sync::Mutex::new(std::collections::HashMap::new()),
+                delivering: std::array::from_fn(|_| tokio::sync::Mutex::new(())),
                 pump_started: AtomicBool::new(false),
             }),
         };
-        mail.publish_feed();
         Ok(mail)
     }
 
@@ -111,17 +116,12 @@ impl Mail {
             .map_err(Into::into)
     }
 
-    /// The delivery lock for one agent.
-    pub(crate) fn agent_lock(&self, agent: &str) -> Arc<tokio::sync::Mutex<()>> {
-        let mut locks = self
-            .inner
-            .delivering
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        locks
-            .entry(agent.to_string())
-            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
-            .clone()
+    /// The delivery lock stripe for one agent.
+    pub(crate) fn agent_lock(&self, agent: &str) -> &tokio::sync::Mutex<()> {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        agent.hash(&mut hasher);
+        &self.inner.delivering[(hasher.finish() as usize) % DELIVERY_STRIPES]
     }
 
     /// Accept one send. The address resolves now; every resolved recipient gets
@@ -135,21 +135,53 @@ impl Mail {
         body: &str,
         to_device: Option<&str>,
     ) -> Result<MailReceipt, crate::EngineError> {
-        self.send_with_id(from, to, body, to_device, None, false)
-            .await
+        self.send_with_id(from, to, body, to_device, None).await
     }
 
-    /// A send the engine can attribute: `from` is the sending session's own
-    /// chat id, so it rides the envelope as written.
-    pub async fn send_verified(
+    /// A send naming the sending agent's own chat. The chat must exist in the
+    /// registry — an unknown id is an error, not a queued message — and the
+    /// envelope carries that chat's registry title, never the caller's string.
+    ///
+    /// Debt: this is as far as attribution goes for the RC. `RpcService::handle`
+    /// carries no connection identity, so the engine cannot check that the
+    /// caller *is* the chat it names; it can only check that the chat is real
+    /// and render a name the registry owns.
+    pub async fn send_from_chat(
         &self,
         from_chat: &str,
         to: &str,
         body: &str,
         to_device: Option<&str>,
     ) -> Result<MailReceipt, crate::EngineError> {
-        self.send_with_id(from_chat, to, body, to_device, None, true)
-            .await
+        let sender = self.sender_name(from_chat)?;
+        self.send_with_id(&sender, to, body, to_device, None).await
+    }
+
+    /// The registry's name for a chat: its title, or its id when untitled.
+    /// Errors when the chat is unknown.
+    fn sender_name(&self, chat_id: &str) -> Result<String, crate::EngineError> {
+        let chat = self
+            .inner
+            .doc_host
+            .workspace()
+            .ok_or_else(|| crate::EngineError::Other("workspace not open".into()))?
+            .chat(chat_id)?
+            .ok_or_else(|| {
+                crate::EngineError::Other(format!("no such chat to send as: {chat_id}"))
+            })?;
+        let name = chat
+            .title
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .unwrap_or(&chat.id);
+        // A title is free text; the header is not. Fall back to the id, which
+        // the registry mints and is always addressable.
+        Ok(if envelope::is_addressable(name) {
+            name.to_string()
+        } else {
+            chat.id.clone()
+        })
     }
 
     /// [`Self::send`] carrying a delivery id the caller already minted. The
@@ -164,8 +196,14 @@ impl Mail {
         body: &str,
         to_device: Option<&str>,
         delivery_id: Option<&str>,
-        verified: bool,
     ) -> Result<MailReceipt, crate::EngineError> {
+        // Checked before anything is stored: an id or a sender carrying a
+        // bracket or a line break would write a second header into the
+        // envelope, and every reader downstream would believe it.
+        envelope::check_addressable("sender", from).map_err(crate::EngineError::Other)?;
+        if let Some(id) = delivery_id {
+            envelope::check_addressable("delivery id", id).map_err(crate::EngineError::Other)?;
+        }
         let address = MailAddress::parse(to).map_err(crate::EngineError::Other)?;
         let recipients = self.resolve(&address);
         if recipients.is_empty() {
@@ -176,7 +214,6 @@ impl Mail {
                 "no agents in {to}: the workspace is unknown or has no chats"
             )));
         }
-        let from = envelope::attribute(from, verified);
         let to_device = to_device.unwrap_or(&self.inner.device_id).to_string();
         let now = chrono::Utc::now().timestamp_millis();
         let mut ids = Vec::with_capacity(recipients.len());
@@ -187,7 +224,7 @@ impl Mail {
                     (Some(id), n) => format!("{id}-{}", n + 1),
                     (None, _) => new_mail_id(),
                 },
-                from: from.clone(),
+                from: from.to_string(),
                 to: to.to_string(),
                 to_agent: agent.clone(),
                 body: body.to_string(),
@@ -197,6 +234,8 @@ impl Mail {
                 from_device: self.inner.device_id.clone(),
                 to_device: to_device.clone(),
                 run_id: None,
+                attempts: 0,
+                failed_at: None,
             };
             let id = message.id.clone();
             let fresh = self.with_store(move |s| s.insert(&message)).await?;
@@ -207,7 +246,7 @@ impl Mail {
             }
             ids.push(id);
         }
-        self.publish_feed();
+        self.publish_feed().await;
         // Try immediately: a live recipient reads the mail inside its running
         // turn instead of waiting for the next status change.
         for agent in &recipients {
@@ -238,7 +277,7 @@ impl Mail {
         let now = chrono::Utc::now().timestamp_millis();
         let acked = self.with_store(move |s| s.mark_acked(&id, now)).await?;
         if acked {
-            self.publish_feed();
+            self.publish_feed().await;
         }
         Ok(acked)
     }
@@ -310,10 +349,17 @@ impl Mail {
         }
     }
 
-    fn publish_feed(&self) {
-        let mut rows = self.inner.store.recent(FEED_LIMIT).unwrap_or_default();
-        rows.reverse();
-        self.inner.feed_tx.send_replace(rows);
+    /// Refresh the `WatchMail` feed. Goes through [`Self::with_store`] like
+    /// every other read: this runs from async paths, and SQLite blocks.
+    async fn publish_feed(&self) {
+        let rows = self.with_store(|s| s.recent(FEED_LIMIT)).await;
+        match rows {
+            Ok(mut rows) => {
+                rows.reverse();
+                self.inner.feed_tx.send_replace(rows);
+            }
+            Err(err) => tracing::warn!(error = %err, "mail feed refresh failed"),
+        }
     }
 }
 

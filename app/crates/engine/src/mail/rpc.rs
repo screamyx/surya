@@ -17,12 +17,11 @@ pub struct MailRpc {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SendParams {
-    /// The sending agent's own chat id. When present the engine treats the
-    /// sender as proven and writes it to the envelope as given.
+    /// The sending agent's own chat. It must exist in the registry, and the
+    /// envelope carries that chat's registry title rather than this string.
     #[serde(default)]
     from_chat: Option<String>,
-    /// A sender the caller merely claims — the CLI, a script. It reaches the
-    /// recipient marked `unverified:`.
+    /// A sender the caller names outright — the CLI, a script.
     #[serde(default)]
     from: Option<String>,
     /// `agent-id`, a human alias, or `#workspace`.
@@ -73,7 +72,7 @@ impl RpcService for MailRpc {
                 let receipt = match &p.from_chat {
                     Some(chat) => {
                         self.mail
-                            .send_verified(chat, &p.to, &p.body, p.to_device.as_deref())
+                            .send_from_chat(chat, &p.to, &p.body, p.to_device.as_deref())
                             .await
                     }
                     None => {

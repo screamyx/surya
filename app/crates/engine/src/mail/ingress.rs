@@ -102,6 +102,19 @@ impl Drop for MailIngress {
     }
 }
 
+/// Owner-only (0600). Anyone who can write the mail channel can send as
+/// anybody, so the channel is not world-writable and not world-readable.
+#[cfg(unix)]
+fn restrict(path: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    if let Err(err) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)) {
+        tracing::warn!(path = %path.display(), error = %err, "could not restrict mail channel to 0600");
+    }
+}
+
+#[cfg(not(unix))]
+fn restrict(_path: &Path) {}
+
 fn start_socket(mail: Mail, path: PathBuf) -> std::io::Result<tokio::task::JoinHandle<()>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -109,6 +122,9 @@ fn start_socket(mail: Mail, path: PathBuf) -> std::io::Result<tokio::task::JoinH
     // A stale socket file from a crashed engine would refuse the bind.
     let _ = std::fs::remove_file(&path);
     let listener = tokio::net::UnixListener::bind(&path)?;
+    // Owner-only, set explicitly. `$XDG_RUNTIME_DIR` is 0700 on a normal
+    // system, but the fallback paths are not, and mail is not public.
+    restrict(&path);
     tracing::info!(path = %path.display(), "mail socket listening");
     Ok(tokio::spawn(async move {
         loop {
@@ -150,6 +166,7 @@ fn start_jsonl(mail: Mail, path: PathBuf) -> std::io::Result<tokio::task::JoinHa
         .open(&path)?;
     // Start at the end: records written while this engine was down belong to
     // whichever engine was running then.
+    restrict(&path);
     let mut offset = file.seek(SeekFrom::End(0))?;
     tracing::info!(path = %path.display(), "mail jsonl tailing");
     Ok(tokio::spawn(async move {
@@ -215,9 +232,6 @@ async fn accept(mail: &Mail, line: &str) -> Result<Option<super::MailReceipt>, c
             &body,
             record.to_device.as_deref(),
             record.delivery_id.as_deref(),
-            // The channel is a file and a socket: anyone who can write to
-            // either can claim any sender, so the envelope marks it.
-            false,
         )
         .await?;
     Ok(Some(receipt))

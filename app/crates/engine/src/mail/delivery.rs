@@ -20,6 +20,10 @@
 //! up, and its run id lands only after `dispatch` returns — until then it
 //! cannot be acked, which is what stops a status tick during dispatch from
 //! acking a turn the agent never saw.
+//!
+//! Requeueing is capped. After [`super::MAX_DELIVERY_ATTEMPTS`] failed turns
+//! the row parks as failed and is never dispatched again: a harness that dies
+//! on every start would otherwise redeliver the same message forever.
 
 use std::sync::atomic::Ordering;
 
@@ -78,8 +82,7 @@ impl Mail {
     pub(crate) async fn deliver_agent(&self, agent: &str) -> Result<usize, EngineError> {
         // Per-agent: two passes must not dispatch the same rows, and a slow
         // agent must not hold up delivery to any other.
-        let lock = self.agent_lock(agent);
-        let _guard = lock.lock().await;
+        let _guard = self.agent_lock(agent).lock().await;
 
         let device = self.device_id().to_string();
         let key = agent.to_string();
@@ -140,14 +143,15 @@ impl Mail {
             Err(err) => {
                 // Nobody read it. Back in the queue.
                 let undo = ids.clone();
+                let at = chrono::Utc::now().timestamp_millis();
                 self.with_store(move |s| {
                     for id in &undo {
-                        s.requeue(id)?;
+                        s.requeue(id, at)?;
                     }
                     Ok(())
                 })
                 .await?;
-                self.publish_feed();
+                self.publish_feed().await;
                 return Err(err);
             }
         };
@@ -160,7 +164,7 @@ impl Mail {
             Ok(())
         })
         .await?;
-        self.publish_feed();
+        self.publish_feed().await;
         tracing::info!(
             agent = %agent,
             run = %run_id,
@@ -208,7 +212,7 @@ impl Mail {
         let now = chrono::Utc::now().timestamp_millis();
         let acking = to_ack.clone();
         let requeuing = to_requeue.clone();
-        let acked = self
+        let (acked, parked) = self
             .with_store(move |s| {
                 let mut acked = 0;
                 for id in &acking {
@@ -216,18 +220,22 @@ impl Mail {
                         acked += 1;
                     }
                 }
+                let mut parked = 0;
                 for id in &requeuing {
-                    s.requeue(id)?;
+                    if s.requeue(id, now)? {
+                        parked += 1;
+                    }
                 }
-                Ok(acked)
+                Ok((acked, parked))
             })
             .await?;
-        self.publish_feed();
+        self.publish_feed().await;
         if acked > 0 || !to_requeue.is_empty() {
             tracing::info!(
                 agent = %agent,
                 acked,
-                requeued = to_requeue.len(),
+                requeued = to_requeue.len() - parked,
+                parked,
                 status = ?session.status,
                 "mail settled on turn end"
             );

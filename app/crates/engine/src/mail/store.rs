@@ -59,8 +59,9 @@ impl MailStore {
         let changed = self.conn().execute(
             "INSERT INTO mail
                (id, sender, recipient, to_agent, body, created_at,
-                delivered_at, acked_at, from_device, to_device, run_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                delivered_at, acked_at, from_device, to_device, run_id,
+                attempts, failed_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(id) DO NOTHING",
             params![
                 message.id,
@@ -74,6 +75,8 @@ impl MailStore {
                 message.from_device,
                 message.to_device,
                 message.run_id,
+                message.attempts,
+                message.failed_at,
             ],
         )?;
         Ok(changed > 0)
@@ -98,7 +101,8 @@ impl MailStore {
     pub fn queued_for_agent(&self, agent: &str) -> Result<Vec<MailMessage>, MailStoreError> {
         self.query(
             &format!(
-                "{SELECT} WHERE to_agent = ?1 AND delivered_at IS NULL ORDER BY created_at, id"
+                "{SELECT} WHERE to_agent = ?1 AND delivered_at IS NULL AND failed_at IS NULL
+                 ORDER BY created_at, id"
             ),
             params![agent],
         )
@@ -109,7 +113,7 @@ impl MailStore {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT DISTINCT to_agent FROM mail
-             WHERE delivered_at IS NULL AND to_device = ?1",
+             WHERE delivered_at IS NULL AND failed_at IS NULL AND to_device = ?1",
         )?;
         let rows = stmt.query_map(params![device], |row| row.get::<_, String>(0))?;
         Ok(rows.filter_map(Result::ok).collect())
@@ -159,13 +163,23 @@ impl MailStore {
 
     /// Put a row back in the queue: the dispatch failed, or the run that
     /// carried it died without finishing, so nobody can say the agent read it.
-    pub fn requeue(&self, id: &str) -> Result<(), MailStoreError> {
-        self.conn().execute(
-            "UPDATE mail SET delivered_at = NULL, run_id = NULL
+    /// Returns whether the row was parked instead of requeued.
+    pub fn requeue(&self, id: &str, at: i64) -> Result<bool, MailStoreError> {
+        let conn = self.conn();
+        conn.execute(
+            "UPDATE mail SET delivered_at = NULL, run_id = NULL, attempts = attempts + 1
              WHERE id = ?1 AND acked_at IS NULL",
             params![id],
         )?;
-        Ok(())
+        // At the cap the row stops moving: it is not queued, not delivered,
+        // and the feed shows it as failed so a human can see it stuck.
+        let parked = conn.execute(
+            "UPDATE mail SET failed_at = ?2
+             WHERE id = ?1 AND acked_at IS NULL AND failed_at IS NULL
+               AND attempts >= ?3",
+            params![id, at, MAX_DELIVERY_ATTEMPTS],
+        )?;
+        Ok(parked > 0)
     }
 
     /// Ack is idempotent and never un-acks; a manual "seen" and the automatic
@@ -184,6 +198,15 @@ impl MailStore {
             &format!("{SELECT} ORDER BY created_at DESC, id DESC LIMIT ?1"),
             params![limit as i64],
         )
+    }
+
+    /// How many rows are parked — the counter that says redelivery stopped.
+    pub fn failed_count(&self) -> Result<i64, MailStoreError> {
+        Ok(self.conn().query_row(
+            "SELECT COUNT(*) FROM mail WHERE failed_at IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )?)
     }
 
     /// Counters for a report: always a pair, never a bare zero.
@@ -220,7 +243,12 @@ impl MailStore {
 }
 
 const SELECT: &str = "SELECT id, sender, recipient, to_agent, body, created_at,
-        delivered_at, acked_at, from_device, to_device, run_id FROM mail";
+        delivered_at, acked_at, from_device, to_device, run_id, attempts, failed_at FROM mail";
+
+/// After this many failed turns a row is parked rather than retried forever.
+/// A harness that dies on every start would otherwise redeliver the same
+/// message until someone noticed.
+pub const MAX_DELIVERY_ATTEMPTS: i64 = 3;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS mail (
@@ -234,7 +262,11 @@ CREATE TABLE IF NOT EXISTS mail (
   acked_at     INTEGER,
   from_device  TEXT NOT NULL,
   to_device    TEXT NOT NULL,
-  run_id       TEXT
+  run_id       TEXT,
+  -- How many turns tried and failed to carry this row.
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  -- Set once attempts hit the cap: parked, never delivered again.
+  failed_at    INTEGER
 );
 CREATE INDEX IF NOT EXISTS mail_pending ON mail (to_agent, delivered_at);
 CREATE INDEX IF NOT EXISTS mail_run ON mail (run_id);
@@ -253,6 +285,8 @@ fn row_to_mail(row: &rusqlite::Row<'_>) -> rusqlite::Result<MailMessage> {
         from_device: row.get(8)?,
         to_device: row.get(9)?,
         run_id: row.get(10)?,
+        attempts: row.get(11)?,
+        failed_at: row.get(12)?,
     })
 }
 
@@ -273,6 +307,8 @@ mod tests {
             from_device: "dev".into(),
             to_device: "dev".into(),
             run_id: None,
+            attempts: 0,
+            failed_at: None,
         }
     }
 
@@ -337,13 +373,43 @@ mod tests {
     }
 
     #[test]
+    fn a_row_parks_after_the_attempt_cap() {
+        let store = MailStore::open_memory().unwrap();
+        store.insert(&msg("m1", "chat-b")).unwrap();
+        for attempt in 1..=MAX_DELIVERY_ATTEMPTS {
+            store.mark_delivering("m1", 10 + attempt).unwrap();
+            let run = format!("run-{attempt}");
+            store.set_run("m1", &run).unwrap();
+            let parked = store.requeue("m1", 20 + attempt).unwrap();
+            assert_eq!(
+                parked,
+                attempt == MAX_DELIVERY_ATTEMPTS,
+                "parks on attempt {attempt} of {MAX_DELIVERY_ATTEMPTS}"
+            );
+        }
+        let row = store.get("m1").unwrap().unwrap();
+        assert_eq!(row.attempts, MAX_DELIVERY_ATTEMPTS);
+        assert!(row.failed_at.is_some(), "parked");
+        assert_eq!(row.state(), crate::mail::MailState::Failed);
+        assert!(
+            store.queued_for_agent("chat-b").unwrap().is_empty(),
+            "a parked row is never dispatched again"
+        );
+        assert!(store.agents_with_queued("dev").unwrap().is_empty());
+        assert_eq!(store.failed_count().unwrap(), 1);
+    }
+
+    #[test]
     fn a_requeued_row_is_queued_again() {
         let store = MailStore::open_memory().unwrap();
         store.insert(&msg("m1", "chat-b")).unwrap();
         store.mark_delivering("m1", 2).unwrap();
         store.set_run("m1", "run-1").unwrap();
 
-        store.requeue("m1").unwrap();
+        assert!(
+            !store.requeue("m1", 3).unwrap(),
+            "one failure is not the cap"
+        );
         let row = store.get("m1").unwrap().unwrap();
         assert_eq!(row.delivered_at, None);
         assert_eq!(row.run_id, None);
@@ -354,7 +420,7 @@ mod tests {
         store.mark_delivering("m1", 4).unwrap();
         store.set_run("m1", "run-2").unwrap();
         store.mark_acked("m1", 5).unwrap();
-        store.requeue("m1").unwrap();
+        store.requeue("m1", 6).unwrap();
         assert_eq!(store.get("m1").unwrap().unwrap().acked_at, Some(5));
     }
 }

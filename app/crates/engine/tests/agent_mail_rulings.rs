@@ -37,7 +37,7 @@ async fn a_repeated_delivery_id_does_not_redeliver() {
     wait_for(|| settled(&core, CHAT_B), "B idle").await;
 
     core.mail
-        .send_with_id("seat-1", CHAT_B, "once", None, Some("d_same"), false)
+        .send_with_id("seat-1", CHAT_B, "once", None, Some("d_same"))
         .await
         .expect("first send");
     wait_until!("the first copy to be acked", {
@@ -51,7 +51,7 @@ async fn a_repeated_delivery_id_does_not_redeliver() {
 
     // The replay, with the same id and a different body.
     core.mail
-        .send_with_id("seat-1", CHAT_B, "twice", None, Some("d_same"), false)
+        .send_with_id("seat-1", CHAT_B, "twice", None, Some("d_same"))
         .await
         .expect("replay is accepted");
 
@@ -177,7 +177,6 @@ async fn the_seats_delivery_id_becomes_the_row_id() {
             "the migration is ready",
             None,
             Some("d_abc"),
-            false,
         )
         .await
         .expect("send");
