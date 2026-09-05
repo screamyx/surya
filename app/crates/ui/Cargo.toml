@@ -15,6 +15,7 @@ zeron-rpc.workspace = true
 zeron-update.workspace = true
 zeron-syntax.workspace = true
 zeron-theme.workspace = true
+surya-browser = { workspace = true, optional = true }
 surya-a2ui.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
@@ -39,6 +40,11 @@ sha2.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc = "0.2"
+
+[features]
+# The CEF browser pane (crates/browser). Off by default: the default build
+# has no Chromium in it.
+browser = ["dep:surya-browser"]
 
 [dev-dependencies]
 tempfile.workspace = true

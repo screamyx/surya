@@ -31,6 +31,8 @@ Probed on 2026-09-05 with Claude Code 2.1.260 in print mode:
 
 ## 4. Transport is AG-UI, agent-drawn UI is A2UI
 
+SUPERSEDED IN PART by decision 22 (2026-09-05): the transport is comet's engine event stream over its typed RPC, not AG-UI, and the A2UI renderer is native GPUI (`app/crates/a2ui`), not the React renderer. A2UI as the agent-drawn UI format stands.
+
 A2UI README: "Agents send a declarative JSON format describing the intent of the UI. The client application then renders this using its own native component library."
 Status line from the same README: "current production release is v0.9.1", "Expect changes".
 The React renderer is listed "Stable" for v0.9.1 on the renderers page.
@@ -123,6 +125,8 @@ Cut from 1.0: terminal panel, luvus module, leases, merge train, multi-user acco
 Release candidate bar: the owner runs a real project-jag task end to end from a phone, no terminal, no developer beside him, and the result merges.
 
 ## 12. Exceptional GUI, whole app in React on shadcn/ui
+
+SUPERSEDED by decision 22 (2026-09-05): the app is native GPUI on comet; the React mockup under `mockup/` is frozen as the design reference. "Exceptional GUI" stands as the bar (decision 20 and the critique rounds carry it).
 
 Owner, 2026-09-05 00:53: "people today are superficial (like me), form what attract attentions over feature. since a2ui is already built on react, the whole app should be built on react. that way we can start building with component libraries like shadcnui or equivalents."
 

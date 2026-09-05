@@ -863,6 +863,13 @@ impl SessionsEngine {
         }
     }
 
+    /// Is `run_id` still the chat's live run? Mail's ack keys on this: a row
+    /// carried by a run that is no longer live was either finished or lost,
+    /// and the session status says which.
+    pub fn run_is_live(&self, chat_id: &str, run_id: &str) -> bool {
+        self.is_live(chat_id, run_id)
+    }
+
     fn is_live(&self, chat_id: &str, run_id: &str) -> bool {
         lock(&self.inner.runs)
             .get(chat_id)

@@ -387,6 +387,23 @@ fn right_pane_takeover_width(viewport: f32, sidebar: f32) -> f32 {
     (viewport - sidebar).max(0.0)
 }
 
+/// The Browser tab's chip title: the page's title, else its host, else
+/// "Browser".
+#[cfg(feature = "browser")]
+fn browser_tab_title() -> SharedString {
+    let page = surya_browser::page();
+    if !page.title.trim().is_empty() {
+        return page.title.trim().to_string().into();
+    }
+    let host = page
+        .shown_address()
+        .split("://")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .unwrap_or("");
+    if host.is_empty() { "Browser".into() } else { host.to_string().into() }
+}
+
 /// One right-pane surface tab (t3code RightPanelSurface, narrowed to our two
 /// kinds): a git-diff page (each tab its own [`Changes`] viewer — multiple
 /// diff panels, user request) or one embedded terminal keyed by its
@@ -400,6 +417,9 @@ pub enum RightSurface {
     /// A subagent's transcript, read-only (per-subagent viz) — the handle
     /// keys [`Shell::subagent_tabs`].
     Subagent(u64),
+    /// haktui's offscreen Chromium with a URL bar (surya). One per process.
+    #[cfg(feature = "browser")]
+    Browser,
 }
 
 /// Per-chat panel open flags (zeron parity: `sessionPanels` — the terminal and
@@ -1036,6 +1056,13 @@ pub struct Shell {
     /// Surface-tab strip scroll (the strip overflows horizontally, t3
     /// ScrollArea-style; drag drop-math reads the offset back out).
     right_tab_scroll: gpui::ScrollHandle,
+    /// The one Browser surface view, made on first open (surya).
+    #[cfg(feature = "browser")]
+    browser_pane: Option<Entity<crate::browser_pane::BrowserPane>>,
+    /// `ZERON_OPEN_BROWSER=1`: open the Browser surface on the first frame,
+    /// for proofs that cannot click the titlebar globe (xvfb, dtry).
+    #[cfg(feature = "browser")]
+    debug_open_browser: bool,
     /// Chat outlet vs settings pages.
     route: Route,
     /// Route history behind the titlebar back/forward buttons (§ nav history).
@@ -1325,6 +1352,10 @@ impl Shell {
             right_tabs: std::collections::HashMap::new(),
             right_tab_drag: None,
             right_tab_scroll: gpui::ScrollHandle::new(),
+            #[cfg(feature = "browser")]
+            browser_pane: None,
+            #[cfg(feature = "browser")]
+            debug_open_browser: std::env::var_os("ZERON_OPEN_BROWSER").is_some(),
             route,
             nav,
             devices_page: None,
@@ -1787,7 +1818,13 @@ impl Shell {
     /// new-session canvas, where the titlebar carries no toggle to close it
     /// again (an earlier user request).
     fn right_pane_open(&self, cx: &App) -> bool {
-        !self.active_chat.is_empty() && self.panels.get(&self.panel_key(cx)).changes_open
+        // The Browser tab is the exception to the new-session rule: the
+        // titlebar globe opens and closes it there (surya).
+        #[cfg(feature = "browser")]
+        let has_chat = !self.active_chat.is_empty() || self.browser_tab_present(cx);
+        #[cfg(not(feature = "browser"))]
+        let has_chat = !self.active_chat.is_empty();
+        has_chat && self.panels.get(&self.panel_key(cx)).changes_open
     }
 
     /// The current chat's terminal flag (per-session, in-memory).
@@ -1894,6 +1931,8 @@ impl Shell {
                     .subagent_tabs
                     .get(id)
                     .map(|tab| (*surface, tab.title.clone())),
+                #[cfg(feature = "browser")]
+                RightSurface::Browser => Some((*surface, browser_tab_title())),
                 RightSurface::Picker => None,
             })
             .collect()
@@ -1971,6 +2010,8 @@ impl Shell {
             // The tab's feed (watch or snapshot) runs from open to close —
             // activation needs no revalidation.
             RightSurface::Subagent(_) => {}
+            #[cfg(feature = "browser")]
+            RightSurface::Browser => {}
             RightSurface::Picker => {}
         }
         cx.notify();
@@ -2164,6 +2205,54 @@ impl Shell {
 
     /// A surface tab's ✕. The active fallback happens naturally through
     /// [`Self::resolved_right_active`] on the next frame.
+    /// The Browser view, made on first use. One per shell: the page behind
+    /// it is process state.
+    #[cfg(feature = "browser")]
+    fn browser_pane(&mut self, cx: &mut Context<Self>) -> Entity<crate::browser_pane::BrowserPane> {
+        if let Some(pane) = &self.browser_pane {
+            return pane.clone();
+        }
+        let pane = cx.new(crate::browser_pane::BrowserPane::new);
+        self.browser_pane = Some(pane.clone());
+        pane
+    }
+
+    /// Whether this chat's strip carries the Browser tab.
+    #[cfg(feature = "browser")]
+    fn browser_tab_present(&self, cx: &App) -> bool {
+        let key = self.panel_key(cx);
+        self.right_tabs
+            .get(&key)
+            .is_some_and(|tabs| tabs.contains(&RightSurface::Browser))
+    }
+
+    /// The picker's Browser row and the titlebar globe: open the pane on the
+    /// Browser surface, adding its tab once.
+    #[cfg(feature = "browser")]
+    fn add_browser_surface(&mut self, cx: &mut Context<Self>) {
+        let key = self.panel_key(cx);
+        let tabs = self.right_tabs.entry(key).or_default();
+        if !tabs.contains(&RightSurface::Browser) {
+            tabs.push(RightSurface::Browser);
+        }
+        surya_browser::reopen();
+        self.set_right_active(RightSurface::Browser, cx);
+        if !self.right_pane_open(cx) {
+            self.toggle_right_pane(cx);
+        }
+    }
+
+    /// The titlebar globe: close the pane when it already shows the
+    /// browser, open it on the browser otherwise.
+    #[cfg(feature = "browser")]
+    fn toggle_browser_pane(&mut self, cx: &mut Context<Self>) {
+        if self.right_pane_open(cx) && self.resolved_right_active(cx) == RightSurface::Browser {
+            self.toggle_right_pane(cx);
+        } else {
+            self.add_browser_surface(cx);
+        }
+    }
+
     fn close_right_surface(
         &mut self,
         surface: RightSurface,
@@ -2192,6 +2281,10 @@ impl Shell {
                         .update(cx, |s, _| s.unwatch_subagent_doc(&tab.doc_id));
                 }
             }
+            // The tab is the browser: closing it closes Chromium's page.
+            // The globe makes a new one on the last address.
+            #[cfg(feature = "browser")]
+            RightSurface::Browser => surya_browser::close(),
             RightSurface::Picker => {}
         }
         self.panels.update(&key, |p| {
@@ -3598,6 +3691,20 @@ impl Shell {
                 &theme,
                 cx.listener(|this, _, _, cx| this.toggle_sidebar(cx)),
             ))
+            .when(cfg!(feature = "browser"), |el| {
+                el.child(
+                    div().ml(px(TITLEBAR_CONTROL_GAP)).child(window_control_button(
+                        "toggle-browser",
+                        icons::GLOBAL,
+                        &theme,
+                        cx.listener(|this, _, _, cx| {
+                            #[cfg(feature = "browser")]
+                            this.toggle_browser_pane(cx);
+                            let _ = cx;
+                        }),
+                    )),
+                )
+            })
             .child(
                 div()
                     .ml(px(TITLEBAR_GROUP_GAP))
@@ -6207,6 +6314,8 @@ impl Shell {
                         .children(pill)
                         .into_any_element()
                 }
+                #[cfg(feature = "browser")]
+                RightSurface::Browser => self.browser_pane(cx).into_any_element(),
                 _ => self.render_surface_picker(cx),
             }
         } else {
@@ -6299,6 +6408,15 @@ impl Shell {
                         el.child(row("surface-card-git", icons::GIT_BRANCH, "Git").on_click(
                             cx.listener(|this, _, _, cx| {
                                 this.add_diff_surface(cx);
+                            }),
+                        ))
+                    })
+                    .when(cfg!(feature = "browser"), |el| {
+                        el.child(row("surface-card-browser", icons::GLOBAL, "Browser").on_click(
+                            cx.listener(|this, _, _, cx| {
+                                #[cfg(feature = "browser")]
+                                this.add_browser_surface(cx);
+                                let _ = cx;
                             }),
                         ))
                     }),
@@ -6474,6 +6592,8 @@ impl Shell {
             let icon_path = match surface {
                 RightSurface::Diff(_) => icons::GIT_BRANCH,
                 RightSurface::Subagent(_) => icons::BOT,
+                #[cfg(feature = "browser")]
+                RightSurface::Browser => icons::GLOBAL,
                 _ => icons::TERMINAL,
             };
             // A live subagent tab swaps its icon for the mini working
@@ -7470,6 +7590,22 @@ fn header_icon_button(
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // CEF's message loop rides every render; the idle chain covers the
+        // rest (surya-browser).
+        #[cfg(feature = "browser")]
+        surya_browser::pump(window, cx);
+        // Off screen, the browser stops compositing (surya-browser).
+        #[cfg(feature = "browser")]
+        surya_browser::set_visible(
+            matches!(self.route, Route::Chat)
+                && self.right_pane_open(cx)
+                && self.resolved_right_active(cx) == RightSurface::Browser,
+        );
+        #[cfg(feature = "browser")]
+        if self.debug_open_browser {
+            self.debug_open_browser = false;
+            self.add_browser_surface(cx);
+        }
         self.viewport_width = f32::from(window.viewport_size().width);
         // Appearance actions persist independently of the shell. Mirror the
         // globals before any later debounced settings save can overwrite them.

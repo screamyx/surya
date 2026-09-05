@@ -107,7 +107,33 @@ pub fn append_line(path: &std::path::Path, line: &str) -> std::io::Result<()> {
     let mut file = options.open(path)?;
     file.write_all(line.as_bytes())?;
     file.write_all(b"\n")?;
-    file.flush()
+    file.flush()?;
+    rotate_if_large(path, &file)
+}
+
+/// Cards and mail are append-only and nothing ever trims them, so a long-lived
+/// daemon would grow one file without bound. Past the cap the file becomes
+/// `<name>.1` and the next write starts a fresh one; only the previous
+/// generation is kept.
+///
+/// The host reads only the tail of the live file, so a rotation costs at most
+/// the records still in flight - and a card that cannot be read back shows its
+/// tool chip instead, never a wrong card.
+const ROTATE_BYTES: u64 = 8 << 20;
+
+fn rotate_if_large(path: &std::path::Path, file: &std::fs::File) -> std::io::Result<()> {
+    rotate_at(path, file.metadata()?.len(), ROTATE_BYTES)
+}
+
+/// The cap is a parameter so a test can prove the behaviour without writing
+/// eight megabytes.
+fn rotate_at(path: &std::path::Path, len: u64, cap: u64) -> std::io::Result<()> {
+    if len < cap {
+        return Ok(());
+    }
+    let mut previous = path.as_os_str().to_owned();
+    previous.push(".1");
+    std::fs::rename(path, std::path::PathBuf::from(previous))
 }
 
 /// Create `dir` and every parent, owner-only on unix.
@@ -141,6 +167,30 @@ mod tests {
             mail_log: PathBuf::from("/tmp/mail.jsonl"),
         };
         assert_eq!(cfg.cards_dir(), PathBuf::from("/repo/.surya/cards"));
+    }
+
+    #[test]
+    fn a_store_past_the_cap_rotates_and_the_next_write_starts_fresh() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cards.jsonl");
+        append_line(&path, "{\"card_id\":\"first\"}").unwrap();
+        let len = std::fs::metadata(&path).unwrap().len();
+
+        // Under the cap, nothing moves.
+        rotate_at(&path, len, len + 1).unwrap();
+        assert!(path.exists());
+        assert!(!dir.path().join("cards.jsonl.1").exists());
+
+        // At the cap, the full file becomes .1 and the next write starts one.
+        rotate_at(&path, len, len).unwrap();
+        assert!(!path.exists(), "the full file moved aside");
+        let kept = std::fs::read_to_string(dir.path().join("cards.jsonl.1")).unwrap();
+        assert!(kept.contains("first"), "the previous generation is kept");
+
+        append_line(&path, "{\"card_id\":\"after\"}").unwrap();
+        let body = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(body.lines().count(), 1);
+        assert!(body.contains("after"));
     }
 
     #[cfg(unix)]

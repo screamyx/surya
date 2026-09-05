@@ -43,9 +43,11 @@ pub(crate) fn text(
     let value = clip(&resolve_string(&r.state.data, &ctx.scope, text), MAX_TEXT_CHARS);
     let runs = parse_inline(&value);
     let (size, line, weight, color) = match variant {
-        TextVariant::H1 => (24.0, 30.0, FontWeight::SEMIBOLD, theme.text),
-        TextVariant::H2 => (20.0, 26.0, FontWeight::SEMIBOLD, theme.text),
-        TextVariant::H3 => (17.0, 24.0, FontWeight::SEMIBOLD, theme.text),
+        // A card heading sits inside a 14px body, so the ladder starts at
+        // 20, not the page's 24 (critic round 2, C4).
+        TextVariant::H1 => (20.0, 26.0, FontWeight::SEMIBOLD, theme.text),
+        TextVariant::H2 => (18.0, 24.0, FontWeight::SEMIBOLD, theme.text),
+        TextVariant::H3 => (16.0, 22.0, FontWeight::SEMIBOLD, theme.text),
         TextVariant::H4 => (15.0, 22.0, FontWeight::SEMIBOLD, theme.text),
         TextVariant::H5 => (14.0, 20.0, FontWeight::MEDIUM, theme.text),
         TextVariant::Body => (14.0, 20.0, FontWeight::NORMAL, theme.text),
@@ -58,7 +60,9 @@ pub(crate) fn text(
             sans: theme.font_sans.clone(),
             mono: theme.font_mono.clone(),
             color,
-            code_color: if ctx.ink.is_some() { color } else { theme.code_text },
+            // Code runs share the text's ink: the tint is for a word, not a
+            // block of paths (critic round 2, C1).
+            code_color: color,
             code_wash: theme.code_wash,
             weight,
         },
@@ -405,10 +409,8 @@ pub(crate) fn bar_chart(
     if items.is_empty() {
         return r.fallback_box(&format!("BarChart: no data at {abs}"));
     }
-    let scale = max
-        .filter(|m| *m > 0.0)
-        .unwrap_or_else(|| items.iter().map(|(v, _)| *v).fold(0.0, f64::max))
-        .max(f64::EPSILON);
+    let peak = items.iter().map(|(v, _)| *v).fold(0.0, f64::max);
+    let scale = max.filter(|m| *m > 0.0).unwrap_or(peak).max(f64::EPSILON);
     div()
         .flex()
         .flex_row()
@@ -433,7 +435,16 @@ pub(crate) fn bar_chart(
                         .h(px(BAR_MAX_HEIGHT))
                         .flex()
                         .items_end()
-                        .child(div().w_full().h(px(h)).rounded(px(3.0)).bg(theme.solid)),
+                        // The tallest bar carries the ink; the rest sit back so
+                        // the headline number stays the brightest thing on the
+                        // card (critic round 2, C2).
+                        .child(div().w_full().h(px(h)).rounded(px(3.0)).bg(
+                            if peak > 0.0 && value >= peak {
+                                theme.text
+                            } else {
+                                theme.text_muted
+                            },
+                        )),
                 )
                 .child(
                     div()

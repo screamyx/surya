@@ -219,17 +219,26 @@ pub fn prepare_in(root: &Path, options: &SuryaOptions, cwd: &str) -> Option<Sury
     })
 }
 
+/// How much of the tail of the card store one lookup reads.
+///
+/// The card being looked up was written moments ago, so it is at the very
+/// end. Reading the whole file per card event made every lookup cost the
+/// length of the run; this bounds it. A card pushed out of this window by a
+/// burst is simply not found, and the caller falls back to showing the tool
+/// chip - a missing card, never a wrong one.
+const CARD_TAIL_BYTES: u64 = 1 << 20;
+
 /// Read back the card the sidecar recorded for one `show_card` tool call.
 ///
 /// The store is append-only JSON lines and a card is looked up by the
 /// `tool_use_id` the sidecar stamped on it, so the match is exact: no
 /// ordering guess, no parsing of the tool result text. The scan runs backwards
-/// because the card just written is the last line.
+/// over the tail because the card just written is the last line.
 pub fn read_card(store: &Path, tool_use_id: &str) -> Option<zeron_proto::AgentEvent> {
     if tool_use_id.is_empty() {
         return None;
     }
-    let body = std::fs::read_to_string(store).ok()?;
+    let body = read_tail(store, CARD_TAIL_BYTES).ok()?;
     let record: Value = body
         .lines()
         .rev()
@@ -240,6 +249,29 @@ pub fn read_card(store: &Path, tool_use_id: &str) -> Option<zeron_proto::AgentEv
         surface_id: record["surface_id"].as_str()?.to_string(),
         tool_use_id: tool_use_id.to_string(),
         a2ui: record["a2ui"].as_array()?.clone(),
+    })
+}
+
+/// The last `bytes` of `path` as text, whole lines only.
+///
+/// A byte window can land mid-character and mid-line, so the first partial
+/// line is dropped: the caller parses lines, and half a line is not a record.
+fn read_tail(path: &Path, bytes: u64) -> std::io::Result<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    if len <= bytes {
+        let mut body = String::new();
+        file.read_to_string(&mut body)?;
+        return Ok(body);
+    }
+    file.seek(SeekFrom::Start(len - bytes))?;
+    let mut raw = Vec::with_capacity(bytes as usize);
+    file.read_to_end(&mut raw)?;
+    let body = String::from_utf8_lossy(&raw).into_owned();
+    Ok(match body.find('\n') {
+        Some(at) => body[at + 1..].to_owned(),
+        None => String::new(),
     })
 }
 

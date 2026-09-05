@@ -4,3 +4,7 @@ dist/
 *.log
 logs/
 .lavish/
+
+# CEF proof runs (profile cache, logs, screenshots), see app/scripts/browser-xvfb-proof.sh
+/proof*/
+/app/crates/browser/Cargo.lock

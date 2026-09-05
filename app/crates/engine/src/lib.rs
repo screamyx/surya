@@ -27,6 +27,7 @@ pub mod files_watch;
 pub mod instance_lock;
 pub mod ipc;
 pub mod local_import;
+pub mod mail;
 pub mod profile;
 pub mod registry;
 pub mod repos;
@@ -52,6 +53,7 @@ pub use diff_sync::{
 };
 pub use doc_host::{ChatDocHandle, DocHost, DocHostConfig, EdgeConfig};
 pub use instance_lock::InstanceLock;
+pub use mail::{Mail, MailIngress, MailIngressPaths, MailMessage, MailReceipt, MailState};
 pub use profile::EngineProfile;
 pub use registry::{HarnessDescriptor, HarnessRegistry, default_registry};
 pub use repos::{CheckoutIdentity, Repos, worktree_branch_from_title};
@@ -82,6 +84,8 @@ pub enum EngineError {
     Journal(#[from] run_journal::JournalError),
     #[error("store: {0}")]
     Store(#[from] zeron_sync::StoreError),
+    #[error("mail: {0}")]
+    Mail(#[from] mail::MailStoreError),
     #[error("harness: {0}")]
     Harness(#[from] zeron_harness::HarnessError),
     #[error("io: {0}")]
@@ -141,6 +145,8 @@ impl EngineConfig {
 /// and the in-process (headed) mode.
 pub struct EngineCore {
     pub sessions: SessionsEngine,
+    /// Agent mail: one table, delivery into the recipient's next turn.
+    pub mail: Mail,
     pub doc_host: DocHost,
     pub workspace: WorkspaceHost,
     pub registry: Arc<HarnessRegistry>,
@@ -164,6 +170,10 @@ pub struct EngineCore {
     updater: std::sync::Mutex<Option<zeron_update::Updater>>,
     /// The updater's token-change wake forwarder — owned so shutdown can end it.
     updater_wake: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Mail ingress listeners (socket + jsonl), started by
+    /// [`EngineCore::start_mail_ingress`]. Held here so they live as long as
+    /// the engine and stop with it.
+    mail_ingress: std::sync::Mutex<Option<MailIngress>>,
     /// Exclusive data-dir lock — held for the engine's lifetime (single-instance).
     _instance_lock: InstanceLock,
 }
@@ -310,8 +320,18 @@ impl EngineCore {
             turn_diff.note_turn_start(chat_id, cwd);
         }));
         let spaces_sync = SpacesSync::start(repos.clone(), workspace.clone(), &device_id);
+        // Mail rides the profile's store root, a sibling of the docs database,
+        // so it inherits the same local/synced boundary.
+        let mail = Mail::open(
+            profile.store_root(),
+            &device_id,
+            sessions.clone(),
+            doc_host.clone(),
+        )?;
+        mail.start_pump();
         Ok(Self {
             sessions,
+            mail,
             doc_host,
             workspace,
             registry,
@@ -325,6 +345,7 @@ impl EngineCore {
             device_id,
             local_import,
             workspace_scope: profile.scope(),
+            mail_ingress: std::sync::Mutex::new(None),
             auth: std::sync::Mutex::new(None),
             links: std::sync::Mutex::new(None),
             updater: std::sync::Mutex::new(None),
@@ -439,6 +460,20 @@ impl EngineCore {
         zeron_rpc::HostRelay::spawn(config, self.rpc_service(), on_nudge)
     }
 
+    /// Open the mail channel the surya-mcp seat writes to: a unix socket at
+    /// `$XDG_RUNTIME_DIR/surya/mail.sock` and an appended `~/.surya/mail.jsonl`.
+    ///
+    /// Started by the runtime, never by [`EngineCore::assemble`]: the socket
+    /// path is per-user, not per-engine, so a test assembling its own core in a
+    /// temp dir must not race the real one for it.
+    pub fn start_mail_ingress(&self, paths: MailIngressPaths) {
+        let ingress = MailIngress::start(self.mail.clone(), paths);
+        *self
+            .mail_ingress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(ingress);
+    }
+
     pub fn rpc_service(&self) -> Arc<EngineRpc> {
         let mut rpc = EngineRpc::new(
             self.sessions.clone(),
@@ -453,7 +488,8 @@ impl EngineCore {
             self.agent_accounts.clone(),
             self.workspace_scope,
         )
-        .with_auth(self.auth());
+        .with_auth(self.auth())
+        .with_mail(self.mail.clone());
         if let Some(links) = self.links() {
             rpc = rpc.with_links(links);
         }
@@ -481,6 +517,14 @@ impl EngineCore {
     /// kill live PTYs, stamp our workspace `lastSeenAt`, and flush every open doc
     /// snapshot.
     pub async fn shutdown(&self) {
+        // Mail first: its pump and its ingress listeners hold `Mail` clones,
+        // and those reach the sessions engine and the doc host. A live pump
+        // keeps the whole graph alive after the runtime is replaced.
+        self.mail.shutdown().await;
+        self.mail_ingress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
         self.sessions.shutdown().await;
         self.terminals.shutdown();
         self.agent_accounts.shutdown();
@@ -769,6 +813,9 @@ impl Engine {
             )?,
         };
         core.set_auth(auth.clone());
+        // Mail from the surya-mcp seat. Paths come from the environment, so a
+        // second engine on the same machine is the one that owns the socket.
+        core.start_mail_ingress(MailIngressPaths::detect());
         if edge_enabled {
             // Release checker: polls {edge}/releases on a 6h cadence; headless
             // installs with ZERON_AUTO_UPDATE=1 apply + restart themselves — gated
