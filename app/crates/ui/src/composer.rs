@@ -5757,15 +5757,15 @@ impl Composer {
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
                 this.on_permission_key(event, cx)
             }))
-            // The same tokens the question panel uses, not a second set of
-            // literals that says the same thing today and drifts tomorrow.
-            .rounded(px(crate::surya::COMPOSER_RADIUS))
+            // Comet's literals, because that is what the question panel two
+            // functions down uses since #82 put comet's look back. Kept
+            // line-for-line identical to it on purpose: this panel mirrors
+            // that one, and `crate::surya` is unreferenced now by design.
+            .rounded(px(26.0))
             .border_1()
             .border_color(theme.border)
             .bg(theme.input_glass_bg())
-            .when(!theme.is_frost(), |el| {
-                el.shadow(crate::surya::shadow(crate::surya::ELEVATION_FLOAT, &theme))
-            })
+            .when(!theme.is_frost(), |el| el.shadow_lg())
             .flex()
             .flex_col()
             .child(
