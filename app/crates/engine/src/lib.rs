@@ -246,7 +246,8 @@ impl EngineCore {
         // Always-allow rules are per-device and never synced (see rules.rs),
         // so they ride the engine data dir beside the harness prefs.
         let agent_states = agent_states::AgentStates::new(rules::AllowRules::open(data_dir));
-        let sessions = SessionsEngine::new(device_id.clone(), journal, registry.clone(), agent_states);
+        let sessions =
+            SessionsEngine::new(device_id.clone(), journal, registry.clone(), agent_states);
         let doc_host = DocHost::new(
             store.clone(),
             DocHostConfig {
@@ -729,6 +730,7 @@ impl Engine {
         Ok(EngineInfo {
             device_id: load_or_create_device_id(&config.data_dir)?,
             workspace_scope,
+            build: Some(zeron_proto::build::current()),
         })
     }
 

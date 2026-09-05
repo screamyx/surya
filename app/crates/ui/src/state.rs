@@ -554,6 +554,7 @@ async fn query_engine_info(client: &RpcClient) -> Result<EngineInfo, RpcError> {
             Ok(EngineInfo {
                 device_id: legacy.device_id,
                 workspace_scope: WorkspaceScope::Synced,
+                build: None,
             })
         }
         Err(err) => Err(err),
@@ -651,6 +652,11 @@ pub struct AppState {
     /// Fixed data boundary of the attached engine. Authentication may change
     /// in place, but changing this scope requires assembling a new runtime.
     pub workspace_scope: Option<WorkspaceScope>,
+    /// Set on attach when the engine was built from a different commit than
+    /// this app (`zeron_proto::build::skew`); the shell shows it as a banner.
+    /// Nothing is refused: a mismatched engine may still work, the user just
+    /// gets the reason when it does not.
+    pub engine_skew: Option<String>,
     /// Auth stream value; `None` until the engine reports one (M4).
     pub auth: Option<AuthState>,
     pub devices: Vec<Device>,
@@ -746,6 +752,7 @@ impl AppState {
         Self {
             connection: ConnectionStatus::Connecting,
             workspace_scope: None,
+            engine_skew: None,
             auth: None,
             devices: Vec::new(),
             connectivity: zeron_proto::Connectivity::default(),
@@ -1502,6 +1509,11 @@ impl AppState {
         let engine_info = handle.engine_info();
         self.workspace_scope = Some(engine_info.workspace_scope);
         self.local_device_id = Some(engine_info.device_id.clone());
+        self.engine_skew =
+            zeron_proto::build::skew(&zeron_proto::build::current(), engine_info.build.as_ref());
+        if let Some(message) = &self.engine_skew {
+            tracing::warn!(target: "zeron_ui::engine", %message, "engine build does not match this app");
+        }
         self.engine = Some(handle.clone());
         self.reconnect_attempts = 0;
         let mut watch_tasks = Vec::with_capacity(8);
@@ -2199,9 +2211,9 @@ fn spawn_subagent_watch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeron_rpc::connect_ws;
     use chrono::TimeDelta;
     use zeron_engine::{EngineCore, default_registry};
+    use zeron_rpc::connect_ws;
     // `SessionStatus` is only needed to build the fixtures below — the module
     // itself derives everything through `zeron_proto::view`.
     use zeron_proto::{SessionStatus, UserProfile};
@@ -2409,6 +2421,7 @@ mod tests {
                 engine_info: EngineInfo {
                     device_id: "owner-device".into(),
                     workspace_scope: WorkspaceScope::Local,
+                    build: None,
                 },
                 state: state_rx,
             }),

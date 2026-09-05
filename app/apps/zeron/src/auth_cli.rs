@@ -200,6 +200,9 @@ pub async fn status(config: EngineConfig) -> anyhow::Result<()> {
             Err(err) => println!("Token:    unavailable ({err})"),
         }
     }
+    // The stamp a client compares against (`zeron_proto::build::skew`); an
+    // app that shows the skew banner names this line's value.
+    println!("Build:    {}", zeron_proto::build::current().label());
     if !account.healthy {
         std::process::exit(1);
     }

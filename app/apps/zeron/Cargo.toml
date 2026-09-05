@@ -17,6 +17,7 @@ required-features = ["browser"]
 
 [dependencies]
 zeron-engine.workspace = true
+zeron-proto.workspace = true
 zeron-rpc.workspace = true
 zeron-ui.workspace = true
 zeron-update.workspace = true

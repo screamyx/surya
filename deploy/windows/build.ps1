@@ -12,6 +12,7 @@ Output: dist\surya-windows\ (zeron.exe, surya.cmd, VERSION.txt) and
 param(
     [switch]$NoBuild,
     [string]$Sha = "",
+    [string]$CommitTime = "",
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 )
 $ErrorActionPreference = "Stop"
@@ -21,6 +22,9 @@ $dist = Join-Path $Root "dist\surya-windows"
 if (-not $env:HOME) { $env:HOME = $env:USERPROFILE }
 
 if (-not $NoBuild) {
+    # A tarball checkout has no .git: hand the stamp to crates/proto/build.rs.
+    if ($Sha) { $env:ZERON_BUILD_SHA = $Sha }
+    if ($CommitTime) { $env:ZERON_BUILD_COMMIT_TIME = $CommitTime }
     Write-Host "== building the app (release)"
     Push-Location $app
     try {

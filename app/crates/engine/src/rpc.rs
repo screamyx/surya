@@ -484,6 +484,7 @@ impl EngineRpc {
         let engine_info = EngineInfo {
             device_id: doc_host.device_id().to_string(),
             workspace_scope,
+            build: Some(zeron_proto::build::current()),
         };
         Self {
             sessions,

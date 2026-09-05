@@ -20,6 +20,10 @@ pub enum WorkspaceScope {
 pub struct EngineInfo {
     pub device_id: String,
     pub workspace_scope: WorkspaceScope,
+    /// The commit the engine was built from. Absent on engines from before
+    /// the stamp existed; clients treat that as older.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<crate::build::BuildInfo>,
 }
 
 #[cfg(test)]
@@ -46,6 +50,7 @@ mod tests {
         let info = EngineInfo {
             device_id: "device-1".into(),
             workspace_scope: WorkspaceScope::Local,
+            build: None,
         };
         assert_eq!(
             serde_json::to_value(&info).unwrap(),
