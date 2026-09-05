@@ -400,8 +400,8 @@ pub struct ThemeSelection {
 impl Default for ThemeSelection {
     fn default() -> Self {
         Self {
-            light: "surya-light".into(),
-            dark: "surya-dark".into(),
+            light: "zeron-light".into(),
+            dark: "zeron-dark".into(),
         }
     }
 }
@@ -554,12 +554,12 @@ impl ThemeRegistry {
         self.variant(selection.variant_id(appearance))
             .or_else(|| {
                 self.variant(if appearance.is_dark() {
-                    "surya-dark"
+                    "zeron-dark"
                 } else {
-                    "surya-light"
+                    "zeron-light"
                 })
             })
-            .expect("the built-in registry always contains both Surya variants")
+            .expect("the built-in registry always contains both Zeron variants")
     }
 
     pub fn validate(&self) -> Vec<ValidationIssue> {
@@ -822,15 +822,71 @@ mod tests {
         assert!(errors.is_empty(), "{errors:#?}");
     }
 
-    /// The fork's own pair must exist, be the shipped default, and hold the
-    /// contrast the taste doctrine asks for: off-black on warm white, never
-    /// pure #000 on pure #fff.
+    /// Comet's own pair is the shipped default again (owner order, 2026-09-05
+    /// 19:25: "just revert back the gui to how zeron's comet look"). The surya
+    /// pair stays in the registry and stays selectable, so a revert of this
+    /// revert is one line.
     #[test]
-    fn surya_is_the_default_pair_and_holds_its_contrast() {
+    fn zeron_is_the_default_pair() {
         let registry = ThemeRegistry::builtin();
         let selection = ThemeSelection::default();
-        assert_eq!(selection.light, "surya-light");
-        assert_eq!(selection.dark, "surya-dark");
+        assert_eq!(selection.light, "zeron-light");
+        assert_eq!(selection.dark, "zeron-dark");
+        assert!(registry.variant("zeron-light").is_some());
+        assert!(registry.variant("zeron-dark").is_some());
+        // Still shipped, still pickable in Appearance, just not the default.
+        assert!(registry.variant("surya-light").is_some());
+        assert!(registry.variant("surya-dark").is_some());
+
+        // The contrast floors follow the default pair rather than staying
+        // pinned to surya. They were written against surya because surya was
+        // the default; the point was always "whatever ships must be legible".
+        //
+        // These are comet's own numbers, measured and printed, not targets.
+        // The floors sit just under the worst value each role actually holds,
+        // so the test catches a palette that drifts without pretending comet
+        // clears a bar it does not:
+        //
+        //   role   worst   where              WCAG
+        //   body   11.84   light canvas       AAA, twice over
+        //   muted   5.45   light canvas       AA
+        //   faint   3.90   light canvas       UNDER AA (4.5)
+        //   accent  6.09   dark panel         AA
+        //
+        // `text_faint` misses AA on the light canvas, and the canvas is the
+        // sidebar column, which carries real text - session rows and their
+        // sub-lines. That is comet's value, unmodified since the import
+        // commit, and the owner's 2026-09-05 order is comet's look. It is
+        // recorded here rather than raised, so the next person to touch the
+        // palette sees the number instead of discovering it.
+        for id in ["zeron-light", "zeron-dark"] {
+            let variant = registry.variant(id).expect("zeron variant is built in");
+            let colors = &variant.colors;
+            for (plane, surface) in [
+                ("panel", colors.background),
+                ("card", colors.card),
+                ("canvas", colors.shell),
+            ] {
+                let body = colors.text.contrast(surface);
+                let muted = colors.text_muted.contrast(surface);
+                let faint = colors.text_faint.contrast(surface);
+                println!("{id} {plane}: body={body:.2} muted={muted:.2} faint={faint:.2}");
+                assert!(body >= 11.0, "{id}: text on {plane} {body:.2}:1 under 11:1");
+                assert!(muted >= 5.0, "{id}: muted on {plane} {muted:.2}:1 under 5:1");
+                assert!(faint >= 3.8, "{id}: faint on {plane} {faint:.2}:1 under 3.8:1");
+            }
+            let accent = variant.accent.primary.contrast(colors.background);
+            println!("{id} accent={accent:.2}");
+            assert!(accent >= 4.5, "{id}: accent {accent:.2}:1 under AA");
+        }
+    }
+
+    /// The fork's own pair must hold the contrast the taste doctrine asks for:
+    /// off-black on warm white, never pure #000 on pure #fff. It is no longer
+    /// the default, but it is still shipped, so it is still held to this.
+    #[test]
+    fn surya_pair_holds_its_contrast() {
+        let registry = ThemeRegistry::builtin();
 
         for id in ["surya-light", "surya-dark"] {
             let variant = registry.variant(id).expect("surya variant is built in");
