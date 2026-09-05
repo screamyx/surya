@@ -54,16 +54,33 @@ The self-test spaces its sixty wheel events with gpui's 16 ms timer, so on Windo
 
 ## Baseline, main with #85 (zero-copy) in, PR #86 instruments
 
-Not measured yet.
-Fill from the `selftest:` lines, one row per run, exact numbers.
+Measured 01:10 to 01:14 on 2026-09-06 by seat `surya-browser-perf2`.
+Build: tree `d5234ca` (main after #85, with #86 merged in; osprey's merge commit on `feat/browser-perf`), release, `E:\surya-perf-target`, dtry session 1, one run at a time, GUI slot from surya-cef3.
+On this tree the pump's default is the pool timer (`browser: pump base=8ms timer=pool`), `SURYA_PUMP_TIMER=clock` selects #86's clock, and CEF's frame rate is whatever the tree sets without PR 2's `display.rs` (no `browser: frame rate` line is printed).
+Logs: `E:\surya-perf-runs\<run>.out.log` on dtry, copies in `/tmp/perf2-runs/` on the build box.
+Lines from `docs/perf/dtry/lines.py`, exact:
+
+| run | switch | line |
+| --- | --- | --- |
+| scroll | default (pool) | `SCROLL loaded=1 wheel asked=60 sent=60 over 1817ms cef_frames=117 app_frames=120 pump_timer=pool pump_ms=8 p2d n=117 median=4.2ms p90=8.4ms max=9.5ms` |
+| anim | default (pool) | `ANIM loaded=1 over 2000ms cef_frames=121 app_frames=122 pump_timer=pool pump_ms=8 p2d n=120 median=4.2ms p90=9.1ms max=10.1ms` |
+| timer | default (pool) | `TIMER asked=16ms x30 gpui median=30.8ms min=16.1ms max=31.5ms \| ours median=30.9ms min=29.9ms max=31.7ms pump_timer=pool` |
+| timer | `SURYA_PUMP_TIMER=clock` | `TIMER asked=16ms x30 gpui median=30.9ms min=16.0ms max=31.7ms \| ours median=16.3ms min=16.0ms max=16.7ms pump_timer=clock` |
+| idle | default (pool), still page | `idle: pid=27412 cpu_ms=594 over 40s = 1.5% of one core` (from `idle-base.launch.log`) |
+
+The same numbers in the comparison's shape:
 
 | run | switch | cef frames | app frames | timer median (gpui / ours) | p2d median / p90 / max |
 | --- | --- | --- | --- | --- | --- |
-| scroll | default | | | | |
-| scroll | `SURYA_PUMP_TIMER=pool` | | | | |
-| anim | default | | | | |
-| anim | `SURYA_PUMP_TIMER=pool` | | | | |
-| timer | default | | | | |
+| scroll | default (pool) | 117 | 120 | | 4.2 / 8.4 / 9.5 ms |
+| anim | default (pool) | 121 | 122 | | 4.2 / 9.1 / 10.1 ms |
+| timer | default (pool) | | | 30.8 / 30.9 ms | |
+| timer | `SURYA_PUMP_TIMER=clock` | | | 30.9 / 16.3 ms | |
+| idle | default (pool) | | | | 1.5% of one core over 40 s |
+
+Read against haktui's first row (pool timer, CEF cap 60: 108 / 64): surya's baseline paints at the same CEF rate and renders every paint (120 app frames for 117 CEF frames), so the app side is already ahead of haktui's before any lever moves.
+The 30.9 ms timer is the Windows thread-pool tick haktui measured; #86's clock brings it to 16.3 ms on this box, the same as haktui's own clock.
+The dtry screen reports 175 Hz (PR 2's rehearsal line above), not the 120 Hz written at the top of this file.
 
 ## After each change
 
