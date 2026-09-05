@@ -50,7 +50,7 @@ loro = "1.13"
 # frames, cross-checked by its js_snapshots tests).
 loro-protocol = "0.3"
 
-# gpui — screamyx/gpui-surya, branch surya/external-texture at 3a1800e42e:
+# gpui — screamyx/gpui-surya, branch surya/external-texture at a07e9577ec:
 # additive owned Windows D3D11 ExternalTexture paint entry over f910653.
 # CEF activation remains opt-in (SURYA_BROWSER_ZERO_COPY=1 in its integration);
 # this pin alone adds no caller. Proof: docs/probes/external-texture/README.md.
@@ -80,14 +80,14 @@ loro-protocol = "0.3"
 # stopped vending CABackdropLayer for Selection — window blur went dead);
 # b68970e rasterizes BackdropBlur in the wgpu renderer (frosted floats on
 # Linux — the Metal path's snapshot/blur/composite, ported).
-gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "3a1800e42e5ae1f765e7aa9aa64bd69b14c757b9" }
-gpui_platform = { git = "https://github.com/screamyx/gpui-surya", rev = "3a1800e42e5ae1f765e7aa9aa64bd69b14c757b9", features = [
+gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "a07e9577ec788feb73c06fe7e307a3df8adaa895" }
+gpui_platform = { git = "https://github.com/screamyx/gpui-surya", rev = "a07e9577ec788feb73c06fe7e307a3df8adaa895", features = [
     "wayland",
     "x11",
     "font-kit",
     "runtime_shaders",
 ] }
-gpui_tokio = { git = "https://github.com/screamyx/gpui-surya", rev = "3a1800e42e5ae1f765e7aa9aa64bd69b14c757b9" }
+gpui_tokio = { git = "https://github.com/screamyx/gpui-surya", rev = "a07e9577ec788feb73c06fe7e307a3df8adaa895" }
 
 # diffs
 similar = "2"
