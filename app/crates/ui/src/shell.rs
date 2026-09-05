@@ -1171,6 +1171,8 @@ pub struct Shell {
     debug_gate: Option<GatePhase>,
     debug_upload: Option<String>,
     debug_cards: Option<String>,
+    /// The demo chat has been inserted at least once this session.
+    demo_cards_seeded: bool,
     sidebar_tween: Option<WidthTween>,
     right_tween: Option<WidthTween>,
     /// Mirrors `right_tween` only for takeover entry/exit, allowing the visible
@@ -1424,6 +1426,7 @@ impl Shell {
             debug_gate,
             debug_upload,
             debug_cards,
+            demo_cards_seeded: false,
             sidebar_tween: None,
             right_tween: None,
             right_takeover_content_tween: None,
@@ -1507,53 +1510,67 @@ impl Shell {
         // pending attachment and freeze upload progress at <pct>, so the
         // thumbnail progress ring can be styled/screenshotted (a real upload
         // is too fast to pause).
-        // The seed waits for the chat list (a fresh boot's `apply_chats`
-        // drops any selection it does not know) and re-arms whenever a
-        // later chat frame drops it again: the demo chat is not in the
-        // engine's list, so it is re-inserted alongside.
+        // Capture knob: `ZERON_DEMO_CARDS=<dir>` seeds a fake `demo-cards`
+        // chat with one assistant turn per fixture. The engine's chat list
+        // never carries that row, so every `apply_chats` drops it (and the
+        // selection with it); `demo_seed_step` decides per frame whether to
+        // put it back, and only the first seed or a dropped selection takes
+        // the window. Re-arming whenever the selection moved undid `+` and
+        // sidebar clicks and sent prompts to the fake chat (surya-remote,
+        // 2026-09-05).
         if let Some(dir) = self.debug_cards.clone() {
-            let (synced, lost) = {
+            let step = {
                 let s = state.read(cx);
-                (
+                demo_seed_step(
                     s.chats_synced,
-                    s.selected_chat.as_deref() != Some("demo-cards"),
+                    self.demo_cards_seeded,
+                    s.chats.iter().any(|c| c.id == DEMO_CARDS_CHAT),
+                    s.selected_chat.as_deref(),
                 )
             };
-            if synced && lost {
-                let entries = crate::cards::demo_entries(std::path::Path::new(&dir));
-                tracing::info!(target: "surya_a2ui", asked = entries.len(), dir = %dir, "demo cards seeded");
+            if let DemoSeed::Insert { select } = step {
+                self.demo_cards_seeded = true;
+                let entries =
+                    select.then(|| crate::cards::demo_entries(std::path::Path::new(&dir)));
+                tracing::info!(
+                    target: "surya_a2ui",
+                    asked = entries.as_ref().map_or(0, Vec::len),
+                    select,
+                    dir = %dir,
+                    "demo cards seeded"
+                );
                 state.update(cx, |s, cx| {
-                    if !s.chats.iter().any(|c| c.id == "demo-cards") {
-                        s.chats.insert(
-                            0,
-                            zeron_proto::Chat {
-                                id: "demo-cards".into(),
-                                device_id: s
-                                    .local_device_id
-                                    .clone()
-                                    .unwrap_or_else(|| "local".into()),
-                                title: Some("A2UI cards demo".into()),
-                                archived: false,
-                                cwd: None,
-                                branch: None,
-                                checkout_id: None,
-                                source_context: None,
-                                config: None,
-                                last_message_preview: None,
-                                last_message_at: None,
-                                created_at: chrono::Utc::now(),
-                                harness_session_id: None,
-                                harness_session_cwd: None,
-                                space_id: None,
-                                last_seen_at: None,
-                                room_gen: Default::default(),
-                            },
-                        );
+                    s.chats.insert(
+                        0,
+                        zeron_proto::Chat {
+                            id: DEMO_CARDS_CHAT.into(),
+                            device_id: s
+                                .local_device_id
+                                .clone()
+                                .unwrap_or_else(|| "local".into()),
+                            title: Some("A2UI cards demo".into()),
+                            archived: false,
+                            cwd: None,
+                            branch: None,
+                            checkout_id: None,
+                            source_context: None,
+                            config: None,
+                            last_message_preview: None,
+                            last_message_at: None,
+                            created_at: chrono::Utc::now(),
+                            harness_session_id: None,
+                            harness_session_cwd: None,
+                            space_id: None,
+                            last_seen_at: None,
+                            room_gen: Default::default(),
+                        },
+                    );
+                    if let Some(entries) = entries {
+                        s.auto_selected = true;
+                        s.selected_chat = Some(DEMO_CARDS_CHAT.into());
+                        s.transcript = entries;
+                        s.transcript_replayed = true;
                     }
-                    s.auto_selected = true;
-                    s.selected_chat = Some("demo-cards".into());
-                    s.transcript = entries;
-                    s.transcript_replayed = true;
                     cx.notify();
                 });
             }
@@ -8355,9 +8372,60 @@ impl Render for Shell {
     }
 }
 
+/// The fake chat `ZERON_DEMO_CARDS` shows its fixtures in.
+const DEMO_CARDS_CHAT: &str = "demo-cards";
+
+/// What the `ZERON_DEMO_CARDS` knob does on one frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DemoSeed {
+    Skip,
+    /// Put the demo row back; `select` also moves the window onto it.
+    Insert { select: bool },
+}
+
+/// The demo row is re-inserted only when the chat sync dropped it, and it
+/// takes the window only on the first seed or when nothing else is selected:
+/// a user who clicked another chat, or pressed `+`, keeps what they chose.
+fn demo_seed_step(
+    synced: bool,
+    seeded_before: bool,
+    row_present: bool,
+    selected: Option<&str>,
+) -> DemoSeed {
+    if !synced || row_present {
+        return DemoSeed::Skip;
+    }
+    let select = !seeded_before || matches!(selected, None | Some(DEMO_CARDS_CHAT));
+    DemoSeed::Insert { select }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `ZERON_DEMO_CARDS` must not undo the user's clicks (surya-remote,
+    /// 2026-09-05): one row per case, `asked=6 passed=6`.
+    #[test]
+    fn demo_seed_re_arms_only_when_the_row_vanished() {
+        use DemoSeed::*;
+        // (synced, seeded_before, row_present, selected) -> step
+        let cases = [
+            ((false, false, false, None), Skip, "before the chat list lands"),
+            ((true, false, false, Some("real")), Insert { select: true }, "first seed takes the window"),
+            ((true, true, true, Some("real")), Skip, "user clicked another chat: leave it"),
+            ((true, true, true, None), Skip, "user pressed +: leave it"),
+            ((true, true, false, None), Insert { select: true }, "sync dropped row and selection: restore both"),
+            ((true, true, false, Some("real")), Insert { select: false }, "sync dropped the row while the user is elsewhere: row only"),
+        ];
+        let asked = cases.len();
+        let mut passed = 0;
+        for ((synced, seeded, present, selected), want, why) in cases {
+            assert_eq!(demo_seed_step(synced, seeded, present, selected), want, "{why}");
+            passed += 1;
+        }
+        eprintln!("demo seed cases asked={asked} passed={passed}");
+        assert_eq!(passed, asked);
+    }
 
     #[test]
     fn every_default_shortcut_binds_on_this_platform() {
