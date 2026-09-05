@@ -215,10 +215,15 @@ pub fn navigate(typed: &str) {
         tabs::tab_open(&url);
         return;
     }
+    // The page says "loading" only once a load is really issued: marking it
+    // first and then finding no frame left `loading` true for good, and
+    // every later agent op sat out its settle bound on it.
+    let Some(frame) = client::browser().and_then(|b| b.main_frame()) else {
+        println!("browser: navigate to {url} dropped: the active tab has no frame yet");
+        return;
+    };
     tabs::update_active(|p| p.begin_navigation(&url));
-    if let Some(frame) = client::browser().and_then(|b| b.main_frame()) {
-        frame.load_url(Some(&CefString::from(url.as_str())));
-    }
+    frame.load_url(Some(&CefString::from(url.as_str())));
     pump::schedule_pump(0);
 }
 

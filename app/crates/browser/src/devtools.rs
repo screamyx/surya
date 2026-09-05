@@ -151,6 +151,7 @@ fn forget_browser(id: i32) {
 pub(crate) fn on_before_close(id: i32) {
     forget_browser(id);
     REGISTRATIONS.with(|r| r.borrow_mut().retain(|(b, _)| *b != id));
+    crate::agent::on_close(id);
     crate::emulation::forget(id);
     crate::scheme::forget(id);
 }
