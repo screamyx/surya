@@ -7,7 +7,7 @@
 //! pending-input detection) lives in free functions/structs with unit tests;
 //! the gpui element only feeds them measurements.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -3497,6 +3497,22 @@ impl Composer {
         state.update(cx, |state, _| {
             state.composer_focus = Some(wizard_focus.clone());
         });
+        // ...and only to the live one. AppState outlives a closed window
+        // (`ReopenState` holds it), so a handle left behind here would focus
+        // a window that is gone. A newer composer may already have published
+        // its own, so only withdraw the handle if it is still ours.
+        {
+            let state = state.clone();
+            let mine = wizard_focus.clone();
+            cx.on_release(move |_, cx| {
+                state.update(cx, |state, _| {
+                    if state.composer_focus.as_ref() == Some(&mine) {
+                        state.composer_focus = None;
+                    }
+                });
+            })
+            .detach();
+        }
         let input = cx.new(|cx| {
             let mut input = ComposerInput::new("Do anything…", cx);
             input.enable_mentions();
@@ -5510,10 +5526,15 @@ impl Composer {
                 let transcript = composer.state.read(cx).transcript.clone();
                 let still_pending = pending_input_request(&transcript)
                     .is_some_and(|(pending_id, _)| pending_id == request_id);
-                let un_hidden = composer
-                    .state
-                    .update(cx, |state, _| state.answered_requests.remove(&request_id));
-                if still_pending && un_hidden {
+                // Short-circuit on purpose: `remove` must not run unless the
+                // request is STILL pending. Dropping the mark while the doc
+                // has not synced `resolved` reopens the sheet on an already
+                // answered question - a second RespondInput one click away.
+                if still_pending
+                    && composer
+                        .state
+                        .update(cx, |state, _| state.answered_requests.remove(&request_id))
+                {
                     cx.notify();
                 }
             })
