@@ -265,41 +265,54 @@ fn title_row_seed(cx: &App) -> f32 {
 }
 
 /// Measured, not assumed: after the clear, one line per key context says
-/// whether its probe key is bound (`asked=1 bound=N`, RUST_LOG=info). A boot-
-/// time `bind_keys` outside this function is discarded by the clear, which is
-/// how the files editor lost Enter once (PR #91).
-fn log_keymap_proof(cx: &App, keymap: &KeymapConfig) {
-    let probe = |context: &str, combo: &str, action: &str| {
+/// whether its probe key is bound to the expected action IN that context
+/// (`asked=1 bound=N`, RUST_LOG=info). `all_bindings_for_input` ignores the
+/// context predicate, so it is checked here: a binding in the wrong context
+/// counts as not bound. A boot-time `bind_keys` outside `apply_keymap` is
+/// discarded by the clear, which is how the files editor lost Enter (PR #91).
+fn log_keymap_proof(cx: &App, toggle_terminal: &str, toggle_files: &str) {
+    let probe = |context: Option<&str>, combo: &str, action: &str| {
         let Ok(keystroke) = Keystroke::parse(combo) else {
-            tracing::warn!(target: "surya_keys", context, combo, "probe combo does not parse");
+            tracing::warn!(target: "surya_keys", ?context, combo, "probe combo does not parse");
             return;
         };
         let bound = cx
             .all_bindings_for_input(&[keystroke])
             .iter()
             .filter(|b| b.action().name().ends_with(action))
+            .filter(|b| match (context, b.predicate()) {
+                (Some(ctx), Some(pred)) => format!("{pred:?}").contains(ctx),
+                (None, None) => true,
+                _ => false,
+            })
             .count();
+        let context = context.unwrap_or("global");
         tracing::info!(target: "surya_keys", context, combo, action, asked = 1, bound, "keymap applied");
     };
-    probe("Composer", "enter", "Submit");
-    probe("FilesEditor", "enter", "Newline");
-    probe("Shell", &platform_combo(&keymap.toggle_terminal), "ToggleTerminal");
-    probe("Shell", &platform_combo(&keymap.toggle_files), "ToggleFiles");
+    probe(Some("Composer"), "enter", "Submit");
+    probe(Some("FilesEditor"), "enter", "Newline");
+    probe(None, toggle_terminal, "ToggleTerminal");
+    probe(None, toggle_files, "ToggleFiles");
 }
 
 /// (Re-)apply the whole app keymap: clears every binding, restores the composer
 /// map, then binds the customizable shortcuts from `keymap` (feature-inventory
 /// §1.4). Invalid persisted combos fall back to that shortcut's default.
-pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
-    fn valid_or_default(combo: &str, fallback: &str) -> String {
-        let candidate = platform_combo(combo);
-        if Keystroke::parse(&candidate).is_ok() {
-            candidate
-        } else {
-            tracing::warn!(%combo, "unparseable shortcut combo; using default");
-            platform_combo(fallback)
-        }
+/// A persisted combo if gpui can parse it, else that shortcut's default.
+fn valid_or_default(combo: &str, fallback: &str) -> String {
+    let candidate = platform_combo(combo);
+    if Keystroke::parse(&candidate).is_ok() {
+        candidate
+    } else {
+        tracing::warn!(%combo, "unparseable shortcut combo; using default");
+        platform_combo(fallback)
     }
+}
+
+pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
+    // Resolved once so the binder and the proof below probe the same value.
+    let toggle_files = valid_or_default(&keymap.toggle_files, "mod-shift-f");
+    let toggle_terminal = valid_or_default(&keymap.toggle_terminal, "mod-j");
     cx.clear_key_bindings();
     crate::composer::init(cx);
     // The files editor's context rides on the composer's actions and has to
@@ -321,7 +334,7 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ),
         KeyBinding::new(
-            &valid_or_default(&keymap.toggle_files, "mod-shift-f"),
+            &toggle_files,
             ToggleFiles,
             None,
         ),
@@ -336,7 +349,7 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ),
         KeyBinding::new(
-            &valid_or_default(&keymap.toggle_terminal, "mod-j"),
+            &toggle_terminal,
             ToggleTerminal,
             None,
         ),
@@ -385,7 +398,7 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ))
     }));
-    log_keymap_proof(cx, keymap);
+    log_keymap_proof(cx, &toggle_terminal, &toggle_files);
 }
 
 /// The settings sections (feature-inventory §1.5 routes).

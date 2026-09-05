@@ -29,6 +29,11 @@ pub use tree::{FileTreeView, TreeEvent};
 /// Enter inserts a newline and nothing submits. Call once at app start,
 /// after `composer::init`.
 pub fn init(cx: &mut gpui::App) {
+    cx.bind_keys(files_key_bindings());
+}
+
+/// The FilesEditor keymap as data, so a test can read it without an `App`.
+pub fn files_key_bindings() -> Vec<KeyBinding> {
     use composer::*;
     let ctx = Some("FilesEditor");
     let mut bindings = vec![
@@ -94,7 +99,7 @@ pub fn init(cx: &mut gpui::App) {
         SelectWordRight,
         ctx,
     ));
-    cx.bind_keys(bindings);
+    bindings
 }
 
 /// Tree on the left, editor on the right, one space.
@@ -153,5 +158,40 @@ impl Render for FilesPane {
                     .child(self.tree.clone()),
             )
             .child(div().flex_1().min_w_0().h_full().child(self.editor.clone()))
+    }
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+    use gpui::{Action as _, Keystroke};
+
+    #[test]
+    fn enter_is_newline_in_the_files_editor_context() {
+        // `KeyBinding::new` panics on an unparseable combo, so building the
+        // table is itself the parse check.
+        let bindings = files_key_bindings();
+        let enter = Keystroke::parse("enter").unwrap();
+        let hits: Vec<&KeyBinding> = bindings
+            .iter()
+            .filter(|b| {
+                b.keystrokes()
+                    .iter()
+                    .map(|k| k.inner().clone())
+                    .collect::<Vec<_>>()
+                    == vec![enter.clone()]
+            })
+            .collect();
+        println!("files keys: bindings={} enter_hits={}", bindings.len(), hits.len());
+        assert_eq!(hits.len(), 1, "exactly one Enter binding");
+        assert_eq!(hits[0].action().name(), composer::Newline.name());
+        let predicate = format!("{:?}", hits[0].predicate());
+        assert!(predicate.contains("FilesEditor"), "{predicate}");
+        assert!(
+            bindings
+                .iter()
+                .all(|b| format!("{:?}", b.predicate()).contains("FilesEditor")),
+            "every files binding is scoped to the FilesEditor context"
+        );
     }
 }
