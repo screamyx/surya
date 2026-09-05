@@ -8,7 +8,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use gpui::{actions, prelude::*, App, Context, KeyBinding, KeyDownEvent, Window};
+use gpui::{actions, prelude::*, App, Context, Focusable as _, KeyBinding, KeyDownEvent, Window};
 
 use super::{backend, BrowserPane};
 

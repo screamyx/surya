@@ -99,9 +99,3 @@ pub fn set_page_focus(on: bool) {
 pub fn panel(focus: &gpui::FocusHandle) -> gpui::AnyElement {
     surya_browser::panel(focus)
 }
-
-/// No CEF in this process: the strip and the bar still draw, and the page
-/// area is a placeholder. This is how the pane is shot without Chromium.
-pub fn disabled() -> bool {
-    surya_browser::disabled()
-}

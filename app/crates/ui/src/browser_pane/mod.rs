@@ -33,8 +33,8 @@ mod tabs;
 mod zoom;
 
 use gpui::{
-    div, prelude::*, px, AnyElement, App, Context, Entity, FocusHandle, Render, SharedString,
-    Subscription, Window,
+    div, prelude::*, px, AnyElement, App, Context, Entity, FocusHandle, Focusable as _, Render,
+    SharedString, Subscription, Window,
 };
 
 use crate::composer::{ComposerInput, ComposerInputEvent};

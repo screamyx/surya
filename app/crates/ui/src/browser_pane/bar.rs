@@ -5,7 +5,7 @@
 //! and the palette searches use, wrapped in the border and background the
 //! settings dialogs give a text field. Nothing here is hand-drawn text.
 
-use gpui::{div, prelude::*, px, App, Context, Entity, SharedString, Window};
+use gpui::{div, prelude::*, px, App, Context, Entity, Focusable as _, SharedString, Window};
 
 use crate::composer::ComposerInput;
 use crate::icons::{self, icon};

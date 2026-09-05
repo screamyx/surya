@@ -4,7 +4,7 @@
 //! CEF does the searching (`BrowserHost::find`); this draws the reading its
 //! find handler publishes onto the page snapshot.
 
-use gpui::{div, prelude::*, px, Context, Entity, SharedString, Window};
+use gpui::{div, prelude::*, px, Context, Entity, Focusable as _, SharedString, Window};
 
 use crate::composer::ComposerInput;
 use crate::icons::{self, icon};

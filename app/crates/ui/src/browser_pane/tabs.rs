@@ -60,6 +60,11 @@ fn one(
         .cursor_pointer()
         .when(is_active, |el| el.bg(theme.surface_raised))
         .when(!is_active, |el| el.hover(|s| s.bg(theme.element_hover)))
+        // A tab that is still loading says so, the way a spinner does in
+        // Chrome, without a spinner's cost on an offscreen browser.
+        .when(tab.loading, |el| {
+            el.child(div().size(px(6.0)).flex_none().rounded_full().bg(theme.busy))
+        })
         .child(
             div()
                 .flex_1()
@@ -83,16 +88,16 @@ fn one(
                 .hover(|s| s.bg(theme.element_active))
                 .child(icon(icons::CLOSE).size(px(10.0)).text_color(theme.text_muted))
                 .on_click(cx.listener(move |this, _, _, cx| {
-                    this.close_tab_from_strip(id, cx);
+                    this.close(id, cx);
                     cx.stop_propagation();
                 })),
         )
-        .on_click(cx.listener(move |this, _, _, cx| this.activate_from_strip(id, cx)))
+        .on_click(cx.listener(move |this, _, _, cx| this.activate(id, cx)))
         // A middle click closes a tab, as it does in every browser.
         .on_mouse_down(
             MouseButton::Middle,
             cx.listener(move |this, _, _, cx| {
-                this.close_tab_from_strip(id, cx);
+                this.close(id, cx);
                 cx.stop_propagation();
             }),
         )
