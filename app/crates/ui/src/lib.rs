@@ -17,6 +17,8 @@ pub mod appearance;
 pub mod attachments;
 pub mod badges;
 pub mod cards;
+#[cfg(test)]
+mod cards_e2e;
 pub mod change_requests;
 pub mod changes;
 pub mod comments;
