@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- Proof page for browser-scheme-proof.sh: the whole page is white under a
+     light colour scheme and black under a dark one, so a frame dump's mean
+     luminance says which prefers-color-scheme the page saw. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>prefers-color-scheme probe</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #fff; color: #fff; }
+  body::after { content: "prefers-color-scheme: light"; font: 24px sans-serif; position: fixed; left: 24px; top: 24px; }
+  @media (prefers-color-scheme: dark) {
+    html, body { background: #000; color: #000; }
+    body::after { content: "prefers-color-scheme: dark"; }
+  }
+</style>
+</head>
+<body></body>
+</html>

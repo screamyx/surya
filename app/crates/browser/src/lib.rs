@@ -103,9 +103,18 @@ fn helper_path() -> Option<std::path::PathBuf> {
     path.is_file().then_some(path)
 }
 
+/// The appearance the page should see through `prefers-color-scheme`.
+/// The shell resolves its theme first and hands the answer to [`start`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorScheme {
+    Light,
+    Dark,
+}
+
 /// Start CEF and open the one offscreen browser. Call once, inside
-/// `Application::run`, before the window opens.
-pub fn start(cx: &mut gpui::App) {
+/// `Application::run`, before the window opens. `scheme` is the app's
+/// resolved appearance; the page's `prefers-color-scheme` follows it.
+pub fn start(cx: &mut gpui::App, scheme: ColorScheme) {
     if disabled() {
         println!("browser: SURYA_NO_BROWSER is set, the pane is a placeholder");
         return;
@@ -113,6 +122,7 @@ pub fn start(cx: &mut gpui::App) {
     if STARTED.swap(true, Ordering::AcqRel) {
         panic!("surya_browser::start called twice");
     }
+    cef_app::set_color_scheme(scheme);
     let _ = api_hash(cef::sys::CEF_API_VERSION_LAST, 0);
     let args = Args::new();
     let cache = cache_dir();

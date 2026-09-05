@@ -184,9 +184,18 @@ pub fn run_app(config: UiConfig) {
         terminal::panel::init(cx);
         app_menus::init(cx);
         // CEF before the window: one browser per process, pumped from the
-        // shell's render and an idle chain (surya-browser).
+        // shell's render and an idle chain (surya-browser). After
+        // `appearance::init` so the page's `prefers-color-scheme` matches
+        // the theme the shell resolved.
         #[cfg(feature = "browser")]
-        surya_browser::start(cx);
+        surya_browser::start(
+            cx,
+            if theme::Theme::of(cx).appearance.is_dark() {
+                surya_browser::ColorScheme::Dark
+            } else {
+                surya_browser::ColorScheme::Light
+            },
+        );
         cx.register_url_scheme("zeron").detach();
 
         let state = cx.new(|_| state::AppState::new());
