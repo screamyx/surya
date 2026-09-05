@@ -113,7 +113,7 @@ if ($Browser) {
     $distLocales = Join-Path $dist "locales"
     New-Item -ItemType Directory -Force -Path $distLocales | Out-Null
     Get-ChildItem $locales -File | ForEach-Object { Copy-Item $_.FullName $distLocales -Force }
-    Copy-Item (Join-Path $PSScriptRoot "CEF-LICENSE.txt") $dist
+    Copy-Item (Join-Path $PSScriptRoot "..\CEF-LICENSE.txt") $dist
     $m = [regex]::Match((Get-Content (Join-Path $release "archive.json") -Raw), 'cef_binary_([^+]+)\+g[0-9a-f]+\+chromium-([0-9.]+)')
     if (-not $m.Success) { throw "archive.json beside the exe does not name a cef_binary_<cef>+g<hash>+chromium-<version> archive" }
     $cefVersion = "CEF $($m.Groups[1].Value), Chromium $($m.Groups[2].Value)"

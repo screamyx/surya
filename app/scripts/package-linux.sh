@@ -4,13 +4,24 @@
 # containing the binary, the .desktop entry, and the icon, plus an install.sh
 # that drops them into ~/.local (XDG) paths.
 #
-# Usage: scripts/package-linux.sh
+# Usage: scripts/package-linux.sh [--browser]
+#   --browser  build with the CEF browser pane (cargo feature `browser`) and
+#              ship Chromium's runtime files and zeron-browser-helper beside
+#              the binary. Mirrors deploy/windows/build.ps1 -Browser: every
+#              name below is required, and a missing one stops the build
+#              rather than producing a tarball whose Chromium dies at
+#              start-up. Needs CEF_PATH set to the directory the cef crate
+#              downloads CEF into (app/crates/browser/README.md).
 # Env:   PROFILE=debug for a fast unoptimized package (CI smoke); default release.
+#        CARGO=<path>  the cargo to call (this box throttles through
+#                      /store/surya-cargo).
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO="$(cd "$ROOT/.." && pwd)"
 command -v cargo >/dev/null 2>&1 || PATH="$HOME/.cargo/bin:$PATH"
+CARGO="${CARGO:-cargo}"
 PROFILE="${PROFILE:-release}"
 ARCH="$(uname -m)"
 VERSION="$(grep -m1 '^version' "$ROOT/Cargo.toml" | sed 's/.*"\(.*\)".*/\1/')"
@@ -18,14 +29,37 @@ OUT_DIR="$ROOT/target/package"
 STAGE="$OUT_DIR/zeron-$VERSION-linux-$ARCH"
 TARBALL="$STAGE.tar.gz"
 
-cd "$ROOT"
-if [[ "$PROFILE" == "release" ]]; then
-  cargo build --release -p zeron
-  BIN="$ROOT/target/release/zeron"
-else
-  cargo build -p zeron
-  BIN="$ROOT/target/debug/zeron"
+BROWSER=0
+for arg in "$@"; do
+  case "$arg" in
+    --browser) BROWSER=1 ;;
+    *) echo "unknown argument: $arg (usage: package-linux.sh [--browser])" >&2; exit 2 ;;
+  esac
+done
+
+if [[ "$BROWSER" == 1 && -z "${CEF_PATH:-}" ]]; then
+  echo "--browser needs CEF_PATH (a directory the cef crate downloads CEF into, once);" >&2
+  echo "unset, it would re-download 1.4 GB into the build dir" >&2
+  exit 1
 fi
+
+cd "$ROOT"
+FEATURES=()
+[[ "$BROWSER" == 1 ]] && FEATURES=(--features browser)
+if [[ "$PROFILE" == "release" ]]; then
+  "$CARGO" build --release -p zeron "${FEATURES[@]}"
+  BUILT="$ROOT/target/release"
+else
+  "$CARGO" build -p zeron "${FEATURES[@]}"
+  BUILT="$ROOT/target/debug"
+fi
+# CARGO_TARGET_DIR moves the whole thing; the CEF runtime is copied there by
+# the cef crate's build script, so both must be read from the same place.
+if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+  BUILT="$CARGO_TARGET_DIR/$([[ "$PROFILE" == "release" ]] && echo release || echo debug)"
+fi
+BIN="$BUILT/zeron"
+[[ -x "$BIN" ]] || { echo "no binary at $BIN" >&2; exit 1; }
 
 rm -rf "$STAGE" "$TARBALL"
 mkdir -p "$STAGE"
@@ -34,6 +68,71 @@ install -m 644 "$ROOT/dist/zeron.desktop" "$STAGE/zeron.desktop"
 install -m 644 "$ROOT/dist/zeron.png" "$STAGE/zeron.png"
 mkdir -p "$STAGE/licenses/fonts"
 cp "$ROOT/crates/ui/assets/fonts/licenses/"* "$STAGE/licenses/fonts/"
+
+CEF_VERSION=""
+if [[ "$BROWSER" == 1 ]]; then
+  # The cef crate's build script copied Chromium's runtime files next to the
+  # binary; CEF loads them from the binary's own folder (the zeron binary
+  # carries an $ORIGIN rpath under this feature, apps/zeron/build.rs), so the
+  # tarball carries the same set. Every name is required: a missing one is a
+  # Chromium that fails at start-up, not a smaller tarball. CREDITS.html is
+  # Chromium's third-party notices; archive.json names the exact CEF and
+  # Chromium build that was downloaded.
+  CEF_REQUIRED=(
+    zeron-browser-helper
+    libcef.so
+    libEGL.so libGLESv2.so
+    libvk_swiftshader.so vk_swiftshader_icd.json libvulkan.so.1
+    chrome-sandbox
+    chrome_100_percent.pak chrome_200_percent.pak resources.pak
+    icudtl.dat v8_context_snapshot.bin
+    CREDITS.html archive.json
+  )
+  MISSING=()
+  for name in "${CEF_REQUIRED[@]}"; do
+    [[ -e "$BUILT/$name" ]] || MISSING+=("$name")
+  done
+  if (( ${#MISSING[@]} > 0 )); then
+    echo "browser runtime incomplete in $BUILT: missing ${MISSING[*]}" >&2
+    echo "(build with --browser and CEF_PATH set, not from a plain build)" >&2
+    exit 1
+  fi
+  LOCALE_COUNT=$(find "$BUILT/locales" -maxdepth 1 -name '*.pak' -type f 2>/dev/null | wc -l)
+  if (( LOCALE_COUNT < 1 )); then
+    echo "browser runtime incomplete: no *.pak in $BUILT/locales" >&2
+    exit 1
+  fi
+  for name in "${CEF_REQUIRED[@]}"; do
+    cp -a "$BUILT/$name" "$STAGE/$name"
+  done
+  # chrome-sandbox is Chromium's SUID helper. It ships mode 0755; install.sh
+  # offers to make it root-owned 4755, which is what lets the renderer
+  # sandbox come up on a box where unprivileged user namespaces are denied
+  # (app/crates/browser/src/sandbox.rs).
+  chmod 755 "$STAGE/chrome-sandbox"
+  mkdir -p "$STAGE/locales"
+  cp -a "$BUILT/locales/." "$STAGE/locales/"
+  cp "$REPO/deploy/CEF-LICENSE.txt" "$STAGE/CEF-LICENSE.txt"
+  CEF_VERSION=$(sed -n 's/.*cef_binary_\([^+]*\)+g[0-9a-f]*+chromium-\([0-9.]*\).*/CEF \1, Chromium \2/p' "$BUILT/archive.json" | head -1)
+  if [[ -z "$CEF_VERSION" ]]; then
+    echo "archive.json beside the binary does not name a cef_binary_<cef>+g<hash>+chromium-<version> archive" >&2
+    exit 1
+  fi
+  echo "== browser: $CEF_VERSION; shipped ${#CEF_REQUIRED[@]} required files, $LOCALE_COUNT locales, CEF-LICENSE.txt"
+fi
+
+{
+  echo "surya linux app"
+  echo "version: $VERSION"
+  echo "arch: $ARCH"
+  echo "built: $(date -Iseconds) on $(hostname)"
+  echo "run: ./zeron (or ./install.sh, then zeron)"
+  if [[ "$BROWSER" == 1 ]]; then
+    echo "browser pane: yes, $CEF_VERSION, BSD-3-Clause (CEF-LICENSE.txt, CREDITS.html)"
+  else
+    echo "browser pane: no"
+  fi
+} > "$STAGE/VERSION.txt"
 
 cat >"$STAGE/install.sh" <<'INSTALL'
 #!/usr/bin/env bash
@@ -45,6 +144,20 @@ install -Dm644 "$HERE/zeron.desktop" "$HOME/.local/share/applications/zeron.desk
 install -Dm644 "$HERE/zeron.png" "$HOME/.local/share/icons/hicolor/1024x1024/apps/zeron.png"
 command -v update-desktop-database >/dev/null 2>&1 \
   && update-desktop-database "$HOME/.local/share/applications" || true
+
+# The browser pane runs each web page in a sandboxed process. On most systems
+# that needs nothing: Chromium builds the sandbox itself out of user
+# namespaces. Where those are switched off, Chromium instead needs this small
+# helper to be owned by root, which is the one step that asks for a password.
+# Skipping it is safe: the app checks at start-up and says which it used.
+if [ -f "$HERE/chrome-sandbox" ] && [ "${ZERON_SKIP_SANDBOX_SETUP:-}" != "1" ]; then
+  if command -v sudo >/dev/null 2>&1; then
+    echo "Setting up the browser sandbox helper (asks for your password)."
+    sudo chown root:root "$HERE/chrome-sandbox" && sudo chmod 4755 "$HERE/chrome-sandbox" \
+      && echo "Sandbox helper ready." \
+      || echo "Skipped. The app will use user namespaces instead, or tell you if it cannot."
+  fi
+fi
 echo "Installed. Make sure ~/.local/bin is on your PATH."
 INSTALL
 chmod 755 "$STAGE/install.sh"
@@ -52,4 +165,5 @@ chmod 755 "$STAGE/install.sh"
 tar -czf "$TARBALL" -C "$OUT_DIR" "$(basename "$STAGE")"
 rm -rf "$STAGE"
 echo "packaged: $TARBALL"
-tar -tzf "$TARBALL"
+tar -tzf "$TARBALL" | head -40
+echo "entries: $(tar -tzf "$TARBALL" | wc -l)"

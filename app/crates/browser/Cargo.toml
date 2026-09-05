@@ -20,3 +20,6 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # target into CEF_PATH (or OUT_DIR) and copies the runtime files next to the
 # binaries in the target dir; see README.md.
 cef = "151.8.0"
+# The user-namespace probe in sandbox.rs: fork + unshare(CLONE_NEWUSER).
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
