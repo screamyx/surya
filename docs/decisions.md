@@ -339,6 +339,24 @@ Context: the owner saw the RC2 preview screens and did not like the surya look (
 - Owner: surya-theme, branch fix/comet-look, before the 2026-09-06 11:45 freeze; proof = side-by-side with upstream comet at the import commit.
 - Amended 19:32, owner verbatim: "the new gui should look like zeron's comet, but with our feature built in". So comet's own elements keep comet's exact shape, including its rounded glass question panel that replaces the composer (states had found it is comet's, not ours); permissions mirror that panel. What goes is only what surya added on top: the needs-you cards over the transcript, the surya chrome and tokens. The 19:26 "box/modal, remove them" refers to those additions.
 
+## 27. Zero-copy stays off; the frame-rate work targets the clock and the present cadence
+
+Coordinator ruling (raven), 2026-09-05 21:13, under the owner's 06:17 autonomy order; the owner read the advice at 20:50 and said "fold your recommendation on the zero-copy".
+
+Measured on the owner's RTX 4080 (PR #85, docs/probes/windows-zero-copy-2026-09-05.md), same animating page, 45 to 50 s each:
+
+| path | main-thread cost per frame |
+|---|---|
+| zero-copy on (GPU copy inside CEF's paint callback) | avg 1.39 ms, max 10.38 ms |
+| zero-copy off (CPU copy + upload, the shipping path) | avg 0.13 ms, max 0.41 ms |
+
+The cost of the new path is the wait for the GPU to finish the copy. CEF's contract forces that wait (cef_render_handler.h 161-167: the pooled texture cannot be touched after the callback returns). The seat's probe showed its own texture-to-texture copy on the same context waits as long, so the stall is GPU scheduling across three contexts, not something the app can skip. At the RC pane size (518x786, about 1.6 MB a frame) the CPU copy is trivial. Neither path is where frames go missing at 120 Hz (8.3 ms budget).
+
+- PR #85 merges with `SURYA_BROWSER_ZERO_COPY` default OFF. The mechanism stays in the tree as the proven fallback with its counters and probe.
+- No more seat time on zero-copy before the RC. The remaining post-RC items on it: `passed()` treats any error HRESULT as device-lost (d3d11.rs:194); the fork's four minor notes from gpui-surya#1.
+- The frame-rate work (surya-browser-perf, then the Codex gpt-6-astra xhigh seat) targets the levers haktui's spike measured (haktui docs/spike-scroll-frame-rate-2026-08-28.md): own high-resolution frame clock (Windows thread-pool timers tick at 15.6 ms, so a 16 ms timer fires every 31 ms), CEF windowless frame rate = display rate, DXGI maximum frame latency 1 via a second fork PR, then presenting on the vsync beat. Baseline first: shown frames out of 120 on the owner's machine, measured with #86's instruments on main with #85 in, before any lever moves. The xhigh seat's brief names the cadence gap as its target, not the copy.
+- Zero-copy earns its keep only at large pane sizes: the CPU path grows with pixel count (a 4K pane is about 33 MB a frame, several ms), the GPU wait does not. If the browser pane ever fills a 4K display, turn the flag on by pane size. Post-RC item.
+
 ## Open
 
 None at day zero.
