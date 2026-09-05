@@ -7370,6 +7370,15 @@ impl Shell {
                         .rounded(px(4.0))
                         .relative()
                         .hover(|s| s.bg(crate::theme::wash(0.12)))
+                        // The tab itself starts a drag on mouse-down plus a
+                        // few pixels of travel, and a hand that moves while
+                        // clicking the ✕ turned the close into a drag: the
+                        // ghost followed the cursor and the click never
+                        // fired. Swallowing the left press here keeps the
+                        // drag off the close slot (Zed's tab pattern).
+                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                            cx.stop_propagation();
+                        })
                         .on_click(cx.listener(move |this, _, window, cx| {
                             cx.stop_propagation();
                             this.close_right_surface(surface, window, cx);
