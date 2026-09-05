@@ -142,6 +142,20 @@ const COMMAND_LINE_ENGINE_HINT: &str = if cfg!(windows) {
     "This server was set by --engine or ZERON_ENGINE. Start zeron without it to use this computer."
 };
 
+/// Is the Needs you page on screen?
+///
+/// Two conditions, and the second is not an afterthought. `inbox_pane` returns
+/// None until an engine exists, so `render_main` cannot put the page up in an
+/// engine-less window; without asking that here, the rail would un-light Home
+/// and light Needs you for a page nobody can see.
+///
+/// The page opens only when the user asks for it. It used to open itself
+/// whenever anything was waiting, which is how the queue came to be drawn over
+/// the conversation (owner, 2026-09-05 19:26: "the box/modal, remove them").
+fn needs_you_page_up(shown: Option<bool>, pane_built: bool) -> bool {
+    shown == Some(true) && pane_built
+}
+
 fn stable_panel_content_width(target: f32, transition: Option<(f32, f32)>) -> f32 {
     transition.map(|(from, to)| from.max(to)).unwrap_or(target)
 }
@@ -2035,7 +2049,7 @@ impl Shell {
     /// asks for it, from the rail entry or its shortcut; the badge on that
     /// entry is what says something is waiting.
     fn inbox_visible(&self, _cx: &App) -> bool {
-        self.inbox_shown == Some(true)
+        needs_you_page_up(self.inbox_shown, self.inbox_pane.is_some())
     }
 
     /// How many things are waiting, 0 before the pane exists.
@@ -4381,6 +4395,13 @@ impl Shell {
                 )
                 .on_click(
                     cx.listener(|this, _, _, cx| {
+                        // Home has to be able to get you home. Un-lighting it
+                        // while the Needs you page is up made it look like the
+                        // way back; closing the right pane is not, because
+                        // with the page up there may be no right pane at all.
+                        if this.inbox_visible(cx) {
+                            this.inbox_shown = Some(false);
+                        }
                         if this.right_pane_open(cx) {
                             this.toggle_right_pane(cx);
                         }
@@ -8884,6 +8905,33 @@ mod tests {
         // Files and Tasks: a space, whatever the sync state.
         assert!(!pane_knob_ready("files", true, false));
         assert!(pane_knob_ready("tasks", false, true));
+    }
+
+    /// The rail highlight had no test and shipped a bug twice: Home stayed lit
+    /// beside a lit Needs you, and an engine-less window lit Needs you for a
+    /// page that cannot exist. Both are this predicate. asked=6 passed=6.
+    #[test]
+    fn the_needs_you_page_is_up_only_when_asked_for_and_buildable() {
+        // (shown, pane_built) -> up
+        let cases = [
+            ((None, true), false, "never opened"),
+            ((Some(false), true), false, "closed by the user"),
+            ((Some(true), true), true, "opened by the user"),
+            // No engine, so inbox_pane() gave None and render_main has no page
+            // to mount. The rail must agree with the main area.
+            ((Some(true), false), false, "asked for, but no engine to build it"),
+            ((Some(false), false), false, "closed, no engine"),
+            ((None, false), false, "never opened, no engine"),
+        ];
+        let mut asked = 0;
+        let mut passed = 0;
+        for ((shown, built), want, why) in cases {
+            asked += 1;
+            let got = needs_you_page_up(shown, built);
+            assert_eq!(got, want, "{why}: shown={shown:?} built={built}");
+            passed += 1;
+        }
+        assert_eq!((asked, passed), (6, 6), "asked={asked} passed={passed}");
     }
 
     #[test]
