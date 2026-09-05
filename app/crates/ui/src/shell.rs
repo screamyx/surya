@@ -2585,6 +2585,16 @@ impl Shell {
             return pane.clone();
         }
         let pane = cx.new(crate::browser_pane::BrowserPane::new);
+        // The device picker (surya-browser-cdp) fills the slot at the end of
+        // the address row; #81 left it for exactly this.
+        pane.update(cx, |pane, cx| {
+            pane.set_right_slot(
+                Some(Box::new(|_window, cx| {
+                    crate::browser_device::picker(crate::theme::Theme::of(cx)).into_any_element()
+                })),
+                cx,
+            )
+        });
         self.browser_pane = Some(pane.clone());
         pane
     }

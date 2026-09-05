@@ -17,6 +17,13 @@ pub fn is_card_tool(name: &str) -> bool {
     name == "show_card" || name.ends_with("__show_card")
 }
 
+/// The browser screenshot tool: not a card tool (its chip stays), but the
+/// sidecar records the picture as a card in the same store, and the
+/// transcript shows it as its own row after the chip (`{tool_use_id}:shot`).
+pub fn is_screenshot_tool(name: &str) -> bool {
+    name == "browser_screenshot" || name.ends_with("__browser_screenshot")
+}
+
 /// Whether this call's own input carries a card worth drawing.
 ///
 /// RAW A2UI always does, even a lone `createSurface`: the protocol allows

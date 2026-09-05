@@ -252,6 +252,22 @@ pub struct EngineHandle {
     inner: Arc<dyn EngineBackend>,
     engine_info: EngineInfo,
     deferred_state: Option<tokio::sync::watch::Receiver<DeferredEngineState>>,
+    /// The token this handle actually dialed with, whatever its source: the
+    /// remote target's, the daemon's, or the embedded engine's own config.
+    ///
+    /// Anything that has to prove itself to THIS engine has to use THIS
+    /// token. Reading a file out of the app's own data dir instead is right
+    /// only when the app embedded the engine, and silently wrong on remote
+    /// and on Windows, where the app and the engine are different machines.
+    dialed_token: Option<String>,
+}
+
+impl EngineHandle {
+    /// The token this handle dialed with, for callers that must authenticate
+    /// to the same engine (the browser pane's watch, for one).
+    pub fn dialed_token(&self) -> Option<&str> {
+        self.dialed_token.as_deref()
+    }
 }
 
 impl EngineHandle {
@@ -277,6 +293,9 @@ impl EngineHandle {
         }
 
         tracing::info!(data_dir = %config.data_dir.display(), "no daemon on port; embedding engine");
+        // Kept before the move into EngineConfig: an embedded engine's token
+        // is whatever this config carries, and the handle has to remember it.
+        let dialed_token_for_embedded = config.ipc_token.clone();
         let engine_config = EngineConfig {
             data_dir: config.data_dir,
             edge_url: config.edge_url,
@@ -405,6 +424,7 @@ impl EngineHandle {
             }
         });
         let handle = EngineHandle {
+            dialed_token: dialed_token_for_embedded.clone(),
             inner: Arc::new(InProcessEngine {
                 runtime,
                 boot_task,
@@ -498,6 +518,7 @@ impl EngineHandle {
             }
         });
         Ok(EngineHandle {
+            dialed_token: token.map(str::to_string),
             inner: Arc::new(RemoteEngine {
                 client,
                 url: url.to_string(),
@@ -1565,6 +1586,8 @@ impl AppState {
         self.engine = Some(handle.clone());
         self.reconnect_attempts = 0;
         let mut watch_tasks = Vec::with_capacity(8);
+        #[cfg(feature = "browser")]
+        watch_tasks.push(crate::browser_agent::spawn(cx, handle.clone(), self.data_dir.clone()));
         if let Some(task) = spawn_deferred_engine_watch(cx, handle.clone()) {
             watch_tasks.push(task);
         }

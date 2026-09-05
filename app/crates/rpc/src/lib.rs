@@ -117,6 +117,15 @@ pub mod methods {
     /// Params are tagged `{op: createChat|createSpace|renameSpace|deleteSpace|
     /// renameChat|setChatArchived|deleteChat|renameDevice|markChatSeen|
     /// createTask|updateTask|deleteTask|reorderTask, …}`.
+    // Browser pane (`zeron_engine::browser_rpc`): an agent's browser_* tool
+    // reaches the app's pane through the engine. Not relay-forwardable: the
+    // pane is on the device the app runs on.
+    /// `{op, args}` -> the pane's answer; fails when no app pane is attached.
+    pub const BROWSER_CALL: &str = "Browser.Call";
+    /// The app's stream of commands to run: `{id, op, args}` items.
+    pub const BROWSER_WATCH: &str = "Browser.Watch";
+    /// `{id, ok?, error?}` from the app for one command.
+    pub const BROWSER_REPLY: &str = "Browser.Reply";
     pub const MUTATE: &str = "Mutate";
     /// This engine's identity → `{deviceId}` (IPC-only; never relay-forwarded —
     /// the answer is about whichever engine you are directly connected to).

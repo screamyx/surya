@@ -47,10 +47,35 @@ those paths are not ported here.
 | `SURYA_BROWSER_URL` | first page (default `https://example.com`) |
 | `SURYA_CEF_GPU=1` | do not pass `--disable-gpu`; default is software rendering |
 | `SURYA_CEF_CACHE` | CEF profile dir (default `<data>/surya/cef`) |
-| `SURYA_CDP_PORT` | remote debugging port (off unless set) |
+| `SURYA_CDP_PORT` | remote debugging port for an out-of-process client during a diagnosis (off unless set; Chromium binds it to 127.0.0.1) |
 | `SURYA_PUMP_MS` | idle pump base interval, default 8 |
+
+## Agents, devices, theme: DevTools in process
+
+Everything an agent does to the page goes over the Chrome DevTools Protocol
+without a socket: `src/devtools.rs` sends `{id, method, params}` through
+CEF's `BrowserHost::send_dev_tools_message` and reads replies in a
+`DevToolsMessageObserver`, the route haktui's pin and phone mode take.
+No port is opened and no token exists because nothing outside the process
+can reach it; `SURYA_CDP_PORT` stays off by default and is not used by the
+app.
+
+- `src/agent.rs`: `browser_open`, `browser_snapshot` (`snapshot.js`, one
+  line per control with an id), `browser_click` (a real mouse click at the
+  element), `browser_type`, `browser_screenshot`, `browser_eval`. Reached
+  from surya-mcp through the engine's `Browser.Call`; the app serves the
+  pane through `Browser.Watch` / `Browser.Reply` (`zeron-ui/browser_agent.rs`).
+- `src/emulation.rs`: Desktop, iPhone 15, Pixel 8, iPad presets through
+  `Emulation.setDeviceMetricsOverride`, touch and a user agent; picked from
+  the bar (`zeron-ui/browser_device.rs`). The scale factor stays the
+  window's, as haktui found necessary under offscreen rendering.
+- `src/scheme.rs`: `set_color_scheme` sends `Emulation.setEmulatedMedia`
+  when the app's appearance changes mid-session; the start-up switch stays
+  in `cef_app.rs`.
+
+Proof scripts: `app/scripts/browser-agent-proof.sh`,
+`browser-device-proof.sh`, `browser-scheme-flip-proof.sh`.
 
 ## Not wired (kept for the next seat)
 
-`src/unwired/`: haktui's pins (`pin.rs`), phone emulation (`emulation.rs`,
-`device.rs`). Copied verbatim, not compiled.
+`src/unwired/`: haktui's pins (`pin.rs`). Copied verbatim, not compiled.

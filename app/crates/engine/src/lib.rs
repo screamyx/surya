@@ -18,6 +18,7 @@ use zeron_sync::DocsStore;
 pub mod agent_accounts;
 pub mod agent_states;
 pub mod auth;
+pub mod browser_rpc;
 pub mod change_requests;
 pub mod chat2_host;
 pub mod data_dir;
@@ -177,6 +178,10 @@ pub struct EngineCore {
     mail_ingress: std::sync::Mutex<Option<MailIngress>>,
     /// Exclusive data-dir lock — held for the engine's lifetime (single-instance).
     _instance_lock: InstanceLock,
+    /// The pane token every `Browser.*` call must carry: `{data_dir}/ipc-token`
+    /// (`crate::browser_rpc`). `None` when the file could not be made, and
+    /// then the browser broker is closed.
+    pane_token: Option<String>,
 }
 
 impl EngineCore {
@@ -347,6 +352,14 @@ impl EngineCore {
             device_id,
             local_import,
             workspace_scope: profile.scope(),
+            // `ZERON_IPC_TOKEN` first, like the socket itself (`ipc.rs`), so an
+            // engine and an app started with one token in their environment
+            // agree even across data dirs; else the data dir's file.
+            pane_token: std::env::var(crate::ipc::TOKEN_ENV)
+                .ok()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .or_else(|| crate::ipc::load_or_create_token(profile.device_root()).ok()),
             mail_ingress: std::sync::Mutex::new(None),
             auth: std::sync::Mutex::new(None),
             links: std::sync::Mutex::new(None),
@@ -491,7 +504,8 @@ impl EngineCore {
             self.workspace_scope,
         )
         .with_auth(self.auth())
-        .with_mail(self.mail.clone());
+        .with_mail(self.mail.clone())
+        .with_browser(crate::browser_rpc::BrowserRpc::new(self.pane_token.clone()));
         if let Some(links) = self.links() {
             rpc = rpc.with_links(links);
         }
