@@ -2,8 +2,9 @@
 //!
 //! Linux takes CPU pixels through `on_paint`: one BGRA copy into a
 //! `RenderImage` per paint, on CEF's thread, so the render that shows it
-//! uploads once and copies nothing. The shared-texture paths (Windows D3D11,
-//! Mac IOSurface) need haktui's gpui patch and are not ported.
+//! uploads once and copies nothing. Windows can take the GPU texture instead
+//! through `on_accelerated_paint` (`zero_copy`, behind
+//! `SURYA_BROWSER_ZERO_COPY=1`); the Mac IOSurface path is not ported.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
@@ -26,11 +27,21 @@ static VIEW_RECT_ASKS: AtomicU64 = AtomicU64::new(0);
 /// Last painted frame size, `w << 32 | h`, in device pixels.
 static LAST_SIZE: AtomicU64 = AtomicU64::new(0);
 
-/// A CEF frame: already a `RenderImage`, built once in the callback. `seq`
-/// says which paint it is, so the element can drop the previous texture.
+/// Where a frame's pixels are: in a `RenderImage` the element uploads once
+/// (the CPU path), or already on the GPU as a texture gpui's renderer opens
+/// by handle (the zero-copy path, Windows only).
+#[derive(Clone)]
+pub(crate) enum FrameSource {
+    Cpu(Arc<RenderImage>),
+    #[cfg(windows)]
+    Shared(gpui::ExternalTexture),
+}
+
+/// A CEF frame, built once in the callback. `seq` says which paint it is,
+/// so the element can drop the previous texture.
 struct FrameBuf {
     seq: u64,
-    img: Arc<RenderImage>,
+    src: FrameSource,
 }
 /// The latest frame of every browser, by CEF identifier. A parked tab keeps
 /// its last frame, so switching back to it shows something at once. Bounded
@@ -54,23 +65,23 @@ pub(crate) fn background_paints() -> u64 {
 }
 
 /// The active tab's latest frame.
-pub(crate) fn frame() -> Option<(u64, Arc<RenderImage>)> {
+pub(crate) fn frame() -> Option<(u64, FrameSource)> {
     frame_of(crate::tabs::active_browser())
 }
 
-fn frame_of(browser: i32) -> Option<(u64, Arc<RenderImage>)> {
+fn frame_of(browser: i32) -> Option<(u64, FrameSource)> {
     if browser == 0 {
         return None;
     }
-    FRAMES.lock().ok()?.as_ref()?.get(&browser).map(|f| (f.seq, f.img.clone()))
+    FRAMES.lock().ok()?.as_ref()?.get(&browser).map(|f| (f.seq, f.src.clone()))
 }
 
 /// Keep `browser`'s latest frame, dropping the oldest other one past the
 /// bound. `active` is never the one dropped.
-fn store(browser: i32, seq: u64, img: Arc<RenderImage>, active: i32) {
+fn store(browser: i32, seq: u64, src: FrameSource, active: i32) {
     let Ok(mut guard) = FRAMES.lock() else { return };
     let map = guard.get_or_insert_with(HashMap::new);
-    map.insert(browser, FrameBuf { seq, img });
+    map.insert(browser, FrameBuf { seq, src });
     while map.len() > KEPT_FRAMES {
         let oldest = map
             .iter()
@@ -202,12 +213,12 @@ wrap_render_handler! {
                 // Parked, or created and not activated yet: keep the frame
                 // for when it is shown, count it apart, move nothing else.
                 let seq = BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-                store(id, seq, img, active);
+                store(id, seq, FrameSource::Cpu(img), active);
                 return;
             }
             let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
             crate::perf::on_paint();
-            store(id, n, img, active);
+            store(id, n, FrameSource::Cpu(img), active);
             LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
             let us = t0.elapsed().as_micros() as u64;
             COPY_N.fetch_add(1, Ordering::Relaxed);
@@ -218,6 +229,48 @@ wrap_render_handler! {
                 println!("browser: on_paint #{n}: {width}x{height}, {len} bytes, copy {:.2}ms", us as f64 / 1000.0);
             }
             dump_frame(n, width as u32, height as u32, bytes);
+        }
+
+        /// The GPU twin of `on_paint`, called instead of it when the browser
+        /// was made with `shared_texture_enabled`. The texture behind `info`
+        /// is CEF's for the duration of this call only; `zero_copy` copies it
+        /// on the GPU before returning. Same bookkeeping as `on_paint`: no
+        /// slot for browser 0, a parked browser's paint is stored and counted
+        /// apart and moves nothing else.
+        fn on_accelerated_paint(
+            &self,
+            browser: Option<&mut Browser>,
+            type_: PaintElementType,
+            _dirty: Option<&[Rect]>,
+            info: Option<&AcceleratedPaintInfo>,
+        ) {
+            if type_ != PaintElementType::VIEW {
+                return;
+            }
+            let id = browser.map(|b| b.identifier()).unwrap_or(0);
+            if id == 0 {
+                return;
+            }
+            #[cfg(windows)]
+            if let Some(info) = info {
+                let Some(texture) = crate::zero_copy::on_accelerated_paint(info) else { return };
+                let active = crate::tabs::active_browser();
+                if id != active {
+                    let seq = BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+                    store(id, seq, FrameSource::Shared(texture), active);
+                    return;
+                }
+                // The texture is the visible part of the paint, not its coded size.
+                let (width, height) = texture.size();
+                let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+                crate::perf::on_paint();
+                store(id, n, FrameSource::Shared(texture), active);
+                LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
+            }
+            #[cfg(not(windows))]
+            {
+                let _ = info;
+            }
         }
     }
 }
@@ -253,9 +306,9 @@ pub(crate) fn render_handler() -> RenderHandler {
 mod tests {
     use super::*;
 
-    fn img() -> Arc<RenderImage> {
+    fn img() -> FrameSource {
         let buf: image::RgbaImage = image::ImageBuffer::from_raw(1, 1, vec![0, 0, 0, 255]).unwrap();
-        Arc::new(RenderImage::new(vec![image::Frame::new(buf)]))
+        FrameSource::Cpu(Arc::new(RenderImage::new(vec![image::Frame::new(buf)])))
     }
 
     #[test]

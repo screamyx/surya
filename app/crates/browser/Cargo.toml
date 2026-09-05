@@ -21,7 +21,19 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # binaries in the target dir; see README.md.
 cef = "151.8.0"
 
+# Zero-copy frames (`zero_copy/d3d11.rs`): this crate's own D3D11 device and
+# the GPU copy out of CEF's shared texture. Also the clock's high-resolution
+# waitable timer and the display's refresh rate (`clock.rs`, `perf.rs`). The
+# version is the one `cef` itself pulls on Windows, so the tree carries one
+# `windows` crate.
 [target.'cfg(windows)'.dependencies]
-# The clock's high-resolution waitable timer and the display's refresh rate.
-# 0.62, the same entry PR #85 (zero-copy) adds, so the crate carries one windows crate.
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Graphics_Gdi"] }
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_Threading",
+] }

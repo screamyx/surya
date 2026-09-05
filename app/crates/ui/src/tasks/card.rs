@@ -29,7 +29,7 @@ impl Render for CardGhost {
             .w(px(240.0))
             .px(px(12.0))
             .py(px(10.0))
-            .rounded(px(12.0))
+            .rounded(px(Theme::PANEL_RADIUS))
             .bg(theme.surface_card)
             .border_1()
             .border_color(theme.border_strong)
@@ -80,7 +80,7 @@ impl TasksPane {
             .gap(px(8.0))
             .px(px(12.0))
             .py(px(10.0))
-            .rounded(px(12.0))
+            .rounded(px(Theme::PANEL_RADIUS))
             .bg(theme.surface_card) // TOKEN: surya.card_bg
             .border_1()
             .border_color(if selected { accent } else { hairline(0.08) })

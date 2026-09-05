@@ -281,6 +281,10 @@ pub struct UiSettings {
     pub ui_font_size: crate::typography::UiFontSize,
     /// Independently selected light and dark theme variants.
     pub theme_selection: zeron_theme::ThemeSelection,
+    /// Bumped whenever a stored value has to be rewritten on load. A file
+    /// written before this field existed reads as 0.
+    #[serde(default)]
+    schema_version: u32,
     /// Changes pane: side-by-side diffs instead of the unified stack.
     pub diff_split: bool,
     /// Changes pane: wrap long source lines instead of scrolling horizontally.
@@ -401,6 +405,7 @@ impl Default for UiSettings {
             ui_font_family: crate::typography::UiFontFamily::default(),
             ui_font_size: crate::typography::UiFontSize::default(),
             theme_selection: zeron_theme::ThemeSelection::default(),
+            schema_version: Self::SCHEMA_VERSION,
             diff_split: false,
             diff_wrap: false,
             code_fences_fit_content: false,
@@ -811,6 +816,10 @@ pub fn badge_combo_on(mac: bool, combo: &str) -> String {
 }
 
 impl UiSettings {
+    /// Current settings-file schema. Raise it, and add a rule to
+    /// [`Self::migrated`], whenever a stored value has to be rewritten.
+    const SCHEMA_VERSION: u32 = 1;
+
     /// Clamp widths into their legal ranges (also heals NaN to defaults).
     pub fn clamped(mut self) -> Self {
         if self.sidebar_organization == SidebarOrganization::ByProject {
@@ -874,6 +883,26 @@ impl UiSettings {
             self.accent = zeron_theme::AccentSelection::Preset(accent.into());
         }
         self.legacy_accent_color = None;
+        // Schema 1: back to comet's pair.
+        //
+        // PR #2 made surya-light / surya-dark the default, and this file is
+        // written on every settings change, so every install that ran a build
+        // between then and the 2026-09-05 revert holds the surya pair
+        // explicitly - the owner's box included. Without this the chrome
+        // reverts and the colours do not, which is the worst of both.
+        //
+        // Once, and only for a file that predates the field. Anything written
+        // after this carries version 1, so choosing surya deliberately from
+        // Appearance sticks.
+        if self.schema_version < 1 {
+            if self.theme_selection.light == "surya-light" {
+                self.theme_selection.light = "zeron-light".to_string();
+            }
+            if self.theme_selection.dark == "surya-dark" {
+                self.theme_selection.dark = "zeron-dark".to_string();
+            }
+        }
+        self.schema_version = Self::SCHEMA_VERSION;
         self
     }
 
@@ -941,6 +970,7 @@ mod tests {
                 light: "catppuccin-latte".into(),
                 dark: "catppuccin-mocha".into(),
             },
+            schema_version: UiSettings::SCHEMA_VERSION,
             diff_split: true,
             diff_wrap: true,
             code_fences_fit_content: true,
@@ -953,8 +983,46 @@ mod tests {
         settings.save(dir.path()).unwrap();
         let json = std::fs::read_to_string(UiSettings::path(dir.path())).unwrap();
         assert!(json.contains(r#""diffWrap": true"#));
-        assert_eq!(UiSettings::load(dir.path()), settings);
         assert!(json.contains(r#""codeFencesFitContent": true"#));
+        assert_eq!(UiSettings::load(dir.path()), settings);
+    }
+
+    /// A settings file written while surya was the default must come back
+    /// holding comet's pair, once. Otherwise the chrome reverts and the
+    /// colours do not, on every install that ran a build between PR #2 and the
+    /// 2026-09-05 revert - the owner's included.
+    #[test]
+    fn a_pre_revert_file_maps_surya_back_to_comets_pair() {
+        let dir = tempfile::tempdir().unwrap();
+        // No schemaVersion key: exactly what those files look like.
+        std::fs::write(
+            UiSettings::path(dir.path()),
+            r#"{ "themeSelection": { "light": "surya-light", "dark": "surya-dark" } }"#,
+        )
+        .unwrap();
+
+        let loaded = UiSettings::load(dir.path());
+        assert_eq!(loaded.theme_selection.light, "zeron-light");
+        assert_eq!(loaded.theme_selection.dark, "zeron-dark");
+        assert_eq!(loaded.schema_version, UiSettings::SCHEMA_VERSION);
+    }
+
+    /// And only once. Picking surya deliberately after the revert has to
+    /// survive the next launch, or the theme list has an option that silently
+    /// undoes itself.
+    #[test]
+    fn choosing_surya_after_the_migration_sticks() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut settings = UiSettings::default();
+        settings.theme_selection = zeron_theme::ThemeSelection {
+            light: "surya-light".into(),
+            dark: "surya-dark".into(),
+        };
+        settings.save(dir.path()).unwrap();
+
+        let loaded = UiSettings::load(dir.path());
+        assert_eq!(loaded.theme_selection.light, "surya-light");
+        assert_eq!(loaded.theme_selection.dark, "surya-dark");
     }
 
     /// The Failed gate's escape buttons only help when the dialed engine is
