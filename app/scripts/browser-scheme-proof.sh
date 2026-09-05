@@ -10,8 +10,12 @@
 #
 # Same display-lock rules as browser-xvfb-proof.sh: the caller holds the lock
 # for the run only. Needs python3 (http.server + PIL for the measurement).
+# `SURYA_SCHEME_MODES="dark"` runs one mode (a rerun after a starved launch);
+# the default is both. A cold debug launch on a loaded box needs 180 s or
+# more before the pane opens (measured 2026-09-05: 150 s to load_end).
 set -u
-WAIT="${1:-30}"
+WAIT="${1:-180}"
+MODES="${SURYA_SCHEME_MODES:-light dark}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="${PROOF_OUT:-/tmp/surya-browser-scheme-proof}"
 mkdir -p "$OUT"
@@ -46,7 +50,7 @@ PY
 }
 
 ASKED=0; MATCHED=0
-for MODE in light dark; do
+for MODE in $MODES; do
   ASKED=$((ASKED + 1))
   RUN="$OUT/$MODE"
   rm -rf "$RUN"
