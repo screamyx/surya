@@ -42,7 +42,15 @@ pub fn init(cx: &mut App) {
         bindings.push(KeyBinding::new(&format!("{prefix}--"), ZoomOut, ctx));
         bindings.push(KeyBinding::new(&format!("{prefix}-0"), ZoomReset, ctx));
     }
+    println!("browser-ui: keymap asked={n} bound={n}", n = bindings.len());
     cx.bind_keys(bindings);
+}
+
+/// `SURYA_TRACE_BROWSER_UI=1` prints every key the pane's root is handed,
+/// which is how a proof run tells a chord that never matched from one that
+/// matched and did nothing.
+fn tracing() -> bool {
+    std::env::var_os("SURYA_TRACE_BROWSER_UI").is_some()
 }
 
 /// The pane's root: its key context, its action handlers, and the enter and
@@ -174,6 +182,9 @@ impl BrowserPane {
     /// context the two fields use, so they bubble to here.
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let key = event.keystroke.key.as_str();
+        if tracing() {
+            println!("browser-ui: key {:?} mods={:?}", key, event.keystroke.modifiers);
+        }
         if !matches!(key, "enter" | "escape") {
             return;
         }

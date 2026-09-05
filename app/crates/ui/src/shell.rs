@@ -280,6 +280,11 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
     }
     cx.clear_key_bindings();
     crate::composer::init(cx);
+    // The browser pane's chords live here rather than at boot: this function
+    // clears every binding and rebuilds the map, so anything bound before it
+    // runs is lost the first time the shell is built.
+    #[cfg(feature = "browser")]
+    crate::browser_pane::init(cx);
     // Fixed app-level shortcuts (Settings on every platform; ⌘Q quit, ⌘W
     // close, ⌘M minimize, ⌘H hide on macOS) — these back the native menu
     // key equivalents and must survive keymap re-application.
