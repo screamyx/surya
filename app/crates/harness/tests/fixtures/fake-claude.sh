@@ -34,6 +34,29 @@ case "$first" in
   emit '{"type":"result","subtype":"success","result":"done!","errors":[],"usage":{"input_tokens":10,"output_tokens":20},"session_id":"sess-1","total_cost_usd":0.01}'
   ;;
 
+*scenario:card-raw*)
+  # show_card carrying RAW A2UI in its input: drawable without any store.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["mcp__surya__show_card"],"cwd":"/tmp","session_id":"sess-card-raw"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_raw","name":"mcp__surya__show_card","input":{"surfaceId":"s1","components":[{"id":"root","component":"Text","text":"hi"}]}}]}}'
+  emit '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_raw","is_error":false}]}}'
+  emit '{"type":"result","subtype":"success","result":"done!","errors":[],"session_id":"sess-card-raw"}'
+  ;;
+
+*scenario:card-crash*)
+  # The agent calls show_card and dies before any result or `result` frame.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["mcp__surya__show_card"],"cwd":"/tmp","session_id":"sess-card-crash"}'
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_card_ok","name":"mcp__surya__show_card","input":{"card":{"shape":"approval","title":"Run it?"}}}]}}'
+  exit 1
+  ;;
+
+*scenario:card-subagent*)
+  # A SUBAGENT draws a card: tagged tool_use, tagged tool_result.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["mcp__surya__show_card"],"cwd":"/tmp","session_id":"sess-card-sub"}'
+  emit '{"type":"assistant","parent_tool_use_id":"sub-1","message":{"content":[{"type":"tool_use","id":"toolu_sub_card","name":"mcp__surya__show_card","input":{"surfaceId":"s1","components":[{"id":"root","component":"Text","text":"hi"}]}}]}}'
+  emit '{"type":"user","parent_tool_use_id":"sub-1","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_sub_card","is_error":false}]}}'
+  emit '{"type":"result","subtype":"success","result":"done!","errors":[],"session_id":"sess-card-sub"}'
+  ;;
+
 *scenario:card*)
   # A surya show_card call and its result, plus a second one that FAILS, plus
   # an ordinary tool: proves the Card event follows its own result, only for a
