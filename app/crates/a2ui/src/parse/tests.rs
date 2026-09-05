@@ -87,3 +87,21 @@ fn unknown_and_partial_components_degrade_not_fail() {
     assert_eq!(btn.weight, Some(2.0));
     assert!(matches!(&btn.kind, ComponentKind::Button { action: Action::None, .. }));
 }
+
+#[test]
+fn component_and_index_caps_hold() {
+    let many: Vec<Value> = (0..crate::parse::MAX_COMPONENTS + 5)
+        .map(|i| json!({"id": if i == 0 { "root".to_string() } else { format!("c{i}") }, "component": "Text", "text": "x"}))
+        .collect();
+    let card = parse_card(&json!({"components": many}));
+    assert_eq!(card.components.len(), crate::parse::MAX_COMPONENTS);
+    assert!(card.errors.iter().any(|e| e.contains("too many components")), "{:?}", card.errors);
+    assert!(card.root().is_some());
+
+    let huge = parse_card(&json!([
+        {"updateComponents": {"surfaceId": "s", "components": [{"id": "root", "component": "Text", "text": "x"}]}},
+        {"updateDataModel": {"surfaceId": "s", "path": "/x/99999999999", "value": 1}}
+    ]));
+    assert!(huge.errors.iter().any(|e| e.contains("out of bounds")), "{:?}", huge.errors);
+    assert_eq!(huge.data, json!({}));
+}
