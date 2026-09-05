@@ -287,6 +287,16 @@ Layout, from the sketches: floating rounded panels on a soft canvas. Rail card, 
 Sources: `app/` is zeronsh/comet v0.2.34 (fe35546), MIT, added as a git subtree so upstream can be pulled. Browser, editor and file tree come from `~/git/haktui` (`crates/haktui/src/browser/`, `haktui_files`, the editor column), which already build on this box and on the owner's Mac.
 Comet pins wingleeio's gpui fork for glass effects; haktui pins Zed's. Making haktui's modules build on comet's fork is the first engineering risk and the first task.
 
+## 23. The rename lands last, copies the old data dir, and skips iOS
+
+Coordinator ruling, 2026-09-05 08:20, owner asleep (autonomy order 06:17).
+The plan and the counts are in `docs/rename-zeron-to-surya.md` (PR #16): "zeron files=260 hits=2140", "ZERON_* ... 66 distinct vars, 16 user-set need the alias".
+
+- The rename is the last code change before the RC, after the last feature PR, as four commits in the order the plan gives.
+- Existing data: on first start, if the surya data dir is absent and the zeron one exists, surya COPIES it and leaves the old dir untouched. Never rename or delete a user's directory. One release later the copy step can go.
+- Every user-set `ZERON_*` variable keeps working for one release as an alias of its `SURYA_*` name; the engine logs one line when the old name is used.
+- iOS bundle id and the Cloudflare edge are out of scope for the RC; they keep the zeron names until the owner picks a domain.
+
 ## Open
 
 None at day zero.
