@@ -105,3 +105,13 @@ fn component_and_index_caps_hold() {
     assert!(huge.errors.iter().any(|e| e.contains("out of bounds")), "{:?}", huge.errors);
     assert_eq!(huge.data, json!({}));
 }
+
+#[test]
+fn bar_chart_extension_parses() {
+    let card = parse_card(&json!({"components": [
+        {"id": "root", "component": "BarChart", "values": {"path": "/series"}, "valueKey": "value", "labelKey": "label", "max": 10}
+    ], "data": {"series": [{"label": "Mon", "value": 4}]}}));
+    assert!(card.errors.is_empty());
+    assert!(matches!(&card.root().unwrap().kind, ComponentKind::BarChart { values: Dynamic::Path(p), value_key: Some(v), label_key: Some(l), max: Some(m) }
+        if p == "/series" && v == "value" && l == "label" && *m == 10.0));
+}
