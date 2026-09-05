@@ -103,6 +103,19 @@ impl NeedsYouPane {
                     .child(SharedString::from(text)),
             )
             .child(hint_chip(theme, "answer below"))
+            // Tapping the row hands the user to the sheet it points at, so
+            // the line is a way there and not just a label.
+            .cursor_pointer()
+            .hover(|s| s.border_color(theme.border_strong))
+            .on_click(cx.listener(|pane, _, window, cx| {
+                if let Some(focus) = pane
+                    .state
+                    .as_ref()
+                    .and_then(|state| state.read(cx).composer_focus.clone())
+                {
+                    window.focus(&focus, cx);
+                }
+            }))
             .into_any_element()
     }
 

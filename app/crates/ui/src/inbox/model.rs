@@ -77,8 +77,13 @@ pub const UNTITLED_CHAT: &str = "Untitled chat";
 ///   the parent transcript"). Collapsing on the chat id alone would point the
 ///   user at a sheet that is not there.
 /// - A chat the user just opened has no transcript yet for a frame or two.
-/// - An answered question keeps its row until the next `WatchNeedsYou`
-///   frame, but its sheet is resolved the moment it is answered.
+/// - An answered question keeps its row until the next `WatchNeedsYou` frame.
+///   Its sheet goes at once, but the transcript does NOT: the composer hides
+///   the panel on its own `answered_requests` set and the doc keeps returning
+///   the request until `resolved: true` syncs back (up to the composer's 2 s
+///   safety net). So the caller must subtract the answered ones before
+///   passing `open_sheet` - `AppState::answered_requests` is where that set
+///   lives, for exactly this reason.
 ///
 /// Questions only. A permission and a stopped run have no second surface, so
 /// collapsing them would leave the user with nothing to press.

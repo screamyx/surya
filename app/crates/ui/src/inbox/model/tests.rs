@@ -446,6 +446,7 @@ fn the_row_only_collapses_when_the_transcript_really_carries_its_sheet() {
         answered.as_deref()
     ));
 }
+
 /// Round 4, I3: the engine fills a question's title from the model's own
 /// header, and a model that answers "Question" leaves the card saying it
 /// twice - once in the badge, once in bold under it.
