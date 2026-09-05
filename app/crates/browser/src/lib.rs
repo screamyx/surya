@@ -23,12 +23,15 @@ mod cef_app;
 mod client;
 pub mod devtools;
 pub mod emulation;
+mod clock;
 mod events;
 pub mod input;
 mod page;
+mod perf;
 mod pump;
 mod render;
 mod scheme;
+mod selftest;
 mod surface;
 pub mod tabs;
 mod zero_copy;
@@ -177,6 +180,7 @@ pub fn start(cx: &mut gpui::App, scheme: ColorScheme) {
         return;
     }
     pump::install(cx);
+    selftest::install(cx);
     let url = start_url();
     let id = tabs::tab_open(&url);
     let made = tabs::active_browser() != 0;
