@@ -6,6 +6,16 @@
 #   scripts/critic-shots.sh <out_dir> [path/to/zeron] [project_dir]
 # Writes <out_dir>/shell-{light,dark}-{1440x900,1100x700}.png and prints one
 # `shot=1 bytes=N` line per frame.
+#
+# SURYA_XTEST_PYTHON: the python that drives XTEST clicks, for the frames that
+# need one (SHOT_CLICK). It must have python-xlib, which the system python on
+# this box does NOT: without it every click dies with ModuleNotFoundError. A
+# working venv lives on /store, so it survives a /tmp clear:
+#
+#   SURYA_XTEST_PYTHON=/store/agent-worktrees/surya-browser-ui/.xtest-venv/bin/python
+#
+# A click that fails now ends the run with exit 5 and writes no png, rather
+# than returning a green-looking frame of a screen nobody drove.
 set -euo pipefail
 OUT=${1:?out dir}; ZERON=${2:-${CARGO_TARGET_DIR:-target}/debug/zeron}
 PROJECT=${3:-$(cd "$(dirname "$0")/../.." && pwd)}
@@ -75,11 +85,21 @@ shoot() { # shoot <name> <mode> <geom> <extra env...>
   DISPLAY=$DISPLAY_NO xrefresh; sleep 3
   if [ "${SHOT_WAIT:-24}" -gt 12 ]; then DISPLAY=$DISPLAY_NO xrefresh; sleep 3; fi
   # SHOT_CLICK="x,y": one XTEST click at that root position after the settle
-  # (scripts/x7-click.py, run with SURYA_XTEST_PYTHON or python3), then
-  # SHOT_CLICK_WAIT s more before the grab. The 1440x900 window sits at +80+50
-  # on the 1600x1000 display, so the titlebar globe is at 129,69.
+  # (scripts/x7-click.py, run with the SURYA_XTEST_PYTHON from the header),
+  # then SHOT_CLICK_WAIT s more before the grab. The 1440x900 window sits at
+  # +80+50 on the 1600x1000 display, so the titlebar globe is at 129,69.
   if [ -n "${SHOT_CLICK:-}" ]; then
-    "${SURYA_XTEST_PYTHON:-python3}" "$(dirname "$0")/x7-click.py" "$DISPLAY_NO" "${SHOT_CLICK%,*}" "${SHOT_CLICK#*,}" || echo "click failed"
+    # A click that did not happen must not produce a screenshot. x7-click.py
+    # exits non-zero when python-xlib is missing, and a rig that shrugged and
+    # shot anyway handed back `shot=1 panics=0` for a screen nobody touched
+    # (23:42, 2026-09-05). So this ends the run instead.
+    if ! "${SURYA_XTEST_PYTHON:-python3}" "$(dirname "$0")/x7-click.py" \
+        "$DISPLAY_NO" "${SHOT_CLICK%,*}" "${SHOT_CLICK#*,}"; then
+      echo "shot=0 frames=0 FAILED: the click at $SHOT_CLICK did not run, so $name would be a frame of an undriven screen" >&2
+      echo "set SURYA_XTEST_PYTHON to a python with python-xlib (see the header)" >&2
+      kill $APP 2>/dev/null || true
+      exit 5
+    fi
     sleep "${SHOT_CLICK_WAIT:-30}"; DISPLAY=$DISPLAY_NO xrefresh; sleep 3
   fi
   ffmpeg -loglevel error -y -f x11grab -video_size 1600x1000 -i "$DISPLAY_NO" -frames:v 1 "$OUT/$name.png"
