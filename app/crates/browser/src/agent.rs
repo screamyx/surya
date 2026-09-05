@@ -15,12 +15,21 @@
 //! `run`.
 
 use std::sync::Mutex;
+use std::time::Duration;
 
 use cef::{ImplBrowser as _, ImplBrowserHost as _, MouseButtonType, MouseEvent};
 use futures::channel::oneshot;
+use futures::future::{Either, select};
 use serde_json::{Value, json};
 
 use crate::devtools;
+
+/// How long [`settle`] waits for a load in flight before going ahead anyway.
+/// A page that never finishes (a hung server, a download, a load CEF never
+/// reports the end of) must not cost every later op the caller's whole
+/// deadline; three seconds covers a real navigation on a loopback page many
+/// times over and keeps a stuck one to one short pause per op.
+pub const SETTLE_BOUND: Duration = Duration::from_secs(3);
 
 /// The script that reads the page; see the file for the line format.
 const SNAPSHOT_JS: &str = include_str!("snapshot.js");
@@ -32,11 +41,26 @@ static LOAD_WAITERS: Mutex<Vec<(i32, oneshot::Sender<()>)>> = Mutex::new(Vec::ne
 pub fn wait_for_load(browser: i32) -> impl std::future::Future<Output = ()> {
     let (tx, rx) = oneshot::channel();
     if let Ok(mut w) = LOAD_WAITERS.lock() {
+        // A waiter whose future was dropped without a load end (`settle`
+        // found nothing loading, or the caller's deadline hit) is dead
+        // weight: drop it here, so the list holds the live waiters and at
+        // most one stale one.
+        w.retain(|(_, tx)| !tx.is_canceled());
         w.push((browser, tx));
     }
     async move {
         let _ = rx.await;
     }
+}
+
+/// How many waiters browser `id` has, for the tests (which run in parallel
+/// on the one list, so each counts its own browser only).
+#[cfg(test)]
+fn waiters_for(id: i32) -> usize {
+    LOAD_WAITERS
+        .lock()
+        .map(|w| w.iter().filter(|(b, _)| *b == id).count())
+        .unwrap_or(0)
 }
 
 /// The main frame of browser `id` finished loading (success or error
@@ -55,16 +79,39 @@ pub(crate) fn on_load_end(id: i32) {
     }
 }
 
+/// The browser is closing (`devtools::on_before_close`): wake anything
+/// waiting on its load, so an op waiting in a tab the person just closed
+/// returns now and fails on its next call with "not open in the pane",
+/// instead of sitting out its deadline.
+pub(crate) fn on_close(id: i32) {
+    on_load_end(id);
+}
+
 /// A navigation the previous op started (a click on a link, a submit) may
 /// still be in flight when the next op arrives: an agent calls click then
 /// screenshot back to back. Wait for that load to end; return at once when
-/// nothing is loading. The waiter is taken before the check, so a load that
-/// ends in between cannot be missed.
+/// nothing is loading, and after [`SETTLE_BOUND`] whatever the page is
+/// doing. The waiter is taken before the check, so a load that ends in
+/// between cannot be missed.
 async fn settle(browser: i32) {
     let loaded = wait_for_load(browser);
-    if crate::tabs::loading(browser) {
-        loaded.await;
+    if !crate::tabs::loading(browser) {
+        return;
     }
+    let bound = crate::clock::after(SETTLE_BOUND);
+    if let Either::Right(_) = select(Box::pin(loaded), bound).await {
+        println!(
+            "agent: browser {browser} still loading after {}s; going ahead",
+            SETTLE_BOUND.as_secs()
+        );
+    }
+}
+
+/// DevTools' answer while a page is between documents: the call arrived
+/// after a navigation started and before the new document's agent took
+/// over. The op waits for the load and asks once more.
+fn between_documents(error: &str) -> bool {
+    error.contains("Not attached to an active page")
 }
 
 /// Run one op by name on the active tab. Unknown ops and bad arguments are
@@ -132,16 +179,27 @@ async fn open(browser: i32, url: &str) -> Result<Value, String> {
 /// Evaluate an expression in `browser` and return its value (or the thrown
 /// error).
 async fn evaluate(browser: i32, expression: &str) -> Result<Value, String> {
-    let result = devtools::call(
-        browser,
-        "Runtime.evaluate",
-        json!({
-            "expression": expression,
-            "returnByValue": true,
-            "awaitPromise": true,
-        }),
-    )
-    .await?;
+    let call = || {
+        devtools::call(
+            browser,
+            "Runtime.evaluate",
+            json!({
+                "expression": expression,
+                "returnByValue": true,
+                "awaitPromise": true,
+            }),
+        )
+    };
+    let result = match call().await {
+        // The same retry a screenshot gets: every op that reads or drives
+        // the page goes through here, so a snapshot, click, type or eval
+        // that lands between documents waits for the load and asks again.
+        Err(e) if between_documents(&e) => {
+            settle(browser).await;
+            call().await?
+        }
+        other => other?,
+    };
     if let Some(details) = result.get("exceptionDetails") {
         let text = details["exception"]["description"]
             .as_str()
@@ -275,7 +333,7 @@ async fn screenshot(browser: i32) -> Result<Value, String> {
         // The click before this one started a navigation CEF had not
         // reported when `settle` looked (:7 proof9, 2026-09-06 02:14): the
         // page agent is between documents. Wait for the load, then once more.
-        Err(e) if e.contains("Not attached to an active page") => {
+        Err(e) if between_documents(&e) => {
             settle(browser).await;
             capture().await?
         }
@@ -322,6 +380,32 @@ mod tests {
         assert!(js.starts_with("(() => {") && js.ends_with("})()"));
         assert!(js.contains("requestAnimationFrame") && js.contains("d.remove()"));
         assert!(js.contains("pointer-events:none"), "the pixel must never take a click");
+    }
+
+    #[test]
+    fn a_dropped_waiter_is_pruned_on_the_next_registration() {
+        let dropped = wait_for_load(31);
+        drop(dropped);
+        assert_eq!(waiters_for(31), 1, "the dead entry stays until the next push");
+        let live = wait_for_load(31);
+        assert_eq!(waiters_for(31), 1, "the push pruned the dead one and kept the live one");
+        drop(live);
+    }
+
+    #[test]
+    fn a_close_wakes_the_browsers_waiters() {
+        let (tx, rx) = oneshot::channel();
+        LOAD_WAITERS.lock().unwrap().push((41, tx));
+        on_close(41);
+        assert!(futures::executor::block_on(rx).is_ok(), "closing wakes the wait");
+        assert_eq!(waiters_for(41), 0);
+    }
+
+    #[test]
+    fn only_the_between_documents_answer_is_retried() {
+        assert!(between_documents("Runtime.evaluate: Not attached to an active page"));
+        assert!(!between_documents("Page.captureScreenshot: no DevTools reply within 30s"));
+        assert!(!between_documents("page script failed: x is not defined"));
     }
 
     #[test]
