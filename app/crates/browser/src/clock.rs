@@ -12,8 +12,8 @@
 //!
 //! Two shapes of wait: [`after`] hands back a oneshot the caller awaits;
 //! [`wake_after`] sends on an unbounded channel, which is what CEF's
-//! "pump me in N ms" wants. `SURYA_PUMP_TIMER=clock` puts the pump on it;
-//! unset, the pump stays on the old path, which the baseline measures.
+//! "pump me in N ms" wants. `SURYA_PUMP_TIMER=pool` is the old path, gpui's
+//! timer and a condvar, kept as the control.
 
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
@@ -66,14 +66,14 @@ pub(crate) fn counters() -> String {
     format!("clock asked={} fired={}", ASKED.load(Ordering::Relaxed), FIRED.load(Ordering::Relaxed))
 }
 
-/// `SURYA_PUMP_TIMER=clock` opts the pump onto this clock: the idle chain
-/// waits here instead of on gpui's timer, and on Windows the wait is the
-/// high-resolution waitable timer. Unset, the pump is on the old path,
-/// gpui's timer for the idle chain and a condvar for CEF's delayed asks,
-/// which is what the baseline measures (decision 27). Read once.
+/// The pump is on this clock: the idle chain waits here instead of on
+/// gpui's timer, and on Windows the wait is the high-resolution waitable
+/// timer. `SURYA_PUMP_TIMER=pool` is the old path, gpui's timer for the
+/// idle chain and a condvar for CEF's delayed asks, kept as the control
+/// (the baseline in docs/perf/browser-scroll-2026-09-05.md). Read once.
 pub(crate) fn on_clock() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| std::env::var("SURYA_PUMP_TIMER").is_ok_and(|v| v.trim() == "clock"))
+    *ON.get_or_init(|| !std::env::var("SURYA_PUMP_TIMER").is_ok_and(|v| v.trim() == "pool"))
 }
 
 /// The pump timer's name for a log line: which path both waits are on.
@@ -103,6 +103,7 @@ fn push(d: Duration, done: Done) {
 }
 
 fn start() -> Arc<Clock> {
+    fine_timer();
     let clock = Arc::new(Clock {
         heap: Mutex::new(BinaryHeap::new()),
         pending: Mutex::new(HashMap::new()),
@@ -146,6 +147,47 @@ fn run(clock: Arc<Clock>) {
         }
     }
 }
+
+/// Ask Windows for 1 ms timer resolution for the life of the process, and
+/// opt out of Windows 11's coalescing that ignores the request while the
+/// window is hidden or behind. haktui measured both on 2026-08-28: accepted,
+/// and the 16 ms gpui timer still took 31 ms, so neither is the fix. They
+/// stay because they are cheap and correct for the pool timer control path.
+/// `SURYA_COARSE_TIMER=1` keeps the defaults.
+#[cfg(windows)]
+fn fine_timer() {
+    if std::env::var_os("SURYA_COARSE_TIMER").is_some() {
+        println!("browser: timer coarse (SURYA_COARSE_TIMER)");
+        return;
+    }
+    use windows::Win32::System::Threading::{
+        GetCurrentProcess, ProcessPowerThrottling, SetProcessInformation, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION, PROCESS_POWER_THROTTLING_STATE,
+    };
+    let state = PROCESS_POWER_THROTTLING_STATE {
+        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        ControlMask: PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION,
+        // Mask named, state clear: "do not ignore my timer resolution".
+        StateMask: 0,
+    };
+    // SAFETY: the struct is the documented size for this information class
+    // and outlives the call; the handle is the pseudo-handle for this process.
+    let opt_out = unsafe {
+        SetProcessInformation(
+            GetCurrentProcess(),
+            ProcessPowerThrottling,
+            &state as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+        )
+    };
+    // SAFETY: a plain Win32 call with a constant argument; timeEndPeriod is
+    // never called on purpose, the process wants this until it exits.
+    let r = unsafe { windows::Win32::Media::timeBeginPeriod(1) };
+    println!("browser: timer resolution 1ms asked, coalescing opt-out={} timeBeginPeriod={r}", u8::from(opt_out.is_ok()));
+}
+
+#[cfg(not(windows))]
+fn fine_timer() {}
 
 /// The wait itself: Windows' high-resolution waitable timer plus an event
 /// to cut it short when the pump is on the clock, or a condvar: the old

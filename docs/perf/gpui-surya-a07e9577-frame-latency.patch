@@ -1,0 +1,32 @@
+diff --git a/crates/gpui_windows/src/directx_renderer.rs b/crates/gpui_windows/src/directx_renderer.rs
+index 1530067878..ff71d6412a 100644
+--- a/crates/gpui_windows/src/directx_renderer.rs
++++ b/crates/gpui_windows/src/directx_renderer.rs
+@@ -138,6 +138,27 @@ impl DirectXRendererDevices {
+         };
+         let annotation = device_context.cast().ok();
+ 
++        // surya: DXGI maximum frame latency for this device. DXGI's default
++        // is 3: up to three presented frames queued before the glass, and
++        // Present never blocks. haktui measured 2026-08-28: at 1, Present
++        // waits for the previous frame (median 0.6ms, p90 2.9ms) and at most
++        // one frame sits between the app and the screen. Default 1;
++        // SURYA_FRAME_LATENCY=3 restores DXGI's.
++        {
++            let n = std::env::var("SURYA_FRAME_LATENCY")
++                .ok()
++                .and_then(|v| v.trim().parse::<u32>().ok())
++                .unwrap_or(1);
++            let dev1: Result<windows::Win32::Graphics::Dxgi::IDXGIDevice1, _> = device.cast();
++            match dev1 {
++                Ok(dev1) => {
++                    let r = unsafe { dev1.SetMaximumFrameLatency(n.clamp(1, 16)) };
++                    log::info!("dxgi: maximum frame latency {n}: {r:?}");
++                }
++                Err(e) => log::warn!("dxgi: no IDXGIDevice1, frame latency unchanged: {e}"),
++            }
++        }
++
+         Ok(Self {
+             adapter: adapter.clone(),
+             dxgi_factory: dxgi_factory.clone(),

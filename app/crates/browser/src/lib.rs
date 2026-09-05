@@ -19,6 +19,7 @@
 mod cef_app;
 mod client;
 mod clock;
+mod display;
 mod events;
 pub mod input;
 mod page;

@@ -3,3 +3,5 @@
 #![allow(dead_code)]
 #[path = "../../src/clock.rs"]
 mod clock;
+#[path = "../../src/display.rs"]
+mod display;
