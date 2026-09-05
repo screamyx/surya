@@ -9,6 +9,11 @@
 //! held across a CEF call (hosts are cloned out first); `tabs::TABS` is
 //! never taken while `BROWSERS` is held, and no CEF callback takes both at
 //! once. `render::FRAMES` is independent of either.
+//!
+//! Threads: every `BrowserHost` call that the shell starts goes through
+//! `cef_thread::on_ui` with a browser id, and looks the host up again there
+//! ([`host_of`]); the `*_now` functions are the halves that run on CEF's UI
+//! thread and may also be called from a callback. See cef_thread.rs.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -22,6 +27,10 @@ use crate::tabs::update_by_browser;
 /// Every live browser by CEF identifier.
 static BROWSERS: Mutex<Option<HashMap<i32, Browser>>> = Mutex::new(None);
 static CREATED: AtomicU64 = AtomicU64::new(0);
+/// Asynchronous creates (threaded mode) that have not reached
+/// `on_after_created` yet. Shutdown waits for them: an empty map with a
+/// create in flight is not "closed".
+static PENDING_CREATES: AtomicU64 = AtomicU64::new(0);
 static CLOSED: AtomicU64 = AtomicU64::new(0);
 static POPUPS_REFUSED: AtomicU64 = AtomicU64::new(0);
 /// Whether the pane is on screen. Off, CEF stops compositing and paints
@@ -41,6 +50,11 @@ pub(crate) fn lifecycle_counters() -> String {
 /// Whether any browser exists right now.
 pub(crate) fn is_open() -> bool {
     BROWSERS.lock().map(|b| b.as_ref().is_some_and(|m| !m.is_empty())).unwrap_or(false)
+}
+
+/// [`is_open`], or a create still in flight: what shutdown must wait for.
+pub(crate) fn is_open_or_pending() -> bool {
+    is_open() || PENDING_CREATES.load(Ordering::Acquire) > 0
 }
 
 /// Show a browser: paint at 60, tell it the size it may have missed, and
@@ -66,9 +80,12 @@ pub(crate) fn set_visible(on: bool) {
     if VISIBLE.swap(on, Ordering::AcqRel) == on {
         return;
     }
-    if let Some(host) = host() {
-        if on { show(&host) } else { park(&host) }
-    }
+    let id = crate::tabs::active_browser();
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = host_of(id) {
+            if on { show(&host) } else { park(&host) }
+        }
+    });
     println!("browser: visible={}", u8::from(on));
 }
 
@@ -82,6 +99,11 @@ fn hosts() -> Vec<(i32, BrowserHost)> {
 /// Put `browser` on screen and park every other one. A tab switch, or a
 /// tab close (then `browser` is the new active tab's, or 0 for none).
 pub(crate) fn activate(browser: i32) {
+    crate::cef_thread::on_ui(move || activate_now(browser));
+}
+
+/// [`activate`] on CEF's UI thread.
+fn activate_now(browser: i32) {
     let mut shown = 0;
     for (id, host) in hosts() {
         if id == browser && VISIBLE.load(Ordering::Acquire) {
@@ -97,30 +119,45 @@ pub(crate) fn activate(browser: i32) {
 /// Close one browser. CEF answers with `on_before_close`, which drops it
 /// from the map and its frame; the pane shows the next active tab's frame.
 pub(crate) fn close_browser(browser: i32) {
-    let host = BROWSERS
-        .lock()
-        .ok()
-        .and_then(|g| g.as_ref().and_then(|m| m.get(&browser).cloned()))
-        .and_then(|b| b.host());
-    if let Some(host) = host {
-        host.close_browser(1);
-    }
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = host_of(browser) {
+            host.close_browser(1);
+        }
+    });
 }
 
 static LOAD_END_OK: AtomicU64 = AtomicU64::new(0);
 static LOAD_END_OTHER: AtomicU64 = AtomicU64::new(0);
 
-/// The active tab's browser, as the tab model says.
+/// The active tab's browser, as the tab model says. For code that already
+/// runs on CEF's UI thread (a callback, or the inline mode's main thread);
+/// a call from the shell goes through `cef_thread::on_ui` with
+/// [`browser_of`] instead. Kept for the devtools and self-test modules.
+#[allow(dead_code)]
 pub(crate) fn browser() -> Option<Browser> {
-    let id = crate::tabs::active_browser();
+    browser_of(crate::tabs::active_browser())
+}
+
+#[allow(dead_code)]
+pub(crate) fn host() -> Option<BrowserHost> {
+    browser().and_then(|b| b.host())
+}
+
+/// The browser with CEF identifier `id`, if it still exists.
+pub(crate) fn browser_of(id: i32) -> Option<Browser> {
     if id == 0 {
         return None;
     }
     BROWSERS.lock().ok()?.as_ref()?.get(&id).cloned()
 }
 
-pub(crate) fn host() -> Option<BrowserHost> {
-    browser().and_then(|b| b.host())
+/// Whether `id` names a live browser, without touching its refcount.
+pub(crate) fn has_browser(id: i32) -> bool {
+    id != 0 && BROWSERS.lock().ok().and_then(|g| g.as_ref().map(|m| m.contains_key(&id))).unwrap_or(false)
+}
+
+pub(crate) fn host_of(id: i32) -> Option<BrowserHost> {
+    browser_of(id).and_then(|b| b.host())
 }
 
 /// CEF's identifier for `browser`, 0 for none.
@@ -182,15 +219,20 @@ wrap_life_span_handler! {
             if let Ok(mut guard) = BROWSERS.lock() {
                 guard.get_or_insert_with(HashMap::new).insert(id, browser.clone());
             }
+            let _ = PENDING_CREATES.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1));
             crate::tabs::attach_pending(id);
             let n = CREATED.fetch_add(1, Ordering::Relaxed) + 1;
             println!("browser: created id={id} (#{n})");
             // Being created is not damage: a brand new browser has nothing to
             // repaint until it is told its size and shown (haktui, 2026-08-26).
-            // It starts parked; `activate` shows the one the tab strip picked.
+            // It starts parked; if its tab is the active one it comes on
+            // screen here, on CEF's UI thread, whichever thread that is.
             if let Some(host) = browser.host() {
                 host.was_resized();
                 host.was_hidden(1);
+            }
+            if crate::tabs::active_browser() == id {
+                activate_now(id);
             }
         }
 
@@ -206,6 +248,7 @@ wrap_life_span_handler! {
                 crate::render::forget(id);
                 crate::tabs::detach(id);
             }
+            crate::cef_thread::notify_closed();
             println!("browser: closed id={id}");
         }
     }
@@ -324,15 +367,22 @@ wrap_find_handler! {
 /// Find in the active tab. `find_next` continues the current search;
 /// otherwise a new one starts. Results arrive in `Page::find`.
 pub(crate) fn find(text: &str, forward: bool, find_next: bool) {
-    if let Some(host) = host() {
-        host.find(Some(&CefString::from(text)), i32::from(forward), 0, i32::from(find_next));
-    }
+    let id = crate::tabs::active_browser();
+    let text = text.to_string();
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = host_of(id) {
+            host.find(Some(&CefString::from(text.as_str())), i32::from(forward), 0, i32::from(find_next));
+        }
+    });
 }
 
 pub(crate) fn stop_find(clear_selection: bool) {
-    if let Some(host) = host() {
-        host.stop_finding(i32::from(clear_selection));
-    }
+    let id = crate::tabs::active_browser();
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = host_of(id) {
+            host.stop_finding(i32::from(clear_selection));
+        }
+    });
     crate::tabs::update_active(|p| p.find = None);
 }
 
@@ -374,7 +424,9 @@ fn no_parent() -> cef::sys::cef_window_handle_t {
 }
 
 /// Make an offscreen browser on `url`, parked until `activate`. Main
-/// thread, after `initialize`. Returns CEF's identifier for it.
+/// thread, after `initialize`. Inline mode creates it synchronously and
+/// returns CEF's identifier; threaded mode posts the create and returns
+/// `None`, and `on_after_created` binds the browser to its tab.
 pub(crate) fn open(url: &str) -> Option<i32> {
     let window_info = WindowInfo::default().set_as_windowless(no_parent());
     let browser_settings = BrowserSettings {
@@ -383,6 +435,21 @@ pub(crate) fn open(url: &str) -> Option<i32> {
         ..Default::default()
     };
     let mut client = BrowserClient::new();
+    if crate::cef_thread::threaded() {
+        PENDING_CREATES.fetch_add(1, Ordering::AcqRel);
+        let asked = browser_host_create_browser(
+            Some(&window_info),
+            Some(&mut client),
+            Some(&CefString::from(url)),
+            Some(&browser_settings),
+            None,
+            None,
+        );
+        if asked == 0 {
+            let _ = PENDING_CREATES.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1));
+        }
+        return None;
+    }
     browser_host_create_browser_sync(
         Some(&window_info),
         Some(&mut client),

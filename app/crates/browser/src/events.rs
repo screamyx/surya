@@ -81,12 +81,21 @@ fn origin() -> (i32, i32) {
     (ORIGIN_X.load(Ordering::Acquire), ORIGIN_Y.load(Ordering::Acquire))
 }
 
-/// Run `f` against the live browser's host. Returns whether there was one.
-/// Every caller is on gpui's main thread, which is CEF's UI thread.
-fn with_host(f: impl FnOnce(&cef::BrowserHost)) -> bool {
+/// Run `f` against the active tab's host on CEF's UI thread. Returns
+/// whether there was a browser to send to. Callers are on gpui's main
+/// thread; `f` captures the event by value and runs inline or posted
+/// (cef_thread.rs).
+fn with_host(f: impl FnOnce(&cef::BrowserHost) + Send + 'static) -> bool {
     crate::pump::mark_input();
-    let Some(host) = crate::client::host() else { return false };
-    f(&host);
+    let id = crate::tabs::active_browser();
+    if crate::client::browser_of(id).is_none() {
+        return false;
+    }
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = crate::client::host_of(id) {
+            f(&host);
+        }
+    });
     true
 }
 
@@ -111,7 +120,7 @@ pub fn set_focus(on: bool) {
         BUTTONS.store(0, Ordering::Release);
         with_host(|h| h.send_capture_lost_event());
     }
-    with_host(|h| h.set_focus(i32::from(on)));
+    with_host(move |h| h.set_focus(i32::from(on)));
 }
 
 pub fn mouse_down(e: &MouseDownEvent) {
@@ -129,7 +138,8 @@ pub fn mouse_down(e: &MouseDownEvent) {
     }
     // `click_count` is gpui's, and it is what makes a double click select a
     // word and a triple click select a line.
-    if with_host(|h| h.send_mouse_click_event(Some(&event), cef_button(button), 0, e.click_count as i32)) {
+    let (btn, clicks) = (cef_button(button), e.click_count as i32);
+    if with_host(move |h| h.send_mouse_click_event(Some(&event), btn, 0, clicks)) {
         MOUSE_SENT.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -153,7 +163,8 @@ pub fn mouse_up(e: &MouseUpEvent) {
     }
     let held = before & !bit;
     let event = event_at(e.position, input::mouse_flags(&e.modifiers, held));
-    if with_host(|h| h.send_mouse_click_event(Some(&event), cef_button(button), 1, e.click_count as i32)) {
+    let (btn, clicks) = (cef_button(button), e.click_count as i32);
+    if with_host(move |h| h.send_mouse_click_event(Some(&event), btn, 1, clicks)) {
         MOUSE_SENT.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -177,7 +188,7 @@ pub fn mouse_moved(pos: Point<Pixels>, modifiers: &Modifiers) {
     };
     MOUSE_SEEN.fetch_add(1, Ordering::Relaxed);
     let event = MouseEvent { x, y, modifiers: input::mouse_flags(modifiers, held) };
-    if with_host(|h| h.send_mouse_move_event(Some(&event), leave)) {
+    if with_host(move |h| h.send_mouse_move_event(Some(&event), leave)) {
         MOUSE_SENT.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -189,7 +200,7 @@ pub fn scroll(e: &ScrollWheelEvent) {
     if tracing() {
         println!("input: wheel {dx},{dy} modifiers={modifiers:#x}");
     }
-    if with_host(|h| h.send_mouse_wheel_event(Some(&event), dx, dy)) {
+    if with_host(move |h| h.send_mouse_wheel_event(Some(&event), dx, dy)) {
         WHEEL_SENT.fetch_add(1, Ordering::Relaxed);
     }
 }
@@ -227,7 +238,7 @@ pub fn key_down(e: &KeyDownEvent) -> bool {
         unmodified_character: native.unmodified,
         ..Default::default()
     };
-    let sent = with_host(|h| h.send_key_event(Some(&down)));
+    let sent = with_host(move |h| h.send_key_event(Some(&down)));
     if let Some(unit) = unit {
         let typed = KeyEvent {
             type_: KeyEventType::CHAR,
@@ -240,7 +251,7 @@ pub fn key_down(e: &KeyDownEvent) -> bool {
             unmodified_character: unit,
             ..Default::default()
         };
-        with_host(|h| h.send_key_event(Some(&typed)));
+        with_host(move |h| h.send_key_event(Some(&typed)));
     }
     if sent {
         KEYS_SENT.fetch_add(1, Ordering::Relaxed);
@@ -264,7 +275,7 @@ pub fn key_up(e: &KeyUpEvent) {
         unmodified_character: native.unmodified,
         ..Default::default()
     };
-    with_host(|h| h.send_key_event(Some(&event)));
+    with_host(move |h| h.send_key_event(Some(&event)));
 }
 
 /// The platform's half of a key event. Windows and Linux send none; the Mac

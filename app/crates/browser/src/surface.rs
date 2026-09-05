@@ -48,10 +48,13 @@ pub(crate) fn upload_stats() -> (u64, f64, f64, f64) {
 /// CEF only paints damage and a resize is not damage: `was_hidden(1)` then
 /// `was_hidden(0)` forces a full repaint (haktui, 2026-08-26).
 fn notify_resized() {
-    let Some(host) = crate::client::host() else { return };
-    host.was_resized();
-    host.was_hidden(1);
-    host.was_hidden(0);
+    let id = crate::tabs::active_browser();
+    crate::cef_thread::on_ui(move || {
+        let Some(host) = crate::client::host_of(id) else { return };
+        host.was_resized();
+        host.was_hidden(1);
+        host.was_hidden(0);
+    });
 }
 
 /// The last frame on screen, so the one before it can leave the atlas.
