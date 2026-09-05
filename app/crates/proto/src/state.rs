@@ -203,9 +203,21 @@ pub struct AllowRule {
     pub tool_name: String,
     /// Glob over the tool's command string. `*` matches any run of
     /// characters, `?` one character. An empty pattern matches everything the
-    /// tool does.
+    /// tool does — unless [`Self::exact`] is set.
     #[serde(default)]
     pub pattern: String,
+    /// Compare the pattern to the command literally, `*` and `?` included.
+    ///
+    /// "Remember this one command" has to survive a command that CONTAINS a
+    /// wildcard: storing `rm -rf build/*` as a glob would silently approve
+    /// `rm -rf build/anything`, which is not what the user pinned. A flag
+    /// rather than backslash escaping, because escaping would also have to be
+    /// understood by the rule-anchoring check and by the settings page, and
+    /// three places that must agree about escapes is three places to get it
+    /// wrong. Additive + serde-defaulted: an old rules file reads as a glob,
+    /// which is what it was.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub exact: bool,
     pub created_at: DateTime<Utc>,
 }
 
@@ -215,17 +227,28 @@ impl AllowRule {
         if self.tool_name != request.tool_name {
             return false;
         }
-        if self.scope == RuleScope::Workspace {
-            let Some(root) = self.workspace_path.as_deref() else {
-                // A workspace rule with no workspace cannot be confined, so it
-                // never fires. Refusing here beats silently going global.
-                return false;
-            };
-            if !path_within(cwd, root) {
-                return false;
-            }
+        if self.exact {
+            return self.tool_name == request.tool_name
+                && self.workspace_ok(cwd)
+                && self.pattern == request.command;
+        }
+        if !self.workspace_ok(cwd) {
+            return false;
         }
         glob_match(&self.pattern, &request.command)
+    }
+
+    /// Is `cwd` inside this rule's reach?
+    fn workspace_ok(&self, cwd: &str) -> bool {
+        match self.scope {
+            RuleScope::Global => true,
+            // A workspace rule with no workspace cannot be confined, so it
+            // never fires. Refusing here beats silently going global.
+            RuleScope::Workspace => self
+                .workspace_path
+                .as_deref()
+                .is_some_and(|root| path_within(cwd, root)),
+        }
     }
 
     /// The transcript line the engine writes when this rule answers.
@@ -323,6 +346,7 @@ mod tests {
             workspace_path: workspace.map(str::to_string),
             tool_name: tool.into(),
             pattern: pattern.into(),
+            exact: false,
             created_at: Utc::now(),
         }
     }
@@ -399,6 +423,59 @@ mod tests {
             serde_json::to_value(AgentState::Stopped).unwrap()["state"],
             "stopped"
         );
+    }
+
+    /// "Remember this exact command" has to survive a command that itself
+    /// contains a wildcard, or pinning `rm -rf build/*` would quietly approve
+    /// `rm -rf build/anything`.
+    #[test]
+    fn an_exact_rule_compares_literally_wildcards_and_all() {
+        let mut r = rule(RuleScope::Global, None, "Bash", "ls *.txt");
+        r.exact = true;
+        assert!(r.matches(&request("Bash", "ls *.txt"), "/repos/x"));
+        assert!(!r.matches(&request("Bash", "ls notes.txt"), "/repos/x"));
+        assert!(!r.matches(&request("Bash", "ls "), "/repos/x"));
+
+        let mut danger = rule(RuleScope::Global, None, "Bash", "rm -rf build/*");
+        danger.exact = true;
+        assert!(danger.matches(&request("Bash", "rm -rf build/*"), "/repos/x"));
+        assert!(
+            !danger.matches(&request("Bash", "rm -rf build/src"), "/repos/x"),
+            "an exact pin is not a glob"
+        );
+        // The same pattern WITHOUT the flag is a glob, which is why the flag
+        // exists.
+        let as_glob = rule(RuleScope::Global, None, "Bash", "rm -rf build/*");
+        assert!(as_glob.matches(&request("Bash", "rm -rf build/src"), "/repos/x"));
+    }
+
+    #[test]
+    fn an_exact_workspace_rule_is_still_confined() {
+        let mut r = rule(
+            RuleScope::Workspace,
+            Some("/repos/project-jag"),
+            "Bash",
+            "ls *.txt",
+        );
+        r.exact = true;
+        let req = request("Bash", "ls *.txt");
+        assert!(r.matches(&req, "/repos/project-jag/backend"));
+        assert!(!r.matches(&req, "/repos/other"));
+        r.workspace_path = None;
+        assert!(!r.matches(&req, "/repos/project-jag"));
+    }
+
+    #[test]
+    fn the_exact_flag_is_additive_on_the_wire() {
+        // An old rules file has no `exact` key and reads as a glob.
+        let old = serde_json::json!({
+            "id": "r", "name": "n", "scope": "global", "toolName": "Bash",
+            "pattern": "ls*", "createdAt": "2026-09-05T00:00:00Z"
+        });
+        let parsed: AllowRule = serde_json::from_value(old).unwrap();
+        assert!(!parsed.exact);
+        // …and a glob rule never writes the key, so an old reader is unchanged.
+        assert!(serde_json::to_value(&parsed).unwrap().get("exact").is_none());
     }
 
     #[test]

@@ -746,6 +746,107 @@ pub fn join_continuations(entries: Vec<Vec<MessagePart>>) -> Vec<MessagePart> {
 
 #[cfg(test)]
 mod tests {
+
+    /// A tool that did NOT run leaves no other trace in the transcript, so
+    /// the refusal has to say so itself — otherwise the turn just has a
+    /// silent gap where the user said no.
+    #[test]
+    fn a_denied_permission_lands_as_a_notice_with_its_reason() {
+        use zeron_proto::PermissionDecision;
+        let mut parts = Vec::new();
+        // The ask itself is not a part: it lives in the needs-you inbox.
+        fold_event_into_parts(
+            &mut parts,
+            &AgentEvent::PermissionRequested {
+                request_id: "perm-1".into(),
+                tool_name: "Bash".into(),
+                command: "rm -rf /".into(),
+                input: None,
+            },
+        );
+        assert!(parts.is_empty(), "a pending ask is not transcript text");
+
+        fold_event_into_parts(
+            &mut parts,
+            &AgentEvent::PermissionResolved {
+                request_id: "perm-1".into(),
+                decision: PermissionDecision::Deny,
+                rule: None,
+                reason: Some("you denied it".into()),
+            },
+        );
+        assert_eq!(parts.len(), 1);
+        let MessagePart::Notice { id, text } = &parts[0] else {
+            panic!("expected a Notice, got {:?}", parts[0]);
+        };
+        assert_eq!(id, "perm-1-permission");
+        assert_eq!(text, "not allowed: you denied it");
+
+        // Re-delivery of the same frame does not double the line.
+        fold_event_into_parts(
+            &mut parts,
+            &AgentEvent::PermissionResolved {
+                request_id: "perm-1".into(),
+                decision: PermissionDecision::Deny,
+                rule: None,
+                reason: Some("you denied it".into()),
+            },
+        );
+        assert_eq!(parts.len(), 1);
+    }
+
+    #[test]
+    fn a_deny_with_no_reason_still_says_something() {
+        use zeron_proto::PermissionDecision;
+        let mut parts = Vec::new();
+        fold_event_into_parts(
+            &mut parts,
+            &AgentEvent::PermissionResolved {
+                request_id: "perm-2".into(),
+                decision: PermissionDecision::Deny,
+                rule: None,
+                reason: None,
+            },
+        );
+        assert!(matches!(
+            &parts[0],
+            MessagePart::Notice { text, .. } if text == "not allowed"
+        ));
+    }
+
+    #[test]
+    fn a_rule_allow_says_which_rule_and_a_plain_allow_says_nothing() {
+        use zeron_proto::PermissionDecision;
+        let mut parts = Vec::new();
+        fold_event_into_parts(
+            &mut parts,
+            &AgentEvent::PermissionResolved {
+                request_id: "perm-3".into(),
+                decision: PermissionDecision::Allow,
+                rule: Some("Bash php artisan migrate* in project-jag".into()),
+                reason: None,
+            },
+        );
+        assert!(matches!(
+            &parts[0],
+            MessagePart::Notice { text, .. }
+                if text == "allowed by rule Bash php artisan migrate* in project-jag"
+        ));
+
+        // A plain Allow the user clicked needs no line: the tool call that
+        // follows is the record.
+        let mut plain = Vec::new();
+        fold_event_into_parts(
+            &mut plain,
+            &AgentEvent::PermissionResolved {
+                request_id: "perm-4".into(),
+                decision: PermissionDecision::Allow,
+                rule: None,
+                reason: None,
+            },
+        );
+        assert!(plain.is_empty());
+    }
     use super::*;
 
     /// A Card event appends a card part, breaks the text block like a tool

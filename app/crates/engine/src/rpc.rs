@@ -114,6 +114,9 @@ struct AddAllowRuleParams {
     tool_name: String,
     #[serde(default)]
     pattern: String,
+    /// Compare the pattern literally instead of as a glob.
+    #[serde(default)]
+    exact: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1417,6 +1420,9 @@ impl RpcService for EngineRpc {
                     workspace_path,
                     tool_name: p.tool_name,
                     pattern,
+                    // A rule written in Settings is a glob by definition; the
+                    // exact pin only comes from "remember this one command".
+                    exact: p.exact,
                     created_at: chrono::Utc::now(),
                 };
                 let stored = self
