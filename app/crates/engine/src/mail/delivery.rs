@@ -160,6 +160,10 @@ impl Mail {
                 return Err(err);
             }
         };
+        #[cfg(debug_assertions)]
+        if let Some(delay) = set_run_delay() {
+            tokio::time::sleep(delay).await;
+        }
         let named = ids.clone();
         let run = run_id.clone();
         self.with_store(move |s| {
@@ -176,6 +180,20 @@ impl Mail {
             delivered = ids.len(),
             "mail delivered into a turn"
         );
+        // Settle once here, holding no assumption that the run is still alive.
+        //
+        // The ack pass only considers rows whose run id is set, which is what
+        // stops a status tick DURING dispatch from acking a turn nobody saw.
+        // The cost of that gate: a turn can finish before `dispatch` returns
+        // and `set_run` records the id, and then the Idle transition has
+        // already been and gone. Nothing else would ever wake the pump for
+        // this agent, so the row would sit delivered-and-unacked forever - not
+        // slowly, permanently. Cheap: settle_agent returns immediately while
+        // the run is live.
+        drop(_guard);
+        if let Err(err) = self.settle_agent(agent).await {
+            tracing::warn!(agent = %agent, error = %err, "settle after delivery failed");
+        }
         Ok(ids.len())
     }
 
@@ -256,6 +274,21 @@ impl Mail {
             .last_request(agent)
             .or_else(|| self.inner.doc_host.request_from_chat_row(agent, prompt))
     }
+}
+
+/// Test hook: widen the window between `dispatch` returning and the run id
+/// being recorded, so the race the settle pass above exists for is
+/// reproducible instead of lucky. Read once - the value cannot change inside a
+/// process, and re-reading it per delivery would be a syscall on the hot path.
+#[cfg(debug_assertions)]
+fn set_run_delay() -> Option<std::time::Duration> {
+    static DELAY: std::sync::OnceLock<Option<std::time::Duration>> = std::sync::OnceLock::new();
+    *DELAY.get_or_init(|| {
+        std::env::var("ZERON_MAIL_SET_RUN_DELAY_MS")
+            .ok()
+            .and_then(|ms| ms.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+    })
 }
 
 fn is_active(status: SessionStatus) -> bool {
