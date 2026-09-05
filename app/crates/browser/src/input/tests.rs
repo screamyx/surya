@@ -1,4 +1,5 @@
     use super::*;
+    use gpui::{Keystroke, Modifiers, MouseButton, Pixels, Point, ScrollDelta};
     use gpui::{point, px};
 
     fn mods() -> Modifiers {
