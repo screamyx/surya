@@ -40,16 +40,19 @@ Unset, the CPU path runs unchanged.
 
 ## Measured
 
-Same page both runs: a CSS spinner plus a `requestAnimationFrame` counter, served from pc-ajim, 50 seconds each.
+Same page both runs: a CSS spinner plus a `requestAnimationFrame` counter, served from pc-ajim. Flag off 50 seconds; flag on 45 seconds, at the reviewed code (0fdd33e, 21:02).
 
 | | flag off (CPU path) | flag on (zero-copy) |
 | --- | --- | --- |
-| paints in 50 s | frames=2935 | accel=3120 copied=3120 waited=0 failed=0 (frames=2937) |
-| callback cost per paint, avg | copy 0.06 ms | 1.45 ms |
-| callback cost per paint, max | copy 0.41 ms | 11.29 ms |
+| paints | frames=2935 in 50 s | accel=2760 copied=2760 failed=0 dead=0 in 45 s (frames=2637) |
+| callback cost per paint, avg | copy 0.06 ms | 1.39 ms |
+| callback cost per paint, max | copy 0.41 ms | 10.38 ms |
 | element cost per paint, avg | upload 0.07 ms | 0 (the renderer opens the handle; the heartbeat's `upload_ms` stays at 0 with the flag on, the zero-copy numbers follow it as `zero_copy=on ...`) |
-| gpui renders in 50 s | 3118 | 3013 |
+| gpui renders | 3118 in 50 s | 2764 in 45 s |
+| visible part copied | | 518x786 of a 518x786 pooled texture (`visible_rect`) |
 | page on screen | `docs/images/browser-zero-copy-off.png` | `docs/images/browser-zero-copy-on.png` |
+
+The earlier run at the pre-review code (50 s, accel=3120 copied=3120 failed=0, avg 1.45 ms, max 11.29 ms) is where the split and probe tables below come from; the numbers did not move with the fixes.
 
 Where the zero-copy callback's time goes, from 55 sampled paints (every 60th):
 
@@ -76,8 +79,8 @@ A bounded wait with deferred publishing was tried and withdrawn for that reason.
 
 ## Verdict
 
-The path works: 3120 of 3120 paints copied, zero failures, the page correct on screen, no pixel through the CPU.
-At this pane size it costs the main thread ten times more per paint than the CPU path (1.45 ms against 0.13 ms), with bursts near a frame.
+The path works: 2760 of 2760 paints copied, zero failures, no dead device, the page correct on screen, no pixel through the CPU.
+At this pane size it costs the main thread ten times more per paint than the CPU path (1.39 ms against 0.13 ms), with bursts near a frame.
 The switch stays off.
 It earns its keep only where the CPU copy grows with the pixels and the GPU copy does not: 4K panes and video.
 Not measured here; the pane was 518x786.
