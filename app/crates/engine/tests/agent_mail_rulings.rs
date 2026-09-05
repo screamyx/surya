@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mail_support::{CHAT_B, EchoHarness, FailingHarness, request, settled, user_texts, wait_for};
+use zeron_engine::mail::MAX_DELIVERY_ATTEMPTS;
 use zeron_engine::{EngineCore, HarnessRegistry};
 use zeron_proto::HarnessId;
 
@@ -104,17 +105,33 @@ async fn an_errored_turn_requeues_its_mail() {
         .await
         .expect("send");
 
-    // It went out, the run errored, and it is back in the queue unacked.
-    wait_until!("the mail to be requeued after the errored run", {
-        core.mail
-            .list(Some(CHAT_B))
-            .await
-            .unwrap()
-            .iter()
-            .any(|m| m.delivered_at.is_none() && m.acked_at.is_none() && m.run_id.is_none())
+    // It went out, the run errored, and it goes back in the queue unacked.
+    //
+    // Wait for the row to STOP moving, not for the first requeue. The pump
+    // retries a requeued row immediately, and a retry marks it delivered again
+    // for as long as its dispatch is in flight, so a counter read taken just
+    // after the first requeue can land on the next attempt and see
+    // delivered=1. At the attempt cap the row parks: queued, unacked, failed,
+    // and nothing dispatches it again.
+    wait_until!("the mail to park unacked after every turn errored", {
+        core.mail.list(Some(CHAT_B)).await.unwrap().iter().any(|m| {
+            m.failed_at.is_some()
+                && m.delivered_at.is_none()
+                && m.acked_at.is_none()
+                && m.run_id.is_none()
+        })
     });
+    let rows = core.mail.list(Some(CHAT_B)).await.unwrap();
+    assert_eq!(
+        rows[0].attempts, MAX_DELIVERY_ATTEMPTS,
+        "every attempt errored and requeued: attempts={}",
+        rows[0].attempts
+    );
     let (sent, delivered, acked) = core.mail.counts().await.unwrap();
-    println!("errored turn: sent={sent} delivered={delivered} acked={acked}");
+    println!(
+        "errored turn: sent={sent} delivered={delivered} acked={acked} attempts={}",
+        rows[0].attempts
+    );
     assert_eq!(
         (sent, delivered, acked),
         (1, 0, 0),
