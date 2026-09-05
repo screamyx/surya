@@ -2,6 +2,15 @@
 
 use gpui::{Keystroke, MouseButton};
 
+/// A thing Chrome's own window does, which the page cannot do for itself.
+///
+/// The owner's rule for column 3 is that it behaves like a regular Chrome.
+/// Blink handles the editing keys on its own once the key events reach it, so
+/// `ctrl+c`, `ctrl+v` and `ctrl+a` need nothing here. Reload, history and zoom
+/// are Chrome's *browser* half, and in an offscreen browser there is no
+/// browser half unless haktui is it. Find in page is browser half too
+/// (`BrowserHost::find`); the shell's `ctrl-f` binding opens its bar before
+/// this table is consulted, which is why `f` is not listed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Command {
     Reload,
