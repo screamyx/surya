@@ -52,21 +52,45 @@ ws.onopen = async () => {
 ws.onerror = (e) => { console.error("seed failed", e.message || e); process.exit(1); };
 JS
 
+# SURYA_SHOT_BROWSER=1 (needs a `--features browser` build): also open the
+# Browser surface on https://example.com and take shell-browser-<mode>.png at
+# 1440x900. CEF needs ~25 s and two Expose kicks before its first paint.
+GEOMS="1440x900 1100x700"
+shoot() { # shoot <name> <mode> <geom> <extra env...>
+  local name=$1 mode=$2 geom=$3; shift 3
+  local UI="$WORK/ui-$name"; mkdir -p "$UI"
+  printf '{"appearance":"%s","openTabs":["chat-critic"],"lastSpaceId":"space-surya"}\n' "$mode" > "$UI/ui-settings.json"
+  env ZERON_DATA_DIR="$UI" ZERON_IPC_PORT=$PORT ZERON_WINDOW_SIZE=$geom DISPLAY=$DISPLAY_NO "$@" \
+    "$ZERON" > "$WORK/app-$name.log" 2>&1 &
+  APP=$!
+  sleep "${SHOT_WAIT:-12}"
+  DISPLAY=$DISPLAY_NO xrefresh; sleep 3
+  if [ "${SHOT_WAIT:-12}" -gt 12 ]; then DISPLAY=$DISPLAY_NO xrefresh; sleep 3; fi
+  ffmpeg -loglevel error -y -f x11grab -video_size 1600x1000 -i "$DISPLAY_NO" -frames:v 1 "$OUT/$name.png"
+  kill $APP 2>/dev/null || true; wait $APP 2>/dev/null || true
+  local panics; panics=$(grep -c "panicked at" "$WORK/app-$name.log" || true)
+  echo "shot=1 bytes=$(stat -c %s "$OUT/$name.png") panics=$panics out=$OUT/$name.png"
+  grep -E "browser: (on_paint #1|load_end|LOAD ERROR)" "$WORK/app-$name.log" | head -3 || true
+}
+
+# The display lock wraps only launch + xrefresh + grab (rule 10:12). This
+# script takes the lock ITSELF: never wrap it in an outer flock (self-deadlock
+# right after 'seeded=', 10:24). Bounded wait, holder named, exit 3 on busy.
 exec 9>/store/surya-display7.lock
-flock 9
+if ! flock -n 9; then
+  echo "waiting for /store/surya-display7.lock, holder pids: $(fuser /store/surya-display7.lock 2>/dev/null)"
+  flock -w "${SHOT_LOCK_WAIT:-120}" 9 || { echo "display lock busy after ${SHOT_LOCK_WAIT:-120}s, holder: $(fuser /store/surya-display7.lock 2>/dev/null) (frames=0)"; exit 3; }
+fi
 for mode in light dark; do
-  for geom in 1440x900 1100x700; do
-    UI="$WORK/ui-$mode-$geom"; mkdir -p "$UI"
-    printf '{"appearance":"%s","openTabs":["chat-critic"],"lastSpaceId":"space-surya"}\n' "$mode" > "$UI/ui-settings.json"
-    ZERON_DATA_DIR="$UI" ZERON_IPC_PORT=$PORT ZERON_WINDOW_SIZE=$geom DISPLAY=$DISPLAY_NO \
-      "$ZERON" > "$WORK/app-$mode-$geom.log" 2>&1 &
-    APP=$!
-    sleep 12
-    DISPLAY=$DISPLAY_NO xrefresh; sleep 3
-    ffmpeg -loglevel error -y -f x11grab -video_size 1600x1000 -i "$DISPLAY_NO" -frames:v 1 "$OUT/shell-$mode-$geom.png"
-    kill $APP 2>/dev/null || true; wait $APP 2>/dev/null || true
-    panics=$(grep -c "panicked at" "$WORK/app-$mode-$geom.log" || true)
-    echo "shot=1 bytes=$(stat -c %s "$OUT/shell-$mode-$geom.png") panics=$panics out=$OUT/shell-$mode-$geom.png"
+  for geom in $GEOMS; do
+    shoot "shell-$mode-$geom" "$mode" "$geom"
   done
 done
+if [ -n "${SURYA_SHOT_BROWSER:-}" ]; then
+  for mode in light dark; do
+    SHOT_WAIT=28 shoot "shell-browser-$mode" "$mode" 1440x900 \
+      ZERON_OPEN_BROWSER=1 SURYA_BROWSER_URL="${SURYA_BROWSER_URL:-https://example.com}" \
+      SURYA_CEF_CACHE="$WORK/cef-$mode" RUST_LOG=info
+  done
+fi
 flock -u 9
