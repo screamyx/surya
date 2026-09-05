@@ -84,14 +84,39 @@ The dtry screen reports 175 Hz (PR 2's rehearsal line above), not the 120 Hz wri
 
 ## After each change
 
-Not measured yet.
+Measured 02:06 to 02:15 on 2026-09-06 by seat `surya-browser-perf2`.
+Build: the PR 2 tree rebased on `d5234ca` (`0b3e1a05`: clock default, CEF at the display rate capped at 120, `timeBeginPeriod(1)` plus the coalescing opt-out), release, `E:\surya-perf-target`, dtry session 1, one run at a time, GUI slot from surya-cef3.
+Every run printed `browser: frame rate 120 (display reports 175 Hz)` except the `SURYA_CEF_FPS=60` run (`browser: frame rate 60 (SURYA_CEF_FPS)`).
+Logs: `E:\surya-perf-runs\<run>.out.log` on dtry, copies in `/tmp/perf2-runs/` on the build box.
+Lines from `docs/perf/dtry/lines.py`, exact:
 
-| change | scroll cef / app | anim cef / app | timer ours median | p2d median / p90 / max | idle % of a core, 40 s still page |
+| run | switches | line |
+| --- | --- | --- |
+| scroll | default (clock, CEF 120) | `SCROLL loaded=1 wheel asked=60 sent=60 over 1666ms cef_frames=214 app_frames=213 shown=212 pump_timer=clock pump_ms=8 p2d n=212 median=2.9ms p90=4.8ms p95=5.2ms max=7.4ms` |
+| scroll | `SURYA_PUMP_TIMER=pool` | `SCROLL loaded=1 wheel asked=60 sent=60 over 1741ms cef_frames=224 app_frames=223 shown=221 pump_timer=pool pump_ms=8 p2d n=221 median=2.7ms p90=4.9ms p95=5.3ms max=8.8ms` |
+| scroll | `SURYA_CEF_FPS=60` (clock) | `SCROLL loaded=1 wheel asked=60 sent=60 over 1690ms cef_frames=110 app_frames=114 shown=110 pump_timer=clock pump_ms=8 p2d n=110 median=3.1ms p90=5.1ms p95=5.2ms max=5.9ms` |
+| anim | default (clock, CEF 120) | `ANIM loaded=1 over 2000ms cef_frames=241 app_frames=243 shown=242 pump_timer=clock pump_ms=8 p2d n=242 median=2.9ms p90=5.0ms p95=5.2ms max=5.6ms` |
+| anim | `SURYA_PUMP_TIMER=pool` | `ANIM loaded=1 over 2000ms cef_frames=241 app_frames=241 shown=241 pump_timer=pool pump_ms=8 p2d n=241 median=2.6ms p90=4.9ms p95=5.2ms max=5.7ms` |
+| timer | default (clock) | `TIMER asked=16ms x30 gpui median=30.9ms min=15.8ms max=31.7ms \| ours median=16.5ms min=16.1ms max=16.8ms pump_timer=clock` |
+| idle | default (clock) | `idle: pid=2080 cpu_ms=531 over 40s = 1.3% of one core` |
+| idle | `SURYA_PUMP_TIMER=pool` | `idle: pid=36812 cpu_ms=609 over 40s = 1.5% of one core` |
+
+The comparison, baseline against each switch set (scroll frames are shown per second of the test window, since the windows differ by up to 10%):
+
+| build | scroll shown / s | anim cef / app / shown (2 s) | timer ours median | scroll p2d median / p90 / max | idle % of a core, 40 s still page |
 | --- | --- | --- | --- | --- | --- |
-| (a) the clock, base 8 ms | | | | | |
-| (b) CEF at the display's rate | | | | | |
-| (c) DXGI frame latency 1 | needs the fork patch below | | | | |
-| (d) idle cost, before and after | | | | | |
+| baseline: pool timer, CEF 60 | 66 (120 app frames over 1817 ms) | 121 / 122 / n.a. | 30.9 ms | 4.2 / 8.4 / 9.5 ms | 1.5% |
+| (a) the clock, CEF 60 (`SURYA_CEF_FPS=60`) | 65 (110 over 1690 ms) | not run | 16.5 ms | 3.1 / 5.1 / 5.9 ms | not run |
+| (a)+(b) the clock, CEF at the display rate (PR 2 default) | 127 (212 over 1666 ms) | 241 / 243 / 242 | 16.5 ms | 2.9 / 4.8 / 7.4 ms | 1.3% |
+| (b) only: pool timer, CEF at the display rate (`SURYA_PUMP_TIMER=pool`) | 127 (221 over 1741 ms) | 241 / 241 / 241 | 30.9 ms (from the baseline row; the pool timer is the same code) | 2.7 / 4.9 / 8.8 ms | 1.5% |
+| (c) DXGI frame latency 1 | needs the fork patch below (astra's fork PR 2) | | | | |
+
+What the numbers say:
+
+1. CEF at the display rate is the lever that doubles the frames shown: 66 to 127 a second on scroll, 121 to 241 CEF frames in the two-second animation, and the app renders every one of them (`shown` is within two of `cef_frames` on every run).
+2. The clock does not add frames on surya (212 shown with it, 221 without, the same 127 a second once normalised), because every CEF paint already gets a render on both timer paths; the timer never decided frames here the way it did in haktui.
+3. The clock is better in what it controls: a 16 ms timer fires in 16.5 ms instead of 30.9 ms, the worst paint-to-draw on scroll drops from 9.5 ms to 5.9 ms at CEF 60 and from 8.8 ms to 7.4 ms at CEF 120, and idle CPU is 1.3% against 1.5%. Single runs, so the p2d max and idle deltas are indications, the timer delta is not in doubt.
+4. So PR 2 ships with both defaults on (decision 27: a flag defaults on only where dtry measures better): CEF at the display rate because it doubles frames, the clock because its own measure halves and nothing it touches got worse. `SURYA_PUMP_TIMER=pool` and `SURYA_CEF_FPS=60` stay as the controls.
 
 ## (c) DXGI frame latency 1 needs a fork change
 
