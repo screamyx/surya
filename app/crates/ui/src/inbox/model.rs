@@ -85,21 +85,28 @@ pub const UNTITLED_CHAT: &str = "Untitled chat";
 ///   passing `open_sheet` - `AppState::answered_requests` is where that set
 ///   lives, for exactly this reason.
 ///
-/// Questions only. A permission and a stopped run have no second surface, so
-/// collapsing them would leave the user with nothing to press.
+/// Questions and permissions, because both are now answered in the composer's
+/// place. A stopped run has no second surface, so collapsing it would leave
+/// the user with nothing to press.
 pub fn answered_in_the_open_chat(
     row: &InboxRow,
     open_chat: Option<&str>,
     open_sheet: Option<&str>,
 ) -> bool {
-    row.kind == NeedsYouKind::Question
-        && open_chat == Some(row.chat_id.as_str())
-        // A top-level question carries the chat id as its agent id
+    let asked = match row.kind {
+        // A question row's id is `<request>:<question>`; a permission row's
+        // id IS the request id, so only the question needs splitting.
+        NeedsYouKind::Question => split_question_id(&row.id).map(|(request, _)| request),
+        NeedsYouKind::Permission => Some(row.id.as_str()),
+        NeedsYouKind::Failed => None,
+    };
+    open_chat == Some(row.chat_id.as_str())
+        // A top-level ask carries the chat id as its agent id
         // (`open_questions(&chat_id, &chat_id, ..)`); a child carries
         // `child_agent_id`.
         && row.agent_id == row.chat_id
-        && split_question_id(&row.id)
-            .is_some_and(|(request_id, _)| open_sheet == Some(request_id))
+        && asked.is_some()
+        && asked == open_sheet
 }
 
 /// Does the bold title say anything the badge above it does not?

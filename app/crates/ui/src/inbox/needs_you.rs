@@ -282,15 +282,21 @@ impl Render for NeedsYouPane {
         let (open_chat, open_sheet) = match self.state.as_ref() {
             Some(state) => {
                 let state = state.read(cx);
-                (
-                    state.selected_chat.clone(),
-                    crate::composer::pending_input_request(&state.transcript)
-                        .map(|(request_id, _)| request_id)
-                        // Answered on this device: the sheet is already gone,
-                        // even though the doc still carries the request until
-                        // `resolved` syncs back. Nothing to point at.
-                        .filter(|request_id| !state.answered_requests.contains(request_id)),
-                )
+                // Either kind of ask can be the one the composer is showing:
+                // a question sheet or a permission panel. Whichever it is,
+                // its row here collapses rather than offering a second set
+                // of buttons for the same answer.
+                let showing = crate::composer::pending_input_request(&state.transcript)
+                    .map(|(request_id, _)| request_id)
+                    .or_else(|| {
+                        crate::composer::pending_permission_request(&state.transcript)
+                            .map(|(request_id, _, _)| request_id)
+                    })
+                    // Answered on this device: the panel is already gone,
+                    // even though the doc still carries the request until
+                    // `resolved` syncs back. Nothing to point at.
+                    .filter(|request_id| !state.answered_requests.contains(request_id));
+                (state.selected_chat.clone(), showing)
             }
             None => (None, None),
         };

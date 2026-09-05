@@ -6340,7 +6340,13 @@ impl Shell {
         // (new-chat mode mints the chat id on first send).
         // Critique round 4, I4: while a question sheet is up the title hides
         // (at 1100x700 the sheet reached the title and drew over it).
-        let sheet_up = has_selection && self.composer.read(cx).question_sheet_visible();
+        // Either panel stands the page title down: they are the same height
+        // and the sheet drew over the title at 1100x700 (round 4, I4). A gate
+        // that named only the question would let the permission panel walk
+        // straight back into that overlap.
+        let sheet_up = has_selection
+            && (self.composer.read(cx).question_sheet_visible()
+                || self.composer.read(cx).permission_sheet_visible(cx));
         // The Needs you page. The rail entry and its shortcut open it and it
         // takes the main area, the way Settings does - it never stacks over
         // the conversation. `inbox_on` is `inbox_shown == Some(true)`, so it
