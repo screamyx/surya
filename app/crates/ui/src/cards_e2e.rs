@@ -105,6 +105,7 @@ fn controls() -> RunControls {
         }),
         steering: steer_rx,
         interrupt: CancellationToken::new(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     }
 }
 
