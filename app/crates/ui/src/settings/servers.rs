@@ -5,14 +5,26 @@
 //! to. The shell owns the swap and persists the list, so this page only emits.
 
 use gpui::{
-    AnyElement, Context, Entity, EventEmitter, Focusable, SharedString, Subscription, Window,
-    div, prelude::*, px,
+    AnyElement, Context, Entity, EventEmitter, SharedString, Subscription, Window, div, prelude::*,
+    px,
 };
-use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::popover;
 use crate::settings::ServerEntry;
-use crate::state::{AppState, ConnectionStatus, EngineMode, RemoteEngineTarget};
+use crate::state::{AppState, RemoteEngineTarget};
 use crate::theme::Theme;
+
+mod active;
+mod add;
+pub use active::{ActiveRow, active_row, canonical_url, status_text};
+use add::AddDialog;
+pub use add::parse_server;
+
+/// The port a portless address means, in the Add dialog and when two
+/// addresses are compared: one rule, so an engine saved from the Command
+/// line row is found again by the address that was dialed. It is the port
+/// deploy/install-engine.sh serves on; the loopback daemon's 27654 is never
+/// what a remote entry means (#74).
+pub const DEFAULT_PORT: u16 = 27700;
 
 pub enum ServersEvent {
     /// The list or the active choice changed; the shell persists it.
@@ -23,60 +35,14 @@ pub enum ServersEvent {
     /// Dial this engine now (`None` = back to the local engine).
     Connect(Option<RemoteEngineTarget>),
 }
-
-/// Build a server row from the dialog's raw text. Pure so the parsing rules
-/// are testable: `host` may carry `ws://` and `:port`; the port field wins
-/// when both are given; an empty name falls back to the host.
-pub fn parse_server(name: &str, host: &str, port: &str, token: &str) -> Result<ServerEntry, String> {
-    let mut host = host.trim();
-    for prefix in ["ws://", "wss://", "http://", "https://"] {
-        host = host.strip_prefix(prefix).unwrap_or(host);
-    }
-    let host = host.trim_end_matches('/');
-    let (host, inline_port) = match host.rsplit_once(':') {
-        Some((h, p)) if !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()) && !h.contains(':') => {
-            (h, Some(p))
-        }
-        _ => (host, None),
-    };
-    if host.is_empty() {
-        return Err("Host is required (an IP address or a name your network resolves).".into());
-    }
-    let port = match port.trim() {
-        // The port deploy/install-engine.sh serves on; the loopback daemon's
-        // 27654 is never what a remote entry means.
-        "" => inline_port.unwrap_or("27700"),
-        given => given,
-    };
-    let port: u16 = port
-        .parse::<u16>()
-        .ok()
-        .filter(|p| *p > 0)
-        .ok_or_else(|| format!("Port {port:?} is not a number between 1 and 65535."))?;
-    let name = match name.trim() {
-        "" => host.to_string(),
-        given => given.to_string(),
-    };
-    let token = match token.trim() {
-        "" => None,
-        given => Some(given.to_string()),
-    };
-    Ok(ServerEntry {
-        id: uuid::Uuid::new_v4().to_string(),
-        name,
-        host: host.to_string(),
-        port,
-        token,
-    })
-}
-
-struct AddDialog {
-    name: Entity<ComposerInput>,
-    host: Entity<ComposerInput>,
-    port: Entity<ComposerInput>,
-    token: Entity<ComposerInput>,
-    error: Option<SharedString>,
-    _events: Vec<Subscription>,
+/// What sits at the right edge of a Servers row.
+enum RowTail {
+    /// Not the engine in use: Connect dials the saved id (`None` = local).
+    Connect(Option<String>),
+    /// The engine in use.
+    Active,
+    /// The engine in use, known only from the command line: Active plus Save.
+    ActiveUnsaved,
 }
 
 pub struct ServersPage {
@@ -141,29 +107,7 @@ impl ServersPage {
     }
 
     fn open_add(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let mut events = Vec::with_capacity(4);
-        let mut field = |placeholder: &'static str, cx: &mut Context<Self>| {
-            let input = cx.new(|cx| ComposerInput::new(placeholder, cx));
-            events.push(cx.subscribe(&input, |this: &mut Self, _, event, cx| {
-                if matches!(event, ComposerInputEvent::Submitted) {
-                    this.submit_add(cx);
-                }
-            }));
-            input
-        };
-        let name = field("Name (optional)", cx);
-        let host = field("Host, e.g. 100.64.0.9 or build-box", cx);
-        let port = field("Port (default 27700)", cx);
-        let token = field("Token from `zeron status` on that machine", cx);
-        window.focus(&host.focus_handle(cx), cx);
-        self.add = Some(AddDialog {
-            name,
-            host,
-            port,
-            token,
-            error: None,
-            _events: events,
-        });
+        self.add = Some(AddDialog::open(window, cx));
         cx.notify();
     }
 
@@ -192,99 +136,59 @@ impl ServersPage {
         cx.notify();
     }
 
-    /// One line of truth about what the app is talking to right now.
-    fn status_line(&self, cx: &Context<Self>) -> (SharedString, bool) {
+    /// The row that is the engine in use, from what the app was asked to dial.
+    fn active_row(&self, cx: &Context<Self>) -> ActiveRow {
         let state = self.state.read(cx);
-        let mode = state.engine().map(|engine| engine.mode());
-        match (&state.connection, mode) {
-            (ConnectionStatus::Connecting, _) => ("Connecting…".into(), false),
-            (ConnectionStatus::Failed(message), _) => (format!("Not connected: {message}").into(), true),
-            (ConnectionStatus::Ready, Some(EngineMode::Remote { url })) => {
-                let name = self
-                    .active
-                    .as_deref()
-                    .and_then(|id| self.servers.iter().find(|s| s.id == id))
-                    .map(|s| s.name.clone())
-                    .unwrap_or_else(|| url.clone());
-                (format!("Connected to {name} ({url})").into(), false)
+        let dialed = state.dialed_server().map(|target| target.url.as_str());
+        active_row(dialed, self.active.as_deref(), &self.servers)
+    }
+
+    /// Keep the engine that came from the command line: a saved entry at its
+    /// address, chosen, so the next launch (without the flag) dials it too.
+    /// Idempotent: an entry already at that address is chosen, not added, and
+    /// a target that would not save back to the same address is refused.
+    fn save_command_line(&mut self, cx: &mut Context<Self>) {
+        let Some(target) = self.state.read(cx).dialed_server().cloned() else {
+            return;
+        };
+        let wanted = canonical_url(&target.url);
+        if let Some(existing) = self.servers.iter().find(|s| canonical_url(&s.url()) == wanted) {
+            self.active = Some(existing.id.clone());
+            self.emit_changed(cx);
+            cx.notify();
+            return;
+        }
+        match add::entry_for_target(&target) {
+            Ok(entry) => {
+                self.active = Some(entry.id.clone());
+                self.servers.push(entry);
+                self.emit_changed(cx);
+                cx.notify();
             }
-            (ConnectionStatus::Ready, _) => ("Using the engine on this computer".into(), false),
+            Err(message) => {
+                tracing::warn!(url = %target.url, %message, "could not save the command-line engine");
+            }
         }
     }
 
-    fn render_add_dialog(
-        &mut self,
-        viewport: gpui::Size<gpui::Pixels>,
-        cx: &mut Context<Self>,
-    ) -> Option<AnyElement> {
-        use crate::settings::widgets;
-        let theme = Theme::of(cx).clone();
-        let dialog = self.add.as_ref()?;
-        let field = |label: &str, input: Entity<ComposerInput>| {
-            div()
-                .mt(px(12.0))
-                .flex()
-                .flex_col()
-                .gap(px(6.0))
-                .child(widgets::field_label(&theme, label.to_string()))
-                .child(popover::dialog_field(input.into_any_element()))
-        };
-        let card = popover::dialog_card(&theme)
-            .child(popover::dialog_title(&theme, "Add server"))
-            .child(div().mt(px(6.0)).child(popover::dialog_body(
-                &theme,
-                "The other machine runs `zeron headless --bind <its address>`. \
-                 `zeron status` there prints the token.",
-            )))
-            .child(field("Name", dialog.name.clone()))
-            .child(field("Host", dialog.host.clone()))
-            .child(field("Port", dialog.port.clone()))
-            .child(field("Token", dialog.token.clone()))
-            .when_some(dialog.error.clone(), |el, message| {
-                el.child(div().mt(px(12.0)).child(widgets::error_strip(&theme, message)))
-            })
-            .child(
-                div()
-                    .mt(px(16.0))
-                    .flex()
-                    .flex_row()
-                    .justify_end()
-                    .gap(px(8.0))
-                    .child(
-                        popover::btn_ghost(&theme, "Cancel", "add-server-cancel")
-                            .id("add-server-cancel")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.add = None;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        popover::btn_primary(&theme, "Add")
-                            .id("add-server-save")
-                            .on_click(cx.listener(|this, _, _, cx| this.submit_add(cx))),
-                    ),
-            )
-            .into_any_element();
-        Some(popover::modal("add-server-dialog", viewport, card))
-    }
-
+    /// `remove_id` is the saved entry the row's Remove button drops (`None`
+    /// for rows that are not saved).
     fn render_row(
         &self,
         ix: usize,
         title: String,
         meta: Vec<String>,
         icon_path: &'static str,
-        id: Option<String>,
+        remove_id: Option<String>,
+        tail: RowTail,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         use crate::settings::widgets;
-        let is_active = self.active == id;
         let meta: Vec<AnyElement> = meta
             .into_iter()
             .map(|text| div().child(SharedString::from(text)).into_any_element())
             .collect();
-        let connect_id = id.clone();
         let mut row = widgets::card_row(theme, ix == 0)
             .child(widgets::row_tile(theme, icon_path))
             .child(
@@ -296,10 +200,20 @@ impl ServersPage {
                     .child(widgets::row_title(theme, title))
                     .child(widgets::meta_line(theme, meta)),
             );
-        row = if is_active {
-            row.child(widgets::badge_active(theme, "Active"))
-        } else {
-            row.child(
+        row = match tail {
+            RowTail::Active => row.child(widgets::badge_active(theme, "Active")),
+            RowTail::ActiveUnsaved => row.child(widgets::badge_active(theme, "Active")).child(
+                widgets::ghost_action(theme)
+                    .id(("server-save", ix))
+                    .on_click(cx.listener(|this, _, _, cx| this.save_command_line(cx)))
+                    .child(
+                        crate::icons::icon(crate::icons::GLOBAL)
+                            .size(px(14.0))
+                            .text_color(theme.text_muted),
+                    )
+                    .child(SharedString::from("Save")),
+            ),
+            RowTail::Connect(connect_id) => row.child(
                 widgets::ghost_action(theme)
                     .id(("server-connect", ix))
                     .on_click(cx.listener(move |this, _, _, cx| {
@@ -311,9 +225,9 @@ impl ServersPage {
                             .text_color(theme.text_muted),
                     )
                     .child(SharedString::from("Connect")),
-            )
+            ),
         };
-        if let Some(remove_id) = id {
+        if let Some(remove_id) = remove_id {
             row = row.child(
                 widgets::ghost_action(theme)
                     .id(("server-remove", ix))
@@ -338,9 +252,22 @@ impl Render for ServersPage {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use crate::settings::widgets;
         let theme = Theme::of(cx).clone();
-        let (status, status_is_error) = self.status_line(cx);
-        let dialog = self.render_add_dialog(window.viewport_size(), cx);
+        let active = self.active_row(cx);
+        let (status, status_is_error) =
+            status_text(&self.state.read(cx).connection, &active, &self.servers);
+        let status = SharedString::from(status);
+        let dialog = self
+            .add
+            .as_ref()
+            .map(|dialog| add::render(dialog, window.viewport_size(), cx));
         let count = self.servers.len();
+        let tail = |row_id: Option<String>, is_active: bool| {
+            if is_active {
+                RowTail::Active
+            } else {
+                RowTail::Connect(row_id)
+            }
+        };
 
         let mut rows: Vec<AnyElement> = vec![self.render_row(
             0,
@@ -348,6 +275,7 @@ impl Render for ServersPage {
             vec!["Engine started by this app, or a daemon on the local port".into()],
             crate::icons::MONITOR,
             None,
+            tail(None, active == ActiveRow::Local),
             &theme,
             cx,
         )];
@@ -360,12 +288,32 @@ impl Render for ServersPage {
                     "no token".to_string()
                 },
             ];
+            let is_active = active == ActiveRow::Saved(server.id.clone());
             rows.push(self.render_row(
                 ix + 1,
                 server.name.clone(),
                 meta,
                 crate::icons::GLOBAL,
                 Some(server.id.clone()),
+                tail(Some(server.id.clone()), is_active),
+                &theme,
+                cx,
+            ));
+        }
+        // A `--engine` / `ZERON_ENGINE` target is dialed but never saved: give
+        // it its own row so the badge does not fall on "This computer", and a
+        // Save button so it can become a saved entry.
+        if let ActiveRow::CommandLine(url) = &active {
+            rows.push(self.render_row(
+                rows.len(),
+                "Command line".into(),
+                vec![
+                    url.clone(),
+                    "from --engine or ZERON_ENGINE; Save keeps it".into(),
+                ],
+                crate::icons::GLOBAL,
+                None,
+                RowTail::ActiveUnsaved,
                 &theme,
                 cx,
             ));
@@ -410,43 +358,5 @@ impl Render for ServersPage {
                     ),
             )
             .when_some(dialog, |el, dialog| el.child(dialog))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::parse_server;
-
-    #[test]
-    fn host_and_port_parse_from_plain_fields() {
-        let entry = parse_server("Build box", "100.64.0.9", "27654", "abc").unwrap();
-        assert_eq!(entry.name, "Build box");
-        assert_eq!(entry.host, "100.64.0.9");
-        assert_eq!(entry.port, 27654);
-        assert_eq!(entry.token.as_deref(), Some("abc"));
-        assert_eq!(entry.url(), "ws://100.64.0.9:27654");
-    }
-
-    #[test]
-    fn host_may_carry_scheme_and_port() {
-        let entry = parse_server("", "ws://build-box:27700/", "", "").unwrap();
-        assert_eq!(entry.name, "build-box");
-        assert_eq!(entry.host, "build-box");
-        assert_eq!(entry.port, 27700);
-        assert_eq!(entry.token, None);
-    }
-
-    #[test]
-    fn port_field_wins_and_defaults() {
-        assert_eq!(parse_server("", "h:1", "2", "").unwrap().port, 2);
-        assert_eq!(parse_server("", "h", "", "").unwrap().port, 27700);
-    }
-
-    #[test]
-    fn bad_input_is_rejected() {
-        assert!(parse_server("", "", "1", "").is_err());
-        assert!(parse_server("", "h", "0", "").is_err());
-        assert!(parse_server("", "h", "70000", "").is_err());
-        assert!(parse_server("", "h", "abc", "").is_err());
     }
 }
