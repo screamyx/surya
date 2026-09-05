@@ -285,7 +285,11 @@ impl Render for NeedsYouPane {
                 (
                     state.selected_chat.clone(),
                     crate::composer::pending_input_request(&state.transcript)
-                        .map(|(request_id, _)| request_id),
+                        .map(|(request_id, _)| request_id)
+                        // Answered on this device: the sheet is already gone,
+                        // even though the doc still carries the request until
+                        // `resolved` syncs back. Nothing to point at.
+                        .filter(|request_id| !state.answered_requests.contains(request_id)),
                 )
             }
             None => (None, None),
