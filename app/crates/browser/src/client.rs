@@ -1,9 +1,17 @@
 //! The browsers (one per tab) and the CEF client that owns their callbacks:
 //! lifetime, loads, find results, and what each tab's address bar shows.
 //! Every callback names its browser; `tabs.rs` maps that to a tab.
+//!
+//! Which browser is "the active one" has one source: the tab model
+//! (`tabs::active_browser`). This module never keeps its own pointer.
+//!
+//! Locks: `BROWSERS` is taken only to read or change the map and is never
+//! held across a CEF call (hosts are cloned out first); `tabs::TABS` is
+//! never taken while `BROWSERS` is held, and no CEF callback takes both at
+//! once. `render::FRAMES` is independent of either.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use cef::rc::Rc as _;
@@ -13,8 +21,6 @@ use crate::tabs::update_by_browser;
 
 /// Every live browser by CEF identifier.
 static BROWSERS: Mutex<Option<HashMap<i32, Browser>>> = Mutex::new(None);
-/// The browser on screen (the active tab's), 0 for none.
-static ACTIVE: AtomicI32 = AtomicI32::new(0);
 static CREATED: AtomicU64 = AtomicU64::new(0);
 static CLOSED: AtomicU64 = AtomicU64::new(0);
 static POPUPS_REFUSED: AtomicU64 = AtomicU64::new(0);
@@ -66,25 +72,26 @@ pub(crate) fn set_visible(on: bool) {
     println!("browser: visible={}", u8::from(on));
 }
 
-/// Make `browser` the one on screen and park every other. A tab switch.
+/// Every live host, with its identifier, cloned out from under the lock.
+fn hosts() -> Vec<(i32, BrowserHost)> {
+    let Ok(guard) = BROWSERS.lock() else { return Vec::new() };
+    let Some(map) = guard.as_ref() else { return Vec::new() };
+    map.iter().filter_map(|(id, b)| b.host().map(|h| (*id, h))).collect()
+}
+
+/// Put `browser` on screen and park every other one. A tab switch, or a
+/// tab close (then `browser` is the new active tab's, or 0 for none).
 pub(crate) fn activate(browser: i32) {
-    let previous = ACTIVE.swap(browser, Ordering::AcqRel);
-    if previous == browser {
-        return;
-    }
-    let Ok(guard) = BROWSERS.lock() else { return };
-    let Some(map) = guard.as_ref() else { return };
-    if let Some(host) = map.get(&previous).and_then(|b| b.host()) {
-        park(&host);
-    }
-    if let Some(host) = map.get(&browser).and_then(|b| b.host()) {
-        if VISIBLE.load(Ordering::Acquire) {
+    let mut shown = 0;
+    for (id, host) in hosts() {
+        if id == browser && VISIBLE.load(Ordering::Acquire) {
             show(&host);
+            shown += 1;
         } else {
             park(&host);
         }
     }
-    println!("browser: activate browser={browser} (was {previous})");
+    println!("browser: activate browser={browser} shown={shown}");
 }
 
 /// Close one browser. CEF answers with `on_before_close`, which drops it
@@ -100,24 +107,15 @@ pub(crate) fn close_browser(browser: i32) {
     }
 }
 
-/// Close every browser (the Browser surface was closed, or the app quits).
-pub(crate) fn close_all() {
-    crate::tabs::close_all();
-    let hosts: Vec<BrowserHost> = BROWSERS
-        .lock()
-        .ok()
-        .and_then(|g| g.as_ref().map(|m| m.values().filter_map(|b| b.host()).collect()))
-        .unwrap_or_default();
-    for host in hosts {
-        host.close_browser(1);
-    }
-}
 static LOAD_END_OK: AtomicU64 = AtomicU64::new(0);
 static LOAD_END_OTHER: AtomicU64 = AtomicU64::new(0);
 
-/// The active tab's browser.
+/// The active tab's browser, as the tab model says.
 pub(crate) fn browser() -> Option<Browser> {
-    let id = ACTIVE.load(Ordering::Acquire);
+    let id = crate::tabs::active_browser();
+    if id == 0 {
+        return None;
+    }
     BROWSERS.lock().ok()?.as_ref()?.get(&id).cloned()
 }
 
@@ -205,7 +203,6 @@ wrap_life_span_handler! {
                 .is_some();
             if removed {
                 CLOSED.fetch_add(1, Ordering::Relaxed);
-                let _ = ACTIVE.compare_exchange(id, 0, Ordering::AcqRel, Ordering::Acquire);
                 crate::render::forget(id);
                 crate::tabs::detach(id);
             }

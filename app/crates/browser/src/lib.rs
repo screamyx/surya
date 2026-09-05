@@ -264,7 +264,7 @@ pub fn set_visible(on: bool) {
 /// go away; the CEF process stays for a later [`reopen`].
 pub fn close() {
     if !disabled() {
-        client::close_all();
+        tabs::close_all();
     }
 }
 
@@ -287,7 +287,7 @@ pub fn shutdown() {
     if disabled() || !STARTED.load(Ordering::Acquire) {
         return;
     }
-    client::close_all();
+    tabs::close_all();
     let started = std::time::Instant::now();
     let mut pumps = 0u32;
     while client::is_open() && started.elapsed() < std::time::Duration::from_secs(3) {
@@ -305,5 +305,7 @@ pub fn shutdown() {
         u8::from(!client::is_open()),
         client::lifecycle_counters()
     );
+    // A browser that did not answer in time still had a frame slot.
+    render::forget_all();
     cef::shutdown();
 }

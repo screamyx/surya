@@ -143,6 +143,10 @@ pub fn counters() -> String {
         crate::render::frames(),
         crate::client::lifecycle_counters(),
         crate::tabs::counters(),
+    ) + &format!(
+        " bg_paints={} kept_frames={}",
+        crate::render::background_paints(),
+        crate::render::kept_frames()
     )
 }
 

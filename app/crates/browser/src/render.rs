@@ -33,18 +33,57 @@ struct FrameBuf {
     img: Arc<RenderImage>,
 }
 /// The latest frame of every browser, by CEF identifier. A parked tab keeps
-/// its last frame, so switching back to it shows something at once.
+/// its last frame, so switching back to it shows something at once. Bounded
+/// to [`KEPT_FRAMES`] entries: beyond that the oldest parked frame goes
+/// (a frame is about 14 MB at 2560x1440, and a tab that is shown again
+/// repaints within a frame anyway).
 static FRAMES: Mutex<Option<HashMap<i32, FrameBuf>>> = Mutex::new(None);
+const KEPT_FRAMES: usize = 8;
+/// Paints by browsers that were not on screen (parked, or created and not
+/// yet activated). They store a frame and count here, nothing else.
+static BACKGROUND_PAINTS: AtomicU64 = AtomicU64::new(0);
 
-/// Frames CEF delivered so far, all browsers.
+/// Frames the active browser delivered so far. The pump's idle detection
+/// reads this, so a parked tab's paint must not move it.
 pub(crate) fn frames() -> u64 {
     PAINTS.load(Ordering::Relaxed)
 }
 
+pub(crate) fn background_paints() -> u64 {
+    BACKGROUND_PAINTS.load(Ordering::Relaxed)
+}
+
 /// The active tab's latest frame.
 pub(crate) fn frame() -> Option<(u64, Arc<RenderImage>)> {
-    let id = crate::tabs::active_browser();
-    FRAMES.lock().ok()?.as_ref()?.get(&id).map(|f| (f.seq, f.img.clone()))
+    frame_of(crate::tabs::active_browser())
+}
+
+fn frame_of(browser: i32) -> Option<(u64, Arc<RenderImage>)> {
+    if browser == 0 {
+        return None;
+    }
+    FRAMES.lock().ok()?.as_ref()?.get(&browser).map(|f| (f.seq, f.img.clone()))
+}
+
+/// Keep `browser`'s latest frame, dropping the oldest other one past the
+/// bound. `active` is never the one dropped.
+fn store(browser: i32, seq: u64, img: Arc<RenderImage>, active: i32) {
+    let Ok(mut guard) = FRAMES.lock() else { return };
+    let map = guard.get_or_insert_with(HashMap::new);
+    map.insert(browser, FrameBuf { seq, img });
+    while map.len() > KEPT_FRAMES {
+        let oldest = map
+            .iter()
+            .filter(|(id, _)| **id != active && **id != browser)
+            .min_by_key(|(_, f)| f.seq)
+            .map(|(id, _)| *id);
+        match oldest {
+            Some(id) => {
+                map.remove(&id);
+            }
+            None => break,
+        }
+    }
 }
 
 /// The browser is gone; so is its frame.
@@ -54,6 +93,18 @@ pub(crate) fn forget(browser: i32) {
     {
         map.remove(&browser);
     }
+}
+
+/// Every frame goes: CEF is shutting down and `on_before_close` may not
+/// have reached every browser in time.
+pub(crate) fn forget_all() {
+    if let Ok(mut guard) = FRAMES.lock() {
+        *guard = None;
+    }
+}
+
+pub(crate) fn kept_frames() -> usize {
+    FRAMES.lock().ok().and_then(|g| g.as_ref().map(|m| m.len())).unwrap_or(0)
 }
 
 pub(crate) fn last_size() -> (i32, i32) {
@@ -129,6 +180,12 @@ wrap_render_handler! {
             if buffer.is_null() || width <= 0 || height <= 0 {
                 return;
             }
+            // A browser no tab owns never gets a frame slot (0 is nobody).
+            let id = browser.map(|b| b.identifier()).unwrap_or(0);
+            if id == 0 {
+                return;
+            }
+            let active = crate::tabs::active_browser();
             let t0 = Instant::now();
             let len = (width as usize) * (height as usize) * 4;
             // SAFETY: CEF owns `buffer` for the duration of the callback and
@@ -141,11 +198,15 @@ wrap_render_handler! {
                 return;
             };
             let img = Arc::new(RenderImage::new(vec![image::Frame::new(buf)]));
-            let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-            let id = browser.map(|b| b.identifier()).unwrap_or(0);
-            if let Ok(mut guard) = FRAMES.lock() {
-                guard.get_or_insert_with(HashMap::new).insert(id, FrameBuf { seq: n, img });
+            if id != active {
+                // Parked, or created and not activated yet: keep the frame
+                // for when it is shown, count it apart, move nothing else.
+                let seq = BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+                store(id, seq, img, active);
+                return;
             }
+            let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+            store(id, n, img, active);
             LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
             let us = t0.elapsed().as_micros() as u64;
             COPY_N.fetch_add(1, Ordering::Relaxed);
@@ -185,4 +246,32 @@ fn dump_frame(n: u64, width: u32, height: u32, bgra: &[u8]) {
 
 pub(crate) fn render_handler() -> RenderHandler {
     Render::new()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn img() -> Arc<RenderImage> {
+        let buf: image::RgbaImage = image::ImageBuffer::from_raw(1, 1, vec![0, 0, 0, 255]).unwrap();
+        Arc::new(RenderImage::new(vec![image::Frame::new(buf)]))
+    }
+
+    #[test]
+    fn frames_are_kept_per_browser_and_bounded_without_dropping_the_active_one() {
+        forget_all();
+        let active = 1;
+        for id in 1..=(KEPT_FRAMES as i32 + 3) {
+            store(id, id as u64, img(), active);
+        }
+        assert_eq!(kept_frames(), KEPT_FRAMES);
+        assert!(frame_of(active).is_some(), "the active frame is never the one dropped");
+        assert!(frame_of(2).is_none(), "the oldest parked frame went first");
+        assert!(frame_of(KEPT_FRAMES as i32 + 3).is_some());
+        assert!(frame_of(0).is_none(), "0 names no browser");
+        forget(active);
+        assert!(frame_of(active).is_none());
+        forget_all();
+        assert_eq!(kept_frames(), 0);
+    }
 }
