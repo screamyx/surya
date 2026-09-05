@@ -1,0 +1,18 @@
+# critic-shots.sh SURYA_SHOT_PANES=browser SHOT_WAIT=75 on fix/browser-open-pane-after-restore 7dfc0e9 (debug, --features browser), 2026-09-05 11:55
+seeded=1 space=1 chat=1 run=1 tasks=4
+shot=1 bytes=115109 colours=15841 panics=0 out=/store/agent-worktrees/surya-cef/critic-fix2/shell-browser-light.png
+shot=1 bytes=113364 colours=15587 panics=0 out=/store/agent-worktrees/surya-cef/critic-fix2/shell-browser-dark.png
+== app-shell-browser-light.log
+browser: create asked=1 made=1 url=https://example.com
+browser: address https://example.com/
+browser: load_end status=200
+browser: view -> 518x806 scale=1 resizes=1
+browser: on_paint #1: 518x806, 1670032 bytes, copy 0.32ms
+browser: t=80s renders=17 work_did=1324 pump_asks=462 timer_armed=0 timer_fired=0 idle_armed=1308 idle_ran=1307 idle_refresh=2 inputs=0 frames=2 size=518x806 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=2 last=0.25 avg=0.28 max=0.32 upload_ms n=2 la
+== app-shell-browser-dark.log
+browser: create asked=1 made=1 url=https://example.com
+browser: address https://example.com/
+browser: load_end status=200
+browser: view -> 518x806 scale=1 resizes=1
+browser: on_paint #1: 518x806, 1670032 bytes, copy 0.49ms
+browser: t=80s renders=17 work_did=1248 pump_asks=383 timer_armed=0 timer_fired=0 idle_armed=1232 idle_ran=1231 idle_refresh=2 inputs=0 frames=2 size=518x806 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=2 last=0.42 avg=0.45 max=0.49 upload_ms n=2 la
