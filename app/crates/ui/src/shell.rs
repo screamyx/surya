@@ -8217,9 +8217,18 @@ impl Render for Shell {
         );
         self.viewport_width = f32::from(window.viewport_size().width);
         if let Some(pane) = self.debug_open_pane.as_deref() {
-            let ready = match pane {
-                "browser" => true,
-                _ => self.current_space(cx).is_some(),
+            // Same gate for every pane: fire once `panel_key` is the one the
+            // user will look at. Firing on the first frame put the Browser tab
+            // on the pre-selection canvas key nobody sees (critique round 3,
+            // B1). A ready engine with no spaces at all (the bare browser
+            // proof rig) has only the canvas, so it fires there.
+            let ready = {
+                let state = self.state.read(cx);
+                let no_spaces_ever = matches!(state.connection, ConnectionStatus::Ready)
+                    && state.spaces.is_empty();
+                !self.active_chat.is_empty()
+                    || self.current_space(cx).is_some()
+                    || (pane == "browser" && no_spaces_ever)
             };
             if ready {
                 let pane = self.debug_open_pane.take().unwrap_or_default();
