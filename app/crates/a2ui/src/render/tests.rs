@@ -27,7 +27,6 @@ fn theme() -> CardTheme {
         solid: c,
         on_solid: c,
         accent: c,
-        code_text: c,
         code_wash: c,
         input_bg: c,
         danger: c,

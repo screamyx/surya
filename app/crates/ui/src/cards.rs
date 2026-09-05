@@ -68,8 +68,10 @@ pub fn card_theme(theme: &Theme) -> CardTheme {
         solid: theme.solid,
         on_solid: theme.on_solid,
         accent: theme.accent,
-        code_text: theme.code_text,
-        code_wash: theme.code_wash,
+        // Comet's code wash is the accent at low alpha; a card of paths in
+        // that tint is a card of orange (critic round 2, C1). The neutral
+        // hover fill is the same weight without the hue.
+        code_wash: theme.element_hover,
         input_bg: theme.input_bg,
         danger: theme.danger_muted,
         font_sans: theme.font_sans.clone(),
