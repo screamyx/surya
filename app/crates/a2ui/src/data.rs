@@ -6,6 +6,10 @@ use serde_json::Value;
 
 use crate::model::{Dynamic, FunctionCall};
 
+/// Highest array index a write may create. A pointer like `/x/99999999999`
+/// would otherwise allocate that many nulls (the spec pads with null).
+pub const MAX_ARRAY_INDEX: usize = 10_000;
+
 /// A surface's data model. Absolute paths are JSON Pointers (`/a/b/0`);
 /// `""` and `/` both mean the root.
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -72,17 +76,25 @@ impl DataModel {
     }
 
     /// Upsert at `pointer`, creating intermediate objects (arrays when the
-    /// next segment is a number). The root pointer replaces everything.
-    pub fn set(&mut self, pointer: &str, value: Value) {
+    /// next segment is a number). The root pointer replaces everything. A
+    /// write that would pad an array past [`MAX_ARRAY_INDEX`] is refused
+    /// (returns `false`, model untouched).
+    pub fn set(&mut self, pointer: &str, value: Value) -> bool {
         if pointer.is_empty() || pointer == "/" {
             self.root = value;
-            return;
+            return true;
         }
         let segments: Vec<String> = pointer
             .trim_start_matches('/')
             .split('/')
             .map(unescape)
             .collect();
+        if segments
+            .iter()
+            .any(|s| s.parse::<usize>().is_ok_and(|ix| ix > MAX_ARRAY_INDEX))
+        {
+            return false;
+        }
         let mut cur = &mut self.root;
         for (ix, seg) in segments.iter().enumerate() {
             let last = ix + 1 == segments.len();
@@ -100,7 +112,7 @@ impl DataModel {
                     }
                     if last {
                         arr[index] = value;
-                        return;
+                        return true;
                     }
                     if !arr[index].is_object() && !arr[index].is_array() {
                         arr[index] = if next_is_index {
@@ -118,7 +130,7 @@ impl DataModel {
                     let obj = cur.as_object_mut().expect("object");
                     if last {
                         obj.insert(seg.clone(), value);
-                        return;
+                        return true;
                     }
                     let slot = obj.entry(seg.clone()).or_insert(Value::Null);
                     if !slot.is_object() && !slot.is_array() {
@@ -132,6 +144,7 @@ impl DataModel {
                 }
             }
         }
+        true
     }
 
     /// Remove the key at `pointer` (arrays: the slot becomes null, length
@@ -391,6 +404,16 @@ mod tests {
         assert_eq!(m.get("/user"), Some(&json!({"age": 31})));
         m.set("/", json!({"fresh": true}));
         assert_eq!(m.as_value(), &json!({"fresh": true}));
+    }
+
+    #[test]
+    fn huge_array_index_is_refused_not_allocated() {
+        let mut m = DataModel::new(json!({"x": [1]}));
+        assert!(!m.set("/x/99999999999", json!(1)));
+        assert!(!m.set("/y/10001/z", json!(1)));
+        assert_eq!(m.as_value(), &json!({"x": [1]}));
+        assert!(m.set("/x/3", json!(4)));
+        assert_eq!(m.get("/x"), Some(&json!([1, null, null, 4])));
     }
 
     #[test]

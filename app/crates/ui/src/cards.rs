@@ -2,12 +2,55 @@
 //! comet's theme onto the card token set, loads demo fixtures, and prints
 //! the render counter the proof reads (`asked=N rendered=N`).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use gpui::{Bounds, ListState, Pixels, SharedString, Window};
-use surya_a2ui::{Card, CardTheme};
+use surya_a2ui::{Card, CardTheme, ImagePolicy};
 
+use crate::state::AppState;
 use crate::theme::Theme;
+
+/// The demo fixtures dir (`ZERON_DEMO_CARDS`), read once.
+fn demo_dir() -> Option<&'static PathBuf> {
+    static DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
+    DIR.get_or_init(|| {
+        std::env::var_os("ZERON_DEMO_CARDS")
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+    })
+    .as_ref()
+}
+
+/// Whether the render/measure counters print (`ZERON_DEMO_CARDS` or
+/// `SURYA_CARD_STATS=1`); off by default so a card row costs no log line
+/// and no per-frame closure.
+fn stats_enabled() -> bool {
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| {
+        demo_dir().is_some()
+            || std::env::var("SURYA_CARD_STATS").is_ok_and(|v| !v.is_empty() && v != "0")
+    })
+}
+
+/// Where the selected chat's cards may load images from: the chat's
+/// working folder and the demo fixtures dir. Remote images stay off until
+/// a setting exists for them.
+pub fn image_policy(state: &AppState) -> ImagePolicy {
+    let mut allowed_dirs: Vec<PathBuf> = state
+        .selected_chat_row()
+        .and_then(|c| c.cwd.clone())
+        .map(PathBuf::from)
+        .into_iter()
+        .collect();
+    if let Some(dir) = demo_dir() {
+        allowed_dirs.push(dir.clone());
+    }
+    ImagePolicy {
+        allowed_dirs,
+        remote_allowed: false,
+    }
+}
 
 /// The card token set for the current theme. Numbers are comet's layout
 /// constants; every color is a transcript token, so a card sits on the
@@ -107,6 +150,9 @@ pub fn demo_entries(dir: &Path) -> Vec<zeron_doc::SessionMessageEntry> {
 /// measured row bounds once the list has laid it out. Read the log with
 /// `grep 'card rendered'` and `grep 'card measured'`.
 pub fn log_render(ix: usize, row_id: &SharedString, card: &Card, list: &ListState, window: &mut Window) {
+    if !stats_enabled() {
+        return;
+    }
     tracing::info!(
         target: "surya_a2ui",
         row = ix,
@@ -200,6 +246,40 @@ mod tests {
             assert!(seen.contains(name), "{name} missing; seen {seen:?}");
         }
         eprintln!("components asked=11 covered={}", seen.len().min(11));
+    }
+
+    /// The hostile fixtures parse without panicking and land on the
+    /// diagnostics the hardening added: the huge index is refused, the
+    /// exfiltrating images never resolve to a fetch, the fan-out card is
+    /// parse-clean (the render budget owns it, see `surya_a2ui::budget`).
+    #[test]
+    fn hostile_fixtures_degrade_to_diagnostics() {
+        let dir = fixtures_dir().join("hostile");
+        let cards = load_fixture_dir(&dir);
+        assert_eq!(cards.len(), 4, "hostile fixtures present");
+        let policy = ImagePolicy::default();
+        let mut refused = 0;
+        let mut blocked_images = 0;
+        for (stem, json) in &cards {
+            let card = surya_a2ui::parse_card(json);
+            assert!(card.root().is_some(), "{stem}: root");
+            if stem == "huge-index" {
+                assert!(card.errors.iter().any(|e| e.contains("out of bounds")), "{stem}: {:?}", card.errors);
+                refused += 1;
+            }
+            for c in card.components.values() {
+                if let surya_a2ui::ComponentKind::Image { url: surya_a2ui::model::Dynamic::Literal(u), .. } = &c.kind {
+                    match policy.decide(u) {
+                        surya_a2ui::ImageDecision::File(_) | surya_a2ui::ImageDecision::Remote(_) => {
+                            panic!("{stem}: {u} would load")
+                        }
+                        _ => blocked_images += 1,
+                    }
+                }
+            }
+        }
+        eprintln!("hostile asked=4 parsed=4 index_refused={refused} images_blocked={blocked_images}");
+        assert_eq!((refused, blocked_images), (1, 3));
     }
 
     trait Tap: Sized {

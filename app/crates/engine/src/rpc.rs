@@ -515,9 +515,6 @@ impl EngineRpc {
             .ok_or_else(|| RpcError::Failed("local import requires a synced workspace".into()))
     }
 
-    /// Resolve a mention-search root from synced workspace rows. A client may
-    /// name an existing linked worktree for a new chat, but it is verified
-    /// against the space repository before any filesystem walk begins.
     /// The checkout root the file RPCs are jailed to: the space's folder, on
     /// this device only.
     async fn files_jail(&self, space_id: &str) -> Result<crate::files::Jail, RpcError> {
@@ -536,6 +533,9 @@ impl EngineRpc {
             .map_err(|e| RpcError::Failed(e.to_string()))
     }
 
+    /// Resolve a mention-search root from synced workspace rows. A client may
+    /// name an existing linked worktree for a new chat, but it is verified
+    /// against the space repository before any filesystem walk begins.
     async fn file_search_root(&self, p: &FileSearchParams) -> Result<std::path::PathBuf, RpcError> {
         let local_device = self.doc_host.device_id();
         match (&p.chat_id, &p.space_id) {
@@ -1790,8 +1790,12 @@ impl RpcService for EngineRpc {
             methods::FILES_WATCH => {
                 let p: zeron_proto::files::FileWatchParams = parse_params(params)?;
                 let jail = self.files_jail(&p.space_id).await?;
-                let batches =
-                    crate::files_watch::watch(jail).map_err(|e| RpcError::Failed(e.to_string()))?;
+                // Recursive inotify adds and the gitignore reads are sync work;
+                // build the watcher on the blocking pool like diff_sync does.
+                let batches = tokio::task::spawn_blocking(move || crate::files_watch::watch(jail))
+                    .await
+                    .map_err(|e| RpcError::Failed(e.to_string()))?
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
                 Ok(RpcReply::Stream(
                     batches
                         .filter_map(|batch| async move { serde_json::to_value(&batch).ok() })

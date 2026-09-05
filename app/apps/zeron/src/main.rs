@@ -63,6 +63,11 @@ enum Command {
         #[arg(long)]
         check: bool,
     },
+    /// Open only the files pane (tree + editor) against a local engine, for a checkout.
+    FilesDemo {
+        #[arg(value_name = "CHECKOUT")]
+        checkout: std::path::PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -243,6 +248,18 @@ fn main() -> anyhow::Result<()> {
             DaemonCommand::Restart => daemon::restart(),
             DaemonCommand::Status => daemon::status(),
         },
+        Some(Command::FilesDemo { checkout }) => {
+            // Own data dir + port: never attach to, or write a space into, the real app.
+            let data_dir = std::env::var_os("ZERON_DATA_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| dirs_data_dir().join("files-demo"));
+            let ipc_port = std::env::var("ZERON_IPC_PORT")
+                .ok()
+                .and_then(|p| p.parse().ok())
+                .unwrap_or(27655);
+            zeron_ui::files::run_demo(checkout, data_dir, ipc_port, edge_url_from_env());
+            Ok(())
+        }
         None => {
             let edge_token = std::env::var("ZERON_EDGE_TOKEN").ok();
             // Headed: `--engine` dials a remote engine; otherwise the UI probes
@@ -346,7 +363,12 @@ fn harness_from_env() -> zeron_engine::HarnessId {
 }
 
 fn dirs_data_dir() -> std::path::PathBuf {
-    let home = std::path::PathBuf::from(std::env::var_os("HOME").expect("HOME not set"));
+    // Windows sessions set USERPROFILE, not HOME; a plain double-click on the
+    // exe used to panic here.
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from)
+        .expect("neither HOME nor USERPROFILE is set");
     let dir = home.join(".zeron");
     // One-shot 0.2.0 migration: adopt the pre-rename data dir (sign-in,
     // device identity, prefs) instead of starting fresh.
