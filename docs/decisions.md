@@ -337,6 +337,7 @@ Context: the owner saw the RC2 preview screens and did not like the surya look (
 - Every feature stays. The motion switch stays (it is a function, not a look).
 - The surya themes and `surya.rs` stay in the tree, selectable but not default, so a reversal is cheap.
 - Owner: surya-theme, branch fix/comet-look, before the 2026-09-06 11:45 freeze; proof = side-by-side with upstream comet at the import commit.
+- Amended 19:32, owner verbatim: "the new gui should look like zeron's comet, but with our feature built in". So comet's own elements keep comet's exact shape, including its rounded glass question panel that replaces the composer (states had found it is comet's, not ours); permissions mirror that panel. What goes is only what surya added on top: the needs-you cards over the transcript, the surya chrome and tokens. The 19:26 "box/modal, remove them" refers to those additions.
 
 ## Open
 
