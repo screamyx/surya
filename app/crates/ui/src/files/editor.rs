@@ -36,6 +36,11 @@ pub struct FileEditor {
 impl EventEmitter<EditorEvent> for FileEditor {}
 
 impl FileEditor {
+    /// Buffer differs from the last read or save: closing would lose edits.
+    pub fn is_dirty(&self, cx: &gpui::App) -> bool {
+        self.doc.is_dirty(self.input.read(cx).text())
+    }
+
     pub fn new(engine: EngineHandle, space_id: String, cx: &mut Context<Self>) -> Self {
         let input = cx
             .new(|cx| ComposerInput::with_context("Open a file from the tree", "FilesEditor", cx));

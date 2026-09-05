@@ -2049,6 +2049,27 @@ impl Shell {
         Some(pane)
     }
 
+    /// Drop the cached Files / Tasks pane (and its watch stream) when no
+    /// panel key shows its tab any more. A Files pane with unsaved edits
+    /// stays alive: the buffer must not vanish with the tab (reopening Files
+    /// shows it again, dirty dot and all).
+    fn drop_unshown_panes(&mut self, cx: &App) {
+        let shown = |surface: RightSurface| {
+            self.right_tabs.values().any(|tabs| tabs.contains(&surface))
+        };
+        if !shown(RightSurface::Files)
+            && !self
+                .files_pane
+                .as_ref()
+                .is_some_and(|(_, pane)| pane.read(cx).has_unsaved_edits(cx))
+        {
+            self.files_pane = None;
+        }
+        if !shown(RightSurface::Tasks) {
+            self.tasks_pane = None;
+        }
+    }
+
     /// Add (or focus) a space surface tab and make sure the pane is open.
     fn add_space_surface(&mut self, surface: RightSurface, cx: &mut Context<Self>) {
         let key = self.panel_key(cx);
@@ -2526,16 +2547,7 @@ impl Shell {
             // The pane entity (and its FilesWatch / WatchTasks stream) is
             // dropped once no panel key shows the tab any more; a tab still
             // open in another chat of the space keeps the cached pane.
-            RightSurface::Files | RightSurface::Tasks => {
-                let still_shown = self.right_tabs.values().any(|tabs| tabs.contains(&surface));
-                if !still_shown {
-                    match surface {
-                        RightSurface::Files => self.files_pane = None,
-                        RightSurface::Tasks => self.tasks_pane = None,
-                        _ => {}
-                    }
-                }
-            }
+            RightSurface::Files | RightSurface::Tasks => self.drop_unshown_panes(cx),
             RightSurface::Picker => {}
         }
         self.panels.update(&key, |p| {
@@ -3144,6 +3156,9 @@ impl Shell {
         }
         self.composer
             .update(cx, |composer, cx| composer.purge_chat(&chat_id, cx));
+        // The chat's right-pane tabs go with it, and any pane only it showed.
+        self.right_tabs.remove(&chat_id);
+        self.drop_unshown_panes(cx);
         self.mutate(
             serde_json::json!({ "op": "deleteChat", "chatId": chat_id }),
             cx,
