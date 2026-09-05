@@ -87,6 +87,12 @@ jobs:
       - name: cargo check (whole workspace)
         run: cargo check --workspace --all-targets
 
+      # crates/ui was the one crate nothing ran the tests of: the headless
+      # step skips it (gpui), and `cargo check` only compiles them. It runs
+      # here because the step above has already built these test targets.
+      - name: cargo test -p zeron-ui
+        run: cargo test --jobs 6 -p zeron-ui
+
       - name: cargo test -p surya-a2ui
         run: cargo test --jobs 6 -p surya-a2ui
 
