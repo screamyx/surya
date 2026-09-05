@@ -74,6 +74,14 @@ shoot() { # shoot <name> <mode> <geom> <extra env...>
   sleep "${SHOT_WAIT:-24}"
   DISPLAY=$DISPLAY_NO xrefresh; sleep 3
   if [ "${SHOT_WAIT:-24}" -gt 12 ]; then DISPLAY=$DISPLAY_NO xrefresh; sleep 3; fi
+  # SHOT_CLICK="x,y": one XTEST click at that root position after the settle
+  # (scripts/x7-click.py, run with SURYA_XTEST_PYTHON or python3), then
+  # SHOT_CLICK_WAIT s more before the grab. The 1440x900 window sits at +80+50
+  # on the 1600x1000 display, so the titlebar globe is at 129,69.
+  if [ -n "${SHOT_CLICK:-}" ]; then
+    "${SURYA_XTEST_PYTHON:-python3}" "$(dirname "$0")/x7-click.py" "$DISPLAY_NO" "${SHOT_CLICK%,*}" "${SHOT_CLICK#*,}" || echo "click failed"
+    sleep "${SHOT_CLICK_WAIT:-30}"; DISPLAY=$DISPLAY_NO xrefresh; sleep 3
+  fi
   ffmpeg -loglevel error -y -f x11grab -video_size 1600x1000 -i "$DISPLAY_NO" -frames:v 1 "$OUT/$name.png"
   kill $APP 2>/dev/null || true; wait $APP 2>/dev/null || true
   local panics; panics=$(grep -c "panicked at" "$WORK/app-$name.log" || true)
@@ -100,7 +108,10 @@ for pane in ${SURYA_SHOT_PANES-files tasks}; do
   for mode in light dark; do
     case "$pane" in
       browser)
-        SHOT_WAIT="${SHOT_WAIT:-28}" shoot "shell-browser-$mode" "$mode" 1440x900 \
+        # Builds before #62 ignore the launch knob (round 3, B1): set
+        # SURYA_SHOT_BROWSER_CLICK=129,69 to open the pane from the globe instead.
+        SHOT_WAIT="${SHOT_WAIT:-28}" SHOT_CLICK="${SURYA_SHOT_BROWSER_CLICK:-}" \
+          shoot "shell-browser-$mode" "$mode" 1440x900 \
           ZERON_OPEN_PANE=browser SURYA_BROWSER_URL="${SURYA_BROWSER_URL:-https://example.com}" \
           SURYA_CEF_CACHE="$WORK/cef-$mode" RUST_LOG=info ;;
       *) shoot "shell-$pane-$mode" "$mode" 1440x900 ZERON_OPEN_PANE="$pane" ;;
