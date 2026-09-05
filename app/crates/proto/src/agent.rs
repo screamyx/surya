@@ -449,6 +449,11 @@ pub enum AgentEvent {
         decision: crate::PermissionDecision,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         rule: Option<String>,
+        /// Why, for a `Deny`. The transcript says this out loud: a tool that
+        /// did not run leaves no other trace, and "nothing happened" is not
+        /// something the user should have to infer.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
     Steered {

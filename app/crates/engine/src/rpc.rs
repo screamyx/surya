@@ -913,6 +913,9 @@ impl EngineRpc {
             MutateParams::DeleteChat { chat_id } => {
                 self.workspace.delete_chat(&chat_id).map_err(failed)?;
                 self.doc_host.purge_chat(&chat_id);
+                // Anything still parked on this chat is refused here, or its
+                // responder outlives the chat and its card outlives both.
+                self.sessions.drop_chat(&chat_id);
                 Ok(())
             }
             MutateParams::RenameDevice { device_id, name } => self

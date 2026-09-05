@@ -280,9 +280,32 @@ impl SessionsEngine {
                 request_id: request_id.to_string(),
                 decision,
                 rule: resolved.created_rule.as_ref().map(|r| r.name.clone()),
+                reason: (decision == PermissionDecision::Deny)
+                    .then(|| "you denied it".to_string()),
             });
         }
         Ok(())
+    }
+
+    /// A chat is gone: forget its agent rows and refuse anything still parked
+    /// on it. Without this a deleted chat leaves a live responder — the run
+    /// blocks until the gate's grace path answers, and a card for a chat that
+    /// no longer exists sits in the inbox forever.
+    pub fn drop_chat(&self, chat_id: &str) {
+        let engine_tx = lock(&self.inner.runs)
+            .get(chat_id)
+            .map(|h| h.engine_tx.clone());
+        for request_id in self.inner.states.drop_chat(chat_id) {
+            let Some(engine_tx) = engine_tx.as_ref() else {
+                continue;
+            };
+            let _ = engine_tx.send(AgentEvent::PermissionResolved {
+                request_id,
+                decision: PermissionDecision::Deny,
+                rule: None,
+                reason: Some("the chat was closed before anyone answered".to_string()),
+            });
+        }
     }
 
     pub fn session_status(&self, chat_id: &str) -> Option<Session> {
@@ -498,6 +521,7 @@ impl SessionsEngine {
                             request_id: request.request_id,
                             decision: PermissionDecision::Allow,
                             rule: Some(rule.name),
+                            reason: None,
                         });
                     }
                     PermissionOpen::Parked => {

@@ -18,6 +18,9 @@ use chrono::Utc;
 use tokio::sync::watch;
 use zeron_proto::{AllowRule, PermissionRequest, RememberRule, RuleScope};
 
+#[cfg(test)]
+mod tests;
+
 use crate::new_id;
 
 #[derive(Debug, thiserror::Error)]
@@ -30,8 +33,12 @@ pub enum RulesError {
     WorkspaceRuleNeedsPath,
     #[error("no such rule: {0}")]
     NotFound(String),
-    #[error("the rule pattern {pattern:?} does not cover the command it was made from ({command:?})")]
-    PatternMissesRequest { pattern: String, command: String },
+    #[error("the rule pattern {pattern:?} is not anchored to the command it was made from ({command:?}): {reason}")]
+    PatternMissesRequest {
+        pattern: String,
+        command: String,
+        reason: &'static str,
+    },
 }
 
 struct Inner {
@@ -141,10 +148,11 @@ impl AllowRules {
         } else {
             pattern.to_string()
         };
-        if !zeron_proto::glob_match(&pattern, &request.command) {
+        if let Err(reason) = literal_prefix_covers(&pattern, &request.command) {
             return Err(RulesError::PatternMissesRequest {
                 pattern,
                 command: request.command.clone(),
+                reason,
             });
         }
         let workspace_path = (remember.scope == RuleScope::Workspace).then(|| cwd.to_string());
@@ -202,6 +210,47 @@ impl AllowRules {
     }
 }
 
+/// Is this pattern anchored to the command the card actually showed?
+///
+/// `glob_match` alone is not the check: `*` matches every command, so a
+/// client that lies in its JSON could answer a card reading "Bash: ls" with
+/// pattern `*` and walk away with blanket Bash approval. The card is the
+/// user's whole view of what they agreed to, so the rule has to stay tied to
+/// it.
+///
+/// The literal prefix — everything before the first `*` or `?` — must:
+/// 1. be non-empty, which rejects `*`, `**` and `?*`;
+/// 2. be a prefix of the command, which rejects `rm*` for `ls`;
+/// 3. reach past the command's first whitespace token, which rejects
+///    `php *` for `php artisan migrate` — approving one `php` subcommand is
+///    not approving every one. A pattern that spells the whole command out
+///    passes this by equality, so a single-word command like `ls*` is fine.
+///
+/// This is the answer-time check only. `AddAllowRule` from the settings page
+/// is deliberately NOT filtered: there the user is writing the rule with
+/// their eyes open, and a broad pattern is the point.
+fn literal_prefix_covers(pattern: &str, command: &str) -> Result<(), &'static str> {
+    let literal = pattern
+        .split(['*', '?'])
+        .next()
+        .unwrap_or_default()
+        .trim_end();
+    if literal.is_empty() {
+        return Err("it starts with a wildcard, so it would match every command this tool runs");
+    }
+    if !command.starts_with(literal) {
+        return Err("its literal part is not how the command starts");
+    }
+    if literal == command.trim_end() {
+        return Ok(());
+    }
+    let first_token = command.split_whitespace().next().unwrap_or_default();
+    if literal.len() <= first_token.len() {
+        return Err("it stops at the first word, so it would match every command that starts that way");
+    }
+    Ok(())
+}
+
 /// "Always allow `php artisan migrate*` (Bash) in project-jag" — the label
 /// the card offers and the transcript quotes.
 fn default_rule_name(tool: &str, pattern: &str, workspace_path: &Option<String>) -> String {
@@ -221,232 +270,4 @@ fn folder_name(path: &str) -> Option<&str> {
         .rsplit('/')
         .next()
         .filter(|s| !s.is_empty())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn request(tool: &str, command: &str) -> PermissionRequest {
-        PermissionRequest {
-            request_id: "req-1".into(),
-            tool_name: tool.into(),
-            command: command.into(),
-            input: None,
-        }
-    }
-
-    #[test]
-    fn a_remembered_answer_matches_the_identical_next_request() {
-        let dir = tempfile::tempdir().unwrap();
-        let rules = AllowRules::open(dir.path());
-        let req = request("Bash", "php artisan migrate");
-        assert!(rules.matching(&req, "/repos/project-jag").is_none());
-
-        let remember = RememberRule {
-            scope: RuleScope::Workspace,
-            pattern: "php artisan migrate*".into(),
-            name: None,
-        };
-        let rule = AllowRules::from_remember(&remember, &req, "/repos/project-jag").expect("the pattern covers the command");
-        assert_eq!(rule.name, "Bash php artisan migrate* in project-jag");
-        rules.add(rule).unwrap();
-
-        assert!(rules.matching(&req, "/repos/project-jag").is_some());
-        assert!(
-            rules
-                .matching(&request("Bash", "php artisan migrate --seed"), "/repos/project-jag")
-                .is_some()
-        );
-        // Another checkout is not covered by a workspace rule.
-        assert!(rules.matching(&req, "/repos/other").is_none());
-        // Another tool is not covered either.
-        assert!(
-            rules
-                .matching(&request("Edit", "php artisan migrate"), "/repos/project-jag")
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn an_empty_remember_pattern_pins_the_exact_command() {
-        let req = request("Bash", "git push");
-        let rule = AllowRules::from_remember(
-            &RememberRule {
-                scope: RuleScope::Global,
-                pattern: "  ".into(),
-                name: None,
-            },
-            &req,
-            "/repos/x",
-        )
-        .expect("an empty pattern pins the exact command");
-        assert_eq!(rule.pattern, "git push");
-        assert_eq!(rule.workspace_path, None);
-        assert_eq!(rule.name, "Bash git push");
-    }
-
-    #[test]
-    fn rules_survive_a_reopen_and_delete_removes_them() {
-        let dir = tempfile::tempdir().unwrap();
-        let rules = AllowRules::open(dir.path());
-        let rule = AllowRules::from_remember(
-            &RememberRule {
-                scope: RuleScope::Global,
-                pattern: "git status*".into(),
-                name: Some("read-only git".into()),
-            },
-            &request("Bash", "git status"),
-            "/repos/x",
-        )
-        .expect("the pattern covers the command");
-        let stored = rules.add(rule).unwrap();
-
-        let reopened = AllowRules::open(dir.path());
-        assert_eq!(reopened.list().len(), 1);
-        assert_eq!(reopened.list()[0].name, "read-only git");
-
-        reopened.delete(&stored.id).unwrap();
-        assert!(reopened.list().is_empty());
-        assert!(AllowRules::open(dir.path()).list().is_empty());
-        assert!(matches!(
-            reopened.delete(&stored.id),
-            Err(RulesError::NotFound(_))
-        ));
-    }
-
-    #[test]
-    fn adding_the_same_rule_twice_does_not_grow_the_table() {
-        let dir = tempfile::tempdir().unwrap();
-        let rules = AllowRules::open(dir.path());
-        let make = || {
-            AllowRules::from_remember(
-                &RememberRule {
-                    scope: RuleScope::Global,
-                    pattern: "ls*".into(),
-                    name: None,
-                },
-                &request("Bash", "ls"),
-                "/repos/x",
-            )
-            .expect("the pattern covers the command")
-        };
-        let first = rules.add(make()).unwrap();
-        let second = rules.add(make()).unwrap();
-        assert_eq!(first.id, second.id);
-        assert_eq!(rules.list().len(), 1);
-    }
-
-    #[test]
-    fn a_workspace_rule_without_a_workspace_is_refused() {
-        let dir = tempfile::tempdir().unwrap();
-        let rules = AllowRules::open(dir.path());
-        let mut rule = AllowRules::from_remember(
-            &RememberRule {
-                scope: RuleScope::Workspace,
-                pattern: "*".into(),
-                name: None,
-            },
-            &request("Bash", "ls"),
-            "/repos/x",
-        )
-        .expect("* covers ls");
-        rule.workspace_path = None;
-        assert!(matches!(
-            rules.add(rule),
-            Err(RulesError::WorkspaceRuleNeedsPath)
-        ));
-        assert!(rules.list().is_empty());
-    }
-
-    /// The escalation this check exists to stop: the card said "Bash: ls",
-    /// so the rule it creates must not silently mean "Bash: anything".
-    #[test]
-    fn a_pattern_that_does_not_cover_the_shown_command_is_refused() {
-        let shown = request("Bash", "ls");
-        let widened = AllowRules::from_remember(
-            &RememberRule {
-                scope: RuleScope::Global,
-                // Matches `ls`, but also `rm -rf /` and everything else.
-                pattern: "rm*".into(),
-                name: None,
-            },
-            &shown,
-            "/repos/x",
-        );
-        assert!(matches!(
-            widened,
-            Err(RulesError::PatternMissesRequest { .. })
-        ));
-
-        // A wider pattern that still covers what the user saw is fine — that
-        // is the whole point of "always allow migrations", not just this one.
-        assert!(
-            AllowRules::from_remember(
-                &RememberRule {
-                    scope: RuleScope::Global,
-                    pattern: "ls*".into(),
-                    name: None,
-                },
-                &shown,
-                "/repos/x",
-            )
-            .is_ok()
-        );
-        // `*` covers everything, including what was shown, so it is allowed
-        // — a user who types a bare star has said what they mean.
-        assert!(
-            AllowRules::from_remember(
-                &RememberRule {
-                    scope: RuleScope::Global,
-                    pattern: "*".into(),
-                    name: None,
-                },
-                &shown,
-                "/repos/x",
-            )
-            .is_ok()
-        );
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn the_rules_file_is_not_readable_by_other_local_accounts() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = tempfile::tempdir().unwrap();
-        let rules = AllowRules::open(dir.path());
-        rules
-            .add(
-                AllowRules::from_remember(
-                    &RememberRule {
-                        scope: RuleScope::Global,
-                        pattern: "ls*".into(),
-                        name: None,
-                    },
-                    &request("Bash", "ls"),
-                    "/repos/x",
-                )
-                .unwrap(),
-            )
-            .unwrap();
-        let mode = std::fs::metadata(dir.path().join("allow-rules.json"))
-            .unwrap()
-            .permissions()
-            .mode()
-            & 0o777;
-        assert_eq!(mode, 0o600, "the table says what runs without asking");
-    }
-
-    #[test]
-    fn a_corrupt_file_starts_empty_rather_than_allowing_anything() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("allow-rules.json"), "{ not json").unwrap();
-        let rules = AllowRules::open(dir.path());
-        assert!(rules.list().is_empty());
-        assert!(
-            rules
-                .matching(&request("Bash", "anything"), "/repos/x")
-                .is_none()
-        );
-    }
 }

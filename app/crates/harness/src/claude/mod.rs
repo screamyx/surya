@@ -773,8 +773,9 @@ type RequestInputFn = Box<
 /// Serve one `can_use_tool` control request. Ordinary tools go to the host's
 /// [`PermissionGate`] — an always-allow rule answers instantly, otherwise the
 /// request parks in the needs-you inbox (surya decision 20). The CLI blocks
-/// until SOME response arrives, so every request must be answered, and both
-/// the gate's default and its dropped-resolver path allow rather than hang.
+/// until SOME response arrives, so every request must be answered: an
+/// ungated gate allows, and a gate whose host went away DENIES. Neither
+/// hangs, and the one that cannot ask fails closed.
 /// `AskUserQuestion` is intercepted instead — surface the questions through
 /// the engine's input bridge (which owns the `InputRequested`/`InputResolved`
 /// lifecycle), wait for the user's answers (in a subtask so the frame loop

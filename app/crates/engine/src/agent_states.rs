@@ -355,14 +355,30 @@ impl AgentStates {
     }
 
     /// Forget a chat and everything spawned under it.
-    pub fn drop_chat(&self, chat_id: &str) {
+    /// Returns the permission request ids that were still parked, so the
+    /// caller can say out loud that they were refused. Dropping a responder
+    /// silently is what the gate's fail-closed path turns into a Deny — the
+    /// tool does not run, and the transcript should not pretend otherwise.
+    pub fn drop_chat(&self, chat_id: &str) -> Vec<String> {
         {
             let mut nodes = lock(&self.inner.nodes);
             nodes.retain(|id, node| id != chat_id && node.chat_id != chat_id);
         }
-        lock(&self.inner.permissions).retain(|_, p| p.chat_id != chat_id);
+        let dropped: Vec<String> = {
+            let mut permissions = lock(&self.inner.permissions);
+            let dropped = permissions
+                .iter()
+                .filter(|(_, p)| p.chat_id == chat_id)
+                .map(|(id, _)| id.clone())
+                .collect();
+            // Dropping the entry drops its responder; the gate reads the
+            // closed channel as Deny.
+            permissions.retain(|_, p| p.chat_id != chat_id);
+            dropped
+        };
         lock(&self.inner.questions).retain(|_, q| q.chat_id != chat_id);
         self.recompute();
+        dropped
     }
 
     // ── the spawned-agent tree ─────────────────────────────────────────────

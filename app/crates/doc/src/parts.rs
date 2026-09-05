@@ -513,25 +513,38 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
         // silent gap where a tool was approved.
         AgentEvent::PermissionResolved {
             request_id,
-            rule: Some(rule),
-            ..
+            decision,
+            rule,
+            reason,
         } => {
-            let id = format!("{request_id}-rule");
-            if !out
-                .iter()
-                .any(|p| matches!(p, MessagePart::Notice { id: existing, .. } if existing == &id))
-            {
-                out.push(MessagePart::Notice {
-                    id,
-                    text: format!("allowed by rule {rule}"),
-                });
+            // Three outcomes leave a line: a rule allowed it, or it was
+            // denied and the tool never ran. A plain Allow the user clicked
+            // needs none — the tool call itself is the record.
+            let text = match (decision, rule, reason) {
+                (zeron_proto::PermissionDecision::Allow, Some(rule), _) => {
+                    Some(format!("allowed by rule {rule}"))
+                }
+                (zeron_proto::PermissionDecision::Deny, _, Some(reason)) => {
+                    Some(format!("not allowed: {reason}"))
+                }
+                (zeron_proto::PermissionDecision::Deny, _, None) => {
+                    Some("not allowed".to_string())
+                }
+                (zeron_proto::PermissionDecision::Allow, None, _) => None,
+            };
+            if let Some(text) = text {
+                let id = format!("{request_id}-permission");
+                if !out.iter().any(
+                    |p| matches!(p, MessagePart::Notice { id: existing, .. } if existing == &id),
+                ) {
+                    out.push(MessagePart::Notice { id, text });
+                }
             }
         }
         AgentEvent::AssistantMessageCompleted { .. }
         | AgentEvent::Usage { .. }
         | AgentEvent::AvailableCommands { .. }
         | AgentEvent::PermissionRequested { .. }
-        | AgentEvent::PermissionResolved { .. }
         | AgentEvent::UserMessage { .. } => {}
     }
 }
