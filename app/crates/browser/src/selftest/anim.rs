@@ -3,7 +3,7 @@
 //! case an input-driven frame loop can break: nothing asks, the page still
 //! moves.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const PAGE: &str = "data:text/html,<style>@keyframes s{to{transform:rotate(360deg)}}div{width:200px;height:200px;margin:40px;background:%23c33;animation:s 1s linear infinite}</style><div></div>";
 const WINDOW_MS: u64 = 2000;
@@ -14,10 +14,14 @@ pub(super) fn spawn(cx: &mut gpui::App, after: u64) {
         let loaded = super::load(PAGE);
         super::sleep(cx, Duration::from_millis(3000)).await;
         let before = super::counts();
+        let t0 = Instant::now();
         super::sleep(cx, Duration::from_millis(WINDOW_MS)).await;
+        // The sleep is gpui's timer, which on Windows lands on the process
+        // tick, so the window the counts belong to is what elapsed.
+        let window_ms = t0.elapsed().as_millis();
         let (frames, p2d) = super::delta(before);
         println!(
-            "selftest: ANIM loaded={} over {WINDOW_MS}ms {frames} pump_timer={} pump_ms={} {p2d}",
+            "selftest: ANIM loaded={} asked {WINDOW_MS}ms window={window_ms}ms {frames} pump_timer={} pump_ms={} {p2d}",
             u8::from(loaded),
             super::pump_timer(),
             crate::pump::base_ms(),

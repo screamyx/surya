@@ -24,12 +24,18 @@ pub(super) fn spawn(cx: &mut gpui::App, after: u64) {
             super::sleep(cx, Duration::from_millis(16)).await;
         }
         let sent_ms = t0.elapsed().as_millis();
-        // Let the last frames land.
+        // Let the last frames land. The counters run through this settle,
+        // so the window the counts belong to is `window=`, not `sent_ms=`:
+        // a rate is frames over `window=`, and frames over `sent_ms=` is a
+        // per-wheel-second figure, only good for comparing rows that share
+        // the same settle. The label was `over Nms` once, and read as the
+        // window; it is not.
         super::sleep(cx, Duration::from_millis(500)).await;
+        let window_ms = t0.elapsed().as_millis();
         let (frames, p2d) = super::delta(before);
         println!(
-            "selftest: SCROLL loaded={} wheel asked={WHEEL_EVENTS} sent={sent} over {sent_ms}ms \
-             {frames} pump_timer={} pump_ms={} {p2d}",
+            "selftest: SCROLL loaded={} wheel asked={WHEEL_EVENTS} sent={sent} sent_ms={sent_ms} \
+             window={window_ms}ms {frames} pump_timer={} pump_ms={} {p2d}",
             u8::from(loaded),
             super::pump_timer(),
             crate::pump::base_ms(),

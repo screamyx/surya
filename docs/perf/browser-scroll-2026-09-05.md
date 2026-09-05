@@ -21,8 +21,8 @@ The record this builds on is haktui's `docs/spike-scroll-frame-rate-2026-08-28.m
 | --- | --- | --- |
 | `SURYA_PUMP_TIMER=pool` | clock | both pump waits on the old path: gpui's timer for the idle chain, a condvar for CEF's delayed asks (the control) |
 | `SURYA_PUMP_MS=<n>` | 8 | the idle pump's base interval |
-| `SURYA_CEF_FPS=<n>` | display rate, capped at 120 | CEF's `windowless_frame_rate` |
-| `SURYA_COARSE_TIMER=1` | off | skip `timeBeginPeriod(1)` and the coalescing opt-out |
+| `SURYA_CEF_FPS=<n>` | display rate, capped at 120 | CEF's `windowless_frame_rate`; a value over 120 is clamped and the log says so, a non-number is refused and the display decides |
+| `SURYA_COARSE_TIMER=1` | off | skip `timeBeginPeriod(1)`. The 1 ms tick is a declared default on both pump paths (see `clock.rs` `fine_timer`): never released, and Windows returns the process to its default tick while the window is in the background, since PR 3 dropped the power-throttling opt-out that used to prevent that |
 
 ## Run recipe on dtry
 
@@ -101,7 +101,7 @@ Lines from `docs/perf/dtry/lines.py`, exact:
 | idle | default (clock) | `idle: pid=2080 cpu_ms=531 over 40s = 1.3% of one core` |
 | idle | `SURYA_PUMP_TIMER=pool` | `idle: pid=36812 cpu_ms=609 over 40s = 1.5% of one core` |
 
-The comparison, baseline against each switch set (scroll frames are shown per second of the test window, since the windows differ by up to 10%):
+The comparison, baseline against each switch set. The "shown / s" column divides by `over Nms`, the wheel-send interval; the counters in this build ran through a further 500 ms settle after the last wheel event (`selftest/scroll.rs`, found by surya-browser-astra 03:27), so the true counting window is about 500 ms longer than the divisor and these are per-wheel-second figures, a workload-normalised proxy, not the frame cadence. Every row shares the same settle, so the ratio between rows stands (212 shown against 120 with the true windows 2166 ms against 2317 ms is still 1.9x). The raw counts are the evidence. PR 3 prints `window=` (measured, after the settle) on both self-tests and renames the send interval to `sent_ms=`; rates from then on divide by `window=`.
 
 | build | scroll shown / s | anim cef / app / shown (2 s) | timer ours median | scroll p2d median / p90 / max | idle % of a core, 40 s still page |
 | --- | --- | --- | --- | --- | --- |
