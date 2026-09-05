@@ -1183,6 +1183,8 @@ pub struct Shell {
     engine_skew_dismissed: Option<String>,
     /// The demo chat has been inserted at least once this session.
     demo_cards_seeded: bool,
+    /// The user pressed `+` since then: the empty canvas is theirs.
+    pub(super) demo_cards_user_plus: bool,
     sidebar_tween: Option<WidthTween>,
     right_tween: Option<WidthTween>,
     /// Mirrors `right_tween` only for takeover entry/exit, allowing the visible
@@ -1438,6 +1440,7 @@ impl Shell {
             debug_cards,
             engine_skew_dismissed: None,
             demo_cards_seeded: false,
+            demo_cards_user_plus: false,
             sidebar_tween: None,
             right_tween: None,
             right_takeover_content_tween: None,
@@ -1535,6 +1538,7 @@ impl Shell {
                 demo_seed_step(
                     s.chats_synced,
                     self.demo_cards_seeded,
+                    self.demo_cards_user_plus,
                     s.chats.iter().any(|c| c.id == DEMO_CARDS_CHAT),
                     s.selected_chat.as_deref(),
                 )
@@ -8453,18 +8457,22 @@ enum DemoSeed {
 }
 
 /// The demo row is re-inserted only when the chat sync dropped it, and it
-/// takes the window only on the first seed or when nothing else is selected:
+/// takes the window only on the first seed, when the demo itself was
+/// selected, or when nothing is selected and the user never pressed `+`:
 /// a user who clicked another chat, or pressed `+`, keeps what they chose.
 fn demo_seed_step(
     synced: bool,
     seeded_before: bool,
+    user_pressed_plus: bool,
     row_present: bool,
     selected: Option<&str>,
 ) -> DemoSeed {
     if !synced || row_present {
         return DemoSeed::Skip;
     }
-    let select = !seeded_before || matches!(selected, None | Some(DEMO_CARDS_CHAT));
+    let select = !seeded_before
+        || selected == Some(DEMO_CARDS_CHAT)
+        || (selected.is_none() && !user_pressed_plus);
     DemoSeed::Insert { select }
 }
 
@@ -8473,23 +8481,26 @@ mod tests {
     use super::*;
 
     /// `ZERON_DEMO_CARDS` must not undo the user's clicks (surya-remote,
-    /// 2026-09-05): one row per case, `asked=6 passed=6`.
+    /// 2026-09-05) nor take the canvas they emptied with `+` (review nit on
+    /// PR #34): one row per case, `asked=8 passed=8`.
     #[test]
     fn demo_seed_re_arms_only_when_the_row_vanished() {
         use DemoSeed::*;
-        // (synced, seeded_before, row_present, selected) -> step
+        // (synced, seeded_before, user_pressed_plus, row_present, selected) -> step
         let cases = [
-            ((false, false, false, None), Skip, "before the chat list lands"),
-            ((true, false, false, Some("real")), Insert { select: true }, "first seed takes the window"),
-            ((true, true, true, Some("real")), Skip, "user clicked another chat: leave it"),
-            ((true, true, true, None), Skip, "user pressed +: leave it"),
-            ((true, true, false, None), Insert { select: true }, "sync dropped row and selection: restore both"),
-            ((true, true, false, Some("real")), Insert { select: false }, "sync dropped the row while the user is elsewhere: row only"),
+            ((false, false, false, false, None), Skip, "before the chat list lands"),
+            ((true, false, false, false, Some("real")), Insert { select: true }, "first seed takes the window"),
+            ((true, true, false, true, Some("real")), Skip, "user clicked another chat: leave it"),
+            ((true, true, true, true, None), Skip, "user pressed +, row still there: leave it"),
+            ((true, true, false, false, None), Insert { select: true }, "sync dropped row and selection: restore both"),
+            ((true, true, false, false, Some("real")), Insert { select: false }, "sync dropped the row while the user is elsewhere: row only"),
+            ((true, true, true, false, None), Insert { select: false }, "user pressed +, then a sync dropped the row: row only, canvas stays empty"),
+            ((true, true, true, false, Some("demo-cards")), Insert { select: true }, "user came back to the demo after +, then a sync dropped it: restore"),
         ];
         let asked = cases.len();
         let mut passed = 0;
-        for ((synced, seeded, present, selected), want, why) in cases {
-            assert_eq!(demo_seed_step(synced, seeded, present, selected), want, "{why}");
+        for ((synced, seeded, plus, present, selected), want, why) in cases {
+            assert_eq!(demo_seed_step(synced, seeded, plus, present, selected), want, "{why}");
             passed += 1;
         }
         eprintln!("demo seed cases asked={asked} passed={passed}");

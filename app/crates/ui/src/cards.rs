@@ -69,9 +69,10 @@ pub fn card_theme(theme: &Theme) -> CardTheme {
         on_solid: theme.on_solid,
         accent: theme.accent,
         // Comet's code wash is the accent at low alpha; a card of paths in
-        // that tint is a card of orange (critic round 2, C1). The neutral
-        // hover fill is the same weight without the hue.
-        code_wash: theme.element_hover,
+        // that tint is a card of orange (critic round 2, C1). Every code
+        // surface reads the neutral wash through one seam since PR #36, so
+        // card code matches transcript code by construction.
+        code_wash: crate::markdown::render::inline_code_wash(theme),
         input_bg: theme.input_bg,
         danger: theme.danger_muted,
         font_sans: theme.font_sans.clone(),

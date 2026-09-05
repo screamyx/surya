@@ -96,6 +96,8 @@ impl Shell {
     /// (the last selected project, restored from composer defaults) stands.
     pub(super) fn open_new_session(&mut self, cx: &mut Context<Self>) {
         self.route = Route::Chat;
+        // The empty canvas is the user's now; the demo seed keeps off it.
+        self.demo_cards_user_plus = true;
         let target = {
             let state = self.state.read(cx);
             self.settings
