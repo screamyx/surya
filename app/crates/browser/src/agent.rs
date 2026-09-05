@@ -140,24 +140,55 @@ async fn locate(id: u64) -> Result<(f64, f64), String> {
     Ok((x, y))
 }
 
-/// A real click at the element's centre: move, press, release, through
-/// the same CEF input path the owner's mouse takes (`events.rs`), so a
-/// page's own handlers see what a person's click gives them. DevTools'
-/// `Input.dispatchMouseEvent` was tried first and did nothing under
-/// offscreen rendering (measured on :7, 2026-09-05: three events answered,
-/// the link never followed); CEF's own `send_mouse_click_event` is what
-/// this crate has proven.
+/// A click at the element's centre, and proof that it landed.
+///
+/// First through the same CEF input path the owner's mouse takes
+/// (`events.rs`: move, press, release), with a DevTools round trip between
+/// press and release so the renderer has handled the press before the
+/// release is sent. A one-shot listener on the element says whether a
+/// `click` reached it; when it did not, the element gets a DOM `click()`
+/// (which follows links and runs handlers) and the answer says `via: dom`,
+/// so a reader knows which path the page saw. DevTools'
+/// `Input.dispatchMouseEvent` was tried first and never landed under
+/// offscreen rendering (measured on :7, 2026-09-05).
 async fn click(id: u64) -> Result<Value, String> {
     let (x, y) = locate(id).await?;
+    let arm = format!(
+        "(() => {{ const el = document.querySelector('[data-surya-id=\"{id}\"]'); \
+         if (!el) return false; window.__suryaClicked = false; \
+         el.addEventListener('click', () => {{ window.__suryaClicked = true; }}, {{ once: true, capture: true }}); \
+         return true; }})()"
+    );
+    if evaluate(&arm).await? != Value::Bool(true) {
+        return Err(format!("no element with id {id}; call browser_snapshot again"));
+    }
     let Some(host) = crate::client::host() else {
         return Err("no browser is open in the pane".into());
     };
     let event = MouseEvent { x: x.round() as i32, y: y.round() as i32, modifiers: 0 };
     crate::pump::mark_input();
     host.send_mouse_move_event(Some(&event), 0);
-    host.send_mouse_click_event(Some(&event), MouseButtonType::LEFT, 0, 1);
+    let pressed = MouseEvent { modifiers: crate::input::flags::LEFT_MOUSE_BUTTON, ..event };
+    host.send_mouse_click_event(Some(&pressed), MouseButtonType::LEFT, 0, 1);
+    // The renderer runs script and input on one thread, in order: when this
+    // answers, the press has been handled.
+    let _ = evaluate("1").await;
     host.send_mouse_click_event(Some(&event), MouseButtonType::LEFT, 1, 1);
-    Ok(json!({ "clicked": id, "x": event.x, "y": event.y }))
+    let landed = evaluate("window.__suryaClicked === true").await.unwrap_or(Value::Bool(false));
+    let via = if landed == Value::Bool(true) {
+        "mouse"
+    } else {
+        let dom = format!(
+            "(() => {{ const el = document.querySelector('[data-surya-id=\"{id}\"]'); \
+             if (!el) return false; el.click(); return true; }})()"
+        );
+        if evaluate(&dom).await? != Value::Bool(true) {
+            return Err(format!("element {id} went away before the click"));
+        }
+        "dom"
+    };
+    println!("agent: click id={id} at {},{} via={via}", event.x, event.y);
+    Ok(json!({ "clicked": id, "x": event.x, "y": event.y, "via": via }))
 }
 
 /// Focus the element, select what it holds, and insert the text over it.
