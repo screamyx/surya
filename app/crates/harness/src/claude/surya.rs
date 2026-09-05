@@ -450,4 +450,46 @@ mod tests {
         .unwrap();
         assert!(read_card(&store, "t1").is_some());
     }
+
+    /// `read_card` reads only the tail, so a long run does not pay for its own
+    /// history on every card. The window must never hand back half a line.
+    #[test]
+    fn the_tail_read_returns_whole_lines_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cards.jsonl");
+        let line = |n: usize| format!("{{\"n\":{n},\"pad\":\"{}\"}}", "x".repeat(200));
+        let body: String = (0..50).map(|n| line(n) + "\n").collect();
+        std::fs::write(&path, &body).unwrap();
+
+        // A window smaller than the file drops the partial first line and
+        // every line it returns still parses.
+        let tail = read_tail(&path, 1000).unwrap();
+        assert!(tail.len() < body.len(), "the window bounded the read");
+        for line in tail.lines() {
+            serde_json::from_str::<Value>(line).expect("whole lines only");
+        }
+        assert!(tail.ends_with('\n'));
+
+        // A window larger than the file is the whole file.
+        assert_eq!(read_tail(&path, 1 << 20).unwrap(), body);
+    }
+
+    /// A card past the tail window is simply not found - a missing card, which
+    /// falls back to the tool chip, never a wrong one.
+    #[test]
+    fn a_card_outside_the_window_is_not_found_rather_than_confused() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cards.jsonl");
+        let old = json!({"card_id":"card_old","surface_id":"s","tool_use_id":"toolu_old","a2ui":[]});
+        let filler = json!({"card_id":"c","surface_id":"s","tool_use_id":"t","a2ui":[],
+                            "pad": "x".repeat(4096)});
+        let mut body = old.to_string() + "\n";
+        for _ in 0..(CARD_TAIL_BYTES / 4096 + 4) {
+            body.push_str(&filler.to_string());
+            body.push('\n');
+        }
+        std::fs::write(&path, body).unwrap();
+        assert!(read_card(&path, "toolu_old").is_none(), "pushed out of the window");
+        assert!(read_card(&path, "t").is_some(), "the recent ones are still found");
+    }
 }

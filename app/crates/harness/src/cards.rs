@@ -144,4 +144,47 @@ mod tests {
         assert!(!is_card_tool("mcp__surya__open_file"));
         assert!(is_card_tool("mcp__surya__show_card"));
     }
+
+    /// The gate exists to stop a surya SHORT-FORM card - whose A2UI lives in
+    /// the sidecar's record, not in the tool input - rendering as a blank
+    /// surface. It must not reject anything that would actually draw.
+    #[test]
+    fn only_the_shorthand_without_components_is_refused() {
+        let drawable = [
+            json!([{"createSurface": {"surfaceId": "s", "catalogId": "c"}}]),
+            // A lone createSurface: the protocol lets components arrive in a
+            // later message and the renderer draws placeholders until they do.
+            json!({"createSurface": {"surfaceId": "s", "catalogId": "c"}}),
+            json!({"updateComponents": {"surfaceId": "s", "components": []}}),
+            json!({"messages": [{"createSurface": {"surfaceId": "s"}}]}),
+            json!({"surfaceId": "s", "components": [{"id": "root", "component": "Text"}]}),
+            json!({"card": {"surfaceId": "s", "components": [{"id": "root"}]}}),
+            json!({"card": "{\"surfaceId\":\"s\",\"components\":[{\"id\":\"root\"}]}"}),
+        ];
+        let refused = [
+            // Surya short-form: no A2UI in the input at all.
+            json!({"shape": "table", "title": "T", "columns": ["A"]}),
+            json!({"card": {"shape": "approval", "title": "Run it?"}}),
+            json!({"surfaceId": "s", "components": []}),
+            json!([]),
+            json!(null),
+        ];
+        let drew = drawable.iter().filter(|i| lifts_to_a_drawable_card(i)).count();
+        let kept = refused.iter().filter(|i| !lifts_to_a_drawable_card(i)).count();
+        assert_eq!(
+            (drew, kept),
+            (drawable.len(), refused.len()),
+            "drawable asked={} drew={drew}; refused asked={} kept={kept}",
+            drawable.len(),
+            refused.len()
+        );
+    }
+
+    #[test]
+    fn a_card_tool_is_recognised_bare_or_mcp_prefixed() {
+        assert!(is_card_tool("show_card"));
+        assert!(is_card_tool("mcp__surya__show_card"));
+        assert!(!is_card_tool("mcp__surya__open_file"));
+        assert!(!is_card_tool("show_cards"));
+    }
 }
