@@ -6,13 +6,20 @@ Build the surya Windows app and pack it as a folder plus a zip.
   ... -Sha abc1234        version tag when the checkout has no .git
   ... -Browser            build with the CEF browser pane (cargo feature
                           `browser`) and ship Chromium's runtime files and
-                          zeron-browser-helper.exe next to the exe
+                          zeron-browser-helper.exe next to the exe.
+                          -NoBuild -Browser packs an earlier -Browser build;
+                          -NoBuild without -Browser refuses a release dir
+                          that holds a browser build (its exe needs libcef).
 
 Needs: Rust (MSVC toolchain), Visual Studio Build Tools with the C++ workload.
-With -Browser also: CMake, Ninja (`python -m pip install ninja`), and
-CEF_PATH pointing at a directory the cef crate may download into (about
-250 MB once; app\crates\browser\README.md).
-Output: dist\surya-windows\ (zeron.exe, surya.cmd, VERSION.txt) and
+Building with -Browser also needs CMake, Ninja (`python -m pip install
+ninja`) and CEF_PATH set to a directory the cef crate may download into
+(about 250 MB once; app\crates\browser\README.md). -NoBuild reads none of
+these.
+Output: dist\surya-windows\ (zeron.exe, surya.cmd, VERSION.txt; with
+        -Browser also zeron-browser-helper.exe, libcef.dll and the other
+        CEF DLLs, *.pak, icudtl.dat, v8_context_snapshot.bin, locales\,
+        CREDITS.html, CEF-LICENSE.txt, archive.json) and
         dist\surya-windows-<sha>.zip
 #>
 param(
@@ -49,6 +56,9 @@ if (-not $NoBuild) {
 }
 $exe = Join-Path $target "release\zeron.exe"
 if (-not (Test-Path $exe)) { throw "no binary at $exe (run without -NoBuild)" }
+if ($NoBuild -and -not $Browser -and (Test-Path (Join-Path $target "release\libcef.dll"))) {
+    throw "release dir holds a -Browser build (libcef.dll beside zeron.exe); its exe needs CEF, so pack it with -Browser or rebuild without -NoBuild"
+}
 
 if (-not $Sha) {
     $Sha = "nogit-$(Get-Date -Format yyyyMMdd-HHmm)"
@@ -100,7 +110,9 @@ if ($Browser) {
     $localeCount = @(Get-ChildItem $locales -Filter *.pak -File -ErrorAction SilentlyContinue).Count
     if ($localeCount -lt 1) { throw "browser runtime incomplete: no *.pak in $locales" }
     foreach ($name in $cefRequired) { Copy-Item (Join-Path $release $name) $dist -Force }
-    Copy-Item $locales (Join-Path $dist "locales") -Recurse -Force
+    $distLocales = Join-Path $dist "locales"
+    New-Item -ItemType Directory -Force -Path $distLocales | Out-Null
+    Get-ChildItem $locales -File | ForEach-Object { Copy-Item $_.FullName $distLocales -Force }
     Copy-Item (Join-Path $PSScriptRoot "CEF-LICENSE.txt") $dist
     $m = [regex]::Match((Get-Content (Join-Path $release "archive.json") -Raw), 'cef_binary_([^+]+)\+g[0-9a-f]+\+chromium-([0-9.]+)')
     if (-not $m.Success) { throw "archive.json beside the exe does not name a cef_binary_<cef>+g<hash>+chromium-<version> archive" }
