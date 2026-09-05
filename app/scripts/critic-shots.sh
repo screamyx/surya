@@ -14,7 +14,7 @@ DISPLAY_NO=${SURYA_SHOT_DISPLAY:-:7}
 mkdir -p "$OUT"
 WORK=$(mktemp -d /tmp/critic-shots-XXXXXX)
 PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
-trap 'kill $ENGINE ${APP:-} 2>/dev/null || true; rm -rf "$WORK"' EXIT
+trap 'kill $ENGINE ${APP:-} 2>/dev/null || true; cp "$WORK"/app-*.log "$OUT"/ 2>/dev/null; rm -rf "$WORK"' EXIT
 
 # Mock harness, paced so the chat is still Running when the frame is taken;
 # tables and code blocks so the transcript shows every row kind.
@@ -57,10 +57,13 @@ ws.onopen = async () => {
 ws.onerror = (e) => { console.error("seed failed", e.message || e); process.exit(1); };
 JS
 
-# SURYA_SHOT_BROWSER=1 (needs a `--features browser` build): also open the
-# Browser surface on https://example.com and take shell-browser-<mode>.png at
-# 1440x900. CEF needs ~25 s and two Expose kicks before its first paint.
-GEOMS="1440x900 1100x700"
+# SURYA_SHOT_PANES="files tasks" (default): also open each right-pane surface
+# through the shell's `ZERON_OPEN_PANE` knob and take shell-<pane>-<mode>.png at
+# 1440x900. Add `browser` (needs a `--features browser` build): the Browser
+# surface on https://example.com; CEF needs ~25 s and two Expose kicks before
+# its first paint. SURYA_SHOT_PANES="" skips the pane frames.
+# `ZERON_OPEN_BROWSER` is gone since PR #30: only `ZERON_OPEN_PANE` opens a pane.
+GEOMS="${SURYA_SHOT_GEOMS-1440x900 1100x700}" # "" skips the plain shell frames
 shoot() { # shoot <name> <mode> <geom> <extra env...>
   local name=$1 mode=$2 geom=$3; shift 3
   local UI="$WORK/ui-$name"; mkdir -p "$UI"
@@ -77,7 +80,8 @@ shoot() { # shoot <name> <mode> <geom> <extra env...>
   # A grab with <= 2 colours is a black display, not a frame (10:44 incident).
   local colours; colours=$(python3 -c "from PIL import Image; im=Image.open('$OUT/$name.png').convert('RGB'); print(len(im.getcolors(1<<20) or [0]*3000))" 2>/dev/null || echo "?")
   echo "shot=1 bytes=$(stat -c %s "$OUT/$name.png") colours=$colours panics=$panics out=$OUT/$name.png"
-  grep -E "browser: (on_paint #1|load_end|LOAD ERROR)" "$WORK/app-$name.log" | head -3 || true
+  case "$name" in *browser*) grep -E "browser: (on_paint #1|load_end|LOAD ERROR)" "$WORK/app-$name.log" | head -3 || true;; esac
+  grep -E "ZERON_OPEN_PANE" "$WORK/app-$name.log" | head -1 || true
 }
 
 # The display lock wraps only launch + xrefresh + grab (rule 10:12). Wait a
@@ -92,11 +96,15 @@ for mode in light dark; do
     shoot "shell-$mode-$geom" "$mode" "$geom"
   done
 done
-if [ -n "${SURYA_SHOT_BROWSER:-}" ]; then
+for pane in ${SURYA_SHOT_PANES-files tasks}; do
   for mode in light dark; do
-    SHOT_WAIT="${SHOT_WAIT:-28}" shoot "shell-browser-$mode" "$mode" 1440x900 \
-      ZERON_OPEN_BROWSER=1 SURYA_BROWSER_URL="${SURYA_BROWSER_URL:-https://example.com}" \
-      SURYA_CEF_CACHE="$WORK/cef-$mode" RUST_LOG=info
+    case "$pane" in
+      browser)
+        SHOT_WAIT="${SHOT_WAIT:-28}" shoot "shell-browser-$mode" "$mode" 1440x900 \
+          ZERON_OPEN_PANE=browser SURYA_BROWSER_URL="${SURYA_BROWSER_URL:-https://example.com}" \
+          SURYA_CEF_CACHE="$WORK/cef-$mode" RUST_LOG=info ;;
+      *) shoot "shell-$pane-$mode" "$mode" 1440x900 ZERON_OPEN_PANE="$pane" ;;
+    esac
   done
-fi
+done
 flock -u 9
