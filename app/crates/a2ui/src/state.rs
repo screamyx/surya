@@ -5,7 +5,10 @@
 
 use gpui::FocusHandle;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
+
+use crate::images::{ImagePolicy, ResolvedImage};
 
 use crate::data::{DataModel, Scope, resolve_value, value_to_bool, value_to_string};
 use crate::model::{Action, Card, Dynamic, EventAction};
@@ -50,6 +53,10 @@ pub struct CardState {
     pub focus: Option<FocusHandle>,
     /// Bumped on every applied change — a cheap "re-measure me" signal.
     pub revision: u64,
+    /// Image decisions by URL, filled on first render (see
+    /// [`Self::image`]). Interior mutability because the renderer holds
+    /// `&CardState`; cleared with the state on a card change.
+    pub images: RefCell<HashMap<String, ResolvedImage>>,
 }
 
 impl CardState {
@@ -61,7 +68,20 @@ impl CardState {
             focused: None,
             focus: None,
             revision: 0,
+            images: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// The memoized decision for `url` under `policy`; decided once.
+    pub fn image(&self, url: &str, policy: &ImagePolicy) -> ResolvedImage {
+        if let Some(hit) = self.images.borrow().get(url) {
+            return hit.clone();
+        }
+        let resolved: ResolvedImage = policy.decide(url).into();
+        self.images
+            .borrow_mut()
+            .insert(url.to_owned(), resolved.clone());
+        resolved
     }
 
     pub fn with_focus(mut self, focus: FocusHandle) -> Self {

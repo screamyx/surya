@@ -12,10 +12,7 @@
       {"title": "By day", "child": "by_day"},
       {"title": "By salesperson", "child": "by_person"}
     ]},
-    {"id": "by_day", "component": "List", "direction": "horizontal", "children": {"componentId": "day", "path": "/series"}},
-    {"id": "day", "component": "Column", "align": "center", "children": ["day_value", "day_label"]},
-    {"id": "day_value", "component": "Text", "text": {"path": "value"}, "variant": "h5"},
-    {"id": "day_label", "component": "Text", "text": {"path": "label"}, "variant": "caption"},
+    {"id": "by_day", "component": "BarChart", "values": {"path": "/series"}, "valueKey": "value", "labelKey": "label"},
     {"id": "by_person", "component": "List", "direction": "vertical", "children": {"componentId": "person", "path": "/people"}},
     {"id": "person", "component": "Row", "justify": "spaceBetween", "children": ["person_name", "person_count"]},
     {"id": "person_name", "component": "Text", "text": {"path": "name"}},

@@ -602,7 +602,15 @@ fn mock_card_events(dir: &std::path::Path) -> Vec<AgentEvent> {
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .collect();
     paths.sort();
-    let base = format!("file://{}/", dir.display());
+    // JSON-escaped, forward slashes: a Windows dir's backslashes would
+    // otherwise break every fixture that carries an image.
+    let base = {
+        let dir = dir.display().to_string().replace('\\', "/");
+        let raw = format!("file://{dir}/");
+        serde_json::to_string(&raw)
+            .map(|q| q[1..q.len() - 1].to_owned())
+            .unwrap_or(raw)
+    };
     let mut out = Vec::new();
     for (ix, path) in paths.iter().enumerate() {
         let Ok(text) = std::fs::read_to_string(path) else {

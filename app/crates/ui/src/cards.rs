@@ -74,6 +74,7 @@ pub fn card_theme(theme: &Theme) -> CardTheme {
         danger: theme.danger_muted,
         font_sans: theme.font_sans.clone(),
         font_mono: theme.font_mono.clone(),
+        check_icon: Some(SharedString::from(crate::icons::CHECK)),
         radius: Theme::PANEL_RADIUS,
         control_radius: Theme::CONTROL_RADIUS,
     }
@@ -92,7 +93,7 @@ pub fn load_fixture_dir(dir: &Path) -> Vec<(String, serde_json::Value)> {
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .collect();
     paths.sort();
-    let base = format!("file://{}/", dir.display());
+    let base = fixture_base(dir);
     paths
         .into_iter()
         .filter_map(|path| {
@@ -103,6 +104,19 @@ pub fn load_fixture_dir(dir: &Path) -> Vec<(String, serde_json::Value)> {
             Some((stem, json))
         })
         .collect()
+}
+
+/// The `file://` prefix a fixture's `fixture://` becomes, escaped for a
+/// JSON string: a Windows dir has backslashes, and pasting them raw made
+/// every fixture with an image unparseable (dtry 07:52: card 01 never
+/// seeded). Forward slashes work on Windows too.
+pub fn fixture_base(dir: &Path) -> String {
+    let dir = dir.display().to_string().replace('\\', "/");
+    let base = format!("file://{dir}/");
+    // serde's string escaping, minus the quotes it wraps.
+    serde_json::to_string(&base)
+        .map(|q| q[1..q.len() - 1].to_owned())
+        .unwrap_or(base)
 }
 
 /// Demo entries for `ZERON_DEMO_CARDS=<dir>`: one assistant turn per
@@ -149,8 +163,25 @@ pub fn demo_entries(dir: &Path) -> Vec<zeron_doc::SessionMessageEntry> {
 /// The proof counter: one line per card row render, then one more with the
 /// measured row bounds once the list has laid it out. Read the log with
 /// `grep 'card rendered'` and `grep 'card measured'`.
-pub fn log_render(ix: usize, row_id: &SharedString, card: &Card, list: &ListState, window: &mut Window) {
+pub fn log_render(
+    ix: usize,
+    row_id: &SharedString,
+    version: u64,
+    card: &Card,
+    list: &ListState,
+    window: &mut Window,
+) {
     if !stats_enabled() {
+        return;
+    }
+    // Once per (row, card version, window width): the list repaints idle
+    // rows every few hundred ms and the counter must not follow suit.
+    thread_local! {
+        static LOGGED: std::cell::RefCell<std::collections::HashSet<String>> = Default::default();
+    }
+    let width = f32::from(window.viewport_size().width) as i64;
+    let key = format!("{row_id}@{version}@{width}");
+    if !LOGGED.with(|l| l.borrow_mut().insert(key)) {
         return;
     }
     tracing::info!(
@@ -246,6 +277,21 @@ mod tests {
             assert!(seen.contains(name), "{name} missing; seen {seen:?}");
         }
         eprintln!("components asked=11 covered={}", seen.len().min(11));
+    }
+
+    /// A fixture dir whose path holds a backslash (every Windows path) still
+    /// yields valid JSON with a forward-slash `file://` URL.
+    #[test]
+    fn fixture_base_survives_backslashes_and_quotes() {
+        let dir = std::env::temp_dir().join(format!("surya a2ui\\odd \"dir\" {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("01.json"), r#"{"components":[{"id":"root","component":"Image","url":"fixture://p.jpg"}]}"#).unwrap();
+        let loaded = load_fixture_dir(&dir);
+        assert_eq!(loaded.len(), 1, "parsed despite the odd dir name");
+        let url = loaded[0].1["components"][0]["url"].as_str().unwrap().to_owned();
+        assert!(url.starts_with("file://") && url.ends_with("/p.jpg") && !url.contains('\\'), "{url}");
+        assert!(url.contains("odd \"dir\""), "{url}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The hostile fixtures parse without panicking and land on the

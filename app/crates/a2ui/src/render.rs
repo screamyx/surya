@@ -27,6 +27,8 @@ pub const MAX_CARD_WIDTH: f32 = 600.0;
 pub const CARD_PADDING: f32 = 14.0;
 /// Gap between siblings in a Row or Column.
 pub const STACK_GAP: f32 = 8.0;
+/// Tab headers drawn at most; each one takes a budget unit too.
+pub const MAX_TABS: usize = 16;
 
 /// One render pass over a card. Borrow the card, its state, and the theme;
 /// the closure receives every click and keystroke.
@@ -186,6 +188,12 @@ impl<'a> Renderer<'a> {
                 action,
             } => self.button(&ctx, c, child, *variant, action),
             ComponentKind::Tabs { tabs } => self.tabs(&ctx, c, tabs),
+            ComponentKind::BarChart {
+                values,
+                value_key,
+                label_key,
+                max,
+            } => crate::leaf::bar_chart(self, &ctx, values, value_key.as_deref(), label_key.as_deref(), *max),
             ComponentKind::Unknown { name, .. } => {
                 self.fallback_box(&format!("{name} (id \"{id}\")"))
             }
@@ -196,7 +204,10 @@ impl<'a> Renderer<'a> {
         }
     }
 
-    fn children(&self, ctx: &Ctx, list: &ChildList) -> Vec<AnyElement> {
+    /// The children of a container. In a horizontal container every child
+    /// without a `weight` is wrapped `flex_none`, so a full-width child (a
+    /// Column) sits beside its siblings instead of wrapping one per line.
+    fn children(&self, ctx: &Ctx, list: &ChildList, horizontal: bool) -> Vec<AnyElement> {
         let is_template = matches!(list, ChildList::Template { .. });
         expand_children(self.card, self.state, &ctx.scope, list, MAX_TEMPLATE_ITEMS)
             .into_iter()
@@ -215,7 +226,17 @@ impl<'a> Renderer<'a> {
                         ctx.instance.clone()
                     },
                 };
-                self.component(&id, &sub)
+                let weighted = self
+                    .card
+                    .get(&id)
+                    .and_then(|c| c.weight)
+                    .is_some_and(|w| w > 0.0);
+                let el = self.component(&id, &sub);
+                if horizontal && !weighted {
+                    div().flex_none().min_w_0().max_w_full().child(el).into_any_element()
+                } else {
+                    el
+                }
             })
             .collect()
     }
@@ -247,14 +268,15 @@ impl<'a> Renderer<'a> {
             Align::End => el.items_end(),
             Align::Stretch => el.items_stretch(),
         };
-        el.children(self.children(ctx, children)).into_any_element()
+        el.children(self.children(ctx, children, axis == Axis::Horizontal))
+            .into_any_element()
     }
 
     /// A List is a stack with hairlines between items (vertical) or a
     /// wrapping row (horizontal). Inner scrolling is a follow-up: the
     /// transcript row measures the whole card, so it grows instead.
     fn list(&self, ctx: &Ctx, children: &ChildList, direction: Axis, align: Align) -> AnyElement {
-        let items = self.children(ctx, children);
+        let items = self.children(ctx, children, direction == Axis::Horizontal);
         let theme = self.theme;
         let mut el = div().flex().w_full().min_w_0();
         el = match align {
@@ -359,7 +381,11 @@ impl<'a> Renderer<'a> {
             return self.fallback_box(&format!("Tabs \"{}\" has no tabs", c.id));
         }
         let theme = self.theme;
+        let tabs = &tabs[..tabs.len().min(MAX_TABS)];
         let selected = self.state.selected_tab(&c.id).min(tabs.len() - 1);
+        // Headers are elements: each takes a unit, and none is drawn once
+        // the budget is spent (the whole card becomes the panel anyway).
+        let shown = tabs.iter().take_while(|_| self.budget.take()).count();
         let header = div()
             .flex()
             .flex_row()
@@ -368,7 +394,7 @@ impl<'a> Renderer<'a> {
             .w_full()
             .border_b_1()
             .border_color(theme.border)
-            .children(tabs.iter().enumerate().map(|(ix, tab)| {
+            .children(tabs.iter().take(shown).enumerate().map(|(ix, tab)| {
                 let title = crate::leaf::clip(
                     &resolve_string(&self.state.data, &ctx.scope, &tab.title),
                     crate::leaf::MAX_LABEL_CHARS,
@@ -419,60 +445,9 @@ impl<'a> Renderer<'a> {
             .child(self.component(&tabs[selected].child, ctx))
             .into_any_element()
     }
-
-    /// The never-crash answer to anything the renderer cannot draw.
-    pub(crate) fn fallback_box(&self, label: &str) -> AnyElement {
-        let theme = self.theme;
-        div()
-            .w_full()
-            .min_w_0()
-            .rounded(px(theme.control_radius))
-            .border_1()
-            .border_dashed()
-            .border_color(theme.border_strong)
-            .px(px(10.0))
-            .py(px(8.0))
-            .text_size(rems(12.0 / 16.0))
-            .line_height(px(16.0))
-            .font_family(theme.font_mono.clone())
-            .text_color(theme.text_muted)
-            .child(SharedString::from(format!("Unsupported: {label}")))
-            .into_any_element()
-    }
-
-    /// Parse diagnostics: the whole body when there is no root (or the
-    /// budget is spent, with `headline`), a quiet footer otherwise.
-    fn diagnostics(&self, whole: bool, headline: Option<String>) -> AnyElement {
-        let theme = self.theme;
-        let mut el = div()
-            .w_full()
-            .min_w_0()
-            .flex()
-            .flex_col()
-            .gap(px(4.0))
-            .px(px(CARD_PADDING))
-            .py(px(if whole { CARD_PADDING } else { 8.0 }))
-            .text_size(rems(12.0 / 16.0))
-            .line_height(px(16.0))
-            .font_family(theme.font_mono.clone())
-            .text_color(theme.text_muted);
-        if whole {
-            el = el.child(
-                div()
-                    .font_family(theme.font_sans.clone())
-                    .text_size(rems(13.0 / 16.0))
-                    .text_color(theme.danger)
-                    .child("This card could not be drawn"),
-            );
-        } else {
-            el = el.border_t_1().border_color(theme.border);
-        }
-        el.children(
-            headline
-                .into_iter()
-                .chain(self.card.errors.iter().cloned())
-                .map(|e| div().child(SharedString::from(e))),
-        )
-        .into_any_element()
-    }
 }
+
+mod panel;
+
+#[cfg(test)]
+mod tests;

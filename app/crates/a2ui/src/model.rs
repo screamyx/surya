@@ -194,6 +194,16 @@ pub enum ComponentKind {
     Tabs {
         tabs: Vec<Tab>,
     },
+    /// surya extension (decision 14 lists Chart among surya's primitives):
+    /// a row of bars over an array in the data model. Each item is a
+    /// number, or an object read through `value_key` / `label_key`.
+    BarChart {
+        values: Dynamic<String>,
+        value_key: Option<String>,
+        label_key: Option<String>,
+        /// Fixed scale; `None` scales to the largest value.
+        max: Option<f64>,
+    },
     /// A catalog component this renderer does not draw (Icon, Video, Modal,
     /// Slider, ChoicePicker, DateTimeInput, AudioPlayer, or a workspace
     /// catalog's own). Rendered as a labelled box, never a crash.
@@ -218,6 +228,7 @@ impl ComponentKind {
             ComponentKind::Card { .. } => "Card",
             ComponentKind::Divider { .. } => "Divider",
             ComponentKind::Tabs { .. } => "Tabs",
+            ComponentKind::BarChart { .. } => "BarChart",
             ComponentKind::Unknown { name, .. } => name,
         }
     }

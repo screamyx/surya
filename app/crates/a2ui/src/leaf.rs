@@ -1,16 +1,16 @@
 //! Leaf components: Text, Image, Divider, TextField, CheckBox.
 
-use std::sync::Arc;
 
 use gpui::prelude::*;
 use gpui::{
-    AnyElement, ClickEvent, FontWeight, ImageSource, KeyDownEvent, ObjectFit, Resource,
-    SharedString, div, img, px, rems,
+    AnyElement, ClickEvent, FontWeight, ImageSource, KeyDownEvent, ObjectFit, SharedString, div,
+    img, px, rems, svg,
 };
+use serde_json::Value;
 use serde_json::json;
 
 use crate::data::resolve_string;
-use crate::images::ImageDecision;
+use crate::images::ResolvedImage;
 use crate::inline::{InkStyle, parse_inline, styled_text};
 use crate::model::*;
 use crate::render::{CARD_PADDING, Ctx, Renderer};
@@ -84,18 +84,12 @@ pub(crate) fn image(
     // The host's policy decides what may load: no fetch happens for a URL
     // it did not clear (a card is model-authored, and gpui fetches on
     // render with no click).
-    let source: ImageSource = match r.policy.decide(&url) {
-        ImageDecision::File(path) => {
-            ImageSource::Resource(Resource::Path(Arc::from(path.as_path())))
-        }
-        ImageDecision::Data { format, bytes } => {
-            ImageSource::Image(Arc::new(gpui::Image::from_bytes(format, bytes)))
-        }
-        ImageDecision::Remote(remote) => ImageSource::from(remote.as_str()),
-        ImageDecision::Placeholder(host) => {
+    let source: ImageSource = match r.state.image(&url, r.policy) {
+        ResolvedImage::Source(source) => source,
+        ResolvedImage::Placeholder(host) => {
             return r.fallback_box(&format!("remote image from {host} (remote images are off)"));
         }
-        ImageDecision::Denied(reason) => return r.fallback_box(&reason),
+        ResolvedImage::Denied(reason) => return r.fallback_box(&reason),
     };
     let fit = match fit {
         ImageFit::Contain => ObjectFit::Contain,
@@ -325,8 +319,15 @@ pub(crate) fn check_box(
         .flex()
         .items_center()
         .justify_center()
-        .when(checked, |el| {
-            el.child(div().size(px(8.0)).rounded(px(2.0)).bg(theme.on_solid))
+        .when(checked, |el| match &theme.check_icon {
+            Some(icon) => el.child(
+                svg()
+                    .path(icon.clone())
+                    .size(px(12.0))
+                    .flex_none()
+                    .text_color(theme.on_solid),
+            ),
+            None => el.child(div().size(px(8.0)).rounded(px(2.0)).bg(theme.on_solid)),
         });
     div()
         .id(r.eid(ctx, &c.id))
@@ -351,5 +352,95 @@ pub(crate) fn check_box(
         })
         .child(tick)
         .child(div().min_w_0().child(SharedString::from(label)))
+        .into_any_element()
+}
+
+/// Bar height cap for [`bar_chart`].
+const BAR_MAX_HEIGHT: f32 = 48.0;
+/// Bars drawn at most; a longer series is clipped to its head.
+const BAR_MAX_ITEMS: usize = 60;
+
+/// surya's BarChart extension: one bar per item of the bound array, scaled
+/// to `max` or the largest value, labels underneath. Items are numbers, or
+/// objects read through `value_key` / `label_key`.
+pub(crate) fn bar_chart(
+    r: &Renderer,
+    ctx: &Ctx,
+    values: &Dynamic<String>,
+    value_key: Option<&str>,
+    label_key: Option<&str>,
+    max: Option<f64>,
+) -> AnyElement {
+    let theme = r.theme;
+    let Some(path) = values.path() else {
+        return r.fallback_box("BarChart needs a values path");
+    };
+    let abs = ctx.scope.absolute(path);
+    let items: Vec<(f64, String)> = r
+        .state
+        .data
+        .get(&abs)
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .take(BAR_MAX_ITEMS)
+                .map(|item| {
+                    let value = match (item, value_key) {
+                        (Value::Number(n), _) => n.as_f64().unwrap_or(0.0),
+                        (Value::Object(o), Some(k)) => o.get(k).and_then(Value::as_f64).unwrap_or(0.0),
+                        (Value::Object(o), None) => o.get("value").and_then(Value::as_f64).unwrap_or(0.0),
+                        _ => 0.0,
+                    };
+                    let label = match (item, label_key) {
+                        (Value::Object(o), Some(k)) => o.get(k).map(crate::data::value_to_string),
+                        (Value::Object(o), None) => o.get("label").map(crate::data::value_to_string),
+                        _ => None,
+                    }
+                    .unwrap_or_default();
+                    (value.max(0.0), clip(&label, 12))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if items.is_empty() {
+        return r.fallback_box(&format!("BarChart: no data at {abs}"));
+    }
+    let scale = max
+        .filter(|m| *m > 0.0)
+        .unwrap_or_else(|| items.iter().map(|(v, _)| *v).fold(0.0, f64::max))
+        .max(f64::EPSILON);
+    div()
+        .flex()
+        .flex_row()
+        .items_end()
+        .gap(px(6.0))
+        .w_full()
+        .min_w_0()
+        .children(items.into_iter().map(|(value, label)| {
+            let h = ((value / scale) as f32 * BAR_MAX_HEIGHT).max(3.0);
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_w_0()
+                .items_center()
+                .gap(px(4.0))
+                .child(
+                    div()
+                        .w_full()
+                        .h(px(BAR_MAX_HEIGHT))
+                        .flex()
+                        .items_end()
+                        .child(div().w_full().h(px(h)).rounded(px(3.0)).bg(theme.solid)),
+                )
+                .child(
+                    div()
+                        .text_size(rems(11.0 / 16.0))
+                        .line_height(px(14.0))
+                        .text_color(theme.text_muted)
+                        .whitespace_nowrap()
+                        .child(SharedString::from(label)),
+                )
+        }))
         .into_any_element()
 }
