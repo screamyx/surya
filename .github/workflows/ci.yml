@@ -82,6 +82,56 @@ jobs:
             -p zeron-harness \
             -p surya-mcp
 
+  # One engine, driven over the real websocket by the binaries a user runs.
+  # Runs after `headless tests`: if a crate's own tests are red, the smoke's
+  # failure would only repeat that, and this job costs a `zeron` link.
+  #
+  # `-p zeron` pulls gpui, so this job needs the same system libraries the
+  # check job installs.
+  smoke:
+    name: smoke
+    runs-on: ubuntu-latest
+    needs: tests
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/share/boost /usr/local/.ghcup
+
+      # Copied verbatim from the check job below: two lists that drift leave
+      # nobody able to say which one is authoritative (surya-mcp, 10:03).
+      - name: gpui system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libx11-dev libxcb1-dev libx11-xcb-dev \
+            libfontconfig1-dev libfreetype-dev libasound2-dev \
+            libvulkan-dev pkg-config cmake
+
+      - name: rust toolchain (app/rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+
+      # a2ui's tests ride this job: every one of them is headless (elements
+      # build without a window) and the gpui build is already paid for here.
+      - name: cargo test -p surya-a2ui
+        run: cargo test --jobs 2 -p surya-a2ui
+
+      - name: smoke
+        env:
+          SURYA_SMOKE_CARGO: cargo
+        run: scripts/smoke.sh
+
   # Everything else, including the gpui/ui crates. The system libraries are
   # the ones comet's own release workflow installs
   # (app/.github/workflows/release.yml), so they are known to be enough and
