@@ -3231,6 +3231,9 @@ pub enum ComposerEvent {
     /// identity so it can anchor the prompt at the top with the reply's
     /// reserved space below it.
     Sent { chat_id: String, message_id: String },
+    /// The question sheet (wizard) was mounted or retired. The shell hides
+    /// its page title under the sheet and must re-lay out the same frame.
+    SheetChanged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -3465,6 +3468,12 @@ pub struct Composer {
 impl EventEmitter<ComposerEvent> for Composer {}
 
 impl Composer {
+    /// The question sheet is on screen (the wizard is mounted). The shell
+    /// gates the page title on this, not on a proxy of it.
+    pub fn question_sheet_visible(&self) -> bool {
+        self.wizard.is_some()
+    }
+
     /// The picker entity, for the shell's canvas target selectors.
     pub fn pickers(&self) -> &Entity<Pickers> {
         &self.pickers
@@ -4625,7 +4634,9 @@ impl Composer {
             // failures render only under their own chat (see `failure_key`),
             // so switching away and back must not erase the one visible
             // trace of a failed send.
-            self.wizard = None;
+            if self.wizard.take().is_some() {
+                cx.emit(ComposerEvent::SheetChanged);
+            }
             // Attachments stay stashed under their chat key (the map swap IS
             // the navigation); only the transient chrome resets.
             self.preview = None;
@@ -4652,6 +4663,7 @@ impl Composer {
                 if !same {
                     self.reset_mention(None, cx);
                     self.wizard = Some(Wizard::new(request_id, questions));
+                    cx.emit(ComposerEvent::SheetChanged);
                     self.advance_task = None;
                     // The shared input becomes the panel's free-text override.
                     self.input.update(cx, |input, cx| {
@@ -4676,6 +4688,7 @@ impl Composer {
                             && !self.answered_requests.contains(&wizard.request_id));
                     if released {
                         self.wizard = None;
+                        cx.emit(ComposerEvent::SheetChanged);
                         self.advance_task = None;
                         self.input
                             .update(cx, |input, cx| input.set_placeholder("Do anything…", cx));
@@ -5432,6 +5445,7 @@ impl Composer {
         let Some(wizard) = self.wizard.take() else {
             return;
         };
+        cx.emit(ComposerEvent::SheetChanged);
         self.advance_task = None;
         self.answered_requests.insert(wizard.request_id.clone());
         self.input.update(cx, |input, cx| {
