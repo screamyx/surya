@@ -8217,9 +8217,13 @@ impl Render for Shell {
         );
         self.viewport_width = f32::from(window.viewport_size().width);
         if let Some(pane) = self.debug_open_pane.as_deref() {
-            let ready = match pane {
-                "browser" => true,
-                _ => self.current_space(cx).is_some(),
+            let ready = {
+                let state = self.state.read(cx);
+                pane_knob_ready(
+                    pane,
+                    state.chats_synced && state.spaces_synced,
+                    self.current_space(cx).is_some(),
+                )
             };
             if ready {
                 let pane = self.debug_open_pane.take().unwrap_or_default();
@@ -8691,6 +8695,19 @@ enum DemoSeed {
 /// takes the window only on the first seed, when the demo itself was
 /// selected, or when nothing is selected and the user never pressed `+`:
 /// a user who clicked another chat, or pressed `+`, keeps what they chose.
+/// When `ZERON_OPEN_PANE` may add its tab. Files and Tasks need a space.
+/// The Browser needs none, but it does need the panel key to be final: the
+/// boot selection (last chat, last space) lands with the first chats and
+/// spaces frames, and a tab added before that attaches to the empty canvas
+/// key and vanishes when the saved chat restores (critic round 3, B1:
+/// `visible=0 frames=0` for 65 s while the browser had loaded its page).
+fn pane_knob_ready(pane: &str, boot_synced: bool, has_space: bool) -> bool {
+    match pane {
+        "browser" => boot_synced,
+        _ => has_space,
+    }
+}
+
 fn demo_seed_step(
     synced: bool,
     seeded_before: bool,
@@ -8714,6 +8731,16 @@ mod tests {
     /// `ZERON_DEMO_CARDS` must not undo the user's clicks (surya-remote,
     /// 2026-09-05) nor take the canvas they emptied with `+` (review nit on
     /// PR #34): one row per case, `asked=8 passed=8`.
+    #[test]
+    fn pane_knob_waits_for_the_boot_selection() {
+        // Browser: only the first chats + spaces frames matter, a space does not.
+        assert!(!pane_knob_ready("browser", false, true));
+        assert!(pane_knob_ready("browser", true, false));
+        // Files and Tasks: a space, whatever the sync state.
+        assert!(!pane_knob_ready("files", true, false));
+        assert!(pane_knob_ready("tasks", false, true));
+    }
+
     #[test]
     fn demo_seed_re_arms_only_when_the_row_vanished() {
         use DemoSeed::*;
