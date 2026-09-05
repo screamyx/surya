@@ -416,8 +416,10 @@ pub(crate) fn bar_chart(
         .gap(px(6.0))
         .w_full()
         .min_w_0()
-        .children(items.into_iter().map(|(value, label)| {
-            let h = ((value / scale) as f32 * BAR_MAX_HEIGHT).max(3.0);
+        // One budget unit per bar (a bar is a small subtree), and the bar
+        // never leaves its lane: a model-supplied `max` below a value clamps.
+        .children(items.into_iter().take_while(|_| r.budget.take()).map(|(value, label)| {
+            let h = ((value / scale) as f32 * BAR_MAX_HEIGHT).clamp(3.0, BAR_MAX_HEIGHT);
             div()
                 .flex()
                 .flex_col()

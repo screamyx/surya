@@ -111,7 +111,11 @@ pub fn load_fixture_dir(dir: &Path) -> Vec<(String, serde_json::Value)> {
 /// every fixture with an image unparseable (dtry 07:52: card 01 never
 /// seeded). Forward slashes work on Windows too.
 pub fn fixture_base(dir: &Path) -> String {
-    let dir = dir.display().to_string().replace('\\', "/");
+    let dir = dir.display().to_string();
+    // Only Windows separators are rewritten: a Unix dir name may legally
+    // contain a backslash, and rewriting it would point at nothing.
+    #[cfg(windows)]
+    let dir = dir.replace('\\', "/");
     let base = format!("file://{dir}/");
     // serde's string escaping, minus the quotes it wraps.
     serde_json::to_string(&base)
@@ -175,13 +179,24 @@ pub fn log_render(
         return;
     }
     // Once per (row, card version, window width): the list repaints idle
-    // rows every few hundred ms and the counter must not follow suit.
+    // rows every few hundred ms and the counter must not follow suit. A
+    // new version of a row forgets the widths logged for the old one, so
+    // the set is bounded by rows on screen times widths seen.
     thread_local! {
-        static LOGGED: std::cell::RefCell<std::collections::HashSet<String>> = Default::default();
+        static LOGGED: std::cell::RefCell<
+            std::collections::HashMap<SharedString, (u64, std::collections::HashSet<i64>)>,
+        > = Default::default();
     }
     let width = f32::from(window.viewport_size().width) as i64;
-    let key = format!("{row_id}@{version}@{width}");
-    if !LOGGED.with(|l| l.borrow_mut().insert(key)) {
+    let fresh = LOGGED.with(|l| {
+        let mut map = l.borrow_mut();
+        let entry = map.entry(row_id.clone()).or_insert((version, Default::default()));
+        if entry.0 != version {
+            *entry = (version, Default::default());
+        }
+        entry.1.insert(width)
+    });
+    if !fresh {
         return;
     }
     tracing::info!(
@@ -279,18 +294,24 @@ mod tests {
         eprintln!("components asked=11 covered={}", seen.len().min(11));
     }
 
-    /// A fixture dir whose path holds a backslash (every Windows path) still
-    /// yields valid JSON with a forward-slash `file://` URL.
+    /// A fixture dir whose name holds a backslash and quotes still yields
+    /// valid JSON, and the `file://` URL resolves to the file beside the
+    /// fixture (on Unix the backslash is a real character and stays).
     #[test]
-    fn fixture_base_survives_backslashes_and_quotes() {
+    fn fixture_base_survives_odd_dir_names_and_resolves() {
         let dir = std::env::temp_dir().join(format!("surya a2ui\\odd \"dir\" {}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("p.jpg"), b"jpg").unwrap();
         std::fs::write(dir.join("01.json"), r#"{"components":[{"id":"root","component":"Image","url":"fixture://p.jpg"}]}"#).unwrap();
         let loaded = load_fixture_dir(&dir);
         assert_eq!(loaded.len(), 1, "parsed despite the odd dir name");
         let url = loaded[0].1["components"][0]["url"].as_str().unwrap().to_owned();
-        assert!(url.starts_with("file://") && url.ends_with("/p.jpg") && !url.contains('\\'), "{url}");
-        assert!(url.contains("odd \"dir\""), "{url}");
+        let path = url.strip_prefix("file://").expect("file url");
+        assert!(Path::new(path).is_file(), "{url} does not resolve");
+        assert_eq!(Path::new(path).canonicalize().unwrap(), dir.join("p.jpg").canonicalize().unwrap());
+        // The policy accepts it under its own dir, so the card would load it.
+        let policy = ImagePolicy { allowed_dirs: vec![dir.clone()], remote_allowed: false };
+        assert!(matches!(policy.decide(&url), surya_a2ui::ImageDecision::File(_)));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

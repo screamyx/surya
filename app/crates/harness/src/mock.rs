@@ -589,6 +589,20 @@ impl Harness for MockHarness {
     }
 }
 
+/// The `file://` prefix a fixture's `fixture://` becomes, JSON-escaped.
+/// Windows separators are rewritten to `/` (a Unix dir may legally hold a
+/// backslash, so only there); the escape keeps quotes and any remaining
+/// backslash valid inside the JSON string.
+fn fixture_base(dir: &std::path::Path) -> String {
+    let dir = dir.display().to_string();
+    #[cfg(windows)]
+    let dir = dir.replace('\\', "/");
+    let raw = format!("file://{dir}/");
+    serde_json::to_string(&raw)
+        .map(|q| q[1..q.len() - 1].to_owned())
+        .unwrap_or(raw)
+}
+
 /// The `ZERON_MOCK_CARDS` fixtures as events: a one-line reply, then the
 /// card, per file. Unreadable files are skipped with a warning.
 fn mock_card_events(dir: &std::path::Path) -> Vec<AgentEvent> {
@@ -602,15 +616,7 @@ fn mock_card_events(dir: &std::path::Path) -> Vec<AgentEvent> {
         .filter(|p| p.extension().is_some_and(|x| x == "json"))
         .collect();
     paths.sort();
-    // JSON-escaped, forward slashes: a Windows dir's backslashes would
-    // otherwise break every fixture that carries an image.
-    let base = {
-        let dir = dir.display().to_string().replace('\\', "/");
-        let raw = format!("file://{dir}/");
-        serde_json::to_string(&raw)
-            .map(|q| q[1..q.len() - 1].to_owned())
-            .unwrap_or(raw)
-    };
+    let base = fixture_base(dir);
     let mut out = Vec::new();
     for (ix, path) in paths.iter().enumerate() {
         let Ok(text) = std::fs::read_to_string(path) else {
@@ -638,4 +644,29 @@ fn mock_card_events(dir: &std::path::Path) -> Vec<AgentEvent> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Same contract as `zeron_ui::cards::fixture_base`: odd dir names stay
+    /// valid JSON and the URL resolves to the file beside the fixture.
+    #[test]
+    fn mock_cards_fixture_base_resolves() {
+        let dir = std::env::temp_dir().join(format!("surya mock\\odd \"dir\" {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("p.jpg"), b"jpg").unwrap();
+        std::fs::write(dir.join("01.json"), r#"{"components":[{"id":"root","component":"Image","url":"fixture://p.jpg"}]}"#).unwrap();
+        let events = mock_card_events(&dir);
+        assert_eq!(events.len(), 2, "text + card");
+        let AgentEvent::Card { a2ui, card_id, .. } = &events[1] else {
+            panic!("expected a card, got {:?}", events[1]);
+        };
+        assert_eq!(card_id, "card-01");
+        let url = a2ui[1]["updateComponents"]["components"][0]["url"].as_str().unwrap();
+        let path = url.strip_prefix("file://").expect("file url");
+        assert!(std::path::Path::new(path).is_file(), "{url} does not resolve");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
