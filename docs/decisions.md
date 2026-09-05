@@ -373,7 +373,7 @@ Owner ruling, 2026-09-05 22:23, verbatim: "btw i mainly gonna use surya on windo
 Owner order, 2026-09-05 22:43, verbatim: "once all done, do one end-to-end test, testing every button, surface, features etc. to make sure everything works exactly as planned. do the test when im asleep".
 
 - Runs on dtry (decision 28) on the newest main build after the browser-wave merges, engine reinstalled to the same sha, once the owner is off dtry (he says so, or no owner input on dtry after 01:00).
-- One Fable medium tester seat drives the app over the windows-dtry MCP through every rail entry, page, button and feature (list in /tmp/surya-e2e-acceptance.md), a screenshot per step into the gallery, a PASS/FAIL row per step in docs/acceptance/e2e-2026-09-06.md, FAILs filed to raven as they appear; the owning seats fix, raven re-runs the failed steps.
+- One Codex gpt-6-astra (high) tester seat (owner 22:45: "model for e2e tester is astra, make sure he has the right tool for it windows-dtry mcp, maybe /zoom") drives the app over the windows-dtry MCP, zoom CLI for fine detail, through every rail entry, page, button and feature (list in /tmp/surya-e2e-acceptance.md), a screenshot per step into the gallery, a PASS/FAIL row per step in docs/acceptance/e2e-2026-09-06.md, FAILs filed to raven as they appear; the owning seats fix, raven re-runs the failed steps.
 - Supersedes the 22:07 note that deferred the acceptance round to 04:00-08:00: the trigger is "merges done and owner asleep", not the clock.
 
 ## Open
