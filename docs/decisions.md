@@ -358,6 +358,16 @@ The cost of the new path is the wait for the GPU to finish the copy. CEF's contr
 - AMENDED 21:47, owner verbatim: "i thought we're chasing the slow zero-copy gpu frames, scroll frame-rate work and agent's cdp now? i want them in the RC". So all three are RC scope, not post-RC: the zero-copy cost is chased now (the lever to test first: run CEF's UI thread off gpui's main thread, `multi_threaded_message_loop`, so the GPU wait no longer blocks the app's frame; then pane-size gating), the frame-rate levers land as PRs tonight (perf's PR 2, the fork latency patch, present on the vsync beat), and agent CDP (#87) merges tonight. The Codex gpt-6-astra xhigh seat is spawned NOW, in parallel with surya-browser-perf, cef2 coordinating the shared files. What is green by the 11:45 freeze ships; a flag defaults ON only where the owner's machine measures it better, otherwise it ships in the tree behind the flag. The baseline-first rule stands for the frame-rate levers.
 - Zero-copy earns its keep only at large pane sizes: the CPU path grows with pixel count (a 4K pane is about 33 MB a frame, several ms), the GPU wait does not. If the browser pane ever fills a 4K display, turn the flag on by pane size. Post-RC item.
 
+## 28. Windows is the product, Mac next, Linux is a test bench only
+
+Owner ruling, 2026-09-05 22:23, verbatim: "btw i mainly gonna use surya on windows, and in the future mac, but never on linux. linux can stay as testing ground, but its not proof for RC".
+
+- An RC gate is proven on the owner's Windows machine (dtry) or it is not proven. A :7 Linux run is smoke, useful to catch a crash early, never the evidence a PR ships on.
+- Every RC-scoped feature gets a dtry proof before the freeze: comet look (#82) shots at both sizes, one browser per tab (#83), agent CDP (#87), zero-copy on/off pair (#85), frame-rate baseline and levers (#86, perf PR 2, astra), permission chip (states). One seat on the dtry GUI slot at a time, announced over agb, cef2 arbitrates.
+- Linux packaging and sandbox (#80) are not RC gates. They merge when green as test-bench infrastructure, and no further seat time goes to Linux-only polish before the RC.
+- Mac is the next platform after the RC; nothing tonight targets it.
+- Amends decision 25's proof clause and every "proof on :7" line in briefs written today.
+
 ## Open
 
 None at day zero.
