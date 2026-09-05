@@ -65,7 +65,8 @@ impl FileEditor {
 
     /// A click in the tree. A dirty buffer is never replaced without asking:
     /// the prompt goes up and the path waits behind it (`prompt`). The same
-    /// dirty file clicked again is left alone.
+    /// dirty file clicked again keeps its buffer, and takes any prompt down
+    /// with it: clicking the file you are on is choosing to stay.
     pub fn open(&mut self, path: String, cx: &mut Context<Self>) {
         let current = self.input.read(cx).text().to_string();
         match self.doc.switch_to(&current, &path) {
@@ -74,7 +75,7 @@ impl FileEditor {
                 self.doc.ask_before_leaving(&path);
                 cx.notify();
             }
-            Switch::Stay => {}
+            Switch::Stay => self.keep_editing(cx),
         }
     }
 
