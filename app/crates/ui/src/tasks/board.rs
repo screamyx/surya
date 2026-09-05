@@ -23,6 +23,9 @@ use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::theme::{Theme, hairline};
 use crate::typography::ui_rems;
 
+/// A card column never squeezes below this; the row scrolls instead.
+const COLUMN_MIN_W: f32 = 220.0;
+
 pub struct TasksPane {
     client: Arc<RpcClient>,
     space_id: String,
@@ -33,6 +36,9 @@ pub struct TasksPane {
     quick_add: Entity<ComposerInput>,
     /// Last RPC failure, shown under the header until the next success.
     pub(super) error: Option<SharedString>,
+    /// The columns row scrolls sideways when the pane is narrower than four
+    /// columns; the offset drives the edge fades that say more is hiding.
+    columns_scroll: gpui::ScrollHandle,
     _watch: Task<()>,
     _quick_add_events: Subscription,
 }
@@ -59,6 +65,7 @@ impl TasksPane {
             space_name: space_name.into(),
             model: BoardModel::default(),
             focus_handle: cx.focus_handle(),
+            columns_scroll: gpui::ScrollHandle::new(),
             sheet: None,
             quick_add,
             error: None,
@@ -291,7 +298,7 @@ impl TasksPane {
         div()
             .id(("task-column", ix))
             .flex_1()
-            .min_w(px(220.0))
+            .min_w(px(COLUMN_MIN_W))
             .flex()
             .flex_col()
             .gap(px(8.0))
@@ -362,6 +369,7 @@ impl Render for TasksPane {
                 .child(message)
         });
         let sheet = self.render_sheet(window.viewport_size(), window, cx);
+        let board = self.render_columns(columns, &theme);
         div()
             .id("tasks-pane")
             .track_focus(&self.focus_handle)
@@ -380,17 +388,59 @@ impl Render for TasksPane {
             .text_color(theme.text)
             .child(self.render_header(&theme))
             .children(error)
+            .child(board)
+            .children(sheet)
+    }
+}
+
+impl TasksPane {
+    /// Four columns at `COLUMN_MIN_W` each need ~960 px; the right pane opens
+    /// at 520. Below that the row is the scroller (the right-surface strip's
+    /// proven shape: id + overflow_x_scroll + track_scroll) and a painted fade
+    /// on whichever edge hides a column says the board continues (critique
+    /// round 3, N3: "the third column is cut at 'Don' with no scroll hint").
+    fn render_columns(&self, columns: Vec<gpui::Stateful<gpui::Div>>, theme: &Theme) -> AnyElement {
+        const FADE_WIDTH: f32 = 36.0;
+        let scrolled = -f32::from(self.columns_scroll.offset().x);
+        let max_scroll = f32::from(self.columns_scroll.max_offset().x);
+        let fade_left = scrolled > 1.0;
+        let fade_right = scrolled < max_scroll - 1.0;
+        let page_bg = theme.bg;
+        let fade = |angle: f32| {
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .w(px(FADE_WIDTH))
+                .bg(gpui::linear_gradient(
+                    angle,
+                    gpui::linear_color_stop(page_bg, 0.0),
+                    gpui::linear_color_stop(page_bg.opacity(0.0), 1.0),
+                ))
+        };
+        div()
+            .relative()
+            .flex_1()
+            .min_w(px(0.0))
+            .min_h(px(0.0))
+            .flex()
             .child(
                 div()
+                    .id("task-columns")
                     .flex_1()
+                    .min_w(px(0.0))
                     .flex()
                     .flex_row()
                     .gap(px(16.0))
                     .px(px(16.0))
                     .pb(px(16.0))
+                    .overflow_x_scroll()
+                    .track_scroll(&self.columns_scroll)
                     .children(columns),
             )
-            .children(sheet)
+            .when(fade_left, |el| el.child(fade(90.0).left_0()))
+            .when(fade_right, |el| el.child(fade(270.0).right_0()))
+            .into_any_element()
     }
 }
 
