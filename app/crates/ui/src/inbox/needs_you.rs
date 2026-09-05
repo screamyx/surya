@@ -14,6 +14,7 @@ use zeron_rpc::methods;
 
 use crate::inbox::chrome::{
     ButtonTone, badge, body_text, button, command_text, empty_state, kind_color, row_card,
+    setting_chip,
 };
 use crate::inbox::model::{
     AlwaysAllowScope, InboxRow, inbox_rows, remember_for, respond_input_params,
@@ -42,6 +43,10 @@ pub struct NeedsYouPane {
     /// Rows whose answer is in flight. They stay on screen but stop taking
     /// clicks, so a double tap cannot answer twice.
     answering: HashSet<String>,
+    /// Options picked so far on a multi-select question, keyed by row id.
+    /// A multi-select is not sent until the user says they are done, so it
+    /// needs somewhere to accumulate.
+    picked: std::collections::HashMap<String, Vec<String>>,
     /// The last failure, shown inline — an answer that did not leave the
     /// device must say so rather than looking accepted.
     failure: Option<SharedString>,
@@ -57,6 +62,7 @@ impl NeedsYouPane {
             chats: Vec::new(),
             scopes: std::collections::HashMap::new(),
             answering: HashSet::new(),
+            picked: std::collections::HashMap::new(),
             failure: None,
             _watch: None,
             _chats_watch: None,
@@ -73,6 +79,7 @@ impl NeedsYouPane {
             chats,
             scopes: std::collections::HashMap::new(),
             answering: HashSet::new(),
+            picked: std::collections::HashMap::new(),
             failure: None,
             _watch: None,
             _chats_watch: None,
@@ -183,17 +190,41 @@ impl NeedsYouPane {
         self.send(row.id.clone(), methods::RESPOND_PERMISSION, params, cx);
     }
 
-    fn answer_question(&mut self, row: &InboxRow, label: &str, cx: &mut Context<Self>) {
+    /// Single-select: one tap is the answer. Multi-select: one tap toggles
+    /// the option and the user sends when they are done.
+    fn pick_option(&mut self, row: &InboxRow, label: &str, cx: &mut Context<Self>) {
+        if !row.multi_select {
+            self.answer_question(row, vec![label.to_string()], cx);
+            return;
+        }
+        let picked = self.picked.entry(row.id.clone()).or_default();
+        match picked.iter().position(|p| p == label) {
+            Some(ix) => {
+                picked.remove(ix);
+            }
+            None => picked.push(label.to_string()),
+        }
+        cx.notify();
+    }
+
+    fn is_picked(&self, row_id: &str, label: &str) -> bool {
+        self.picked
+            .get(row_id)
+            .is_some_and(|picked| picked.iter().any(|p| p == label))
+    }
+
+    fn answer_question(&mut self, row: &InboxRow, labels: Vec<String>, cx: &mut Context<Self>) {
         let Some((request_id, question_id)) = split_question_id(&row.id) else {
             return;
         };
         let answers = vec![UserInputAnswer {
             question_id: question_id.to_string(),
-            labels: vec![label.to_string()],
+            labels,
         }];
         let Some(params) = respond_input_params(&row.chat_id, request_id, answers) else {
             return;
         };
+        self.picked.remove(&row.id);
         self.send(row.id.clone(), methods::QUEUE_COMMAND, params, cx);
     }
 
@@ -336,8 +367,11 @@ impl NeedsYouPane {
                                 }))
                             }),
                     )
+                    // The scope is a SETTING on "Always allow", not a fourth
+                    // action. Drawn quieter and named so, or a user taps it
+                    // expecting something to happen.
                     .child(
-                        button(theme, ButtonTone::Quiet, scope.label())
+                        setting_chip(theme, format!("scope: {}", scope.label()))
                             .id(SharedString::from(format!("scope-{}", row.id)))
                             .on_click(cx.listener(move |pane, _, _, cx| {
                                 pane.toggle_scope(&toggle, cx);
@@ -345,18 +379,58 @@ impl NeedsYouPane {
                     )
                     .into_any_element()
             }
-            NeedsYouKind::Question => actions
-                .children(row.options.iter().enumerate().map(|(ix, option)| {
-                    let (answer_row, label) = (row.clone(), option.clone());
-                    button(theme, ButtonTone::Quiet, option.clone())
-                        .id(SharedString::from(format!("option-{}-{ix}", row.id)))
-                        .when(!busy, |el| {
-                            el.on_click(cx.listener(move |pane, _, _, cx| {
-                                pane.answer_question(&answer_row, &label, cx);
-                            }))
-                        })
-                }))
-                .into_any_element(),
+            NeedsYouKind::Question => {
+                let picked_count = self.picked.get(&row.id).map_or(0, Vec::len);
+                let send_row = row.clone();
+                actions
+                    .children(row.options.iter().enumerate().map(|(ix, option)| {
+                        let (answer_row, label) = (row.clone(), option.clone());
+                        // On a multi-select a picked option reads as chosen
+                        // but not yet sent, so it takes the primary plate
+                        // while the send button is what actually answers.
+                        let tone = if self.is_picked(&row.id, option) {
+                            ButtonTone::Primary
+                        } else {
+                            ButtonTone::Quiet
+                        };
+                        button(theme, tone, option.clone())
+                            .id(SharedString::from(format!("option-{}-{ix}", row.id)))
+                            .when(!busy, |el| {
+                                el.on_click(cx.listener(move |pane, _, _, cx| {
+                                    pane.pick_option(&answer_row, &label, cx);
+                                }))
+                            })
+                    }))
+                    .when(row.multi_select, |el| {
+                        // Nothing picked means nothing to send: the button
+                        // stays quiet and inert rather than sending an empty
+                        // answer the agent would read as "no opinion".
+                        el.child(
+                            button(
+                                theme,
+                                if picked_count > 0 {
+                                    ButtonTone::Primary
+                                } else {
+                                    ButtonTone::Quiet
+                                },
+                                if picked_count > 0 {
+                                    format!("Send {picked_count}")
+                                } else {
+                                    "Pick one or more".to_string()
+                                },
+                            )
+                            .id(SharedString::from(format!("send-{}", row.id)))
+                            .when(!busy && picked_count > 0, |el| {
+                                el.on_click(cx.listener(move |pane, _, _, cx| {
+                                    let labels =
+                                        pane.picked.get(&send_row.id).cloned().unwrap_or_default();
+                                    pane.answer_question(&send_row, labels, cx);
+                                }))
+                            }),
+                        )
+                    })
+                    .into_any_element()
+            }
             NeedsYouKind::Failed => {
                 let chat_id = row.chat_id.clone();
                 actions

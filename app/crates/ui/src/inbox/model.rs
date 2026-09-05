@@ -103,10 +103,11 @@ pub enum AlwaysAllowScope {
 }
 
 impl AlwaysAllowScope {
+    /// Lower case: it is rendered after "scope: ", not as a title.
     pub fn label(self) -> &'static str {
         match self {
-            Self::ThisWorkspace => "This workspace",
-            Self::Everywhere => "Everywhere",
+            Self::ThisWorkspace => "this workspace",
+            Self::Everywhere => "everywhere",
         }
     }
 
@@ -127,14 +128,17 @@ impl AlwaysAllowScope {
 
 /// The `remember` block an "Always allow" click sends.
 ///
-/// The pattern is the command itself, not a widened glob. The engine refuses
-/// a pattern that does not cover the command the card showed, and inventing a
-/// wider one here would be this view guessing what the user meant — the
-/// approval-policy page is where a rule gets broadened, deliberately.
-pub fn remember_for(row: &InboxRow, scope: AlwaysAllowScope) -> RememberRule {
+/// The pattern is EMPTY on purpose. An empty pattern tells the engine "pin
+/// this exact command", which it stores literally (`exact`). Sending the
+/// command as a pattern instead would store it as a GLOB: a card showing
+/// `rm -rf build/*` would become a standing wildcard rule, and `git *` would
+/// be refused by the engine's anchoring check so the click would just error.
+/// Broadening a rule happens on the approval-policy page, deliberately, not
+/// by this view guessing what the user meant.
+pub fn remember_for(_row: &InboxRow, scope: AlwaysAllowScope) -> RememberRule {
     RememberRule {
         scope: scope.rule_scope(),
-        pattern: row.tool_command.clone().unwrap_or_default(),
+        pattern: String::new(),
         name: None,
     }
 }

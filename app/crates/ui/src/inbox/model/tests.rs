@@ -141,17 +141,18 @@ fn always_allow_sends_remember_with_the_chosen_scope() {
     );
     assert_eq!(workspace.scope, RuleScope::Workspace);
     assert_eq!(everywhere.scope, RuleScope::Global);
-    // The pattern is the command the card showed, never a widened glob: the
-    // engine refuses a pattern that does not cover it, and guessing wider
-    // here would mean the card said one thing and the rule meant another.
-    assert_eq!(workspace.pattern, "php artisan migrate");
-    assert_eq!(everywhere.pattern, "php artisan migrate");
+    // EMPTY, which the engine reads as "pin this exact command" and stores
+    // literally. Sending the command as a pattern would store it as a glob:
+    // `rm -rf build/*` would become a standing wildcard rule, and `git *`
+    // would be refused by the anchoring check so the click would just error.
+    assert_eq!(workspace.pattern, "");
+    assert_eq!(everywhere.pattern, "");
 
     let params = respond_permission_params("perm-1", PermissionDecision::Allow, Some(&workspace));
     assert_eq!(params["requestId"], "perm-1");
     assert_eq!(params["decision"], "allow");
     assert_eq!(params["remember"]["scope"], "workspace");
-    assert_eq!(params["remember"]["pattern"], "php artisan migrate");
+    assert_eq!(params["remember"]["pattern"], "");
 }
 
 #[test]
@@ -173,9 +174,9 @@ fn allow_and_deny_without_remember_send_no_rule() {
 fn the_scope_toggle_has_two_positions_and_says_which() {
     let scope = AlwaysAllowScope::default();
     assert_eq!(scope, AlwaysAllowScope::ThisWorkspace);
-    assert_eq!(scope.label(), "This workspace");
+    assert_eq!(scope.label(), "this workspace");
     assert_eq!(scope.toggled(), AlwaysAllowScope::Everywhere);
-    assert_eq!(scope.toggled().label(), "Everywhere");
+    assert_eq!(scope.toggled().label(), "everywhere");
     assert_eq!(scope.toggled().toggled(), scope);
 }
 
@@ -200,6 +201,30 @@ fn a_question_row_id_carries_both_halves_of_the_answer() {
     assert_eq!(params["command"]["kind"], "respondInput");
     assert_eq!(params["command"]["requestId"], "input-1");
     assert_eq!(params["command"]["answers"][0]["labels"][0], "Event-driven");
+}
+
+#[test]
+fn a_multi_select_question_carries_every_picked_label() {
+    let mut raw = item("input-2:q-gates", "chat-b", NeedsYouKind::Question);
+    raw.multi_select = true;
+    raw.options = vec!["Unit tests".into(), "End-to-end".into()];
+    let rows = inbox_rows(&[raw], &[]);
+    assert!(rows[0].multi_select, "the view needs to know to accumulate");
+
+    let (request, question_id) = split_question_id(&rows[0].id).expect("splits");
+    let params = respond_input_params(
+        "chat-b",
+        request,
+        vec![UserInputAnswer {
+            question_id: question_id.into(),
+            labels: vec!["Unit tests".into(), "End-to-end".into()],
+        }],
+    )
+    .expect("serializes");
+    let labels = &params["command"]["answers"][0]["labels"];
+    assert_eq!(labels.as_array().map(Vec::len), Some(2));
+    assert_eq!(labels[0], "Unit tests");
+    assert_eq!(labels[1], "End-to-end");
 }
 
 #[test]

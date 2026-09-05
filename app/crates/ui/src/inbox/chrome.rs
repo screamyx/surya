@@ -97,6 +97,21 @@ pub fn button(theme: &Theme, tone: ButtonTone, label: impl Into<SharedString>) -
     .child(label.into())
 }
 
+/// A quieter chip for a SETTING rather than an action: no border, muted
+/// text, so it does not read as a fourth button next to Allow and Deny.
+pub fn setting_chip(theme: &Theme, text: impl Into<SharedString>) -> Div {
+    div()
+        .flex_none()
+        .px(px(6.0))
+        .py(px(4.0))
+        .rounded(px(6.0))
+        .text_size(ui_rems(11.0))
+        .text_color(theme.text_faint)
+        .cursor_pointer()
+        .hover(|s| s.bg(theme.element_hover).text_color(theme.text_muted))
+        .child(text.into())
+}
+
 /// A group heading: "Waiting for you", "Running", and the like.
 pub fn heading(theme: &Theme, text: impl Into<SharedString>) -> Div {
     div()
