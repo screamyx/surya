@@ -401,32 +401,26 @@ impl NeedsYouPane {
                                 }))
                             })
                     }))
-                    .when(row.multi_select, |el| {
-                        // Nothing picked means nothing to send: the button
-                        // stays quiet and inert rather than sending an empty
-                        // answer the agent would read as "no opinion".
+                    .when(row.multi_select && picked_count == 0, |el| {
+                        // Nothing picked yet: a HINT, not a button. Drawn as
+                        // a button it read as a fourth option sitting in the
+                        // same row as the real ones.
+                        el.child(setting_chip(theme, "pick one or more"))
+                    })
+                    .when(row.multi_select && picked_count > 0, |el| {
                         el.child(
-                            button(
-                                theme,
-                                if picked_count > 0 {
-                                    ButtonTone::Primary
-                                } else {
-                                    ButtonTone::Quiet
-                                },
-                                if picked_count > 0 {
-                                    format!("Send {picked_count}")
-                                } else {
-                                    "Pick one or more".to_string()
-                                },
-                            )
-                            .id(SharedString::from(format!("send-{}", row.id)))
-                            .when(!busy && picked_count > 0, |el| {
-                                el.on_click(cx.listener(move |pane, _, _, cx| {
-                                    let labels =
-                                        pane.picked.get(&send_row.id).cloned().unwrap_or_default();
-                                    pane.answer_question(&send_row, labels, cx);
-                                }))
-                            }),
+                            button(theme, ButtonTone::Primary, format!("Send {picked_count}"))
+                                .id(SharedString::from(format!("send-{}", row.id)))
+                                .when(!busy, |el| {
+                                    el.on_click(cx.listener(move |pane, _, _, cx| {
+                                        let labels = pane
+                                            .picked
+                                            .get(&send_row.id)
+                                            .cloned()
+                                            .unwrap_or_default();
+                                        pane.answer_question(&send_row, labels, cx);
+                                    }))
+                                }),
                         )
                     })
                     .into_any_element()

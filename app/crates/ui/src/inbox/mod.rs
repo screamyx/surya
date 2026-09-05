@@ -132,7 +132,9 @@ pub mod demo {
                 options: Vec::new(),
                 multi_select: false,
                 tool_name: Some("Bash".into()),
-                tool_command: Some("php artisan migrate --seed".into()),
+                tool_command: Some(
+                    "php artisan migrate --seed --force --database=orchard --path=database/migrations/2026_09_05_follow_up_column.php".into(),
+                ),
                 retryable: false,
                 created_at: at(300),
             },

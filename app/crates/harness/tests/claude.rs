@@ -91,6 +91,54 @@ async fn run_to_end(
     .expect("run finished in time")
 }
 
+/// The `scenario:permission` fixture blocks on a real host gate, so a
+/// smoke run (and this test) can watch a permission fill the needs-you queue
+/// and drain. Both decisions must reach the CLI: an allow runs the tool, a
+/// deny ends the turn without it.
+#[tokio::test]
+async fn a_host_gate_decides_whether_the_tool_runs() {
+    for (decision, expected) in [
+        (zeron_proto::PermissionDecision::Allow, "permission allowed"),
+        (zeron_proto::PermissionDecision::Deny, "permission denied"),
+    ] {
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = asked.clone();
+        let (mut controls, _steer, _token) = controls("A");
+        controls.permission =
+            zeron_harness::permission::PermissionGate::new(move |request| {
+                seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                assert_eq!(request.tool_name, "Bash");
+                assert_eq!(request.command, "php artisan migrate --seed");
+                let (tx, rx) = tokio::sync::oneshot::channel();
+                let _ = tx.send(decision);
+                rx
+            });
+        let events = run_to_end(&harness(), request("scenario:permission"), controls).await;
+        let result = events.iter().find_map(|e| match e {
+            AgentEvent::Done { result, .. } => result.clone(),
+            _ => None,
+        });
+        let ran_tool = events
+            .iter()
+            .any(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "tool-perm"));
+        println!(
+            "{decision:?}: asked={} result={result:?} ran_tool={ran_tool}",
+            asked.load(std::sync::atomic::Ordering::SeqCst)
+        );
+        assert_eq!(
+            asked.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "the gate is asked exactly once"
+        );
+        assert_eq!(result.as_deref(), Some(expected));
+        assert_eq!(
+            ran_tool,
+            decision == zeron_proto::PermissionDecision::Allow,
+            "the tool runs only on an allow"
+        );
+    }
+}
+
 #[tokio::test]
 async fn happy_path_normalizes_events_and_tags_subagents() {
     let (controls, _steer, _token) = controls("A");
