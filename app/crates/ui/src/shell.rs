@@ -6395,10 +6395,17 @@ impl Shell {
         };
 
         let status = self.render_status_strip(cx);
-        // Decision 20: what needs you sits at the top of the feed, at full
-        // weight, above the transcript. It is built only when it will be
-        // shown, so a session that never blocks never pays for it.
-        let inbox = inbox_on.then(|| self.inbox_pane(cx)).flatten();
+        // Decision 20 said what needs you sits at the top of the feed, above
+        // the transcript. The owner reversed that on 2026-09-05 19:26 - the
+        // rows read as boxes stacked over the conversation - so the list lives
+        // only in the sidebar's "Needs you" page now. The rail entry and its
+        // count are unchanged, and `inbox_visible` still drives them.
+        //
+        // The mount stays wired rather than deleted: the measure, the padding
+        // and the underlay offset below all still work, so putting the list
+        // back over the feed is this one binding.
+        let inbox: Option<Entity<crate::inbox::NeedsYouPane>> = None;
+        let _ = inbox_on;
         // Page-title tier (critique round 2, L3; ordering per round 4, I1):
         // the title row is the FIRST thing under the titlebar, the needs-you
         // list sits under it, the transcript under both.
