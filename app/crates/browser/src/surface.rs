@@ -136,6 +136,8 @@ pub fn surface() -> gpui::AnyElement {
                     let name = window.gpu_specs().map(|s| s.device_name).unwrap_or_default();
                     crate::zero_copy::set_gpu_name(&name);
                 });
+                // A frame whose GPU copy finished after its callback returned.
+                crate::zero_copy::publish_ready();
             }
             let Some((seq, src)) = crate::render::frame() else { return };
             let img = match src {
