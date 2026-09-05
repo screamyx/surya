@@ -205,6 +205,14 @@ pub fn run_app(config: UiConfig) {
             }
         })
         .detach();
+        // CEF comes down with the app: close the browser, then cef_shutdown,
+        // so no helper process outlives a clean quit (surya-browser).
+        #[cfg(feature = "browser")]
+        cx.on_app_quit(|_| {
+            surya_browser::shutdown();
+            async {}
+        })
+        .detach();
 
         cx.set_global(ReopenState {
             state: state.clone(),
