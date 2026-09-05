@@ -71,6 +71,14 @@ def parse_line(line):
 def parse_run(path):
     lines = unwrap(path.read_text(encoding="utf-8-sig", errors="strict"))
     path.with_suffix(".unwrapped.log").write_text("\n".join(lines), encoding="utf-8")
+    errors = path.with_name(path.name.replace(".out.log", ".err.log")).read_text(encoding="utf-8-sig")
+    if "cef_shutdown skipped" in errors or any("cef_shutdown skipped" in line for line in lines):
+        raise ValueError("CEF shutdown timed out")
+    shutdown = [line for line in lines if line.startswith("browser: shutdown ")]
+    if len(shutdown) != 1 or not re.search(r"\bclosed=1\b", shutdown[0]):
+        raise ValueError("CEF did not confirm that all browsers closed")
+    if any(re.search(r"\bui_rejected=[1-9][0-9]*\b", line) for line in lines):
+        raise ValueError("CEF rejected a UI operation")
     rows = [row for line in lines if (row := parse_line(line)) is not None]
     if sorted(row["test"] for row in rows) != ["ANIM", "SCROLL"]:
         raise ValueError("each run must contain exactly one animation and one scroll result")
@@ -78,7 +86,10 @@ def parse_run(path):
     close = re.findall(r"close_asked=(\d+) close_remaining=(\d+)", launch.read_text(encoding="utf-8-sig"))
     if len(close) != 1 or int(close[0][0]) < 1 or int(close[0][1]) != 0:
         raise ValueError("application close did not finish without forced termination")
-    return {"source": str(path), "close_asked": int(close[0][0]), "close_remaining": 0, "rows": rows}
+    return {
+        "source": str(path), "cef_shutdown": shutdown[0],
+        "close_asked": int(close[0][0]), "close_remaining": 0, "rows": rows,
+    }
 
 
 def main():
