@@ -31,6 +31,7 @@ pub mod files;
 pub mod frost;
 pub mod history;
 pub mod icons;
+pub mod inbox;
 pub mod links;
 pub mod loaders;
 pub mod markdown;

@@ -22,9 +22,8 @@ use chrono::{DateTime, Utc};
 use tokio::sync::{oneshot, watch};
 
 use zeron_proto::{
-    AgentEvent, AgentState, AgentStateRow, AllowRule, DoneStatus, NeedsYouItem, NeedsYouKind,
-    PermissionDecision, PermissionRequest, RememberRule, SessionStatus, UserInputQuestion,
-    child_agent_id,
+    AgentEvent, AgentStateRow, AllowRule, DoneStatus, NeedsYouItem, PermissionDecision,
+    PermissionRequest, RememberRule, SessionStatus, UserInputQuestion, child_agent_id,
 };
 
 use crate::EngineError;
