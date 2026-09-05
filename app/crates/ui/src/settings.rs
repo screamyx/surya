@@ -308,6 +308,10 @@ pub struct UiSettings {
     /// loopback port, else embed).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_server: Option<String>,
+    /// Browser pane zoom, in percent, per host. 100% is the default and is
+    /// never written, so the map holds only the sites read at another size.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub browser_zoom: std::collections::HashMap<String, u32>,
 }
 
 /// One saved remote engine.
@@ -414,6 +418,7 @@ impl Default for UiSettings {
             legacy_accent_color: None,
             servers: Vec::new(),
             active_server: None,
+            browser_zoom: std::collections::HashMap::new(),
         }
     }
 }
