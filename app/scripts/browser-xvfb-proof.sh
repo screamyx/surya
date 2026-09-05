@@ -54,8 +54,16 @@ RUN='
   export ZERON_DATA_DIR="'"$DATA"'" ZERON_IPC_PORT='"$ZERON_IPC_PORT"' ZERON_OPEN_PANE=browser \
          SURYA_BROWSER_URL="'"$URL"'" SURYA_CEF_CACHE="'"$DATA"'/cef" \
          SURYA_BROWSER_DUMP="'"$OUT"'/frames" RUST_LOG=info
-  "'"$BIN"'" > "'"$LOG"'" 2>&1 &
+  # `setsid` puts the app in its own process group and the trap kills that
+  # GROUP. Plainly backgrounding it is not enough: if this subshell is killed
+  # (a `timeout` around the caller, a harness watchdog), the `kill` at the end
+  # never runs and the app outlives the display lock. That happened on
+  # 2026-09-05: the app sat on :7 for twenty minutes and timed out the proof
+  # run of another seat. $APP is set before the trap is defined, and the trap
+  # is double-quoted so it captures that value.
+  setsid "'"$BIN"'" > "'"$LOG"'" 2>&1 &
   APP=$!
+  trap "kill -- -$APP 2>/dev/null; sleep 1; kill -9 -- -$APP 2>/dev/null" EXIT INT TERM
   # gpui'"'"'s X11 backend on a headless server draws one frame and then waits
   # for an Expose (measured 2026-09-05: renders stayed at 1 for 40s, went to
   # 13 within 6s of one xrefresh). Kick it once the window is up and once
@@ -63,7 +71,7 @@ RUN='
   sleep 10; command -v xrefresh >/dev/null && xrefresh
   sleep $(( '"$WAIT"' > 13 ? '"$WAIT"' - 13 : 1 )); command -v xrefresh >/dev/null && xrefresh; sleep 3
   ffmpeg -loglevel error -y -f x11grab -video_size '"${W}x${H}"' -i "$DISPLAY" -frames:v 1 "'"$SHOT"'"
-  kill $APP 2>/dev/null; sleep 1; kill -9 $APP 2>/dev/null
+  kill -- -$APP 2>/dev/null; sleep 1; kill -9 -- -$APP 2>/dev/null
 '
 if [ -n "${DISPLAY:-}" ]; then
   # An existing X server (a headless Xorg on the GPU, or a real desktop).

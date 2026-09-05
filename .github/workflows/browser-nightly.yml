@@ -1,0 +1,163 @@
+name: browser nightly
+
+# The browser crate is the one part of the tree no other job compiles.
+# app/Cargo.toml excludes it from the workspace on purpose: CEF is a 1.4 GB
+# artifact and pulling it into ci.yml would put that download in front of
+# every pull request. The cost of that exclusion is that `cargo check
+# --workspace` in ci.yml never sees app/crates/browser at all, so the pane
+# can stop compiling and main stays green.
+#
+# This workflow is the answer: once a night, on the same self-hosted runner,
+# build the app with the pane in it, run the crate's own tests, and drive the
+# real thing on the headless display. Nightly rather than per-PR because of
+# the runner, which is shared with every open pull request and throttled to
+# CPUWeight=20 so the owner's session wins.
+#
+# 03:00 +08 is 19:00 UTC the day before; GitHub cron is UTC only.
+#
+# CEF is not downloaded here. CEF_PATH points at a directory on the box that
+# already holds the extracted distribution, seeded once by hand; the cef
+# crate's build script downloads only when that directory is missing. There
+# is no sudo and no apt anywhere below: this machine is the owner's, and CI
+# does not get to change it.
+
+on:
+  schedule:
+    - cron: "0 19 * * *"
+  workflow_dispatch:
+
+# Two nightlies must never build into the same CARGO_TARGET_DIR at once, and
+# the second is worth nothing anyway. No cancel-in-progress: a manual run
+# should wait for the scheduled one rather than kill it half way.
+concurrency:
+  group: browser-nightly
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # Same reason as ci.yml: debug info is what makes these link steps enormous,
+  # and the first CI run here died with a bus error out of ld.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  # The extracted CEF distribution, seeded once and owned by the runner user.
+  CEF_PATH: /store/surya-ci-cef
+  # The runner is shared; three parallel rustc jobs is its share.
+  CARGO_BUILD_JOBS: "3"
+
+jobs:
+  browser:
+    name: build and test the browser pane
+    runs-on: [self-hosted, surya-ci]
+    # A cold build of the pane measured 15-25 min on a loaded box, plus the
+    # crate tests and two proof launches at 180 s each.
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: rust toolchain (app/rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+
+      # Fail here, with the fix, rather than 20 minutes into a build that is
+      # silently re-downloading 320 MB into the target dir.
+      - name: CEF cache is present and writable
+        run: |
+          if [ ! -d "$CEF_PATH" ]; then
+            echo "::error::$CEF_PATH does not exist. Seed it once, by hand, on the runner box:"
+            echo "  sudo mkdir -p $CEF_PATH && sudo chown \$(id -un):\$(id -gn) $CEF_PATH"
+            echo "  # then copy an extracted cef_linux_x86_64/ into it"
+            exit 1
+          fi
+          if [ ! -w "$CEF_PATH" ]; then
+            echo "::error::$CEF_PATH is not writable by the runner user ($(id -un)); chown it."
+            exit 1
+          fi
+          echo "CEF_PATH=$CEF_PATH"
+          du -sh "$CEF_PATH" || true
+          find "$CEF_PATH" -maxdepth 2 -name archive.json -exec cat {} \; || true
+
+      - name: cargo test -p surya-browser
+        # The crate has its own workspace root (app/Cargo.toml excludes it),
+        # so its tests run from its own directory, not with -p from app/.
+        working-directory: app/crates/browser
+        run: cargo test --jobs 2
+
+      - name: cargo build -p zeron --features browser
+        run: cargo build --jobs 2 -p zeron --features browser
+
+      # The runtime files the pane needs at start-up, checked by name here so
+      # a nightly failure says "Chromium is incomplete" instead of the app
+      # dying at launch with nothing useful on stderr. Same list the Linux
+      # package ships (scripts/package-linux.sh --browser).
+      - name: the CEF runtime landed beside the binary
+        run: |
+          BUILT="${CARGO_TARGET_DIR:-$PWD/target}/debug"
+          missing=""
+          for name in zeron-browser-helper libcef.so libEGL.so libGLESv2.so \
+                      libvk_swiftshader.so vk_swiftshader_icd.json libvulkan.so.1 \
+                      chrome-sandbox chrome_100_percent.pak chrome_200_percent.pak \
+                      resources.pak icudtl.dat v8_context_snapshot.bin archive.json; do
+            [ -e "$BUILT/$name" ] || missing="$missing $name"
+          done
+          locales=$(find "$BUILT/locales" -maxdepth 1 -name '*.pak' -type f 2>/dev/null | wc -l)
+          [ "$locales" -ge 1 ] || missing="$missing locales/*.pak"
+          if [ -n "$missing" ]; then
+            echo "::error::browser runtime incomplete in $BUILT, missing:$missing"
+            exit 1
+          fi
+          echo "runtime: complete, $locales locales"
+
+      # The one check that runs the real browser. It needs a display; this box
+      # has a headless Xorg on :7 that is not part of the runner and can be
+      # down. A missing display is a skip with the reason printed, never a
+      # red run: the build and the tests above are the nightly's real signal.
+      - name: browser scheme proof on the headless display
+        run: |
+          DISP="${SURYA_PROOF_DISPLAY:-:7}"
+          sock="/tmp/.X11-unix/X${DISP#:}"
+          if [ ! -S "$sock" ]; then
+            echo "skipped: no X server on $DISP (no socket at $sock)."
+            echo "The headless Xorg is started by hand on this box; see"
+            echo "/tmp/xorg-nvidia-headless.conf. Build and crate tests above still ran."
+            exit 0
+          fi
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! python3 -c "import PIL" 2>/dev/null; then
+            echo "skipped: the proof needs ffmpeg and python3 with PIL; one is missing."
+            echo "Not installing it from CI: this is the owner's machine."
+            exit 0
+          fi
+          # The display is shared with every agent seat on this box, and one
+          # of them holding it is not a fault in the pane. Take the lock or
+          # skip, the same way a missing display skips: the build and the
+          # tests above are this job's real signal.
+          if ! flock -n 9 9>/store/surya-display7.lock; then
+            echo "skipped: another process holds /store/surya-display7.lock."
+            exit 0
+          fi
+          exec 9>&-
+          export DISPLAY="$DISP"
+          export SURYA_CEF_LOG=/tmp/browser-nightly-cef.log
+          # `-e` is on for this shell, so the exit code has to be caught on
+          # the same line or the step dies before the check below runs.
+          rc=0
+          timeout 900 flock -w 60 /store/surya-display7.lock \
+            scripts/browser-scheme-proof.sh 180 || rc=$?
+          if [ "$rc" -eq 124 ]; then
+            echo "::warning::the proof timed out holding the display lock"
+            exit 1
+          fi
+          exit "$rc"
+
+      - name: proof artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-nightly-proof
+          path: |
+            /tmp/surya-browser-scheme-proof/**/*.png
+            /tmp/surya-browser-scheme-proof/**/*.log
+            /tmp/browser-nightly-cef.log
+          if-no-files-found: ignore
+          retention-days: 7

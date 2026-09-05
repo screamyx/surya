@@ -31,6 +31,7 @@ mod page;
 mod perf;
 mod pump;
 mod render;
+mod sandbox;
 mod scheme;
 mod selftest;
 mod surface;
@@ -147,10 +148,13 @@ pub fn start(cx: &mut gpui::App, scheme: ColorScheme) {
         "browser: cache={cache} helper={}",
         helper.as_ref().map(|p| p.display().to_string()).unwrap_or_else(|| "(re-exec self)".into())
     );
+    let sandbox = sandbox::decide_and_apply();
     let settings = Settings {
         windowless_rendering_enabled: 1,
         external_message_pump: 1,
-        no_sandbox: 1,
+        // Chromium's sandbox, on unless `sandbox` found a concrete reason it
+        // cannot be; it printed that reason above. See sandbox.rs.
+        no_sandbox: sandbox.no_sandbox_setting(),
         root_cache_path: CefString::from(cache.as_str()),
         persist_session_cookies: 1,
         background_color: OPAQUE_WHITE,
