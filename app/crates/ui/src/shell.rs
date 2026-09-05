@@ -266,6 +266,24 @@ pub fn cluster_clearance(
         .max(0.0)
 }
 
+/// Gap between the engine-skew banner and the chrome above it, and between the
+/// banner and whatever starts below it. One constant so the offset the banner
+/// is drawn at and the height it reports can never drift apart.
+const SKEW_BANNER_GAP: f32 = 8.0;
+
+/// First-frame estimate of the skew banner: one line of 13px text at the
+/// interface rem, its 6px paddings, its 1px border, and the gap.
+///
+/// Without a seed the first frame with a banner up would put the Needs you
+/// heading underneath it, because a `Cell::set` inside a paint closure reports
+/// last frame's height and requests no redraw. Same reason `title_row_seed`
+/// exists.
+fn skew_row_seed(cx: &App) -> f32 {
+    let rem_px = crate::typography::font_size(cx).pixels();
+    let text = 13.0 * 1.4 * rem_px / 16.0;
+    text + 6.0 * 2.0 + 2.0 + SKEW_BANNER_GAP
+}
+
 /// First-frame estimate of the page-title row: titlebar clearance, the title
 /// and sub-line leadings scaled by the interface rem (they are `ui_rems`, so
 /// they follow the UI font size), the 2px gap and the paddings.
@@ -1126,6 +1144,12 @@ pub struct Shell {
     /// paint and used next frame, the same trick as `bottom_stack`. The
     /// transcript underlay starts below it.
     title_stack: std::rc::Rc<std::cell::Cell<f32>>,
+    /// Paint-time height of the engine-skew banner plus its gap. Seeded from
+    /// [`skew_row_seed`] so the first frame with a banner up is already clear
+    /// of it; the banner wraps, so its height is not a constant to hardcode.
+    /// Whether it applies at all is decided by [`Shell::engine_skew_up`], not
+    /// by this value.
+    skew_stack: std::rc::Rc<std::cell::Cell<f32>>,
     /// The sidebar's archived accordion (t3code Sidebar): OPEN by default
     /// (user request), session-transient. `archived_shown` pages the
     /// expanded list ("Show more" reveals another page).
@@ -1478,6 +1502,7 @@ impl Shell {
             // Seeded with the title row's resting height for the same reason:
             // frame one must not paint the transcript over the title.
             title_stack: std::rc::Rc::new(std::cell::Cell::new(title_row_seed(cx))),
+            skew_stack: std::rc::Rc::new(std::cell::Cell::new(skew_row_seed(cx))),
             archived_open: true,
             archived_shown: 0,
             archived_hover: None,
@@ -6537,7 +6562,24 @@ impl Shell {
             0.0
         };
         // Everything the main-area underlay must start below.
-        let top_h = title_h + inbox_pad;
+        //
+        // On the Needs you route the banner is ADDED, not floated over. The
+        // transcript can scroll whatever the banner covers out from under it;
+        // the page's "Needs you / N waiting" heading is fixed chrome and never
+        // moves, so a banner over it hides it for as long as the skew lasts
+        // (osprey, 02:12). Measured rather than assumed: the banner wraps, so
+        // its height is not a constant.
+        // Gated on whether the banner is up THIS frame, not on last frame's
+        // measure. Reading the cell alone left the page pushed down by ~30px
+        // of nothing on the exact frame a dismiss landed, and the dismiss
+        // listener's single notify schedules no second frame to correct it
+        // (review, 03:05).
+        let skew_h = if inbox_page_up && self.engine_skew_up(cx) {
+            self.skew_stack.get()
+        } else {
+            0.0
+        };
+        let top_h = title_h + inbox_pad + skew_h;
         // File dropzone over the ENTIRE conversation column (transcript +
         // composer, not just the pill): dragging OS files anywhere across the
         // chat area shows the "Drop images to attach" veil; a drop stages the
@@ -6679,7 +6721,11 @@ impl Shell {
                         cx.notify();
                     })),
             )
-            .children(self.render_engine_skew_banner(top_h, theme, cx))
+            // The banner floats at `title_h + inbox_pad`, the chrome above the
+            // surface. On the Needs you route `top_h` also carries the
+            // banner's own height, so passing `top_h` here would push the
+            // banner down by itself, one frame at a time.
+            .children(self.render_engine_skew_banner(title_h + inbox_pad, theme, cx))
             .into_any_element()
     }
 
@@ -6697,26 +6743,51 @@ impl Shell {
     /// banner squarely on the session title (surya-cef3, on the owner's dtry
     /// build). Following `top` puts it back on the transcript, which is the
     /// surface it was always meant to cover.
+    /// The skew message to show, or None when there is none or the user
+    /// dismissed this one. The banner and the layout above it must agree
+    /// within a frame, so both ask this rather than one asking the other's
+    /// leftover measurement.
+    fn skew_message(&self, cx: &App) -> Option<String> {
+        let message = self.state.read(cx).engine_skew.clone()?;
+        if self.engine_skew_dismissed.as_deref() == Some(message.as_str()) {
+            return None;
+        }
+        Some(message)
+    }
+
+    fn engine_skew_up(&self, cx: &App) -> bool {
+        self.skew_message(cx).is_some()
+    }
+
     fn render_engine_skew_banner(
         &self,
         top: f32,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let message = self.state.read(cx).engine_skew.clone()?;
-        if self.engine_skew_dismissed.as_deref() == Some(message.as_str()) {
-            return None;
-        }
+        let message = self.skew_message(cx)?;
         let text = message.clone();
         let hover_bg = theme.wash(0.08);
+        let measured = self.skew_stack.clone();
         Some(
             div()
                 .absolute()
-                .top(px(top.max(Theme::TITLEBAR_HEIGHT) + 8.0))
+                .top(px(top.max(Theme::TITLEBAR_HEIGHT) + SKEW_BANNER_GAP))
                 .left_0()
                 .right_0()
                 .flex()
                 .justify_center()
+                // Its own height, for the surfaces that must start below it
+                // rather than let it float over them. Paint-time, used next
+                // frame, the same trick as the title row.
+                .child(
+                    gpui::canvas(
+                        move |bounds, _, _| measured.set(f32::from(bounds.size.height) + SKEW_BANNER_GAP),
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
                 .child(
                     div()
                         .id("engine-skew-banner")
