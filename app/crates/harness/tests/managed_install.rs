@@ -32,6 +32,7 @@ async fn managed_install_reaches_session_started() {
         request_input: Box::new(|_| tokio::sync::oneshot::channel().1),
         steering,
         interrupt: interrupt.clone(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     let request = RunRequest {
         surya: None,

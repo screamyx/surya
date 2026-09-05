@@ -277,10 +277,7 @@ fn main() -> anyhow::Result<()> {
                     .and_then(|p| p.parse().ok())
                     .unwrap_or(27654),
                 space: cli.tasks_space,
-                exit_after: std::env::var("SURYA_DEMO_EXIT_SECS")
-                    .ok()
-                    .and_then(|s| s.parse().ok())
-                    .map(std::time::Duration::from_secs),
+                exit_after: zeron_ui::demo_bootstrap::exit_after(None),
             });
             Ok(())
         }

@@ -3,7 +3,7 @@
 //! The engine gets its own data dir and IPC port so the demo never attaches
 //! to, or writes a space into, the real app's workspace.
 //!
-//! `SURYA_FILES_DEMO_EXIT_SECS=<n>` quits after n seconds and prints
+//! `SURYA_DEMO_EXIT_SECS=<n>` (or the older `SURYA_FILES_DEMO_EXIT_SECS`) quits after n seconds and prints
 //! `files-demo: started=1 panics=0`, the headless proof on a box with no
 //! usable display.
 
@@ -16,7 +16,7 @@ use zeron_rpc::methods;
 
 use super::FilesPane;
 use crate::state::{EngineBootConfig, EngineHandle};
-use crate::{appearance, composer, settings, theme_library, typography};
+use crate::typography;
 
 pub fn run_demo(checkout: PathBuf, data_dir: PathBuf, ipc_port: u16, edge_url: String) {
     let checkout = match std::fs::canonicalize(&checkout) {
@@ -26,30 +26,10 @@ pub fn run_demo(checkout: PathBuf, data_dir: PathBuf, ipc_port: u16, edge_url: S
             std::process::exit(2);
         }
     };
-    let exit_after = std::env::var("SURYA_FILES_DEMO_EXIT_SECS")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok());
+    let exit_after = crate::demo_bootstrap::exit_after(Some("SURYA_FILES_DEMO_EXIT_SECS"));
     let app = gpui_platform::application().with_assets(crate::icons::Assets);
     app.run(move |cx: &mut App| {
-        gpui_tokio::init(cx);
-        let ui_settings = settings::UiSettings::load(&data_dir);
-        settings::init(ui_settings.clone(), data_dir.clone(), cx);
-        let fonts = typography::register_fonts(cx);
-        typography::init(
-            ui_settings.ui_font_family.clone(),
-            ui_settings.ui_font_size,
-            fonts,
-            cx,
-        );
-        theme_library::init(data_dir.clone(), cx);
-        appearance::init(
-            ui_settings.appearance,
-            ui_settings.theme_selection,
-            ui_settings.accent,
-            ui_settings.surface,
-            cx,
-        );
-        composer::init(cx);
+        crate::demo_bootstrap::init_app(&data_dir, cx);
         super::init(cx);
 
         let boot = EngineBootConfig {
@@ -117,16 +97,7 @@ pub fn run_demo(checkout: PathBuf, data_dir: PathBuf, ipc_port: u16, edge_url: S
         })
         .detach();
 
-        if let Some(secs) = exit_after {
-            cx.spawn(async move |cx| {
-                cx.background_executor()
-                    .timer(std::time::Duration::from_secs(secs))
-                    .await;
-                println!("files-demo: started=1 panics=0 ran_secs={secs}");
-                let _ = cx.update(|cx| cx.quit());
-            })
-            .detach();
-        }
+        crate::demo_bootstrap::schedule_exit("files-demo", exit_after, cx);
         cx.activate(true);
     });
 }

@@ -1296,7 +1296,12 @@ pub fn rows_for_entry(
                     group_last_part_ix,
                 );
                 match other {
-                    MessagePart::Text { id: part_id, text } => {
+                    // A Notice ("allowed by rule <name>") renders as prose
+                    // for now. The needs-you seat gives it its own styling;
+                    // this arm exists so the workspace compiles, not as a
+                    // design decision.
+                    MessagePart::Text { id: part_id, text }
+                    | MessagePart::Notice { id: part_id, text } => {
                         if text.trim().is_empty() {
                             continue;
                         }

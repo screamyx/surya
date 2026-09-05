@@ -3,6 +3,8 @@
 //! does the rank arithmetic for a drop (one row moves; a collision between
 //! stale ranks renumbers the column).
 
+use std::time::{Duration, Instant};
+
 use zeron_proto::{Task, TaskStatus, sort_tasks};
 
 /// Column order on the board (brief: Queued, Running, Done, Blocked).
@@ -41,18 +43,39 @@ pub struct DropPlan {
     pub ranks: Vec<(String, f64)>,
 }
 
+/// How long an optimistic drop stays overlaid on watch frames that do not
+/// show it yet (the mutate round trip plus a publish); after that the board
+/// trusts the engine again.
+pub const OPTIMISTIC_TTL: Duration = Duration::from_secs(3);
+
+/// A drop applied locally, waiting for the engine's frame to confirm it.
+#[derive(Debug, Clone)]
+struct PendingMove {
+    plan: DropPlan,
+    since: Instant,
+}
+
 #[derive(Debug, Default)]
 pub struct BoardModel {
     tasks: Vec<Task>,
     selected: Option<String>,
+    pending: Option<PendingMove>,
     /// Snapshots applied from the watch (proof counter).
     pub applied: usize,
+    /// Frames on which a pending drop was re-overlaid (proof counter).
+    pub overlaid: usize,
 }
 
 impl BoardModel {
     /// Replace the board with a watch snapshot. Keeps the selection when the
-    /// task still exists, else moves it to the first card.
-    pub fn apply(&mut self, mut tasks: Vec<Task>) {
+    /// task still exists. A pending optimistic drop stays overlaid until a
+    /// frame shows it (or it ages out), so the card never jumps back and
+    /// forth while the two mutates land.
+    pub fn apply(&mut self, tasks: Vec<Task>) {
+        self.apply_at(tasks, Instant::now());
+    }
+
+    pub fn apply_at(&mut self, mut tasks: Vec<Task>, now: Instant) {
         sort_tasks(&mut tasks);
         self.tasks = tasks;
         self.applied += 1;
@@ -61,6 +84,63 @@ impl BoardModel {
         {
             self.selected = None;
         }
+        if let Some(pending) = self.pending.clone() {
+            let confirmed = self.plan_visible(&pending.plan);
+            let expired = now.duration_since(pending.since) >= OPTIMISTIC_TTL;
+            if confirmed || expired {
+                self.pending = None;
+            } else {
+                self.apply_plan(&pending.plan);
+                self.overlaid += 1;
+            }
+        }
+    }
+
+    /// Does the current board already show every write in `plan`?
+    fn plan_visible(&self, plan: &DropPlan) -> bool {
+        let Some(moved) = self.task(&plan.task_id) else {
+            // Deleted meanwhile: nothing left to wait for.
+            return true;
+        };
+        if let Some(status) = plan.status
+            && moved.status != status
+        {
+            return false;
+        }
+        plan.ranks
+            .iter()
+            .all(|(id, rank)| self.task(id).is_none_or(|t| t.rank == *rank))
+    }
+
+    /// Apply a drop plan to the local rows (status + ranks), then re-sort.
+    /// Ids are untouched, so a later frame replaces rows one for one.
+    fn apply_plan(&mut self, plan: &DropPlan) {
+        for task in &mut self.tasks {
+            if task.id == plan.task_id
+                && let Some(status) = plan.status
+            {
+                task.status = status;
+            }
+            if let Some((_, rank)) = plan.ranks.iter().find(|(id, _)| *id == task.id) {
+                task.rank = *rank;
+            }
+        }
+        sort_tasks(&mut self.tasks);
+    }
+
+    /// Show a drop immediately and remember it until the engine confirms.
+    pub fn apply_optimistic(&mut self, plan: DropPlan, now: Instant) {
+        self.apply_plan(&plan);
+        self.pending = Some(PendingMove { plan, since: now });
+    }
+
+    /// Forget the pending drop (a mutate failed); the next frame is truth.
+    pub fn clear_pending(&mut self) {
+        self.pending = None;
+    }
+
+    pub fn has_pending(&self) -> bool {
+        self.pending.is_some()
     }
 
     pub fn tasks(&self) -> &[Task] {
@@ -204,161 +284,4 @@ pub fn rank_between(prev: Option<f64>, next: Option<f64>) -> Option<f64> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::{DateTime, Utc};
-
-    fn at(ms: i64) -> DateTime<Utc> {
-        DateTime::from_timestamp_millis(ms).unwrap()
-    }
-
-    fn task(id: &str, status: TaskStatus, rank: f64) -> Task {
-        Task {
-            id: id.into(),
-            space_id: "sp".into(),
-            title: format!("Task {id}"),
-            status,
-            owner: None,
-            notes: None,
-            links: vec![],
-            rank,
-            created_at: at(1),
-            updated_at: at(1),
-        }
-    }
-
-    fn board() -> BoardModel {
-        let mut m = BoardModel::default();
-        m.apply(vec![
-            task("q2", TaskStatus::Queued, 2.0),
-            task("q1", TaskStatus::Queued, 1.0),
-            task("r1", TaskStatus::Running, 1.0),
-            task("d1", TaskStatus::Done, 5.0),
-            task("b1", TaskStatus::Blocked, 1.0),
-            task("q3", TaskStatus::Queued, 3.0),
-        ]);
-        m
-    }
-
-    #[test]
-    fn groups_into_columns_in_rank_order() {
-        let m = board();
-        let ids = |s| m.column(s).iter().map(|t| t.id.clone()).collect::<Vec<_>>();
-        assert_eq!(ids(TaskStatus::Queued), ["q1", "q2", "q3"]);
-        assert_eq!(ids(TaskStatus::Running), ["r1"]);
-        assert_eq!(ids(TaskStatus::Done), ["d1"]);
-        assert_eq!(ids(TaskStatus::Blocked), ["b1"]);
-        assert_eq!(m.append_rank(TaskStatus::Queued), 4.0);
-        assert_eq!(m.append_rank(TaskStatus::Done), 6.0);
-    }
-
-    #[test]
-    fn watch_apply_counts_every_snapshot_and_keeps_a_live_selection() {
-        let mut m = BoardModel::default();
-        m.select(Some("q1".into()));
-        let events = 6;
-        for i in 0..events {
-            let mut tasks = vec![task("q1", TaskStatus::Queued, 1.0)];
-            if i % 2 == 0 {
-                tasks.push(task("x", TaskStatus::Running, 1.0));
-            }
-            m.apply(tasks);
-            assert_eq!(m.selected(), Some("q1"));
-        }
-        println!("events={events} applied={}", m.applied);
-        assert_eq!(m.applied, events);
-        m.apply(vec![task("z", TaskStatus::Done, 1.0)]);
-        assert_eq!(m.selected(), None, "selection dropped with its task");
-    }
-
-    #[test]
-    fn keyboard_steps_across_columns_and_clamps() {
-        let mut m = board();
-        m.step(1);
-        assert_eq!(m.selected(), Some("q1"));
-        m.step(1);
-        m.step(1);
-        m.step(1);
-        assert_eq!(m.selected(), Some("r1"), "q3 -> r1 crosses the column");
-        m.step(10);
-        assert_eq!(m.selected(), Some("b1"), "clamps at the last card");
-        m.step(-100);
-        assert_eq!(m.selected(), Some("q1"));
-        m.select(None);
-        m.step(-1);
-        assert_eq!(m.selected(), Some("b1"), "up from nothing picks the last");
-    }
-
-    #[test]
-    fn drop_before_a_card_takes_the_midpoint() {
-        let m = board();
-        let plan = m.plan_drop("q3", &DropTarget::Before("q2".into())).unwrap();
-        assert_eq!(plan.status, None);
-        assert_eq!(plan.ranks, vec![("q3".to_string(), 1.5)]);
-        // Dropping at the very top goes below the first rank.
-        let plan = m.plan_drop("q3", &DropTarget::Before("q1".into())).unwrap();
-        assert_eq!(plan.ranks, vec![("q3".to_string(), 0.0)]);
-    }
-
-    #[test]
-    fn drop_into_another_column_changes_status_and_appends() {
-        let m = board();
-        let plan = m
-            .plan_drop("q1", &DropTarget::End(TaskStatus::Running))
-            .unwrap();
-        assert_eq!(plan.status, Some(TaskStatus::Running));
-        assert_eq!(plan.ranks, vec![("q1".to_string(), 2.0)]);
-        let plan = m.plan_drop("q1", &DropTarget::Before("r1".into())).unwrap();
-        assert_eq!(plan.status, Some(TaskStatus::Running));
-        assert_eq!(plan.ranks, vec![("q1".to_string(), 0.0)]);
-    }
-
-    #[test]
-    fn no_op_drops_plan_nothing() {
-        let m = board();
-        assert_eq!(m.plan_drop("q2", &DropTarget::Before("q2".into())), None);
-        assert_eq!(
-            m.plan_drop("q2", &DropTarget::Before("q3".into())),
-            None,
-            "already there"
-        );
-        assert_eq!(
-            m.plan_drop("q3", &DropTarget::End(TaskStatus::Queued)),
-            None,
-            "already last"
-        );
-        assert_eq!(
-            m.plan_drop("nope", &DropTarget::End(TaskStatus::Queued)),
-            None
-        );
-    }
-
-    #[test]
-    fn stale_rank_collision_renumbers_the_column() {
-        let mut m = BoardModel::default();
-        // Two devices appended "at the bottom" at the same time: equal ranks.
-        m.apply(vec![
-            task("a", TaskStatus::Queued, 1.0),
-            task("b", TaskStatus::Queued, 1.0),
-            task("c", TaskStatus::Queued, 1.0),
-        ]);
-        let plan = m.plan_drop("c", &DropTarget::Before("b".into())).unwrap();
-        assert_eq!(
-            plan.ranks,
-            vec![
-                ("c".to_string(), 2.0),
-                ("a".to_string(), 1.0),
-                ("b".to_string(), 3.0),
-            ],
-            "moved card first, then the mates, ranks 1..=3"
-        );
-        assert_eq!(rank_between(Some(1.0), Some(1.0)), None);
-        assert_eq!(
-            rank_between(Some(2.0), Some(1.0)),
-            None,
-            "inverted neighbours"
-        );
-        assert_eq!(rank_between(Some(1.0), Some(2.0)), Some(1.5));
-        assert_eq!(rank_between(None, None), Some(1.0));
-    }
-}
+mod tests;

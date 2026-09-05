@@ -71,6 +71,7 @@ fn controls(
         }),
         steering: steer_rx,
         interrupt: token.clone(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     (controls, steer_tx, token)
 }
@@ -390,6 +391,7 @@ async fn approvals_round_trip_as_input_requests() {
         }),
         steering: steer_rx,
         interrupt: token.clone(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     let mut req = request("scenario:approve");
     req.auto_approve = false;

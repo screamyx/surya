@@ -16,6 +16,7 @@ use zeron_rpc::{RpcError, RpcReply, RpcService, methods};
 use zeron_sync::DocsStore;
 
 pub mod agent_accounts;
+pub mod agent_states;
 pub mod auth;
 pub mod change_requests;
 pub mod chat2_host;
@@ -31,6 +32,7 @@ pub mod profile;
 pub mod registry;
 pub mod repos;
 pub mod rpc;
+pub mod rules;
 pub mod run_journal;
 pub mod sessions;
 pub mod source_control;
@@ -241,7 +243,10 @@ impl EngineCore {
         let store = Arc::new(DocsStore::open(profile.store_root())?);
         let store_for_import = store.clone();
         let journal = Arc::new(RunJournal::open(profile.store_root().join("journals"))?);
-        let sessions = SessionsEngine::new(device_id.clone(), journal, registry.clone());
+        // Always-allow rules are per-device and never synced (see rules.rs),
+        // so they ride the engine data dir beside the harness prefs.
+        let agent_states = agent_states::AgentStates::new(rules::AllowRules::open(data_dir));
+        let sessions = SessionsEngine::new(device_id.clone(), journal, registry.clone(), agent_states);
         let doc_host = DocHost::new(
             store.clone(),
             DocHostConfig {

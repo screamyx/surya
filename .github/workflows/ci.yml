@@ -18,6 +18,12 @@ on:
   pull_request:
   push:
     branches: [main]
+    # docs-only pushes (handoff notes land every few minutes) must not cancel
+    # the run that proves main builds; the concurrency group below cancels
+    # in-progress runs on the same ref.
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
 
 concurrency:
   group: ci-${{ github.ref }}

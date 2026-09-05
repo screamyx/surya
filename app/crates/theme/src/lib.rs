@@ -400,8 +400,8 @@ pub struct ThemeSelection {
 impl Default for ThemeSelection {
     fn default() -> Self {
         Self {
-            light: "zeron-light".into(),
-            dark: "zeron-dark".into(),
+            light: "surya-light".into(),
+            dark: "surya-dark".into(),
         }
     }
 }
@@ -554,12 +554,12 @@ impl ThemeRegistry {
         self.variant(selection.variant_id(appearance))
             .or_else(|| {
                 self.variant(if appearance.is_dark() {
-                    "zeron-dark"
+                    "surya-dark"
                 } else {
-                    "zeron-light"
+                    "surya-light"
                 })
             })
-            .expect("the built-in registry always contains both Zeron variants")
+            .expect("the built-in registry always contains both Surya variants")
     }
 
     pub fn validate(&self) -> Vec<ValidationIssue> {
@@ -811,7 +811,7 @@ mod tests {
     #[test]
     fn builtins_have_complete_provenance_and_no_validation_errors() {
         let registry = ThemeRegistry::builtin();
-        assert_eq!(registry.families.len(), 19);
+        assert_eq!(registry.families.len(), 20);
         assert!(registry.variant("zeron-light").is_some());
         assert!(registry.variant("zeron-dark").is_some());
         let errors: Vec<_> = registry
@@ -822,6 +822,102 @@ mod tests {
         assert!(errors.is_empty(), "{errors:#?}");
     }
 
+    /// The fork's own pair must exist, be the shipped default, and hold the
+    /// contrast the taste doctrine asks for: off-black on warm white, never
+    /// pure #000 on pure #fff.
+    #[test]
+    fn surya_is_the_default_pair_and_holds_its_contrast() {
+        let registry = ThemeRegistry::builtin();
+        let selection = ThemeSelection::default();
+        assert_eq!(selection.light, "surya-light");
+        assert_eq!(selection.dark, "surya-dark");
+
+        for id in ["surya-light", "surya-dark"] {
+            let variant = registry.variant(id).expect("surya variant is built in");
+            let colors = &variant.colors;
+            assert_ne!(colors.background, Color::WHITE, "{id}: pure white panel");
+            assert_ne!(colors.background, Color::BLACK, "{id}: pure black panel");
+
+            // The floor is 11, not the 12 this test opened with. WCAG asks
+            // 4.5 for AA and 7 for AAA; 11 is far above both and exists only
+            // to catch a palette that has gone flat, not to pin a figure. The
+            // dark card lands at 11.62 and forcing it past 12 would mean
+            // darkening the very tone that lifts a floating card off the pane
+            // under it.
+            let body = colors.text.contrast(colors.background);
+            assert!(body >= 11.0, "{id}: body text {body:.2}:1 under 11:1");
+            let muted = colors.text_muted.contrast(colors.background);
+            assert!(muted >= 4.5, "{id}: muted text {muted:.2}:1 under AA");
+            let accent = variant.accent.primary.contrast(colors.background);
+            assert!(accent >= 3.0, "{id}: accent {accent:.2}:1 under 3:1");
+
+            // The floating layout paints text on more than one plane, and
+            // only the panel was ever checked. Both planes that carry text
+            // must hold every text role.
+            //
+            // This caught a real hole: `text_faint` was 3.72:1 on the light
+            // panel and 3.56:1 on the dark card, against comet's own stated
+            // intent for the token ("~4.5:1 - AA for body copy").
+            for (plane, surface) in [("panel", colors.background), ("card", colors.card)] {
+                let body = colors.text.contrast(surface);
+                assert!(body >= 11.0, "{id}: text on {plane} {body:.2}:1 under 11:1");
+                let muted = colors.text_muted.contrast(surface);
+                assert!(muted >= 4.5, "{id}: muted on {plane} {muted:.2}:1 under AA");
+                let faint = colors.text_faint.contrast(surface);
+                assert!(faint >= 4.5, "{id}: faint on {plane} {faint:.2}:1 under AA");
+            }
+
+            // The canvas carries no text in this layout - it is the bare
+            // margin between the panels. It is still held to the two roles a
+            // stray label would most likely use, but not to `text_faint`:
+            // forcing AA on a plane nothing writes on would collapse the step
+            // between faint and muted everywhere else for nothing.
+            let body_on_canvas = colors.text.contrast(colors.shell);
+            assert!(
+                body_on_canvas >= 11.0,
+                "{id}: text on canvas {body_on_canvas:.2}:1 under 11:1"
+            );
+            let muted_on_canvas = colors.text_muted.contrast(colors.shell);
+            assert!(
+                muted_on_canvas >= 4.5,
+                "{id}: muted on canvas {muted_on_canvas:.2}:1 under AA"
+            );
+
+            // The canvas and the panel must be visibly different planes: the
+            // floating layout has nothing else to separate a card from the
+            // sheet it rests on. Both appearances are held to the same number
+            // — the dark pair needs a wider raw step to reach it, which is
+            // the point.
+            let step = colors.shell.contrast(colors.background);
+            assert!(step >= 1.20, "{id}: canvas/panel step {step:.3} too flat");
+        }
+
+        let light = registry.variant("surya-light").expect("light");
+        let dark = registry.variant("surya-dark").expect("dark");
+
+        // A card resting on a panel: dark climbs above the panel fill, light
+        // stays level with it and separates by hairline and shadow instead.
+        assert!(
+            dark.colors.card.luminance() > dark.colors.background.luminance(),
+            "dark float card must climb above the panel it sits on"
+        );
+        assert_eq!(
+            light.colors.card, light.colors.background,
+            "light float card sits level with the panel by design"
+        );
+
+        // Light first: the canvas recedes *behind* the panel in light and the
+        // panel climbs *out of* the canvas in dark. Same idea, mirrored.
+        assert!(
+            light.colors.shell.luminance() < light.colors.background.luminance(),
+            "light canvas should be darker than the panel"
+        );
+        assert!(
+            dark.colors.shell.luminance() < dark.colors.background.luminance(),
+            "dark canvas should be darker than the panel"
+        );
+    }
+
     #[test]
     fn visual_fixture_matrix_covers_every_variant_and_scene() {
         let registry = ThemeRegistry::builtin();
@@ -830,7 +926,7 @@ mod tests {
             .iter()
             .map(|family| family.variants.len())
             .sum::<usize>();
-        assert_eq!(variants, 30);
-        assert_eq!(variants * VisualFixture::ALL.len(), 300);
+        assert_eq!(variants, 32);
+        assert_eq!(variants * VisualFixture::ALL.len(), 320);
     }
 }

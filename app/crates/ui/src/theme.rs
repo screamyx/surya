@@ -1146,14 +1146,14 @@ impl Theme {
     ) -> Self {
         let registry = ThemeRegistry::active();
         let fallback_id = match appearance {
-            Appearance::Dark => "zeron-dark",
-            Appearance::Light => "zeron-light",
+            Appearance::Dark => "surya-dark",
+            Appearance::Light => "surya-light",
         };
         let variant = registry
             .variant(variant_id)
             .filter(|variant| model_appearance(variant.appearance) == appearance)
             .or_else(|| registry.variant(fallback_id))
-            .expect("the built-in registry contains both Zeron appearances");
+            .expect("the built-in registry contains both Surya appearances");
         Self::from_variant(variant, accent_selection, surface_preference)
     }
 
