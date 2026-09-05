@@ -213,6 +213,21 @@ pub fn run_app(config: UiConfig) {
             async {}
         })
         .detach();
+        // `ZERON_QUIT_AFTER=<seconds>`: a clean quit on a timer, for proofs
+        // with no keyboard (the helper-count check after exit).
+        #[cfg(feature = "browser")]
+        if let Some(secs) = std::env::var("ZERON_QUIT_AFTER")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+        {
+            cx.spawn(async move |cx: &mut gpui::AsyncApp| {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_secs(secs))
+                    .await;
+                let _ = cx.update(|cx| cx.quit());
+            })
+            .detach();
+        }
 
         cx.set_global(ReopenState {
             state: state.clone(),
