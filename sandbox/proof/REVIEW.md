@@ -77,3 +77,21 @@ Run `npm run proof` with the dev server on port 5177. The capture script accepts
 when `/store/surya-gallery` is unavailable. `npm run audit:states` repeats the live
 contrast measurement. See `GUIDE.md` for the native port-back checks and Windows
 proof required when a screen diff is applied to the product.
+
+## Skill round validation
+
+The three sandbox skills now include one wrong/right pair each, linked to real
+example files. The same lint accepts all three right specimens and rejects all
+three wrong specimens; all **8/8** tests pass, including import/execution of the
+right JSX fragments, source-checked native patches, and exact skill excerpt checks.
+`npm run lint`, `npm run build`, and the four-frame browser proof pass.
+
+The instruction gates report `SKILL.md: 304/320 lines, 11 always-on rules checked,
+7 rule file(s), 7 routed.` and `Scanned 222 file(s).` with no emoji found. All three
+new skill frontmatters validate; their local links and heading anchors resolve.
+
+No live screen design changed in this round, so `CHANGES.md` starts empty of design
+rounds. The proof rerun used the newer installed Chromium (1243 cache instead of
+1228); heading bounds were 101px wide versus 100.640625px in the original capture,
+with x/y, height and row bounds unchanged. The original comparison artifacts remain
+as the baseline; fresh four-state comparisons are at `/tmp/surya-sandbox-round2-proof`.

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -44,4 +44,45 @@ test('actual CLI exits nonzero for a deliberate violation and extra CSS', () => 
     assert.match(result.stderr, /Class not in whitelist/);
     assert.match(result.stderr, /extra stylesheet/);
   } finally { rmSync(root, { recursive: true }); }
+});
+
+test('three worked wrong/right pairs agree with the example lint CLI', async () => {
+  const { examplePairs, lintExample } = await import('./lint-examples.mjs');
+  for (const pair of examplePairs) {
+    assert.deepEqual(await lintExample(pair.right), [], pair.right);
+    const wrong = spawnSync(process.execPath, [resolve(import.meta.dirname, 'lint-examples.mjs'), pair.wrong], { encoding: 'utf8' });
+    assert.equal(wrong.status, 1, pair.wrong);
+    assert.match(wrong.stderr, /merge the row helper|style is not portable|rewriting the render/);
+  }
+});
+test('right JSX specimens import and execute with the existing helpers', async () => {
+  const { createServer } = await import('vite');
+  const server = await createServer({ root: resolve(import.meta.dirname, '..'), server: { middlewareMode: true }, appType: 'custom' });
+  try {
+    const { NeedsYouPane } = await server.ssrLoadModule('/examples/port-in/right/NeedsYou.tsx');
+    const { renderRow } = await server.ssrLoadModule('/examples/design/right/rows.tsx');
+    const { seededRows } = await server.ssrLoadModule('/src/fixtures.ts');
+    let chat;
+    const onOpenChat = id => { chat = id; };
+    assert.equal(NeedsYouPane({ rows: seededRows, onOpenChat }).type, 'section');
+    for (const first of [true, false]) {
+      const row = renderRow(seededRows[0], first, onOpenChat);
+      assert.ok(row.props.className.split(' ').includes('px-1'));
+      row.props.onClick();
+      assert.equal(chat, seededRows[0].chatId);
+    }
+  } finally { await server.close(); }
+});
+
+test('skills quote the same wrong/right code that the example lint evaluates', async () => {
+  const { examplePairs } = await import('./lint-examples.mjs');
+  const root = resolve(import.meta.dirname, '..');
+  for (const pair of examplePairs) {
+    const skill = readFileSync(resolve(root, `../.claude/skills/sandbox-${pair.kind}/SKILL.md`), 'utf8');
+    const snippets = [...skill.matchAll(/```(?:tsx|rust)\n([\s\S]*?)\n```/g)].map(m => m[1]);
+    assert.equal(snippets.length, 2, `${pair.kind}: exactly one wrong/right pair`);
+    for (const [i, file] of [pair.wrong, pair.right].entries()) {
+      assert.ok(readFileSync(resolve(root, file), 'utf8').includes(snippets[i]), `${file}: skill excerpt drifted from tested source`);
+    }
+  }
 });

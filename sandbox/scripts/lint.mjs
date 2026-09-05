@@ -17,7 +17,7 @@ export function allowedClass(value) {
       && (!f.alphaSuffixes || f.alphaSuffixes.includes(suffix)));
   });
 }
-export function lintSource(source, file = 'src/Example.tsx') {
+export function lintSource(source, file = 'src/Example.tsx', contract) {
   const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const errors = [];
   const fail = (node, message) => errors.push(`${file}:${ast.getLineAndCharacterOfPosition(node.getStart(ast)).line + 1}: ${message}`);
@@ -83,6 +83,27 @@ export function lintSource(source, file = 'src/Example.tsx') {
   }
   ast.parseDiagnostics.forEach(d => errors.push(`${file}: ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`));
   visit(ast);
+  if (contract) {
+    const exports = ast.statements.filter(n => ts.isFunctionDeclaration(n)
+      && n.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword));
+    if (exports.length !== 1 || exports[0].name?.text !== contract.component) {
+      errors.push(`${file}: preserve the Rust struct component name ${contract.component}`);
+    }
+    const delegate = contract.delegate;
+    const imported = ast.statements.some(n => ts.isImportDeclaration(n)
+      && resolve(root, file, '..', n.moduleSpecifier.text) === resolve(root, delegate.module)
+      && n.importClause?.namedBindings && ts.isNamedImports(n.importClause.namedBindings)
+      && n.importClause.namedBindings.elements.some(e => e.name.text === delegate.name));
+    let called = false, inlined = false;
+    function boundaries(node) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+        && node.expression.text === delegate.name) called = true;
+      if (ts.isJsxAttribute(node) && node.name.getText(ast) === delegate.ownedAttribute) inlined = true;
+      ts.forEachChild(node, boundaries);
+    }
+    boundaries(ast);
+    if (!imported || !called || inlined) errors.push(`${file}: preserve ${delegate.name} in ${delegate.module}; do not merge the row helper into the pane`);
+  }
   return errors;
 }
 export function lintTree(directory = root) {

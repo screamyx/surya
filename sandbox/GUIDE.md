@@ -187,3 +187,21 @@ In another terminal run `npm run proof`. Install Chromium with
 Chromium executable. `SANDBOX_URL` overrides the local server URL. Original Windows
 reference files must be available at the paths listed in `scripts/proof.mjs`; the
 script copies them without modification and captures side-by-side comparisons.
+
+## Worked examples and live design rounds
+
+The three `sandbox-*` skills point to this guide and open with the tested pairs in
+`examples/`. `npm run lint` checks that all three right versions pass and all three
+wrong versions fail; `npm test` imports the right specimens and checks that skill
+excerpts match the files. To inspect one rejection directly, run
+`node scripts/lint-examples.mjs examples/design/wrong/rows.tsx` from `sandbox/`.
+
+The port-in example adds an explicit component/helper boundary contract to the
+same JSX lint. The port-back modules export native before/after fragments and a
+unit record; their lint verifies the original source and a single mapped padding
+edit. This is not a Rust compiler or an automatic checker for every native render.
+The design example uses the ordinary class/inline-style lint. These teaching edits
+are not applied to the live screen or recorded as accepted design changes.
+
+For live owner-led rounds, use `sandbox-design` -> "Live design loop". Its running
+brief is `CHANGES.md`; `sandbox-port-back` consumes that brief with the source diff.

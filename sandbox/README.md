@@ -13,3 +13,7 @@ npm ci
 npm run dev
 npm run lint
 ```
+
+- [sandbox-port-in](../.claude/skills/sandbox-port-in/SKILL.md): bring a native screen into the sandbox.
+- [sandbox-design](../.claude/skills/sandbox-design/SKILL.md): iterate in the browser, one change per round, recorded in CHANGES.md.
+- [sandbox-port-back](../.claude/skills/sandbox-port-back/SKILL.md): carry the accepted screen diff and CHANGES.md back into GPUI.
