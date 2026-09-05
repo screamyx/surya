@@ -21,8 +21,10 @@ pub use add::parse_server;
 
 /// The port a portless address means, in the Add dialog and when two
 /// addresses are compared: one rule, so an engine saved from the Command
-/// line row is found again by the address that was dialed.
-pub const DEFAULT_PORT: u16 = 27654;
+/// line row is found again by the address that was dialed. It is the port
+/// deploy/install-engine.sh serves on; the loopback daemon's 27654 is never
+/// what a remote entry means (#74).
+pub const DEFAULT_PORT: u16 = 27700;
 
 pub enum ServersEvent {
     /// The list or the active choice changed; the shell persists it.
