@@ -413,6 +413,8 @@ pub enum ShortcutId {
     ToggleSidebar,
     ToggleChanges,
     ToggleTerminal,
+    ToggleFiles,
+    ToggleTasks,
     NewSession,
     NextSession,
     PrevSession,
@@ -421,10 +423,12 @@ pub enum ShortcutId {
 }
 
 impl ShortcutId {
-    pub const ALL: [ShortcutId; 7 + JUMP_SLOTS] = [
+    pub const ALL: [ShortcutId; 9 + JUMP_SLOTS] = [
         ShortcutId::ToggleSidebar,
         ShortcutId::ToggleChanges,
         ShortcutId::ToggleTerminal,
+        ShortcutId::ToggleFiles,
+        ShortcutId::ToggleTasks,
         ShortcutId::NewSession,
         ShortcutId::NextSession,
         ShortcutId::PrevSession,
@@ -446,6 +450,8 @@ impl ShortcutId {
             ShortcutId::ToggleSidebar => "Toggle left sidebar",
             ShortcutId::ToggleChanges => "Toggle right sidebar",
             ShortcutId::ToggleTerminal => "Toggle terminal",
+            ShortcutId::ToggleFiles => "Toggle files pane",
+            ShortcutId::ToggleTasks => "Toggle tasks pane",
             ShortcutId::NewSession => "New session",
             ShortcutId::NextSession => "Next session",
             ShortcutId::PrevSession => "Previous session",
@@ -466,6 +472,8 @@ impl ShortcutId {
             ShortcutId::ToggleSidebar => "mod-s",
             ShortcutId::ToggleChanges => "mod-b",
             ShortcutId::ToggleTerminal => "mod-j",
+            ShortcutId::ToggleFiles => "mod-shift-f",
+            ShortcutId::ToggleTasks => "mod-shift-t",
             ShortcutId::NewSession => "mod-n",
             // Ctrl+Tab on every platform — but spelled the way THAT platform's
             // recorder spells ctrl (see `combo_from_keystroke`). Off macOS
@@ -506,6 +514,8 @@ pub struct KeymapConfig {
     pub toggle_sidebar: String,
     pub toggle_changes: String,
     pub toggle_terminal: String,
+    pub toggle_files: String,
+    pub toggle_tasks: String,
     pub new_session: String,
     pub next_session: String,
     pub prev_session: String,
@@ -523,6 +533,8 @@ impl Default for KeymapConfig {
             toggle_sidebar: ShortcutId::ToggleSidebar.default_combo().into(),
             toggle_changes: ShortcutId::ToggleChanges.default_combo().into(),
             toggle_terminal: ShortcutId::ToggleTerminal.default_combo().into(),
+            toggle_files: ShortcutId::ToggleFiles.default_combo().into(),
+            toggle_tasks: ShortcutId::ToggleTasks.default_combo().into(),
             new_session: ShortcutId::NewSession.default_combo().into(),
             next_session: ShortcutId::NextSession.default_combo().into(),
             prev_session: ShortcutId::PrevSession.default_combo().into(),
@@ -538,6 +550,8 @@ impl KeymapConfig {
             ShortcutId::ToggleSidebar => &self.toggle_sidebar,
             ShortcutId::ToggleChanges => &self.toggle_changes,
             ShortcutId::ToggleTerminal => &self.toggle_terminal,
+            ShortcutId::ToggleFiles => &self.toggle_files,
+            ShortcutId::ToggleTasks => &self.toggle_tasks,
             ShortcutId::NewSession => &self.new_session,
             ShortcutId::NextSession => &self.next_session,
             ShortcutId::PrevSession => &self.prev_session,
@@ -555,6 +569,8 @@ impl KeymapConfig {
             ShortcutId::ToggleSidebar => self.toggle_sidebar = combo,
             ShortcutId::ToggleChanges => self.toggle_changes = combo,
             ShortcutId::ToggleTerminal => self.toggle_terminal = combo,
+            ShortcutId::ToggleFiles => self.toggle_files = combo,
+            ShortcutId::ToggleTasks => self.toggle_tasks = combo,
             ShortcutId::NewSession => self.new_session = combo,
             ShortcutId::NextSession => self.next_session = combo,
             ShortcutId::PrevSession => self.prev_session = combo,

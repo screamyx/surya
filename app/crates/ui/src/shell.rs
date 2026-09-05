@@ -272,8 +272,16 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             ToggleChanges,
             None,
         ),
-        KeyBinding::new(&platform_combo("mod-shift-f"), ToggleFiles, None),
-        KeyBinding::new(&platform_combo("mod-shift-t"), ToggleTasks, None),
+        KeyBinding::new(
+            &valid_or_default(&keymap.toggle_files, "mod-shift-f"),
+            ToggleFiles,
+            None,
+        ),
+        KeyBinding::new(
+            &valid_or_default(&keymap.toggle_tasks, "mod-shift-t"),
+            ToggleTasks,
+            None,
+        ),
         KeyBinding::new(
             &valid_or_default(&keymap.toggle_terminal, "mod-j"),
             ToggleTerminal,
@@ -2326,15 +2334,6 @@ impl Shell {
         pane
     }
 
-    /// Whether this chat's strip carries the Browser tab.
-    #[cfg(feature = "browser")]
-    fn browser_tab_present(&self, cx: &App) -> bool {
-        let key = self.panel_key(cx);
-        self.right_tabs
-            .get(&key)
-            .is_some_and(|tabs| tabs.contains(&RightSurface::Browser))
-    }
-
     /// The picker's Browser row and the titlebar globe: open the pane on the
     /// Browser surface, adding its tab once.
     #[cfg(feature = "browser")]
@@ -4177,10 +4176,9 @@ impl Shell {
     fn render_page_title(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let (title, sub) = {
             let state = self.state.read(cx);
-            let chat = state
-                .selected_chat
-                .as_deref()
-                .and_then(|id| state.chats.iter().find(|c| c.id == id));
+            // Keyed off `active_chat`, like `current_space`, so title and
+            // sub-line always describe the same session.
+            let chat = state.chats.iter().find(|c| c.id == self.active_chat);
             let title = chat
                 .and_then(|c| c.title.clone())
                 .filter(|t| !t.trim().is_empty())
@@ -7909,7 +7907,10 @@ impl Render for Shell {
                     "tasks" => self.add_space_surface(RightSurface::Tasks, cx),
                     #[cfg(feature = "browser")]
                     "browser" => self.add_browser_surface(cx),
-                    _ => {}
+                    other => tracing::warn!(
+                        pane = other,
+                        "ZERON_OPEN_PANE: unknown pane, or the browser feature is off"
+                    ),
                 }
             }
         }
