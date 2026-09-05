@@ -72,11 +72,15 @@ pub(crate) fn set_visible(on: bool) {
     println!("browser: visible={}", u8::from(on));
 }
 
-/// Every live host, with its identifier, cloned out from under the lock.
+/// Every live host, with its identifier. The browsers are cloned out from
+/// under the lock first; `host()` is a CEF call and runs after it is dropped.
 fn hosts() -> Vec<(i32, BrowserHost)> {
-    let Ok(guard) = BROWSERS.lock() else { return Vec::new() };
-    let Some(map) = guard.as_ref() else { return Vec::new() };
-    map.iter().filter_map(|(id, b)| b.host().map(|h| (*id, h))).collect()
+    let browsers: Vec<(i32, Browser)> = {
+        let Ok(guard) = BROWSERS.lock() else { return Vec::new() };
+        let Some(map) = guard.as_ref() else { return Vec::new() };
+        map.iter().map(|(id, b)| (*id, b.clone())).collect()
+    };
+    browsers.into_iter().filter_map(|(id, b)| b.host().map(|h| (id, h))).collect()
 }
 
 /// Put `browser` on screen and park every other one. A tab switch, or a
@@ -97,12 +101,11 @@ pub(crate) fn activate(browser: i32) {
 /// Close one browser. CEF answers with `on_before_close`, which drops it
 /// from the map and its frame; the pane shows the next active tab's frame.
 pub(crate) fn close_browser(browser: i32) {
-    let host = BROWSERS
+    let found = BROWSERS
         .lock()
         .ok()
-        .and_then(|g| g.as_ref().and_then(|m| m.get(&browser).cloned()))
-        .and_then(|b| b.host());
-    if let Some(host) = host {
+        .and_then(|g| g.as_ref().and_then(|m| m.get(&browser).cloned()));
+    if let Some(host) = found.and_then(|b| b.host()) {
         host.close_browser(1);
     }
 }
