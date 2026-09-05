@@ -25,11 +25,36 @@ pub use demo::run_demo;
 pub use editor::{EditorEvent, FileEditor};
 pub use tree::{FileTreeView, TreeEvent};
 
+gpui::actions!(files, [SaveFile]);
+
 /// Key context of the editor's buffer: the composer's editing keys, but
 /// Enter inserts a newline and nothing submits. Call once at app start,
 /// after `composer::init`.
 pub fn init(cx: &mut gpui::App) {
     cx.bind_keys(files_key_bindings());
+}
+
+/// Bind Cmd+S / Ctrl+S to [`SaveFile`] in the editor's context. Call AFTER
+/// the shell's customizable shortcuts, never before: gpui scores a binding
+/// with no context at the full depth of the context stack, the same score a
+/// binding matched on the innermost context gets, and breaks that tie by
+/// binding order, later wins (gpui `keymap.rs`, `bindings_for_input` and
+/// `binding_enabled`). Bound first, the editor's save lost to the shell's
+/// `mod-s` ToggleSidebar every time, and Ctrl+S hid the sidebar with the
+/// file still dirty (e2e FILES-01, 2026-09-06).
+pub fn bind_save_keys(cx: &mut gpui::App) {
+    cx.bind_keys(save_key_bindings());
+}
+
+/// The save chords as data, so a test can read them without an `App`.
+/// Both spellings on every platform, as the composer does for undo: Ctrl+S
+/// on a Mac saves too, and costs nothing.
+pub fn save_key_bindings() -> Vec<KeyBinding> {
+    let ctx = Some("FilesEditor");
+    vec![
+        KeyBinding::new("cmd-s", SaveFile, ctx),
+        KeyBinding::new("ctrl-s", SaveFile, ctx),
+    ]
 }
 
 /// The FilesEditor keymap as data, so a test can read it without an `App`.
@@ -164,7 +189,51 @@ impl Render for FilesPane {
 #[cfg(test)]
 mod key_tests {
     use super::*;
-    use gpui::{Action as _, Keystroke};
+    use gpui::{Action as _, KeyContext, Keymap, Keystroke};
+
+    /// The rule the fix rests on, checked against gpui itself: with the
+    /// shell's context-less `mod-s` ToggleSidebar bound first and the
+    /// editor's `ctrl-s` SaveFile bound after, a Ctrl+S in the FilesEditor
+    /// context resolves to SaveFile first. Bound the other way round, the
+    /// sidebar wins, which is the bug.
+    #[test]
+    fn save_outranks_the_sidebar_toggle_only_when_bound_after_it() {
+        let sidebar = || KeyBinding::new("ctrl-s", crate::shell::ToggleSidebar, None);
+        let stack = [KeyContext::parse("FilesEditor").unwrap()];
+        let ctrl_s = [Keystroke::parse("ctrl-s").unwrap()];
+
+        let mut fixed = Keymap::new(vec![sidebar()]);
+        fixed.add_bindings(save_key_bindings());
+        let (bindings, _) = fixed.bindings_for_input(&ctrl_s, &stack);
+        assert_eq!(bindings[0].action().name(), "files::SaveFile", "the order apply_keymap uses");
+
+        let mut broken = Keymap::new(save_key_bindings());
+        broken.add_bindings(vec![sidebar()]);
+        let (bindings, _) = broken.bindings_for_input(&ctrl_s, &stack);
+        assert_eq!(bindings[0].action().name(), "shell::ToggleSidebar", "the order that lost the save");
+    }
+
+    #[test]
+    fn a_remapped_sidebar_toggle_leaves_ctrl_s_to_the_editor() {
+        let stack = [KeyContext::parse("FilesEditor").unwrap()];
+        let ctrl_s = [Keystroke::parse("ctrl-s").unwrap()];
+        let mut keymap = Keymap::new(vec![KeyBinding::new("ctrl-b", crate::shell::ToggleSidebar, None)]);
+        keymap.add_bindings(save_key_bindings());
+        let (bindings, _) = keymap.bindings_for_input(&ctrl_s, &stack);
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].action().name(), "files::SaveFile");
+    }
+
+    #[test]
+    fn outside_the_editor_ctrl_s_is_still_the_sidebar() {
+        let stack = [KeyContext::parse("Composer").unwrap()];
+        let ctrl_s = [Keystroke::parse("ctrl-s").unwrap()];
+        let mut keymap = Keymap::new(vec![KeyBinding::new("ctrl-s", crate::shell::ToggleSidebar, None)]);
+        keymap.add_bindings(save_key_bindings());
+        let (bindings, _) = keymap.bindings_for_input(&ctrl_s, &stack);
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].action().name(), "shell::ToggleSidebar");
+    }
 
     #[test]
     fn enter_is_newline_in_the_files_editor_context() {

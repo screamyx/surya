@@ -2,19 +2,23 @@
 //! conflict banner with reload / overwrite) on top of `FilesRead` and
 //! `FilesWrite`. The buffer is comet's [`ComposerInput`] under its own key
 //! context (`FilesEditor`, bound in `files::init`) so Enter inserts a line
-//! instead of submitting.
+//! instead of submitting. Save is the [`SaveFile`] action, bound in that
+//! context by `files::bind_save_keys` and handled here, so the shell's
+//! keymap never sees the chord while the buffer has focus: a raw key
+//! listener ran after the keymap and never got it (e2e FILES-01).
 //!
 //! [`EditorDoc`] holds every rule that is not drawing and is unit-tested:
 //! what a read becomes, when a save may go, what a refusal does.
 
 use gpui::{
-    Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent, Render,
-    Subscription, Task, Window, div, prelude::*, px,
+    Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, Render, Subscription,
+    Task, Window, div, prelude::*, px,
 };
 use zeron_proto::files::{FileRead, FileWrite, LineRange};
 use zeron_rpc::methods;
 
 pub use super::editor_doc::{Body, Conflict, EditorDoc, SaveOutcome};
+use super::SaveFile;
 use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::state::EngineHandle;
 use crate::theme::Theme;
@@ -137,13 +141,6 @@ impl FileEditor {
         }
     }
 
-    fn on_key_down(&mut self, event: &KeyDownEvent, _window: &Window, cx: &mut Context<Self>) {
-        let mods = &event.keystroke.modifiers;
-        if event.keystroke.key == "s" && (mods.platform || mods.control) {
-            self.save(cx);
-        }
-    }
-
     fn header(&self, theme: &Theme, cx: &Context<Self>) -> gpui::Div {
         let text = self.input.read(cx).text();
         let dirty = self.doc.is_dirty(text);
@@ -257,9 +254,10 @@ impl Render for FileEditor {
         div()
             .id("files-editor")
             .track_focus(&self.focus)
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                this.on_key_down(event, window, cx)
-            }))
+            // Dispatched along the focus path from the buffer up, so it
+            // lands here while the buffer holds focus; handled, it stops,
+            // and the sidebar toggle bound to the same chord never runs.
+            .on_action(cx.listener(|this, _: &SaveFile, _, cx| this.save(cx)))
             .flex()
             .flex_col()
             .size_full()

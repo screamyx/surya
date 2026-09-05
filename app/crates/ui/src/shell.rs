@@ -344,6 +344,7 @@ fn log_keymap_proof(cx: &App, toggle_terminal: &str, toggle_files: &str) {
     };
     probe(Some("Composer"), "enter", "Submit");
     probe(Some("FilesEditor"), "enter", "Newline");
+    probe(Some("FilesEditor"), "ctrl-s", "SaveFile");
     probe(None, toggle_terminal, "ToggleTerminal");
     probe(None, toggle_files, "ToggleFiles");
     // The browser pane's chords are bound with no context and must come out
@@ -442,6 +443,10 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
         // bar); pressing it again dismisses.
         KeyBinding::new(&platform_combo("mod-k"), AddSpacePalette, None),
     ]);
+    // The editor's save chord goes AFTER the customizable shortcuts above:
+    // a context-less binding and one matched on the innermost context score
+    // the same depth, and the later-bound one wins (files::bind_save_keys).
+    crate::files::bind_save_keys(cx);
     // ⌘1..⌘9 open the sidebar's first nine rows. A slot left unbound (an empty
     // combo in a hand-edited file) binds nothing rather than falling back —
     // the user cleared it on purpose.
