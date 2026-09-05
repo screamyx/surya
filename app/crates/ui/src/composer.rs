@@ -3500,21 +3500,42 @@ pub struct Composer {
 
 impl EventEmitter<ComposerEvent> for Composer {}
 
-/// What `add_paths` says after a batch, or None when it says nothing.
+/// What the failure notice should do after an `add_paths` batch.
+#[derive(Debug, PartialEq, Eq)]
+enum BatchNotice {
+    /// Say why files were left out.
+    Show(String),
+    /// The batch was wholly good: take down whatever the last one left up.
+    Clear,
+    /// Say nothing and change nothing. A read failure has already written its
+    /// own, more specific, message.
+    Leave,
+}
+
+/// The whole notice decision for one batch, in one place.
 ///
-/// A read failure is the more specific complaint and keeps the notice, so the
-/// skip only speaks when nothing else did. A mixed pick still gets it: the
-/// images stage AND the user is told why the rest did not arrive, which is the
-/// whole point - the old silence was indistinguishable from a picker that had
-/// not registered the click at all.
-fn skipped_notice(skipped: usize, failed: bool) -> Option<String> {
-    if skipped == 0 || failed {
-        return None;
+/// `add_staged` deliberately does not touch `self.failure` - it is also the
+/// paste and drop path - so if this returned only a message, a good pick after
+/// a bad one would stage the image underneath a stale red chip about the last
+/// one. That is why `Clear` exists and why the decision is here rather than
+/// split between the loop and the staging.
+fn batch_notice(staged: usize, skipped: usize, failed: bool) -> BatchNotice {
+    if failed {
+        // `add_paths` already wrote the read failure's own message.
+        return BatchNotice::Leave;
     }
-    Some(format!(
-        "Only images can be attached ({})",
-        attachments::supported_extensions()
-    ))
+    if skipped > 0 {
+        return BatchNotice::Show(format!(
+            "Only images can be attached ({})",
+            attachments::supported_extensions()
+        ));
+    }
+    if staged > 0 {
+        return BatchNotice::Clear;
+    }
+    // An empty pick: the user cancelled the dialog. Nothing happened, so
+    // nothing should change on screen.
+    BatchNotice::Leave
 }
 
 impl Composer {
@@ -3791,6 +3812,9 @@ impl Composer {
             .unwrap_or(&[])
     }
 
+    /// Does NOT touch `self.failure`: it is shared with the paste and drop
+    /// paths, and `add_paths` owns the notice for its whole batch through
+    /// [`batch_notice`]. Clearing here as well would race that decision.
     fn add_staged(&mut self, staged: Vec<StagedAttachment>, cx: &mut Context<Self>) {
         if staged.is_empty() {
             return;
@@ -3831,10 +3855,18 @@ impl Composer {
                 }
             }
         }
-        if let Some(notice) = skipped_notice(skipped, failed) {
-            self.failure = Some(notice.into());
-            self.failure_key = Some(self.current_key.clone());
-            cx.notify();
+        match batch_notice(staged.len(), skipped, failed) {
+            BatchNotice::Show(notice) => {
+                self.failure = Some(notice.into());
+                self.failure_key = Some(self.current_key.clone());
+                cx.notify();
+            }
+            BatchNotice::Clear => {
+                self.failure = None;
+                self.failure_key = None;
+                cx.notify();
+            }
+            BatchNotice::Leave => {}
         }
         self.add_staged(staged, cx);
     }
@@ -6777,26 +6809,54 @@ mod tests {
 
     /// A non-image used to vanish without a word: the picker closed, nothing
     /// staged, no notice, which reads exactly like a click that never landed
-    /// (e2e E2E-CHAT-01). asked=5 passed=5.
+    /// (e2e E2E-CHAT-01).
+    ///
+    /// This covers the pure decision, not `add_paths` itself: the workspace has
+    /// no gpui test context, so nothing here drives a real `Context<Composer>`.
+    /// What it does pin is every outcome that decision has. asked=6 passed=6.
     #[test]
-    fn a_skipped_non_image_is_said_out_loud_unless_something_louder_failed() {
-        // (skipped, failed) -> is there a notice
-        assert!(skipped_notice(0, false).is_none(), "nothing skipped");
-        assert!(skipped_notice(1, false).is_some(), "one .txt picked");
-        // The mixed pick: the png stages, and the notice still explains the
-        // rest. Silence here was the actual bug.
-        assert!(skipped_notice(1, false).is_some(), "png + txt together");
-        // A read failure is more specific, so it keeps the notice rather than
-        // being overwritten by the generic rule.
-        assert!(skipped_notice(1, true).is_none(), "a read failure speaks");
-        assert!(skipped_notice(0, true).is_none(), "only a read failure");
+    fn a_batch_says_why_files_were_left_out_and_clears_up_after_the_last_one() {
+        // (staged, skipped, failed) -> what the notice does
+        assert_eq!(batch_notice(1, 0, false), BatchNotice::Clear, "all images");
+        assert_eq!(batch_notice(0, 0, false), BatchNotice::Leave, "cancelled");
+        // The bug: one .txt, nothing staged, and the old code said nothing.
+        assert!(
+            matches!(batch_notice(0, 1, false), BatchNotice::Show(_)),
+            "a lone non-image must be refused out loud"
+        );
+        // The mixed pick. This is the case the helper could not see before it
+        // took a staged count: the png stages AND the notice still explains
+        // the .txt.
+        assert!(
+            matches!(batch_notice(1, 1, false), BatchNotice::Show(_)),
+            "a mixed pick stages its images and still explains the rest"
+        );
+        // A read failure wrote its own, more specific message. Leave it up.
+        assert_eq!(batch_notice(0, 1, true), BatchNotice::Leave, "read failure");
+        // And the wart this decision also fixes: a good pick after a bad one
+        // must take the stale chip down, which `add_staged` will not do.
+        assert_eq!(batch_notice(2, 0, false), BatchNotice::Clear, "recovery");
+    }
 
-        // The message names what IS allowed, derived from the one table the
-        // staging check reads, so it cannot drift from what the code takes.
-        let notice = skipped_notice(1, false).unwrap();
-        for ext in ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tif", "tiff"] {
-            assert!(notice.contains(ext), "{notice:?} does not name {ext}");
-        }
+    /// The message has to name the extensions the staging check actually takes,
+    /// and name them so the reader can tell `tif` from `tiff` - a bare
+    /// `contains("tif")` is satisfied by `tiff` and would pass on a table that
+    /// had lost the short spelling.
+    #[test]
+    fn the_notice_names_every_extension_the_table_accepts() {
+        let BatchNotice::Show(notice) = batch_notice(0, 1, false) else {
+            panic!("a skipped file must produce a notice");
+        };
+        let listed = notice
+            .rsplit_once('(')
+            .and_then(|(_, tail)| tail.strip_suffix(')'))
+            .expect("the notice carries the list in parentheses");
+        let listed: Vec<&str> = listed.split(", ").collect();
+        assert_eq!(
+            listed,
+            ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tif", "tiff"],
+            "notice list drifted from attachments::BY_EXTENSION"
+        );
     }
 
     /// The press intent is judged by eye everywhere except here: that a

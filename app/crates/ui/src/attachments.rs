@@ -261,6 +261,10 @@ pub fn stage_file(path: &Path) -> Result<StagedAttachment, String> {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "image".to_string());
+    // Unreachable from `add_paths`, which filters on the same table first and
+    // owns the wording of the refusal. Kept for the other callers and as the
+    // last line of defence: a check that lives only at the call site is one
+    // caller away from being no check at all.
     let Some(format) = format_by_extension(path) else {
         return Err(format!("{display_name} is not a supported image."));
     };
