@@ -259,7 +259,8 @@ wrap_render_handler! {
                     store(id, seq, FrameSource::Shared(texture), active);
                     return;
                 }
-                let (width, height) = (info.extra.coded_size.width, info.extra.coded_size.height);
+                // The texture is the visible part of the paint, not its coded size.
+                let (width, height) = texture.size();
                 let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
                 store(id, n, FrameSource::Shared(texture), active);
                 LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);

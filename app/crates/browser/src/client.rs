@@ -377,9 +377,10 @@ fn no_parent() -> cef::sys::cef_window_handle_t {
 /// thread, after `initialize`. Returns CEF's identifier for it.
 pub(crate) fn open(url: &str) -> Option<i32> {
     let mut window_info = WindowInfo::default().set_as_windowless(no_parent());
-    // Windows, `SURYA_BROWSER_ZERO_COPY=1`: CEF paints into a D3D11 texture
-    // and calls `on_accelerated_paint` instead of `on_paint`; see `zero_copy`.
-    window_info.shared_texture_enabled = i32::from(crate::zero_copy::enabled());
+    // Windows, `SURYA_BROWSER_ZERO_COPY=1` and the D3D11 device could be
+    // made: CEF paints into a shared texture and calls `on_accelerated_paint`
+    // instead of `on_paint`; see `zero_copy`. Otherwise the CPU path.
+    window_info.shared_texture_enabled = i32::from(crate::zero_copy::ready());
     let browser_settings = BrowserSettings {
         windowless_frame_rate: 60,
         background_color: crate::OPAQUE_WHITE,

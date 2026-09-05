@@ -127,16 +127,6 @@ pub fn surface() -> gpui::AnyElement {
                 println!("browser: view -> {w}x{h} scale={} resizes={n}", sf as f32 / 1000.0);
                 notify_resized();
             }
-            #[cfg(windows)]
-            if crate::zero_copy::enabled() {
-                // Once: which GPU gpui draws on, so the zero-copy device
-                // is made on the same one. Empty when gpui does not say.
-                static TOLD: std::sync::Once = std::sync::Once::new();
-                TOLD.call_once(|| {
-                    let name = window.gpu_specs().map(|s| s.device_name).unwrap_or_default();
-                    crate::zero_copy::set_gpu_name(&name);
-                });
-            }
             let Some((seq, src)) = crate::render::frame() else { return };
             let img = match src {
                 FrameSource::Cpu(img) => img,

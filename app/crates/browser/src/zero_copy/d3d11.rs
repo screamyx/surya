@@ -28,7 +28,7 @@ use windows::Win32::Foundation::{HANDLE, HMODULE, S_OK};
 use windows::Win32::Graphics::Direct3D::D3D_DRIVER_TYPE_UNKNOWN;
 use windows::Win32::Graphics::Direct3D11::{
     D3D11CreateDevice, ID3D11Device, ID3D11Device1, ID3D11DeviceContext, ID3D11Query,
-    ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE,
+    ID3D11Texture2D, D3D11_BIND_RENDER_TARGET, D3D11_BIND_SHADER_RESOURCE, D3D11_BOX,
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_QUERY_DESC, D3D11_QUERY_EVENT,
     D3D11_RESOURCE_MISC_SHARED, D3D11_RESOURCE_MISC_SHARED_NTHANDLE, D3D11_SDK_VERSION,
     D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
@@ -51,8 +51,11 @@ pub(crate) type Luid = (u32, i32);
 /// once, so a stalled GPU is visible in the log.
 const SLOW_WAIT: Duration = Duration::from_millis(100);
 
-/// This crate's own D3D11 device. One per process, made on the first
-/// accelerated paint, on the same adapter as gpui's renderer.
+/// This crate's own D3D11 device. One per process, made before the first
+/// browser, on the same adapter as gpui's renderer. Clone is a COM refcount
+/// bump, so a caller takes a clone out of the lock and never holds the lock
+/// across a GPU wait.
+#[derive(Clone)]
 pub(crate) struct Device {
     device: ID3D11Device,
     device1: ID3D11Device1,
@@ -84,6 +87,26 @@ fn err(e: windows::core::Error, what: &str) -> String {
     format!("{what}: {e}")
 }
 
+/// What went wrong with one frame. `fatal` means the device itself is gone
+/// (a removed or reset device): every later frame would fail the same way,
+/// so the caller retires the device and the pane keeps its last good frame.
+pub(crate) struct SnapshotError {
+    pub(crate) msg: String,
+    pub(crate) fatal: bool,
+}
+
+impl SnapshotError {
+    fn frame(msg: String) -> Self {
+        Self { msg, fatal: false }
+    }
+}
+
+impl std::fmt::Display for SnapshotError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.msg)
+    }
+}
+
 fn adapter_name(desc: &DXGI_ADAPTER_DESC1) -> String {
     String::from_utf16_lossy(&desc.Description)
         .trim_end_matches('\0')
@@ -91,13 +114,14 @@ fn adapter_name(desc: &DXGI_ADAPTER_DESC1) -> String {
         .to_string()
 }
 
-/// The adapter called `prefer` (gpui's own, from `Window::gpu_specs`), else
-/// the first hardware adapter. Software adapters are skipped: WARP can open
-/// nothing the GPU process shares.
-fn pick_adapter(prefer: Option<&str>) -> Result<(IDXGIAdapter1, DXGI_ADAPTER_DESC1), String> {
+/// The first hardware adapter, in DXGI's enumeration order. That is the
+/// adapter gpui's renderer takes too (the fork's `directx_devices.rs`
+/// `get_adapter` walks `EnumAdapters(0..)` and keeps the first that makes a
+/// D3D11 device), so both halves of the handoff sit on one GPU. Software
+/// adapters are skipped: WARP can open nothing the GPU process shares.
+fn pick_adapter() -> Result<(IDXGIAdapter1, DXGI_ADAPTER_DESC1), String> {
     let factory: IDXGIFactory1 =
         unsafe { CreateDXGIFactory1() }.map_err(|e| err(e, "CreateDXGIFactory1"))?;
-    let mut first: Option<(IDXGIAdapter1, DXGI_ADAPTER_DESC1)> = None;
     let mut i = 0;
     while let Ok(adapter) = unsafe { factory.EnumAdapters1(i) } {
         i += 1;
@@ -107,19 +131,14 @@ fn pick_adapter(prefer: Option<&str>) -> Result<(IDXGIAdapter1, DXGI_ADAPTER_DES
         if desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0 {
             continue;
         }
-        if prefer.is_some_and(|p| p.trim() == adapter_name(&desc)) {
-            return Ok((adapter, desc));
-        }
-        if first.is_none() {
-            first = Some((adapter, desc));
-        }
+        return Ok((adapter, desc));
     }
-    first.ok_or_else(|| "no hardware adapter".to_string())
+    Err("no hardware adapter".to_string())
 }
 
 impl Device {
-    pub(crate) fn new(prefer: Option<&str>) -> Result<Self, String> {
-        let (adapter, desc) = pick_adapter(prefer)?;
+    pub(crate) fn new() -> Result<Self, String> {
+        let (adapter, desc) = pick_adapter()?;
         let adapter: IDXGIAdapter = adapter.cast().map_err(|e| err(e, "IDXGIAdapter"))?;
         let mut device = None;
         let mut ctx = None;
@@ -182,6 +201,15 @@ impl Device {
     /// Block until the GPU has passed `fence`. Only a device error ends the
     /// wait early: the fence guards a read of CEF's pooled texture, which
     /// must be finished before the callback returns.
+    ///
+    /// On that error the device is gone (`DXGI_ERROR_DEVICE_REMOVED` or
+    /// `DEVICE_RESET`: the adapter was reset, or the driver crashed or was
+    /// updated). D3D11 offers no way to cancel or wait on the queued copy
+    /// then, and a removed device's context runs nothing further: every
+    /// call on it, `GetData` included, answers with the removal error, and
+    /// the only way on is a new device. So the copy either finished before
+    /// the reset or was discarded with the context, the frame is dropped,
+    /// and the caller retires the device (`SnapshotError::fatal`).
     fn wait(&self, fence: &ID3D11Query, since: Instant) -> Result<(), String> {
         static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
         while !self.passed(fence)? {
@@ -201,26 +229,46 @@ impl Device {
         fence.ok_or_else(|| "CreateQuery returned nothing".to_string())
     }
 
-    /// Open CEF's pooled texture, copy it into a new texture of this device,
-    /// and return once the GPU has finished the copy. Only then may the
-    /// callback return and the snapshot be published.
-    pub(crate) fn snapshot(&self, cef_handle: *mut c_void, probe: bool) -> Result<Snapshot, String> {
+    /// Open CEF's pooled texture, copy its visible part into a new texture
+    /// of this device, and return once the GPU has finished the copy. Only
+    /// then may the callback return and the snapshot be published.
+    ///
+    /// `visible` is CEF's `visible_rect` (`x, y, width, height`, device
+    /// pixels): the page's pixels inside the pooled texture, whose
+    /// `coded_size` may be larger (cef_types_osr.h, `visible_rect`).
+    pub(crate) fn snapshot(
+        &self,
+        cef_handle: *mut c_void,
+        visible: [i32; 4],
+        probe: bool,
+    ) -> Result<Snapshot, SnapshotError> {
         let t0 = Instant::now();
         let src: ID3D11Texture2D = unsafe { self.device1.OpenSharedResource1(HANDLE(cef_handle)) }
-            .map_err(|e| err(e, "OpenSharedResource1"))?;
+            .map_err(|e| SnapshotError::frame(err(e, "OpenSharedResource1")))?;
         let mut desc = D3D11_TEXTURE2D_DESC::default();
         unsafe { src.GetDesc(&mut desc) };
         let t_open = t0.elapsed();
         if desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM {
-            return Err(format!("format {:?}, not B8G8R8A8_UNORM", desc.Format));
+            return Err(SnapshotError::frame(format!("format {:?}, not B8G8R8A8_UNORM", desc.Format)));
         }
-        if desc.Width == 0 || desc.Height == 0 {
-            return Err(format!("empty texture {}x{}", desc.Width, desc.Height));
+        let [vx, vy, vw, vh] = visible;
+        let inside = vx >= 0
+            && vy >= 0
+            && vw > 0
+            && vh > 0
+            && (vx as u32).saturating_add(vw as u32) <= desc.Width
+            && (vy as u32).saturating_add(vh as u32) <= desc.Height;
+        if !inside {
+            return Err(SnapshotError::frame(format!(
+                "visible_rect {vx},{vy} {vw}x{vh} outside the {}x{} texture",
+                desc.Width, desc.Height
+            )));
         }
+        let (width, height) = (vw as u32, vh as u32);
 
         let dst_desc = D3D11_TEXTURE2D_DESC {
-            Width: desc.Width,
-            Height: desc.Height,
+            Width: width,
+            Height: height,
             MipLevels: 1,
             ArraySize: 1,
             Format: DXGI_FORMAT_B8G8R8A8_UNORM,
@@ -235,9 +283,11 @@ impl Device {
         };
         let mut dst = None;
         unsafe { self.device.CreateTexture2D(&dst_desc, None, Some(&mut dst)) }
-            .map_err(|e| err(e, "CreateTexture2D"))?;
-        let dst: ID3D11Texture2D = dst.ok_or("CreateTexture2D returned nothing")?;
-        let shared: IDXGIResource1 = dst.cast().map_err(|e| err(e, "IDXGIResource1"))?;
+            .map_err(|e| SnapshotError::frame(err(e, "CreateTexture2D")))?;
+        let dst: ID3D11Texture2D =
+            dst.ok_or_else(|| SnapshotError::frame("CreateTexture2D returned nothing".into()))?;
+        let shared: IDXGIResource1 =
+            dst.cast().map_err(|e| SnapshotError::frame(err(e, "IDXGIResource1")))?;
         let handle: HANDLE = unsafe {
             shared.CreateSharedHandle(
                 None,
@@ -245,19 +295,35 @@ impl Device {
                 PCWSTR::null(),
             )
         }
-        .map_err(|e| err(e, "CreateSharedHandle"))?;
+        .map_err(|e| SnapshotError::frame(err(e, "CreateSharedHandle")))?;
         // SAFETY: a fresh NT handle this process owns; OwnedHandle closes it.
         let handle = unsafe { OwnedHandle::from_raw_handle(handle.0) };
-        let fence = self.make_fence()?;
+        let fence = self.make_fence().map_err(SnapshotError::frame)?;
         let t_create = t0.elapsed();
 
+        // The visible part only. A whole-texture CopyResource when the two
+        // sizes agree, else a boxed region copy into the (0,0) corner.
+        let region = D3D11_BOX {
+            left: vx as u32,
+            top: vy as u32,
+            front: 0,
+            right: vx as u32 + width,
+            bottom: vy as u32 + height,
+            back: 1,
+        };
         unsafe {
-            self.ctx.CopyResource(&dst, &src);
+            if width == desc.Width && height == desc.Height {
+                self.ctx.CopyResource(&dst, &src);
+            } else {
+                self.ctx.CopySubresourceRegion(&dst, 0, 0, 0, 0, &src, 0, Some(&region));
+            }
             self.ctx.End(&fence);
             self.ctx.Flush();
         }
         let t_submit = t0.elapsed();
-        self.wait(&fence, t0)?;
+        // Past here an error is the device, not the frame.
+        let fatal = |msg: String| SnapshotError { msg, fatal: true };
+        self.wait(&fence, t0).map_err(fatal)?;
         let took = t0.elapsed();
         let us = |d: Duration| d.as_micros() as u64;
 
@@ -268,9 +334,10 @@ impl Device {
             scratch_desc.MiscFlags = 0;
             let mut scratch = None;
             unsafe { self.device.CreateTexture2D(&scratch_desc, None, Some(&mut scratch)) }
-                .map_err(|e| err(e, "CreateTexture2D (probe)"))?;
-            let scratch: ID3D11Texture2D = scratch.ok_or("CreateTexture2D (probe) returned nothing")?;
-            let probe_fence = self.make_fence()?;
+                .map_err(|e| fatal(err(e, "CreateTexture2D (probe)")))?;
+            let scratch: ID3D11Texture2D =
+                scratch.ok_or_else(|| fatal("CreateTexture2D (probe) returned nothing".into()))?;
+            let probe_fence = self.make_fence().map_err(fatal)?;
             let p0 = Instant::now();
             unsafe {
                 self.ctx.CopyResource(&scratch, &dst);
@@ -278,7 +345,7 @@ impl Device {
                 self.ctx.Flush();
             }
             let p_submit = p0.elapsed();
-            self.wait(&probe_fence, p0)?;
+            self.wait(&probe_fence, p0).map_err(fatal)?;
             Some(us(p0.elapsed() - p_submit))
         } else {
             None
@@ -286,8 +353,8 @@ impl Device {
 
         Ok(Snapshot {
             handle,
-            width: desc.Width,
-            height: desc.Height,
+            width,
+            height,
             took,
             probe_wait_us,
             split: [
