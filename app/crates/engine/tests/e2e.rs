@@ -1861,6 +1861,21 @@ async fn empty_reasoning_deltas_are_heartbeats_not_journal_noise() {
         "run completes",
     )
     .await;
+    // The turn is Complete, but the journal write carrying the reasoning text
+    // lands on its own schedule. Reading straight through the gap fails with
+    // nonempty == 0 on a loaded runner (run 33946262491 on PR #71, a UI-only
+    // change), so wait for the text the same way everything else here waits.
+    wait_for(
+        || {
+            core.sessions.subscribe(CHAT, 0).is_ok_and(|(replay, _)| {
+                replay.iter().any(|j| {
+                    matches!(&j.event, AgentEvent::ReasoningDelta { text } if !text.is_empty())
+                })
+            })
+        },
+        "the journal to carry the reasoning text",
+    )
+    .await;
     // Journal replay: the 40 empties were filtered; real content survived.
     let replay = core.sessions.subscribe(CHAT, 0).unwrap().0;
     let empties = replay
