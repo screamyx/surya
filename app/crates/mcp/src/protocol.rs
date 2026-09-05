@@ -105,7 +105,7 @@ fn call_tool(config: &Config, params: &Value) -> Value {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
     let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
     match name {
-        "show_card" => match cards::show(config, &arguments) {
+        "show_card" => match cards::show(config, &arguments, cards::tool_use_id(params)) {
             Ok(card) => text_result(
                 json!({
                     "card_id": card.card_id,

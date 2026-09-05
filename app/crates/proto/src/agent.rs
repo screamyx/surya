@@ -458,6 +458,10 @@ pub enum AgentEvent {
     /// store), `surface_id` the A2UI surface, `tool_use_id` the call that
     /// drew it — the doc part keys on the latter so a retry refreshes in
     /// place.
+    ///
+    /// Emitted on the call's tool_result, not on the call itself, so the
+    /// harness can read the sidecar's own record for it; the card takes the
+    /// place of the tool chip that would otherwise sit above it.
     #[serde(rename_all = "camelCase")]
     Card {
         card_id: String,
