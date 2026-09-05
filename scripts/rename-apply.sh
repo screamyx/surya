@@ -152,7 +152,7 @@ echo "paths_moved=$MOVED"
 # with a warning logged once. Its own module, so the script never has to patch
 # around an existing function body.
 # --------------------------------------------------------------------------
-ALIAS=app/crates/engine/src/env_compat.rs
+ALIAS=app/crates/proto/src/env_compat.rs
 if [ ! -f "$ALIAS" ]; then
   cat > "$ALIAS" <<'RUST'
 //! `SURYA_*` with a one-release `ZERON_*` fallback.
@@ -161,14 +161,20 @@ if [ ! -f "$ALIAS" ]; then
 //! `EnvironmentFile` or CI secret still says `ZERON_*`; reading it keeps them
 //! working for one release, and the warning tells them what to change. Drop
 //! this module and its call sites the release after.
+//!
+//! It lives in proto because that is the crate everything else already
+//! depends on, and the signatures mirror `std::env` exactly - `var` returns
+//! the same `Result`, `var_os` the same `Option` - so a call site keeps its
+//! `.ok()`, `.is_err()` or `.unwrap_or_else(|_| …)` unchanged.
 
+use std::env::VarError;
 use std::ffi::OsString;
 use std::sync::OnceLock;
 
 /// The variables a USER sets by hand, from `daemon.rs CAPTURED_ENV` and
-/// `main.rs`. Test-only knobs (`SURYA_MOCK_*`, `SURYA_E2E_*`, `SURYA_DEMO_*`)
-/// are deliberately absent: nothing outside this repo sets them, so they
-/// rename without an alias.
+/// `main.rs`. Dev and test knobs (`SURYA_MOCK_*`, `SURYA_DEMO_*`,
+/// `SURYA_ACP_*`, and the rest) are deliberately absent: nothing outside this
+/// repo sets them, so they rename without an alias.
 pub const ALIASED: &[&str] = &[
     "DATA_DIR",
     "EDGE_URL",
@@ -193,32 +199,49 @@ fn warned() -> &'static std::sync::Mutex<std::collections::HashSet<String>> {
     WARNED.get_or_init(Default::default)
 }
 
-/// `SURYA_<name>`, else `ZERON_<name>` with a warning logged once.
-pub fn var_os(name: &str) -> Option<OsString> {
-    if let Some(value) = std::env::var_os(format!("SURYA_{name}")) {
-        return Some(value);
-    }
-    let old = std::env::var_os(format!("ZERON_{name}"))?;
+fn warn_once(name: &str) {
     if let Ok(mut seen) = warned().lock()
         && seen.insert(name.to_owned())
     {
         tracing::warn!("renamed env var ZERON_{name}, use SURYA_{name}");
     }
+}
+
+/// `SURYA_<name>`, else `ZERON_<name>` with a warning logged once per name.
+/// Same `Option` as [`std::env::var_os`].
+pub fn var_os(name: &str) -> Option<OsString> {
+    if let Some(value) = std::env::var_os(format!("SURYA_{name}")) {
+        return Some(value);
+    }
+    let old = std::env::var_os(format!("ZERON_{name}"))?;
+    warn_once(name);
     Some(old)
 }
 
-/// [`var_os`] as a `String`; a non-UTF-8 value reads as unset, matching
-/// `std::env::var`'s behaviour for the callers that used it.
-pub fn var(name: &str) -> Option<String> {
-    var_os(name).and_then(|value| value.into_string().ok())
+/// `SURYA_<name>`, else `ZERON_<name>` with a warning logged once per name.
+/// Same `Result` as [`std::env::var`], so `.ok()` and `.is_err()` still work.
+pub fn var(name: &str) -> Result<String, VarError> {
+    match std::env::var(format!("SURYA_{name}")) {
+        Ok(value) => Ok(value),
+        Err(VarError::NotPresent) => {
+            let old = std::env::var(format!("ZERON_{name}"));
+            if old.is_ok() {
+                warn_once(name);
+            }
+            old
+        }
+        // A SURYA_* that is set but not UTF-8 is the user's own mistake and is
+        // reported as such, not silently replaced by the old name.
+        Err(other) => Err(other),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Every aliased name is bare: the helper adds the prefix, so a `SURYA_`
-    /// left in this list would read `SURYA_SURYA_…`.
+    /// The helper adds the prefix, so a `SURYA_` left in this list would read
+    /// `SURYA_SURYA_…`.
     #[test]
     fn the_aliased_names_carry_no_prefix() {
         for name in ALIASED {
@@ -227,15 +250,129 @@ mod tests {
         }
         assert_eq!(ALIASED.len(), 16, "the user-set set from the rename plan");
     }
+
+    /// New name wins, old name still works, neither set reads as unset.
+    /// One process, one variable, so the warning set is not a shared fixture.
+    #[test]
+    fn the_new_name_wins_and_the_old_one_still_works() {
+        let name = "RENAME_PROBE";
+        // SAFETY: single-threaded test, and this variable is used nowhere else.
+        unsafe {
+            std::env::remove_var("SURYA_RENAME_PROBE");
+            std::env::remove_var("ZERON_RENAME_PROBE");
+        }
+        assert!(var(name).is_err(), "unset");
+        assert_eq!(var_os(name), None);
+
+        unsafe { std::env::set_var("ZERON_RENAME_PROBE", "old") };
+        assert_eq!(var(name).as_deref(), Ok("old"), "the old name is honoured");
+
+        unsafe { std::env::set_var("SURYA_RENAME_PROBE", "new") };
+        assert_eq!(var(name).as_deref(), Ok("new"), "the new name wins");
+
+        unsafe {
+            std::env::remove_var("SURYA_RENAME_PROBE");
+            std::env::remove_var("ZERON_RENAME_PROBE");
+        }
+    }
 }
 RUST
   echo "wrote $ALIAS"
-  if ! grep -q '^pub mod env_compat;' app/crates/engine/src/lib.rs; then
-    printf '\npub mod env_compat;\n' >> app/crates/engine/src/lib.rs
-    echo "declared env_compat in engine/src/lib.rs"
-  fi
+fi
+grep -q '^pub mod env_compat;' app/crates/proto/src/lib.rs \
+  || printf '\npub mod env_compat;\n' >> app/crates/proto/src/lib.rs
+grep -q '^tracing' app/crates/proto/Cargo.toml \
+  || sed -i 's/^chrono.workspace = true$/chrono.workspace = true\ntracing.workspace = true/' app/crates/proto/Cargo.toml
+grep -q 'surya-proto' app/apps/surya/Cargo.toml \
+  || sed -i 's/^surya-engine.workspace = true$/surya-proto.workspace = true\nsurya-engine.workspace = true/' app/apps/surya/Cargo.toml
+
+# --------------------------------------------------------------------------
+# 3b. Route the user-set reads through it. Only the 16 names, only outside
+# tests, and never crates/mcp/src/tasks.rs - that file belongs to the tasks
+# seat. The dev and test knobs keep reading std::env directly: nothing outside
+# this repo sets them, so they need no alias.
+# --------------------------------------------------------------------------
+ROUTED=0
+USER_SET='DATA_DIR|EDGE_URL|EDGE_TOKEN|ORG_ID|WORKOS_CLIENT_ID|WORKOS_API_BASE|IPC_PORT|BIND|IPC_TOKEN|CALLBACK_PORT|HARNESS|DEVICE_NAME|ENGINE|ENGINE_TOKEN|USER_ID|WORKTREES_DIR'
+while IFS= read -r file; do
+  case "$file" in */tests/*|*/crates/mcp/*) continue;; esac
+  before_sum=$(cksum < "$file")
+  perl -pi -e "s/(?:std::)?env::var_os\(\"SURYA_($USER_SET)\"\)/surya_proto::env_compat::var_os(\"\1\")/g;
+               s/(?:std::)?env::var\(\"SURYA_($USER_SET)\"\)/surya_proto::env_compat::var(\"\1\")/g" "$file"
+  [ "$(cksum < "$file")" != "$before_sum" ] && ROUTED=$((ROUTED + 1))
+done < <("${RG[@]}" -l "env::var(_os)?\(\"SURYA_($USER_SET)\"\)" app/crates app/apps/surya 2>/dev/null || true)
+echo "files_routed=$ROUTED"
+UNROUTED=$({ "${RG[@]}" -o "env::var(_os)?\(\"SURYA_($USER_SET)\"\)" app/crates app/apps/surya 2>/dev/null || true; } | wc -l | tr -d ' ')
+echo "user_set_reads_still_direct=$UNROUTED"
+
+# --------------------------------------------------------------------------
+# 3c. Compat that is behaviour, not spelling. Each block is guarded by a
+# marker so a second run leaves it alone.
+# --------------------------------------------------------------------------
+COMPAT=0
+
+# The old scheme keeps working for one release: deep links live in chats
+# people already have.
+LINKS=app/crates/ui/src/links.rs
+if [ -f "$LINKS" ] && ! grep -q 'LEGACY_SCHEME' "$LINKS"; then
+  perl -0pi -e 's{(pub fn parse_surya_conversation_link\(url: &str\) -> Result<ConversationDeepLink, &.static str> \{
+)    let rest = url
+        \.strip_prefix\("surya://open/chat/"\)
+        \.ok_or\("not a Surya conversation link"\)\?;}{$1    // One release of both: a link minted before the rename is in chats
+    // people already have.
+    const LEGACY_SCHEME: &str = "zeron://open/chat/";
+    let rest = url
+        .strip_prefix("surya://open/chat/")
+        .or_else(|| url.strip_prefix(LEGACY_SCHEME))
+        .ok_or("not a Surya conversation link")?;}s' "$LINKS"
+  grep -q 'LEGACY_SCHEME' "$LINKS" && { COMPAT=$((COMPAT + 1)); echo "  links.rs accepts zeron:// too"; }
+fi
+
+UI=app/crates/ui/src/lib.rs
+if [ -f "$UI" ] && ! grep -q 'register_url_scheme("zeron")' "$UI"; then
+  perl -pi -e 's{^(\s*)cx\.register_url_scheme\("surya"\)\.detach\(\);}{$1cx.register_url_scheme("surya").detach();\n$1// One release: the OS still routes surya:// links minted before the rename.\n$1cx.register_url_scheme("zeron").detach();}' "$UI"
+  grep -q 'register_url_scheme("zeron")' "$UI" && { COMPAT=$((COMPAT + 1)); echo "  lib.rs registers zeron:// too"; }
+fi
+
+# Two units enabled means two daemons racing for one IPC port.
+DAEMON=app/apps/surya/src/daemon.rs
+if [ -f "$DAEMON" ] && ! grep -q 'retire_legacy_unit' "$DAEMON"; then
+  perl -pi -e 's{^(\s*)run\("systemctl", &\["--user", "enable", "--now", SYSTEMD_UNIT\]\)\?;}{$1retire_legacy_unit();\n$1run("systemctl", &["--user", "enable", "--now", SYSTEMD_UNIT])?;}' "$DAEMON"
+  cat >> "$DAEMON" <<'RUST'
+
+/// The pre-rename unit, disabled and removed on install.
+///
+/// Leaving it enabled means two daemons start on boot and race for one IPC
+/// port. Best-effort on purpose: a machine that never had the old unit must
+/// still install cleanly, so every step here ignores its own failure.
+fn retire_legacy_unit() {
+    const LEGACY_UNIT: &str = "zeron.service";
+    let _ = run_quiet("systemctl", &["--user", "disable", "--now", LEGACY_UNIT]);
+    // Same resolution as `systemd_unit_path`, with the old unit name.
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home_dir().ok().map(|home| home.join(".config")));
+    if let Some(config) = config {
+        let legacy = config.join("systemd/user").join(LEGACY_UNIT);
+        if legacy.exists() {
+            let _ = std::fs::remove_file(&legacy);
+            println!("Removed the pre-rename unit ({}).", legacy.display());
+        }
+    }
+    let _ = run_quiet("systemctl", &["--user", "daemon-reload"]);
+}
+RUST
+  grep -q 'retire_legacy_unit' "$DAEMON" && { COMPAT=$((COMPAT + 1)); echo "  daemon.rs retires zeron.service"; }
+fi
+echo "compat_blocks_added=$COMPAT"
+
+# --------------------------------------------------------------------------
+# 3d. The lock. Package names changed, so it is stale by definition.
+# --------------------------------------------------------------------------
+if command -v cargo >/dev/null 2>&1; then
+  (cd app && cargo update -w >/dev/null 2>&1) && echo "cargo_update=ok" || echo "cargo_update=failed"
 else
-  echo "$ALIAS already present, left alone"
+  echo "cargo_update=skipped (no cargo on PATH)"
 fi
 
 # --------------------------------------------------------------------------
@@ -252,22 +389,16 @@ echo "zeron_hits_before=$BEFORE after=$(hits_of '[Zz]eron') files_changed=$CHANG
 
 cat <<'TODO'
 
-## NOT done by this script - real edits at named call sites
+## NOT done by this script - decisions or owner input
 
-  1. Route every `std::env::var*("ZERON_…")` call through `env_compat::var`.
-     The spelling is renamed above, so those calls now read SURYA_* ONLY;
-     until they are routed a user's existing ZERON_* is ignored, which is the
-     opposite of what the alias is for. Call sites: main.rs, daemon.rs,
-     engine lib.rs, ipc.rs, profile.rs, repos.rs, sessions.rs, and ui
-     sound/transcript/composer.
-  2. Data dir: adopt `~/.zeron` on first start. UNRESOLVED - the coordinator's
-     brief says COPY (keeps a rollback), docs/rename-zeron-to-surya.md row 5
-     says RENAME (atomic, matches the 0.2.0 `.comet-native` migration). Ask
-     before writing it.
-  3. systemd: ship `surya.service` and remove the old unit on install, or two
-     units race for one IPC port.
-  4. URL scheme: register `surya://` AND keep `zeron://` for one release.
-  5. Bundle ids (`sh.zeron.app`) wait on the owner picking a domain.
-  6. `cargo update -w` regenerates Cargo.lock; not run here so the script
-     works without a toolchain.
+  1. Data dir: copy `~/.zeron` to `~/.surya` on first start (ruled: COPY, not
+     rename - it keeps a rollback). Needs a real migration at the point the
+     data dir is resolved, with its own test; not a substitution.
+  2. Bundle ids (`sh.zeron.app`, the notify id, the conversation URL type)
+     wait on the owner picking a domain.
+  3. `crates/mcp/src/tasks.rs` reads SURYA_IPC_PORT directly and is NOT routed
+     here: that file belongs to the tasks seat.
+  4. Dev and test knobs (`SURYA_MOCK_*`, `SURYA_DEMO_*`, `SURYA_ACP_*`, and
+     the rest) rename without an alias on purpose - nothing outside this repo
+     sets them.
 TODO
