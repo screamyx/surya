@@ -368,6 +368,16 @@ pub async fn connect_ws(url: &str) -> Result<RpcClient, RpcError> {
 /// when a token is given. Engines bound off loopback require one
 /// (`zeron_rpc::serve_ws_listener_with_auth`); loopback engines ignore it.
 pub async fn connect_ws_with_token(url: &str, token: Option<&str>) -> Result<RpcClient, RpcError> {
+    connect_ws_within(url, token, CONNECT_TIMEOUT).await
+}
+
+/// [`connect_ws_with_token`] with the handshake cap as a parameter, so a
+/// test of the cap does not have to wait the production 5 s.
+async fn connect_ws_within(
+    url: &str,
+    token: Option<&str>,
+    timeout: std::time::Duration,
+) -> Result<RpcClient, RpcError> {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let mut request = url
         .into_client_request()
@@ -378,13 +388,10 @@ pub async fn connect_ws_with_token(url: &str, token: Option<&str>) -> Result<Rpc
             .map_err(|_| RpcError::Transport("ipc token is not a valid header value".into()))?;
         request.headers_mut().insert("authorization", value);
     }
-    let (ws, _) = tokio::time::timeout(
-        CONNECT_TIMEOUT,
-        tokio_tungstenite::connect_async(request),
-    )
-    .await
-    .map_err(|_| RpcError::Transport(format!("timed out dialing {url}")))?
-    .map_err(|e| RpcError::Transport(e.to_string()))?;
+    let (ws, _) = tokio::time::timeout(timeout, tokio_tungstenite::connect_async(request))
+        .await
+        .map_err(|_| RpcError::Transport(format!("timed out dialing {url}")))?
+        .map_err(|e| RpcError::Transport(e.to_string()))?;
     let (mut sink, mut stream) = ws.split();
     let (out_tx, mut out_rx) = mpsc::channel::<String>(256);
     let (in_tx, in_rx) = mpsc::channel::<String>(256);
@@ -455,8 +462,10 @@ mod connect_tests {
         assert!(!err.to_string().contains("timed out"), "{err}");
     }
 
-    /// A port that accepts and then says nothing is capped by CONNECT_TIMEOUT
-    /// (asked=1 timed_out=1); without the cap the app would wait forever.
+    /// A port that accepts and then says nothing is capped by the handshake
+    /// timeout (asked=1 timed_out=1); without the cap the app would wait
+    /// forever. Run with a 300 ms cap so the test does not burn the
+    /// production 5 s; the production value is `CONNECT_TIMEOUT`.
     #[tokio::test]
     async fn a_silent_endpoint_times_out() {
         let (listener, url) = listener().await;
@@ -464,16 +473,15 @@ mod connect_tests {
             let (_socket, _) = listener.accept().await.unwrap();
             tokio::time::sleep(Duration::from_secs(30)).await;
         });
+        let cap = Duration::from_millis(300);
         let started = Instant::now();
-        let err = connect_ws_with_token(&url, None)
+        let err = connect_ws_within(&url, None, cap)
             .await
             .err()
             .expect("a silent endpoint must time out");
         assert!(err.to_string().contains("timed out"), "{err}");
         let took = started.elapsed();
-        assert!(
-            took >= Duration::from_secs(4) && took < Duration::from_secs(8),
-            "took {took:?}"
-        );
+        assert!(took >= cap && took < Duration::from_secs(3), "took {took:?}");
+        assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(5));
     }
 }

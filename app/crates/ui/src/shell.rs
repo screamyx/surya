@@ -2709,6 +2709,13 @@ impl Shell {
         // has been seen dying a few seconds after the Failed gate, and a lost
         // write would redial the same dead server at the next launch.
         self.save_with(SavePolicy::Immediate, cx);
+        // The Servers page keeps its own copy of the list and the chosen id
+        // and is built once per shell; left alone it would still show the
+        // dead entry as Active and write that id back on its next change.
+        // Drop it so the next visit rebuilds from these settings (the same
+        // way open_settings recreates the Harnesses page).
+        self.servers_page = None;
+        self.servers_sub = None;
         self.switch_engine(None, cx);
         if open_servers {
             self.open_settings(SettingsSection::Servers, cx);
