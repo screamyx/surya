@@ -4201,7 +4201,8 @@ impl Shell {
             .flex_col()
             .gap(px(2.0))
             .px(px(crate::surya::PANEL_PAD + 12.0))
-            .pt(px(10.0))
+            // The titlebar floats over the card; start below it.
+            .pt(px(Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0))
             .pb(px(6.0))
             .child(
                 div()
@@ -6701,7 +6702,7 @@ impl Shell {
                                 let _ = cx;
                             }),
                         ))
-                    }),
+                    })
                     .child(row("surface-card-files", icons::FOLDER, "Files").on_click(
                         cx.listener(|this, _, _, cx| {
                             this.add_space_surface(RightSurface::Files, cx);
