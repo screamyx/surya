@@ -64,7 +64,7 @@ pub(crate) fn mark_input() {
     }
 }
 
-fn base_ms() -> u64 {
+pub(crate) fn base_ms() -> u64 {
     std::env::var("SURYA_PUMP_MS")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
@@ -119,6 +119,7 @@ pub fn pump(_window: &mut gpui::Window, _cx: &mut gpui::App) {
         return;
     }
     RENDERS.fetch_add(1, Ordering::Relaxed);
+    crate::perf::on_render();
     work_now();
 }
 
@@ -148,7 +149,7 @@ pub fn counters() -> String {
         " bg_paints={} kept_frames={}",
         crate::render::background_paints(),
         crate::render::kept_frames()
-    )
+    ) + &format!(" {}", crate::perf::counters())
 }
 
 /// Print the counters every 5 seconds from a plain thread that reads atomics
