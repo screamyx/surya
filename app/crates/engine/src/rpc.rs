@@ -390,6 +390,22 @@ enum MutateParams {
         #[serde(default)]
         at: Option<i64>,
     },
+    // Task board (`crate::tasks`): one board per space, any device writes.
+    // Struct variants with a flattened body, so the enum stays uniform.
+    CreateTask {
+        #[serde(flatten)]
+        params: crate::tasks::CreateTaskParams,
+    },
+    UpdateTask {
+        #[serde(flatten)]
+        params: crate::tasks::UpdateTaskParams,
+    },
+    #[serde(rename_all = "camelCase")]
+    DeleteTask { task_id: String },
+    /// Board position — a float rank; the moved task takes the midpoint of
+    /// its new neighbours so one row changes.
+    #[serde(rename_all = "camelCase")]
+    ReorderTask { task_id: String, rank: f64 },
 }
 
 pub struct EngineRpc {
@@ -490,9 +506,6 @@ impl EngineRpc {
             .ok_or_else(|| RpcError::Failed("local import requires a synced workspace".into()))
     }
 
-    /// Resolve a mention-search root from synced workspace rows. A client may
-    /// name an existing linked worktree for a new chat, but it is verified
-    /// against the space repository before any filesystem walk begins.
     /// The checkout root the file RPCs are jailed to: the space's folder, on
     /// this device only.
     async fn files_jail(&self, space_id: &str) -> Result<crate::files::Jail, RpcError> {
@@ -511,6 +524,9 @@ impl EngineRpc {
             .map_err(|e| RpcError::Failed(e.to_string()))
     }
 
+    /// Resolve a mention-search root from synced workspace rows. A client may
+    /// name an existing linked worktree for a new chat, but it is verified
+    /// against the space repository before any filesystem walk begins.
     async fn file_search_root(&self, p: &FileSearchParams) -> Result<std::path::PathBuf, RpcError> {
         let local_device = self.doc_host.device_id();
         match (&p.chat_id, &p.space_id) {
@@ -878,6 +894,22 @@ impl EngineRpc {
                     .map_err(failed)
                     .map(drop)
             }
+            MutateParams::CreateTask { params } => {
+                self.workspace.create_task(params).map_err(failed).map(drop)
+            }
+            MutateParams::UpdateTask { params } => {
+                self.workspace.update_task(params).map_err(failed).map(drop)
+            }
+            MutateParams::DeleteTask { task_id } => self
+                .workspace
+                .delete_task(&task_id)
+                .map_err(failed)
+                .map(drop),
+            MutateParams::ReorderTask { task_id, rank } => self
+                .workspace
+                .reorder_task(&task_id, rank)
+                .map_err(failed)
+                .map(drop),
         }
     }
 }
@@ -1298,6 +1330,13 @@ impl RpcService for EngineRpc {
             methods::WATCH_SPACES => Ok(RpcReply::Stream(watch_stream(
                 self.workspace.watch_spaces(),
             ))),
+            methods::WATCH_TASKS => {
+                let p: crate::tasks::WatchTasksParams = parse_params(params)?;
+                Ok(RpcReply::Stream(crate::tasks::watch_tasks_stream(
+                    self.workspace.watch_tasks(),
+                    p.space_id,
+                )))
+            }
             methods::WATCH_SESSIONS => {
                 // Local live statuses merged with remote devices' workspace rows.
                 let merged = self
@@ -1734,8 +1773,12 @@ impl RpcService for EngineRpc {
             methods::FILES_WATCH => {
                 let p: zeron_proto::files::FileWatchParams = parse_params(params)?;
                 let jail = self.files_jail(&p.space_id).await?;
-                let batches =
-                    crate::files_watch::watch(jail).map_err(|e| RpcError::Failed(e.to_string()))?;
+                // Recursive inotify adds and the gitignore reads are sync work;
+                // build the watcher on the blocking pool like diff_sync does.
+                let batches = tokio::task::spawn_blocking(move || crate::files_watch::watch(jail))
+                    .await
+                    .map_err(|e| RpcError::Failed(e.to_string()))?
+                    .map_err(|e| RpcError::Failed(e.to_string()))?;
                 Ok(RpcReply::Stream(
                     batches
                         .filter_map(|batch| async move { serde_json::to_value(&batch).ok() })

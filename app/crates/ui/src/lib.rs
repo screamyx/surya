@@ -18,11 +18,13 @@ pub mod attachments;
 pub mod badges;
 #[cfg(feature = "browser")]
 pub mod browser_pane;
+pub mod cards;
 pub mod change_requests;
 pub mod changes;
 pub mod comments;
 pub mod composer;
 pub mod edge_fade;
+pub mod files;
 pub mod frost;
 pub mod history;
 pub mod icons;

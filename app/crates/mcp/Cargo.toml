@@ -10,6 +10,9 @@ name = "surya-mcp"
 path = "src/main.rs"
 
 [dependencies]
+# Task board tools talk to the engine over its IPC WebSocket.
+zeron-rpc.workspace = true
+tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

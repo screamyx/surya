@@ -1,0 +1,16 @@
+[
+  {"version": "v0.9.1", "createSurface": {"surfaceId": "approve_write_leads", "catalogId": "https://a2ui.org/specification/v0_9_1/catalogs/basic/catalog.json"}},
+  {"version": "v0.9.1", "updateComponents": {"surfaceId": "approve_write_leads", "components": [
+    {"id": "root", "component": "Card", "child": "body"},
+    {"id": "body", "component": "Column", "children": ["title", "summary", "code", "footer"]},
+    {"id": "title", "component": "Text", "text": "Write 3 leads", "variant": "h4"},
+    {"id": "summary", "component": "Text", "text": "Set next_follow_up_at to tomorrow 08:00 for the three leads above.", "variant": "caption"},
+    {"id": "code", "component": "Card", "child": "code_text"},
+    {"id": "code_text", "component": "Text", "text": "`Lead::whereIn('id', [412, 418, 421])->update(['next_follow_up_at' => now()->addDay()->setTime(8, 0)]);`"},
+    {"id": "footer", "component": "Row", "children": ["approve", "change"]},
+    {"id": "approve", "component": "Button", "variant": "primary", "child": "approve_label", "action": {"event": {"name": "approve", "context": {"ids": [412, 418, 421]}}}},
+    {"id": "approve_label", "component": "Text", "text": "Approve"},
+    {"id": "change", "component": "Button", "child": "change_label", "action": {"event": {"name": "change_first"}}},
+    {"id": "change_label", "component": "Text", "text": "Change it first"}
+  ]}}
+]

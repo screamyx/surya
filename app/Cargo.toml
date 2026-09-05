@@ -13,6 +13,7 @@ members = [
     "crates/ui",
     "crates/syntax",
     "crates/browser",
+    "crates/a2ui",
     "apps/zeron",
 ]
 
@@ -35,6 +36,7 @@ zeron-syntax = { path = "crates/syntax" }
 zeron-theme = { path = "crates/theme" }
 # surya: haktui's CEF browser pane, behind the `browser` feature on zeron-ui and zeron.
 surya-browser = { path = "crates/browser" }
+surya-a2ui = { path = "crates/a2ui" }
 
 # CRDT
 loro = "1.13"

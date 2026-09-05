@@ -5,14 +5,18 @@
 //! harness-level passthrough (rate-limit meters), never persisted into docs.
 
 pub mod agent;
+pub mod card;
 pub mod entities;
 pub mod files;
 pub mod motion;
+pub mod tasks;
 pub mod view;
 pub mod workspace;
 
 pub use agent::*;
+pub use card::*;
 pub use entities::*;
+pub use tasks::*;
 pub use workspace::*;
 
 /// Parse "0.2.12" (tolerating a `-suffix`/`+build` tail on the last part)
