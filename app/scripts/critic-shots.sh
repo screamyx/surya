@@ -22,7 +22,12 @@ ZERON_DATA_DIR="$WORK/engine" ZERON_IPC_PORT=$PORT ZERON_HARNESS=mock \
 ZERON_MOCK_DELAY_MS=600 ZERON_MOCK_REPEAT=6 ZERON_MOCK_TABLE=1 ZERON_MOCK_CODE=1 \
   env ${ZERON_MOCK_CARDS:+ZERON_MOCK_CARDS="$ZERON_MOCK_CARDS"} "$ZERON" headless > "$WORK/engine.log" 2>&1 &
 ENGINE=$!
-for _ in $(seq 1 60); do grep -q "IPC server listening" "$WORK/engine.log" 2>/dev/null && break; sleep 0.5; done
+# Assembly takes ~13 s on a loaded box (mail ingress + stores); give it 90 s
+# and fail loudly with the engine log instead of letting the seed step guess.
+for _ in $(seq 1 180); do grep -q "IPC server listening" "$WORK/engine.log" 2>/dev/null && break; sleep 0.5; done
+if ! grep -q "IPC server listening" "$WORK/engine.log" 2>/dev/null; then
+  echo "engine did not listen within 90 s (frames=0); engine.log tail:"; tail -20 "$WORK/engine.log"; exit 4
+fi
 
 node - "$PORT" "$PROJECT" <<'JS'
 const [port, project] = process.argv.slice(2);
@@ -69,17 +74,18 @@ shoot() { # shoot <name> <mode> <geom> <extra env...>
   ffmpeg -loglevel error -y -f x11grab -video_size 1600x1000 -i "$DISPLAY_NO" -frames:v 1 "$OUT/$name.png"
   kill $APP 2>/dev/null || true; wait $APP 2>/dev/null || true
   local panics; panics=$(grep -c "panicked at" "$WORK/app-$name.log" || true)
-  echo "shot=1 bytes=$(stat -c %s "$OUT/$name.png") panics=$panics out=$OUT/$name.png"
+  # A grab with <= 2 colours is a black display, not a frame (10:44 incident).
+  local colours; colours=$(python3 -c "from PIL import Image; im=Image.open('$OUT/$name.png').convert('RGB'); print(len(im.getcolors(1<<20) or [0]*3000))" 2>/dev/null || echo "?")
+  echo "shot=1 bytes=$(stat -c %s "$OUT/$name.png") colours=$colours panics=$panics out=$OUT/$name.png"
   grep -E "browser: (on_paint #1|load_end|LOAD ERROR)" "$WORK/app-$name.log" | head -3 || true
 }
 
-# The display lock wraps only launch + xrefresh + grab (rule 10:12). This
-# script takes the lock ITSELF: never wrap it in an outer flock (self-deadlock
-# right after 'seeded=', 10:24). Bounded wait, holder named, exit 3 on busy.
+# The display lock wraps only launch + xrefresh + grab (rule 10:12). Wait a
+# bounded time and say who holds it, so a queued rig never looks hung.
 exec 9>/store/surya-display7.lock
 if ! flock -n 9; then
-  echo "waiting for /store/surya-display7.lock, holder pids: $(fuser /store/surya-display7.lock 2>/dev/null)"
-  flock -w "${SHOT_LOCK_WAIT:-120}" 9 || { echo "display lock busy after ${SHOT_LOCK_WAIT:-120}s, holder: $(fuser /store/surya-display7.lock 2>/dev/null) (frames=0)"; exit 3; }
+  echo "waiting for /store/surya-display7.lock (held by: $(ps -eo user,args | grep '[f]lock /store/surya-display7.lock' | head -1 | cut -c1-100))"
+  flock -w "${SHOT_LOCK_WAIT:-300}" 9 || { echo "display lock still held after ${SHOT_LOCK_WAIT:-300}s, giving up (frames=0)"; exit 3; }
 fi
 for mode in light dark; do
   for geom in $GEOMS; do
