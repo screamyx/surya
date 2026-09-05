@@ -19,6 +19,11 @@ pub use active::{ActiveRow, active_row, canonical_url, status_text};
 use add::AddDialog;
 pub use add::parse_server;
 
+/// The port a portless address means, in the Add dialog and when two
+/// addresses are compared: one rule, so an engine saved from the Command
+/// line row is found again by the address that was dialed.
+pub const DEFAULT_PORT: u16 = 27654;
+
 pub enum ServersEvent {
     /// The list or the active choice changed; the shell persists it.
     Changed {
@@ -138,17 +143,20 @@ impl ServersPage {
 
     /// Keep the engine that came from the command line: a saved entry at its
     /// address, chosen, so the next launch (without the flag) dials it too.
+    /// Idempotent: an entry already at that address is chosen, not added, and
+    /// a target that would not save back to the same address is refused.
     fn save_command_line(&mut self, cx: &mut Context<Self>) {
         let Some(target) = self.state.read(cx).dialed_server().cloned() else {
             return;
         };
-        let parsed = parse_server(
-            target.name.as_deref().unwrap_or(""),
-            &target.url,
-            "",
-            target.token.as_deref().unwrap_or(""),
-        );
-        match parsed {
+        let wanted = canonical_url(&target.url);
+        if let Some(existing) = self.servers.iter().find(|s| canonical_url(&s.url()) == wanted) {
+            self.active = Some(existing.id.clone());
+            self.emit_changed(cx);
+            cx.notify();
+            return;
+        }
+        match add::entry_for_target(&target) {
             Ok(entry) => {
                 self.active = Some(entry.id.clone());
                 self.servers.push(entry);
@@ -161,6 +169,8 @@ impl ServersPage {
         }
     }
 
+    /// `remove_id` is the saved entry the row's Remove button drops (`None`
+    /// for rows that are not saved).
     fn render_row(
         &self,
         ix: usize,

@@ -6,10 +6,11 @@ use gpui::{
     AnyElement, Context, Entity, Focusable, SharedString, Subscription, Window, div, prelude::*, px,
 };
 
-use super::ServersPage;
+use super::{ServersPage, canonical_url};
 use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::popover;
 use crate::settings::ServerEntry;
+use crate::state::RemoteEngineTarget;
 use crate::theme::Theme;
 
 /// Build a server row from the dialog's raw text. Pure so the parsing rules
@@ -38,14 +39,17 @@ pub fn parse_server(
         return Err("Host is required (an IP address or a name your network resolves).".into());
     }
     let port = match port.trim() {
-        "" => inline_port.unwrap_or("27654"),
-        given => given,
+        "" => inline_port,
+        given => Some(given),
     };
-    let port: u16 = port
-        .parse::<u16>()
-        .ok()
-        .filter(|p| *p > 0)
-        .ok_or_else(|| format!("Port {port:?} is not a number between 1 and 65535."))?;
+    let port: u16 = match port {
+        None => super::DEFAULT_PORT,
+        Some(given) => given
+            .parse::<u16>()
+            .ok()
+            .filter(|p| *p > 0)
+            .ok_or_else(|| format!("Port {given:?} is not a number between 1 and 65535."))?,
+    };
     let name = match name.trim() {
         "" => host.to_string(),
         given => given.to_string(),
@@ -63,6 +67,27 @@ pub fn parse_server(
     })
 }
 
+/// The saved entry for an engine that came from the command line. Refused
+/// when the entry would not sit at the dialed address (a path in the url,
+/// say: `ServerEntry` keeps host and port only), so Save never stores an
+/// engine the row would keep showing as unsaved.
+pub(super) fn entry_for_target(target: &RemoteEngineTarget) -> Result<ServerEntry, String> {
+    let entry = parse_server(
+        target.name.as_deref().unwrap_or(""),
+        &target.url,
+        "",
+        target.token.as_deref().unwrap_or(""),
+    )?;
+    let saved = canonical_url(&entry.url());
+    let dialed = canonical_url(&target.url);
+    if saved != dialed {
+        return Err(format!(
+            "{dialed} would be saved as {saved}; add it by hand instead."
+        ));
+    }
+    Ok(entry)
+}
+
 /// The four fields of the Add server dialog plus the last rejection.
 pub(super) struct AddDialog {
     pub(super) name: Entity<ComposerInput>,
@@ -76,7 +101,7 @@ pub(super) struct AddDialog {
 impl AddDialog {
     pub(super) fn open(window: &mut Window, cx: &mut Context<ServersPage>) -> AddDialog {
         let mut events = Vec::with_capacity(4);
-        let mut field = |placeholder: &'static str, cx: &mut Context<ServersPage>| {
+        let mut field = |placeholder: SharedString, cx: &mut Context<ServersPage>| {
             let input = cx.new(|cx| ComposerInput::new(placeholder, cx));
             events.push(
                 cx.subscribe(&input, |this: &mut ServersPage, _, event, cx| {
@@ -87,10 +112,10 @@ impl AddDialog {
             );
             input
         };
-        let name = field("Name (optional)", cx);
-        let host = field("Host, e.g. 100.64.0.9 or build-box", cx);
-        let port = field("Port (default 27654)", cx);
-        let token = field("Token from `zeron status` on that machine", cx);
+        let name = field("Name (optional)".into(), cx);
+        let host = field("Host, e.g. 100.64.0.9 or build-box".into(), cx);
+        let port = field(format!("Port (default {})", super::DEFAULT_PORT).into(), cx);
+        let token = field("Token from `zeron status` on that machine".into(), cx);
         window.focus(&host.focus_handle(cx), cx);
         AddDialog {
             name,
@@ -162,11 +187,11 @@ pub(super) fn render(
     popover::modal("add-server-dialog", viewport, card)
 }
 
-/// `remove_id` is the saved entry the row's Remove button drops (`None`
-
 #[cfg(test)]
 mod tests {
-    use super::parse_server;
+    use super::{entry_for_target, parse_server};
+    use crate::settings::servers::DEFAULT_PORT;
+    use crate::state::RemoteEngineTarget;
 
     /// Save on the Command line row goes through `parse_server` with the
     /// dialed url as the host field: the saved entry must land at the same
@@ -206,7 +231,29 @@ mod tests {
     #[test]
     fn port_field_wins_and_defaults() {
         assert_eq!(parse_server("", "h:1", "2", "").unwrap().port, 2);
-        assert_eq!(parse_server("", "h", "", "").unwrap().port, 27654);
+        assert_eq!(parse_server("", "h", "", "").unwrap().port, DEFAULT_PORT);
+    }
+
+    /// Save is only offered an entry that the dialed address will find
+    /// again; anything else is refused rather than saved wrong
+    /// (asked=4 saved=2 refused=2).
+    #[test]
+    fn a_command_line_target_saves_only_at_its_own_address() {
+        let target = |url: &str| RemoteEngineTarget {
+            url: url.into(),
+            token: Some("tok".into()),
+            name: None,
+        };
+        let entry = entry_for_target(&target("ws://PC-Ajim:27700/")).unwrap();
+        assert_eq!(
+            (entry.host.as_str(), entry.port, entry.name.as_str()),
+            ("PC-Ajim", 27700, "PC-Ajim")
+        );
+        assert_eq!(entry.token.as_deref(), Some("tok"));
+        let portless = entry_for_target(&target("ws://pc-ajim")).unwrap();
+        assert_eq!(portless.port, DEFAULT_PORT);
+        assert!(entry_for_target(&target("ws://h:1/rpc")).is_err());
+        assert!(entry_for_target(&target("wss://h:1")).is_err());
     }
 
     #[test]
