@@ -93,9 +93,12 @@ wrap_life_span_handler! {
             // opens in this pane instead of a second browser that would
             // take the frame slot (haktui gives it a tab; there are none
             // here yet). Cancelled, then the opener navigates.
-            let url = target_url.map(|u| u.to_string()).unwrap_or_default();
+            // The same allowlist as the address bar: `window.open("file:///..")`
+            // gets nothing, not the disk.
+            let asked = target_url.map(|u| u.to_string()).unwrap_or_default();
+            let url = crate::page::navigate_to(&asked);
             POPUPS_REFUSED.fetch_add(1, Ordering::Relaxed);
-            println!("browser: popup refused, opening in the pane: {url}");
+            println!("browser: popup refused, opening in the pane: {url:?} (asked {asked:?})");
             if let (Some(browser), false) = (browser, url.is_empty())
                 && let Some(frame) = browser.main_frame()
             {

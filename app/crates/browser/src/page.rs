@@ -128,13 +128,21 @@ mod tests {
         assert_eq!(navigate_to("  "), "");
     }
 
+    /// The address bar and `on_before_popup` (a page's `window.open`) both
+    /// go through here, so a page cannot open what a person cannot type.
     #[test]
     fn only_http_and_https_are_taken_as_written() {
         assert_eq!(navigate_to("file:///etc/passwd"), "");
+        assert_eq!(navigate_to("FILE:///etc/passwd"), "");
         assert_eq!(navigate_to("chrome://settings"), "");
+        assert_eq!(navigate_to("chrome-extension://abc/x.html"), "");
         assert_eq!(navigate_to("about:blank"), "");
         assert_eq!(navigate_to("javascript:alert(1)"), "");
+        assert_eq!(navigate_to("data:text/html,<h1>x</h1>"), "");
         assert_eq!(navigate_to("ftp://x.y/z"), "");
+        // What a popup may open: the same two schemes, as written.
+        assert_eq!(navigate_to("https://example.com/next"), "https://example.com/next");
+        assert_eq!(navigate_to("http://example.com/next?x=1"), "http://example.com/next?x=1");
     }
 
     #[test]
