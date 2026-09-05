@@ -27,7 +27,25 @@ Warmth is the differentiator because every other agent UI in this category is co
 Three things the mood rules out, in advance:
 - Any cool grey. Every neutral in this system carries a yellow-brown cast.
 - Any gradient. The depth comes from surfaces sitting on each other.
-- Any second accent. One accent, spent only where an action matters.
+- Any second accent. One accent, and it is a spice.
+
+### What the accent is for
+
+"Spent only where an action matters" turned out to be the wrong half of the rule, so here is the whole one.
+
+The accent marks **agent state and text identity**, not buttons:
+
+| Wears the accent | Does not |
+|---|---|
+| Running and needs-you state: the chip, the dot, the rail badge | Ordered-list numbers and bullets |
+| The caret and the text selection | Inline code and code blocks |
+| The activity glyph | File paths, tab underlines, blockquote rails |
+
+**Primary actions use the solid plate, not the accent.** Near-black on the light panel, cream on the dark one. That plate is the highest contrast the palette can produce, so it reads as primary more strongly than terracotta ever could - terracotta on parchment is *lower* contrast than near-black on parchment. Linear, Craft and Raycast all do this.
+
+The one exception, at most once per screen: when the action **is** the attention item, it may carry the accent. A permission card's Approve is the needs-you item and the action in the same control, so it may wear it. A second accent-bearing button on the same screen means one of them is not really primary.
+
+This is why a screen can end up with no accent-bearing button at all and still be right: in an app whose spine is an attention queue, the accent's most valuable job is saying "this one needs you", not decorating a button the user is already looking at.
 
 ## Reference anchor
 
@@ -58,12 +76,20 @@ Three families, each with one job.
 
 | Family | Job | Where |
 |---|---|---|
-| Newsreader Variable (serif) | Page titles only | Home greeting, Settings, Result title, New ask, section anchors |
+| Geist Variable (sans), semibold | Page titles | Home greeting, Settings, Result title, New ask, section anchors |
 | Geist Variable (sans) | Everything functional | Rows, labels, buttons, body |
 | Geist Mono Variable | Anything a machine wrote | Paths, model ids, counts, diffs, timestamps |
 
-The scale has to clear 2.5x heading-to-body, which the baseline failed on ten of twelve screens.
-Body drops to 13px for dense rows and 15px for reading, the page title lands at 40px on desktop and 30px on phone.
+The scale has to clear 2x heading-to-body, which the baseline failed on ten of twelve screens.
+Body drops to 13px for dense rows, and the page title lands at 28px.
+
+Three numbers here changed when the native shell was built, and the reasons are worth keeping.
+
+**The page title is sans, not Newsreader.** No serif face is bundled in `app/crates/ui/assets/fonts`, and adding one before the RC would mean shipping a font file, its licence and a new gpui registration for a single text style. The serif is a real improvement and stays on the list for after the RC; until then the page title is Geist semibold, which the type scale already distinguishes by size and weight alone.
+
+**28px, not 40.** 40px was drawn against a web mockup with a page-wide header. In the native shell the title sits inside a floating panel next to a rail, and at 40 it crowds the panel it lives in. The scale is in `app/crates/ui/src/surya.rs`.
+
+**2x, not 2.5x.** Display 28 over body 14. 2.5x from a 14px body means a 35px title, which runs into the same crowding; the ratio follows the title, not the other way round. `surya::tests::the_scale_has_real_contrast` prints the measured figure so it cannot drift silently.
 Every count is `tabular-nums`, so numbers in a column line up.
 
 ## Motion depth
