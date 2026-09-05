@@ -21,6 +21,19 @@ TARGET="${CARGO_TARGET_DIR:-$(cd "$HERE/.." && pwd)/target}"
 BIN="$TARGET/debug/zeron"
 OUT="${PROOF_OUT:-/tmp/surya-browser-ui-proof}/$APPEARANCE"
 PY="${SURYA_XTEST_PYTHON:-python3}"
+
+# Every click and chord goes through python-xlib. When that import fails the
+# scripts exit non-zero, and a rig that shrugged and shot anyway would hand
+# back a green-looking shot of a screen nobody drove. So: any input step
+# that fails ends the run, with the app killed and no screenshot written.
+drive() {
+  if ! "$PY" "$@"; then
+    echo "proof: FAILED, input step did not run: $*" >&2
+    echo "proof: no shot written. Set SURYA_XTEST_PYTHON to a python with python-xlib." >&2
+    [ -n "${APP:-}" ] && { kill "$APP" 2>/dev/null; sleep 1; kill -9 "$APP" 2>/dev/null; }
+    exit 4
+  fi
+}
 W=1440; H=900
 [ -x "$BIN" ] || { echo "no binary at $BIN (build with --features browser)"; exit 2; }
 [ -f "$TARGET/debug/libcef.so" ] || { echo "no libcef.so next to the binary"; exit 2; }
@@ -48,7 +61,7 @@ APP=$!
 # There is no window manager on the headless Xorg, so nothing places the
 # window on screen and nothing gives it the keyboard: x7-window does both.
 sleep 10
-"$PY" "$HERE/x7-window.py" "$DISPLAY" 0 0 $W $H 240 || echo "window move failed"
+drive "$HERE/x7-window.py" "$DISPLAY" 0 0 $W $H 240
 # The window maps long before the shell renders into it; a debug build under
 # load takes another minute. Wait for the engine line, then the first frame.
 for _ in $(seq 1 "$WAIT"); do
@@ -65,23 +78,23 @@ done
 sleep 15; command -v xrefresh >/dev/null && xrefresh; sleep 3
 
 # The keyboard starts in the page, as it does after a person clicks a page.
-"$PY" "$HERE/x7-click.py" "$DISPLAY" $(( W - 200 )) $(( H / 2 )) || echo "click failed"
+drive "$HERE/x7-click.py" "$DISPLAY" $(( W - 200 )) $(( H / 2 ))
 sleep 1
 
 # A second tab, then three addresses typed into the bar and loaded. ctrl-a
 # selects what the bar already shows, the way a fresh click in Chrome does.
-"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+t "example.org" enter || echo "keys 1 failed"
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+t "example.org" enter
 sleep 14
-"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "iana.org" enter || echo "keys 2 failed"
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "iana.org" enter
 sleep 14
-"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "example.com" enter || echo "keys 3 failed"
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "example.com" enter
 sleep 16; command -v xrefresh >/dev/null && xrefresh; sleep 2
 
 # Find a word the page actually shows, then zoom two steps to 125%.
-"$PY" "$HERE/x7-click.py" "$DISPLAY" $(( W - 200 )) $(( H / 2 )) || echo "click failed"
-"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+f "Domain" || echo "keys 4 failed"
+drive "$HERE/x7-click.py" "$DISPLAY" $(( W - 200 )) $(( H / 2 ))
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+f "Domain"
 sleep 5
-"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+equal ctrl+equal || echo "keys 5 failed"
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+equal ctrl+equal
 sleep 4; command -v xrefresh >/dev/null && xrefresh; sleep 3
 
 ffmpeg -loglevel error -y -f x11grab -video_size "${W}x${H}" -i "$DISPLAY" -frames:v 1 "$SHOT"
