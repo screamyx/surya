@@ -16,7 +16,7 @@
 
 use std::sync::Mutex;
 
-use cef::{ImplBrowserHost as _, MouseButtonType, MouseEvent};
+use cef::{ImplBrowser as _, ImplBrowserHost as _, MouseButtonType, MouseEvent};
 use futures::channel::oneshot;
 use serde_json::{Value, json};
 

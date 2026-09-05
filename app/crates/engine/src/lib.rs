@@ -178,6 +178,10 @@ pub struct EngineCore {
     mail_ingress: std::sync::Mutex<Option<MailIngress>>,
     /// Exclusive data-dir lock — held for the engine's lifetime (single-instance).
     _instance_lock: InstanceLock,
+    /// The pane token every `Browser.*` call must carry: `{data_dir}/ipc-token`
+    /// (`crate::browser_rpc`). `None` when the file could not be made, and
+    /// then the browser broker is closed.
+    pane_token: Option<String>,
 }
 
 impl EngineCore {
@@ -348,6 +352,7 @@ impl EngineCore {
             device_id,
             local_import,
             workspace_scope: profile.scope(),
+            pane_token: crate::ipc::load_or_create_token(profile.device_root()).ok(),
             mail_ingress: std::sync::Mutex::new(None),
             auth: std::sync::Mutex::new(None),
             links: std::sync::Mutex::new(None),
@@ -493,9 +498,7 @@ impl EngineCore {
         )
         .with_auth(self.auth())
         .with_mail(self.mail.clone())
-        .with_browser(crate::browser_rpc::BrowserRpc::new(
-            crate::ipc::load_or_create_token(&self.data_dir).ok(),
-        ));
+        .with_browser(crate::browser_rpc::BrowserRpc::new(self.pane_token.clone()));
         if let Some(links) = self.links() {
             rpc = rpc.with_links(links);
         }
