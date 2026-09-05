@@ -14,6 +14,16 @@
 //! `Browser.Call` fails at once with a message the agent can read; nothing
 //! is queued for a pane that may never come.
 //!
+//! **Every Browser.* call carries the pane token.** The engine's loopback
+//! socket is open (no handshake token, `ipc.rs`), and on a shared box any
+//! local process could otherwise drive the owner's cookie-persistent
+//! Chromium profile or take over as the pane and read every typed text
+//! (Opus review of #87). So the broker is built with the engine's IPC
+//! token, `{data_dir}/ipc-token` (0600, the same secret a non-loopback bind
+//! enforces at the handshake), and refuses any call, watch or reply whose
+//! `token` does not match it. The app reads the file from its data dir; the
+//! sidecar reads it from the engine's; a process of another user cannot.
+//!
 //! Same sub-service shape as [`crate::mail::MailRpc`]: `handles` + `handle`,
 //! one dispatch line in `rpc.rs`.
 
@@ -45,6 +55,9 @@ struct State {
 #[derive(Clone, Default)]
 pub struct BrowserRpc {
     state: Arc<Mutex<State>>,
+    /// The pane token every call must present. `None` refuses everything:
+    /// a broker without a secret is closed, not open.
+    token: Option<Arc<str>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -64,6 +77,38 @@ struct ReplyParams {
 }
 
 impl BrowserRpc {
+    /// A broker that admits calls carrying `token`.
+    pub fn new(token: Option<String>) -> Self {
+        Self {
+            state: Arc::default(),
+            token: token
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .map(Arc::from),
+        }
+    }
+
+    /// Whether `params.token` is the pane token. Constant-time on the
+    /// bytes, so a wrong token costs the same as a right one.
+    fn authorized(&self, params: &Value) -> Result<(), RpcError> {
+        let Some(wanted) = self.token.as_deref() else {
+            return Err(RpcError::Failed(
+                "browser: this engine has no pane token; Browser.* is closed".into(),
+            ));
+        };
+        let given = params.get("token").and_then(Value::as_str).unwrap_or("");
+        let mut diff = usize::from(given.len() != wanted.len());
+        for (a, b) in given.bytes().zip(wanted.bytes()) {
+            diff |= usize::from(a != b);
+        }
+        if diff != 0 {
+            return Err(RpcError::Failed(
+                "browser: not authorized; pass the engine's pane token ({data_dir}/ipc-token, or ZERON_IPC_TOKEN)".into(),
+            ));
+        }
+        Ok(())
+    }
+
     pub fn handles(method: &str) -> bool {
         matches!(
             method,
@@ -148,6 +193,7 @@ impl BrowserRpc {
 #[async_trait]
 impl RpcService for BrowserRpc {
     async fn handle(&self, method: &str, params: Value) -> Result<RpcReply, RpcError> {
+        self.authorized(&params)?;
         match method {
             methods::BROWSER_CALL => {
                 let p: CallParams = parse_params(params)?;
@@ -180,9 +226,13 @@ impl RpcService for BrowserRpc {
 mod tests {
     use super::*;
 
+    fn broker() -> BrowserRpc {
+        BrowserRpc::new(Some("pane-secret".into()))
+    }
+
     #[tokio::test]
     async fn a_call_with_no_pane_fails_at_once_and_says_so() {
-        let rpc = BrowserRpc::default();
+        let rpc = broker();
         let err = rpc.call("browser_snapshot", json!({})).await.unwrap_err();
         assert!(err.contains("no surya app"), "{err}");
         assert!(!rpc.attached());
@@ -190,7 +240,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_call_reaches_the_watcher_and_its_reply_comes_back() {
-        let rpc = BrowserRpc::default();
+        let rpc = broker();
         let mut rx = rpc.watch();
         assert!(rpc.attached());
         let pane = rpc.clone();
@@ -201,7 +251,7 @@ mod tests {
             let id = item["id"].as_u64().unwrap();
             pane.handle(
                 methods::BROWSER_REPLY,
-                json!({ "id": id, "ok": { "title": "Example Domain" } }),
+                json!({ "id": id, "ok": { "title": "Example Domain" }, "token": "pane-secret" }),
             )
             .await
             .unwrap();
@@ -216,7 +266,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_error_reply_is_the_tool_error() {
-        let rpc = BrowserRpc::default();
+        let rpc = broker();
         let mut rx = rpc.watch();
         let pane = rpc.clone();
         tokio::spawn(async move {
@@ -230,7 +280,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_new_watcher_replaces_the_old_and_a_dropped_one_detaches() {
-        let rpc = BrowserRpc::default();
+        let rpc = broker();
         let old = rpc.watch();
         let _new = rpc.watch();
         drop(old);
@@ -242,14 +292,40 @@ mod tests {
 
     #[tokio::test]
     async fn a_reply_frame_reports_whether_anyone_waited() {
-        let rpc = BrowserRpc::default();
+        let rpc = broker();
         let RpcReply::Value(v) = rpc
-            .handle(methods::BROWSER_REPLY, json!({ "id": 1, "ok": {} }))
+            .handle(methods::BROWSER_REPLY, json!({ "id": 1, "ok": {}, "token": "pane-secret" }))
             .await
             .unwrap()
         else {
             panic!("unary")
         };
         assert_eq!(v["delivered"], false);
+    }
+
+    #[tokio::test]
+    async fn without_the_pane_token_every_method_is_refused() {
+        let rpc = broker();
+        for method in [methods::BROWSER_CALL, methods::BROWSER_WATCH, methods::BROWSER_REPLY] {
+            for params in [json!({}), json!({ "token": "wrong" }), json!({ "token": "pane-secre" })] {
+                let err = rpc.handle(method, params.clone()).await.err().map(|e| e.to_string());
+                assert!(
+                    err.as_deref().is_some_and(|e| e.contains("not authorized")),
+                    "{method} {params}: {err:?}"
+                );
+            }
+        }
+        assert!(!rpc.attached(), "a refused watch attaches nothing");
+    }
+
+    #[tokio::test]
+    async fn a_broker_without_a_token_is_closed_not_open() {
+        let rpc = BrowserRpc::default();
+        let err = rpc
+            .handle(methods::BROWSER_CALL, json!({ "op": "browser_snapshot", "token": "" }))
+            .await
+            .err()
+            .map(|e| e.to_string());
+        assert!(err.as_deref().is_some_and(|e| e.contains("no pane token")), "{err:?}");
     }
 }

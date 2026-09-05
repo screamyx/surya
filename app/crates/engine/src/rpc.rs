@@ -527,6 +527,12 @@ impl EngineRpc {
         self
     }
 
+    /// Attach the browser pane broker with its pane token (`Browser.*`).
+    pub fn with_browser(mut self, browser: crate::browser_rpc::BrowserRpc) -> Self {
+        self.browser = browser;
+        self
+    }
+
     /// Attach agent mail — the `Mail.*` methods and the `WatchMail` feed.
     pub fn with_mail(mut self, mail: crate::mail::Mail) -> Self {
         self.mail = Some(crate::mail::MailRpc::new(mail));

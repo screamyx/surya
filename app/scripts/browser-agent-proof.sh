@@ -42,6 +42,10 @@ done
 URL="http://127.0.0.1:$HTTP_PORT/index.html"
 echo "page $URL engine port $PORT"
 
+# The engine and the app run with separate data dirs here, so the pane
+# token (normally the engine's {data_dir}/ipc-token) is handed to both, and
+# to surya-mcp through the engine's environment, as ZERON_IPC_TOKEN.
+export ZERON_IPC_TOKEN="probe-$RANDOM$RANDOM$RANDOM"
 # 1. The engine, headless, with the mock harness driving surya-mcp.
 ZERON_DATA_DIR="$OUT/engine" ZERON_IPC_PORT=$PORT ZERON_HARNESS=mock \
   ZERON_MOCK_BROWSER="$URL" SURYA_MCP_EXECUTABLE="$MCP" RUST_LOG=info \

@@ -8,6 +8,11 @@
 //! `browser_screenshot` comes back twice: as an MCP image content block the
 //! model can see, and as a card in the card store (like `show_card`) so the
 //! transcript shows the picture where the tool ran.
+//!
+//! Every call carries the engine's pane token (`ZERON_IPC_TOKEN`, else
+//! `{ZERON_DATA_DIR or ~/.surya}/ipc-token`, a 0600 file of the engine's
+//! user): the engine refuses Browser.* without it, so a stranger's process
+//! on the box cannot drive the owner's pane through this server either.
 
 use serde_json::{Value, json};
 use zeron_rpc::methods;
@@ -88,6 +93,23 @@ pub fn tool_specs() -> Vec<Value> {
     ]
 }
 
+/// The pane token: `ZERON_IPC_TOKEN`, else the engine's `ipc-token` file
+/// under `ZERON_DATA_DIR` (the engine's env, inherited) or `~/.surya`.
+pub fn pane_token() -> Option<String> {
+    let non_empty = |t: String| {
+        let t = t.trim().to_string();
+        (!t.is_empty()).then_some(t)
+    };
+    if let Some(t) = std::env::var("ZERON_IPC_TOKEN").ok().and_then(non_empty) {
+        return Some(t);
+    }
+    let dir = std::env::var_os("ZERON_DATA_DIR")
+        .filter(|d| !d.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".surya")))?;
+    std::fs::read_to_string(dir.join("ipc-token")).ok().and_then(non_empty)
+}
+
 /// One tool call from the synchronous server loop. Returns the MCP result
 /// object (`content` + `isError`), or an error string the server wraps.
 pub fn call_blocking(
@@ -100,13 +122,16 @@ pub fn call_blocking(
         .enable_all()
         .build()
         .map_err(|e| format!("tokio runtime: {e}"))?;
+    let token = pane_token().ok_or(
+        "no pane token: set ZERON_IPC_TOKEN or run under the engine's ZERON_DATA_DIR (its ipc-token file)",
+    )?;
     let answer = runtime.block_on(async {
         let target = engine_target();
         let client = zeron_rpc::connect_ws_with_token(&target.url, target.token.as_deref())
             .await
             .map_err(|e| format!("no surya engine at {}: {e}", target.url))?;
         client
-            .call(methods::BROWSER_CALL, json!({ "op": name, "args": args }))
+            .call(methods::BROWSER_CALL, json!({ "op": name, "args": args, "token": token }))
             .await
             .map_err(|e| e.to_string())
     })?;

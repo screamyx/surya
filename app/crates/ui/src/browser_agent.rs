@@ -8,6 +8,7 @@
 //! them arrive. One op at a time, in order; a deadline per op so a page
 //! that never loads cannot hold the stream.
 
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -23,6 +24,7 @@ use crate::state::{AppState, EngineHandle};
 const OP_DEADLINE: Duration = Duration::from_secs(25);
 const RETRY: Duration = Duration::from_secs(2);
 
+static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static CALLED: AtomicU64 = AtomicU64::new(0);
 static OK: AtomicU64 = AtomicU64::new(0);
 
@@ -35,14 +37,36 @@ pub fn counters() -> String {
     )
 }
 
+/// The pane token this engine wants: `ZERON_IPC_TOKEN`, else the engine's
+/// `ipc-token` file under the data dir (the embedded engine wrote it there;
+/// a daemon on this machine shares the same default dir). `None` when
+/// neither exists, and then the watch is refused and says so.
+pub fn pane_token(data_dir: Option<&Path>) -> Option<String> {
+    std::env::var("ZERON_IPC_TOKEN")
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .or_else(|| {
+            let dir = data_dir?;
+            std::fs::read_to_string(zeron_engine::ipc::token_path(dir))
+                .ok()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+        })
+}
+
 /// Attach the pane to this engine. Returns the standing task; it resubscribes
 /// after a daemon restart like the other watches.
-pub fn spawn(cx: &mut Context<AppState>, handle: EngineHandle) -> Task<()> {
+pub fn spawn(cx: &mut Context<AppState>, handle: EngineHandle, data_dir: Option<PathBuf>) -> Task<()> {
     cx.spawn(async move |this, cx| {
         loop {
+            let token = pane_token(data_dir.as_deref()).unwrap_or_default();
+            if token.is_empty() && !WARNED.swap(true, Ordering::AcqRel) {
+                println!("browser-agent: no pane token (ZERON_IPC_TOKEN or {{data_dir}}/ipc-token); the engine will refuse the watch");
+            }
             match handle
                 .client()
-                .subscribe(methods::BROWSER_WATCH, json!({}))
+                .subscribe(methods::BROWSER_WATCH, json!({ "token": token }))
                 .await
             {
                 Ok(mut rx) => {
@@ -71,8 +95,8 @@ pub fn spawn(cx: &mut Context<AppState>, handle: EngineHandle) -> Task<()> {
                             surya_browser::devtools::counters()
                         );
                         let reply = match result {
-                            Ok(ok) => json!({ "id": id, "ok": ok }),
-                            Err(error) => json!({ "id": id, "error": error }),
+                            Ok(ok) => json!({ "id": id, "ok": ok, "token": token }),
+                            Err(error) => json!({ "id": id, "error": error, "token": token }),
                         };
                         if let Err(e) = handle.client().call(methods::BROWSER_REPLY, reply).await {
                             tracing::warn!(error = %e, "browser-agent: reply did not reach the engine");

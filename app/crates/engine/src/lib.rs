@@ -492,7 +492,10 @@ impl EngineCore {
             self.workspace_scope,
         )
         .with_auth(self.auth())
-        .with_mail(self.mail.clone());
+        .with_mail(self.mail.clone())
+        .with_browser(crate::browser_rpc::BrowserRpc::new(
+            crate::ipc::load_or_create_token(&self.data_dir).ok(),
+        ));
         if let Some(links) = self.links() {
             rpc = rpc.with_links(links);
         }
