@@ -3531,8 +3531,13 @@ impl Composer {
         request_id: String,
         decision: zeron_proto::PermissionDecision,
         remember: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // The panel is about to unmount. Hand focus back to the input, or it
+        // dies with the panel and the next keystroke goes nowhere.
+        let input_focus = self.input.read(cx).focus_handle.clone();
+        window.focus(&input_focus, cx);
         let rule = remember.then(|| zeron_proto::RememberRule {
             scope: zeron_proto::RuleScope::Workspace,
             pattern: String::new(),
@@ -5694,7 +5699,12 @@ impl Composer {
     /// purpose - the tool is blocked either way, and a prompt that vanishes
     /// without answering is how the user ends up staring at a run that looks
     /// hung (the 13:06 case this whole change is for).
-    fn on_permission_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+    fn on_permission_key(
+        &mut self,
+        event: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let Some((request_id, _, _)) = self.pending_permission(cx) else {
             return;
         };
@@ -5711,7 +5721,7 @@ impl Composer {
             _ => None,
         };
         if let Some((decision, remember)) = answer {
-            self.answer_permission(request_id, decision, remember, cx);
+            self.answer_permission(request_id, decision, remember, window, cx);
             cx.stop_propagation();
         }
     }
@@ -5764,8 +5774,8 @@ impl Composer {
                     ))
                     .on_hover(motion::hover_listener(format!("permission-option-{ix}")))
                     .cursor_pointer()
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.answer_permission(request_id.clone(), decision, remember, cx);
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.answer_permission(request_id.clone(), decision, remember, window, cx);
                     }))
                     .child(
                         div()
@@ -5799,8 +5809,8 @@ impl Composer {
         div()
             .id("permission-panel")
             .track_focus(&self.permission_focus)
-            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-                this.on_permission_key(event, cx)
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
+                this.on_permission_key(event, window, cx)
             }))
             // Comet's literals, because that is what the question panel two
             // functions down uses since #82 put comet's look back. Kept
@@ -6146,7 +6156,14 @@ impl Focusable for Composer {
         // While the permission panel is up the input is not mounted, so a
         // fallback that routed there would focus nothing and the panel's keys
         // would stay dead.
-        if self.pending_permission(cx).is_some() {
+        //
+        // `wizard.is_none()` mirrors `Render`, which returns on the wizard
+        // BEFORE it reaches the permission branch. A question and a
+        // permission can be live at once - they are scanned independently and
+        // the wizard latches until its own resolve syncs - and without this
+        // the fallback would focus a `permission_focus` that is not mounted,
+        // which is the dead keyboard again by another route.
+        if self.wizard.is_none() && self.pending_permission(cx).is_some() {
             return self.permission_focus.clone();
         }
         self.input.focus_handle(cx)
