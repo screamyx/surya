@@ -84,8 +84,35 @@ fn resolve_mcp_binary(options: &SuryaOptions) -> Option<PathBuf> {
         .find(|p| p.exists())
 }
 
-/// One directory per agent, so concurrent agents never share a config file.
-fn run_dir(agent_id: &str) -> PathBuf {
+/// The root the generated per-agent directories live under.
+///
+/// `$XDG_RUNTIME_DIR` first: it is already per-user and 0700. Without it, a
+/// temp dir suffixed with our uid, because a fixed `/tmp/surya-mcp` is shared
+/// ground - the first user to create it owns it, the second cannot write
+/// there, and either could plant an `mcp.json` the other's agent then loads
+/// (surya is a public project and a box can have several users on it,
+/// decision 18).
+pub fn default_root() -> PathBuf {
+    if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR").filter(|d| !d.is_empty()) {
+        return PathBuf::from(dir).join("surya-mcp");
+    }
+    std::env::temp_dir().join(format!("surya-mcp-{}", current_uid()))
+}
+
+#[cfg(unix)]
+fn current_uid() -> String {
+    // SAFETY: getuid(2) reads a process attribute and cannot fail.
+    unsafe { libc::getuid() }.to_string()
+}
+
+#[cfg(not(unix))]
+fn current_uid() -> String {
+    std::env::var("USERNAME").unwrap_or_else(|_| "user".into())
+}
+
+/// One directory per agent under `root`, so concurrent agents never share a
+/// config file.
+fn run_dir(root: &Path, agent_id: &str) -> PathBuf {
     let safe: String = agent_id
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
@@ -95,7 +122,25 @@ fn run_dir(agent_id: &str) -> PathBuf {
     } else {
         safe
     };
-    std::env::temp_dir().join("surya-mcp").join(safe)
+    root.join(safe)
+}
+
+/// Create `dir` and every parent, owner-only on unix. The config carries the
+/// agent's own paths and is read by a process we launch, so no other user has
+/// business reading or writing it.
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Tighten every level we own, not just the leaf: an existing shared
+        // root stays as it is and the write below fails loudly instead.
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
+        if let Some(parent) = dir.parent() {
+            let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
+        }
+    }
+    Ok(())
 }
 
 /// The `--mcp-config` body. Every surya path the sidecar needs rides the
@@ -128,9 +173,16 @@ fn mcp_config(binary: &Path, options: &SuryaOptions, cwd: &str) -> Value {
     })
 }
 
-/// Write both files. `None` means the sidecar is not installed here: the run
-/// goes ahead without cards and mail rather than failing.
+/// Write both files under [`default_root`]. `None` means the sidecar is not
+/// installed here: the run goes ahead without cards and mail rather than
+/// failing.
 pub fn prepare(options: &SuryaOptions, cwd: &str) -> Option<SuryaFiles> {
+    prepare_in(&default_root(), options, cwd)
+}
+
+/// [`prepare`], with the root named. Tests point it at a temp dir so they
+/// never touch a path another user on the box may own.
+pub fn prepare_in(root: &Path, options: &SuryaOptions, cwd: &str) -> Option<SuryaFiles> {
     let binary = match resolve_mcp_binary(options) {
         Some(binary) => binary,
         None => {
@@ -141,8 +193,8 @@ pub fn prepare(options: &SuryaOptions, cwd: &str) -> Option<SuryaFiles> {
             return None;
         }
     };
-    let dir = run_dir(&options.agent_id);
-    if let Err(error) = std::fs::create_dir_all(&dir) {
+    let dir = run_dir(root, &options.agent_id);
+    if let Err(error) = create_private_dir(&dir) {
         tracing::warn!("could not create {dir:?} for the surya MCP config: {error}");
         return None;
     }
@@ -234,8 +286,71 @@ mod tests {
 
     #[test]
     fn an_agent_id_with_a_slash_still_makes_one_directory() {
-        let dir = run_dir("seat/one");
+        let dir = run_dir(Path::new("/root"), "seat/one");
         assert_eq!(dir.file_name().unwrap(), "seat-one");
+        assert_eq!(dir.parent().unwrap(), Path::new("/root"));
+    }
+
+    /// A fixed `/tmp/surya-mcp` is shared ground: the first user to create it
+    /// owns it, the second cannot write there, and either could plant an
+    /// `mcp.json` the other's agent loads. The root must be per-user.
+    #[test]
+    fn the_default_root_is_per_user() {
+        let with_runtime = temp_env("XDG_RUNTIME_DIR", Some("/run/user/4242"), default_root);
+        assert_eq!(with_runtime, PathBuf::from("/run/user/4242/surya-mcp"));
+
+        let without = temp_env("XDG_RUNTIME_DIR", None, default_root);
+        assert_ne!(
+            without,
+            std::env::temp_dir().join("surya-mcp"),
+            "a bare shared name is exactly the collision to avoid"
+        );
+        assert!(
+            without
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .starts_with("surya-mcp-"),
+            "{without:?}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_generated_directory_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("surya-mcp");
+        std::fs::write(&binary, "").unwrap();
+        let root = dir.path().join("root");
+        let files = prepare_in(&root, &options(&binary), "").expect("both files are written");
+        let mode = std::fs::metadata(files.mcp_config.parent().unwrap())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o700, "got {mode:o}");
+    }
+
+    /// Set or clear one variable for the duration of `body`. Serialised by
+    /// the caller being the only test that touches this variable.
+    fn temp_env<T>(key: &str, value: Option<&str>, body: impl FnOnce() -> T) -> T {
+        let previous = std::env::var_os(key);
+        // SAFETY: single-threaded within this test; no other test reads it.
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+        let out = body();
+        unsafe {
+            match previous {
+                Some(previous) => std::env::set_var(key, previous),
+                None => std::env::remove_var(key),
+            }
+        }
+        out
     }
 
     #[test]
@@ -243,7 +358,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let binary = dir.path().join("surya-mcp");
         std::fs::write(&binary, "").unwrap();
-        let files = prepare(&options(&binary), dir.path().to_str().unwrap())
+        let files = prepare_in(&dir.path().join("root"), &options(&binary), dir.path().to_str().unwrap())
             .expect("the binary exists, so both files are written");
         let config: Value =
             serde_json::from_str(&std::fs::read_to_string(&files.mcp_config).unwrap()).unwrap();
@@ -258,7 +373,8 @@ mod tests {
         options.mcp_binary = Some("/nonexistent/surya-mcp".into());
         // SURYA_MCP_EXECUTABLE and PATH are not ours to clear inside a test
         // process, so this only asserts the explicit option does not panic.
-        let _ = prepare(&options, "");
+        let dir = tempfile::tempdir().unwrap();
+        let _ = prepare_in(dir.path(), &options, "");
     }
 
     #[test]

@@ -794,10 +794,12 @@ mod tests {
                 r#"{{"type":"user","message":{{"content":[{{"type":"tool_result","tool_use_id":"toolu_card","is_error":false}}]}}}}"#
             );
             let ev = normalize_all(&[&raw, &result]);
+            // The card rides the result frame now, so it is not at index 0:
+            // the assistant frame closes its message first.
             assert!(
-                matches!(&ev[0], AgentEvent::Card { card_id, surface_id, tool_use_id, a2ui }
+                ev.iter().any(|e| matches!(e, AgentEvent::Card { card_id, surface_id, tool_use_id, a2ui }
                     if card_id == "toolu_card" && surface_id == "s1" && tool_use_id == "toolu_card"
-                    && a2ui.len() == 2 && a2ui[1]["updateComponents"]["components"][0]["id"] == "root"),
+                    && a2ui.len() == 2 && a2ui[1]["updateComponents"]["components"][0]["id"] == "root")),
                 "{name}: {ev:?}"
             );
             assert!(
@@ -810,7 +812,7 @@ mod tests {
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"show_card","input":{"card_id":"card-9","card":[{"createSurface":{"surfaceId":"w","catalogId":"c"}}]}}]}}"#,
             r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":false}]}}"#,
         ]);
-        assert!(matches!(&wrapped[0], AgentEvent::Card { card_id, surface_id, a2ui, .. } if card_id == "card-9" && surface_id == "w" && a2ui.len() == 1));
+        assert!(wrapped.iter().any(|e| matches!(e, AgentEvent::Card { card_id, surface_id, a2ui, .. } if card_id == "card-9" && surface_id == "w" && a2ui.len() == 1)), "{wrapped:?}");
         // Other MCP tools stay chips.
         let other = normalize_one(
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t3","name":"mcp__surya__open_file","input":{}}]}}"#,

@@ -31,18 +31,28 @@ fn env_string(key: &str) -> String {
     std::env::var(key).unwrap_or_default()
 }
 
-/// `$XDG_RUNTIME_DIR/surya`, falling back to `/tmp/surya-$UID` when the
-/// runtime dir is unset (a service launch, or a non-systemd box).
+/// `$XDG_RUNTIME_DIR/surya`, falling back to a temp dir suffixed with our uid
+/// when the runtime dir is unset (a service launch, or a non-systemd box).
+///
+/// The uid comes from `getuid(2)`, not from `$UID`: that variable is a shell
+/// builtin and is simply absent from a process the shell did not export it
+/// to, which would leave every user on the box sharing one `/tmp/surya`.
 fn runtime_dir() -> PathBuf {
     if let Some(dir) = env_path("XDG_RUNTIME_DIR") {
         return dir.join("surya");
     }
-    let uid = env_string("UID");
-    if uid.is_empty() {
-        PathBuf::from("/tmp/surya")
-    } else {
-        PathBuf::from(format!("/tmp/surya-{uid}"))
-    }
+    std::env::temp_dir().join(format!("surya-{}", current_uid()))
+}
+
+#[cfg(unix)]
+fn current_uid() -> String {
+    // SAFETY: getuid(2) reads a process attribute and cannot fail.
+    unsafe { libc::getuid() }.to_string()
+}
+
+#[cfg(not(unix))]
+fn current_uid() -> String {
+    std::env::var("USERNAME").unwrap_or_else(|_| "user".into())
 }
 
 /// `~/.surya`, falling back to the runtime dir when HOME is unset.

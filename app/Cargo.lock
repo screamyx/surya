@@ -6593,6 +6593,7 @@ name = "surya-mcp"
 version = "0.2.34"
 dependencies = [
  "chrono",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",
