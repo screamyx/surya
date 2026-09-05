@@ -400,8 +400,8 @@ pub struct ThemeSelection {
 impl Default for ThemeSelection {
     fn default() -> Self {
         Self {
-            light: "surya-light".into(),
-            dark: "surya-dark".into(),
+            light: "zeron-light".into(),
+            dark: "zeron-dark".into(),
         }
     }
 }
@@ -554,12 +554,12 @@ impl ThemeRegistry {
         self.variant(selection.variant_id(appearance))
             .or_else(|| {
                 self.variant(if appearance.is_dark() {
-                    "surya-dark"
+                    "zeron-dark"
                 } else {
-                    "surya-light"
+                    "zeron-light"
                 })
             })
-            .expect("the built-in registry always contains both Surya variants")
+            .expect("the built-in registry always contains both Zeron variants")
     }
 
     pub fn validate(&self) -> Vec<ValidationIssue> {
@@ -822,15 +822,29 @@ mod tests {
         assert!(errors.is_empty(), "{errors:#?}");
     }
 
-    /// The fork's own pair must exist, be the shipped default, and hold the
-    /// contrast the taste doctrine asks for: off-black on warm white, never
-    /// pure #000 on pure #fff.
+    /// Comet's own pair is the shipped default again (owner order, 2026-09-05
+    /// 19:25: "just revert back the gui to how zeron's comet look"). The surya
+    /// pair stays in the registry and stays selectable, so a revert of this
+    /// revert is one line.
     #[test]
-    fn surya_is_the_default_pair_and_holds_its_contrast() {
+    fn zeron_is_the_default_pair() {
         let registry = ThemeRegistry::builtin();
         let selection = ThemeSelection::default();
-        assert_eq!(selection.light, "surya-light");
-        assert_eq!(selection.dark, "surya-dark");
+        assert_eq!(selection.light, "zeron-light");
+        assert_eq!(selection.dark, "zeron-dark");
+        assert!(registry.variant("zeron-light").is_some());
+        assert!(registry.variant("zeron-dark").is_some());
+        // Still shipped, still pickable in Appearance, just not the default.
+        assert!(registry.variant("surya-light").is_some());
+        assert!(registry.variant("surya-dark").is_some());
+    }
+
+    /// The fork's own pair must hold the contrast the taste doctrine asks for:
+    /// off-black on warm white, never pure #000 on pure #fff. It is no longer
+    /// the default, but it is still shipped, so it is still held to this.
+    #[test]
+    fn surya_pair_holds_its_contrast() {
+        let registry = ThemeRegistry::builtin();
 
         for id in ["surya-light", "surya-dark"] {
             let variant = registry.variant(id).expect("surya variant is built in");
