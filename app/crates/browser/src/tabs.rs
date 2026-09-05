@@ -167,16 +167,19 @@ pub fn tab_open(typed: &str) -> TabId {
     let id = with(|t| t.open(&url));
     OPENED.fetch_add(1, Ordering::Relaxed);
     if crate::has_cef() {
+        // Inline mode: `open` returns with the browser made and, through
+        // `on_after_created`, already bound to this tab and on screen.
+        // Threaded mode: the create is posted, `on_after_created` binds it
+        // when it lands; PENDING stays set until then.
         PENDING.store(id, Ordering::Release);
         let browser = crate::client::open(&url);
-        PENDING.store(0, Ordering::Release);
         if let Some(browser) = browser {
+            PENDING.store(0, Ordering::Release);
             with(|t| {
                 if let Some(i) = t.index_of(id) {
                     t.tabs[i].browser = browser;
                 }
             });
-            crate::client::activate(browser);
         }
     }
     println!("browser: tab_open id={id} url={url} tabs={}", count());
@@ -187,7 +190,7 @@ pub fn tab_open(typed: &str) -> TabId {
 /// CEF made the browser for the tab that is being opened. Called from
 /// `on_after_created`, before `open` has returned.
 pub(crate) fn attach_pending(browser: i32) {
-    let id = PENDING.load(Ordering::Acquire);
+    let id = PENDING.swap(0, Ordering::AcqRel);
     if id == 0 {
         return;
     }
@@ -335,9 +338,12 @@ pub fn set_zoom(level: f64) {
             tab.zoom = level;
         }
     });
-    if let Some(host) = crate::client::host() {
-        host.set_zoom_level(level);
-    }
+    let id = active_browser();
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = crate::client::host_of(id) {
+            host.set_zoom_level(level);
+        }
+    });
 }
 
 pub fn zoom() -> f64 {
