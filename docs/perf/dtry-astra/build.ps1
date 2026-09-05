@@ -7,7 +7,7 @@ $env:CARGO_TARGET_DIR = 'E:\surya-astra-target'
 $env:CARGO_HOME = 'E:\surya-astra-cargo'
 $env:CEF_PATH = 'E:\surya-cef2-cef'
 $env:CARGO_BUILD_JOBS = '3'
-if ($Seed) {
+if ($Seed -and -not (Test-Path "$env:CARGO_HOME\registry")) {
   foreach ($part in 'registry', 'git') {
     robocopy "E:\surya-gpu-cargo\$part" "$env:CARGO_HOME\$part" /E /MT:4 /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Cargo cache copy failed: $LASTEXITCODE" }
