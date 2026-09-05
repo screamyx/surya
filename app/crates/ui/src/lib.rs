@@ -21,6 +21,7 @@ pub mod change_requests;
 pub mod changes;
 pub mod comments;
 pub mod composer;
+pub mod demo_bootstrap;
 pub mod edge_fade;
 pub mod files;
 pub mod frost;

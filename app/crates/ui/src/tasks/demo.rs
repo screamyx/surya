@@ -1,6 +1,6 @@
 //! `zeron --tasks-demo`: a window with only the Tasks pane, against the local
 //! engine (`zeron headless` on the IPC port). No shell, no sidebar. Set
-//! `SURYA_DEMO_EXIT_SECS` to quit by itself and print `started=1 panics=0`
+//! `SURYA_DEMO_EXIT_SECS` (shared with files-demo) to quit by itself and print `started=1 panics=0`
 //! (the headless proof on a box without a display).
 
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ use zeron_proto::Space;
 use zeron_rpc::methods;
 
 use super::TasksPane;
-use crate::{appearance, composer, icons, settings, theme_library, typography};
+use crate::{icons, typography};
 
 pub struct DemoConfig {
     pub data_dir: PathBuf,
@@ -25,25 +25,7 @@ pub struct DemoConfig {
 pub fn run(config: DemoConfig) {
     let app = gpui_platform::application().with_assets(icons::Assets);
     app.run(move |cx: &mut App| {
-        gpui_tokio::init(cx);
-        let ui_settings = settings::UiSettings::load(&config.data_dir);
-        settings::init(ui_settings.clone(), config.data_dir.clone(), cx);
-        let fonts = typography::register_fonts(cx);
-        typography::init(
-            ui_settings.ui_font_family.clone(),
-            ui_settings.ui_font_size,
-            fonts,
-            cx,
-        );
-        theme_library::init(config.data_dir.clone(), cx);
-        appearance::init(
-            ui_settings.appearance,
-            ui_settings.theme_selection,
-            ui_settings.accent,
-            ui_settings.surface,
-            cx,
-        );
-        composer::init(cx);
+        crate::demo_bootstrap::init_app(&config.data_dir, cx);
 
         let url = format!("ws://127.0.0.1:{}", config.ipc_port);
         let wanted = config.space.clone();
@@ -84,17 +66,7 @@ pub fn run(config: DemoConfig) {
         })
         .detach();
 
-        if let Some(after) = config.exit_after {
-            cx.spawn(async move |cx| {
-                cx.background_executor().timer(after).await;
-                println!(
-                    "tasks-demo: started=1 panics=0 ran_for={}s",
-                    after.as_secs()
-                );
-                let _ = cx.update(|cx| cx.quit());
-            })
-            .detach();
-        }
+        crate::demo_bootstrap::schedule_exit("tasks-demo", config.exit_after, cx);
         cx.activate(true);
     });
 }
