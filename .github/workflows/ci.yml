@@ -1,0 +1,110 @@
+name: CI
+
+# Every merge into main so far was reviewed by reading. This is the machine
+# saying main builds and the headless tests pass.
+#
+# The runner is GitHub-hosted on purpose. project-jag's self-hosted runner is
+# the same box the swarm builds on, and it is saturated.
+#
+# `app/` is the comet subtree and holds the cargo workspace, so every job runs
+# there. `app/.github/workflows/` is comet's own release pipeline: GitHub only
+# reads workflows from the repository root, so those files never fire here and
+# are not touched.
+#
+# There is no `cargo fmt --check` step. The upstream comet tree is not
+# fmt-clean, so the check would fail on code nobody in this project wrote.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Debug info is what makes these test binaries enormous. The first run of
+  # this workflow died linking one of them:
+  #   collect2: fatal error: ld terminated with signal 7 [Bus error], core dumped
+  # A bus error out of ld is the runner running out of room, not a code fault.
+  # Tests do not need debug info to pass, so turn it off: smaller objects, far
+  # less linker memory, a faster build.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
+jobs:
+  # The useful signal, first and on its own: none of these six crates depends
+  # on gpui, so this job needs no system libraries and does not wait for the
+  # GUI stack to compile.
+  tests:
+    name: headless tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      # The hosted image ships tens of GB of toolchains this build never
+      # touches. Reclaiming them buys the linker its working room back.
+      - name: free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/share/boost /usr/local/.ghcup
+          df -h /
+
+      - name: rust toolchain (app/rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+
+      # Same reason: roughly twenty test binaries linking at once is what
+      # exhausted the runner. Two at a time still finishes inside the timeout.
+      - name: cargo test
+        run: |
+          cargo test --jobs 2 \
+            -p zeron-proto \
+            -p zeron-doc \
+            -p zeron-rpc \
+            -p zeron-engine \
+            -p zeron-harness \
+            -p surya-mcp
+
+  # Everything else, including the gpui/ui crates. The system libraries are
+  # the ones comet's own release workflow installs
+  # (app/.github/workflows/release.yml), so they are known to be enough and
+  # they are ordinary apt packages.
+  check:
+    name: cargo check (whole workspace)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: gpui system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libx11-dev libxcb1-dev libx11-xcb-dev \
+            libfontconfig1-dev libfreetype-dev libasound2-dev \
+            libvulkan-dev pkg-config cmake
+
+      - name: rust toolchain (app/rust-toolchain.toml)
+        run: rustup show active-toolchain || rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+
+      - name: cargo check
+        run: cargo check --workspace --all-targets
