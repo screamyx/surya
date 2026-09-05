@@ -300,6 +300,7 @@ The plan and the counts are in `docs/rename-zeron-to-surya.md` (PR #16): "zeron 
 - Existing data: on first start, if the surya data dir is absent and the zeron one exists, surya COPIES it and leaves the old dir untouched. Never rename or delete a user's directory. One release later the copy step can go.
 - Every user-set `ZERON_*` variable keeps working for one release as an alias of its `SURYA_*` name; the engine logs one line when the old name is used.
 - iOS bundle id and the Cloudflare edge are out of scope for the RC; they keep the zeron names until the owner picks a domain.
+- Amended 10:33 from the rename dry run (PR #41): the data dir is COPIED, not renamed (this decision wins over row 5 of the plan). Comet's two built-in themes become `comet_light` / `comet_dark` and keep their display names ("Zeron Light/Dark" stays as the provenance label); `surya_light` / `surya_dark` already exist from PR #2, so a literal rename would collide (E0428).
 
 ## Open
 

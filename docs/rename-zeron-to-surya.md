@@ -56,3 +56,9 @@ Test-only knobs (`ZERON_MOCK_*`, `ZERON_E2E_*`, `ZERON_DEMO_*`) rename without a
 
 - The surya bundle id and URL scheme domain (owner call; `sh.zeron.app` stays until then).
 - Whether `~/.zeron` is renamed or copied. Rename is atomic and cheap; copy keeps a rollback. This plan says rename, matching the existing 0.2.0 migration.
+
+
+## Amendments 2026-09-05 10:33 (from the dry run, PR #41)
+- Row 5: COPY the data dir on first start, never rename (decision 23 wins).
+- Row 19: comet's built-in theme ids become `comet_light` / `comet_dark`, display names kept; `surya_*` already exist.
+- The generated `env_compat.rs` must be wired at every user-set `ZERON_*` read site; the script lists systemd unit, URL scheme, bundle ids and `cargo update -w` as human steps.
