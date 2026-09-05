@@ -101,7 +101,7 @@ Lines from `docs/perf/dtry/lines.py`, exact:
 | idle | default (clock) | `idle: pid=2080 cpu_ms=531 over 40s = 1.3% of one core` |
 | idle | `SURYA_PUMP_TIMER=pool` | `idle: pid=36812 cpu_ms=609 over 40s = 1.5% of one core` |
 
-The comparison, baseline against each switch set (scroll frames are shown per second of the test window, since the windows differ by up to 10%):
+The comparison, baseline against each switch set. The "shown / s" column divides by `over Nms`, the wheel-send interval; the counters in this build ran through a further 500 ms settle after the last wheel event (`selftest/scroll.rs`, found by surya-browser-astra 03:27), so the true counting window is about 500 ms longer than the divisor and these are per-wheel-second figures, a workload-normalised proxy, not the frame cadence. Every row shares the same settle, so the ratio between rows stands (212 shown against 120 with the true windows 2166 ms against 2317 ms is still 1.9x). The raw counts are the evidence. PR 3 prints `window=` (measured, after the settle) on both self-tests; rates from then on divide by it.
 
 | build | scroll shown / s | anim cef / app / shown (2 s) | timer ours median | scroll p2d median / p90 / max | idle % of a core, 40 s still page |
 | --- | --- | --- | --- | --- | --- |

@@ -24,12 +24,17 @@ pub(super) fn spawn(cx: &mut gpui::App, after: u64) {
             super::sleep(cx, Duration::from_millis(16)).await;
         }
         let sent_ms = t0.elapsed().as_millis();
-        // Let the last frames land.
+        // Let the last frames land. The counters run through this settle,
+        // so the window the counts belong to is `window_ms`, not `sent_ms`:
+        // a rate is frames over `window_ms`, and frames over `sent_ms` is a
+        // per-wheel-second figure, only good for comparing rows that share
+        // the same settle.
         super::sleep(cx, Duration::from_millis(500)).await;
+        let window_ms = t0.elapsed().as_millis();
         let (frames, p2d) = super::delta(before);
         println!(
             "selftest: SCROLL loaded={} wheel asked={WHEEL_EVENTS} sent={sent} over {sent_ms}ms \
-             {frames} pump_timer={} pump_ms={} {p2d}",
+             window={window_ms}ms {frames} pump_timer={} pump_ms={} {p2d}",
             u8::from(loaded),
             super::pump_timer(),
             crate::pump::base_ms(),
