@@ -106,6 +106,11 @@ pub struct FilesPane {
 }
 
 impl FilesPane {
+    /// The editor holds edits not yet written to disk.
+    pub fn has_unsaved_edits(&self, cx: &gpui::App) -> bool {
+        self.editor.read(cx).is_dirty(cx)
+    }
+
     pub fn new(engine: EngineHandle, space_id: String, cx: &mut Context<Self>) -> Self {
         let tree = cx.new(|cx| FileTreeView::new(engine.clone(), space_id.clone(), cx));
         let editor = cx.new(|cx| FileEditor::new(engine, space_id, cx));
