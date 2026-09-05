@@ -69,6 +69,9 @@ pub(crate) struct Snapshot {
     pub(crate) height: u32,
     /// Wall time of open + copy + GPU completion, the callback's own cost.
     pub(crate) took: Duration,
+    /// The same, split: open CEF's handle; create the texture and its
+    /// handle; submit the copy; wait for the GPU. Microseconds.
+    pub(crate) split: [u64; 4],
 }
 
 fn err(e: windows::core::Error, what: &str) -> String {
@@ -163,6 +166,7 @@ impl Device {
             .map_err(|e| err(e, "OpenSharedResource1"))?;
         let mut desc = D3D11_TEXTURE2D_DESC::default();
         unsafe { src.GetDesc(&mut desc) };
+        let t_open = t0.elapsed();
         if desc.Format != DXGI_FORMAT_B8G8R8A8_UNORM {
             return Err(format!("format {:?}, not B8G8R8A8_UNORM", desc.Format));
         }
@@ -200,12 +204,14 @@ impl Device {
         .map_err(|e| err(e, "CreateSharedHandle"))?;
         // SAFETY: a fresh NT handle this process owns; OwnedHandle closes it.
         let handle = unsafe { OwnedHandle::from_raw_handle(handle.0) };
+        let t_create = t0.elapsed();
 
         unsafe {
             self.ctx.CopyResource(&dst, &src);
             self.ctx.End(&self.fence);
             self.ctx.Flush();
         }
+        let t_submit = t0.elapsed();
         // GetData answers S_OK once the GPU has passed the event and S_FALSE
         // before that. windows-rs folds S_FALSE into Ok, so read the raw
         // HRESULT through the vtable.
@@ -230,11 +236,19 @@ impl Device {
             }
             std::thread::yield_now();
         }
+        let took = t0.elapsed();
+        let us = |d: Duration| d.as_micros() as u64;
         Ok(Snapshot {
             handle,
             width: desc.Width,
             height: desc.Height,
-            took: t0.elapsed(),
+            took,
+            split: [
+                us(t_open),
+                us(t_create - t_open),
+                us(t_submit - t_create),
+                us(took - t_submit),
+            ],
         })
     }
 }

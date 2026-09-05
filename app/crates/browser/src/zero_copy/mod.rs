@@ -141,8 +141,10 @@ pub(crate) fn on_accelerated_paint(info: &cef::AcceleratedPaintInfo) -> Option<g
             COPY_TOTAL_US.fetch_add(us, Ordering::Relaxed);
             COPY_MAX_US.fetch_max(us, Ordering::Relaxed);
             if n <= 3 || n % 60 == 0 {
+                let [open, create, submit, wait] = snap.split;
                 println!(
-                    "browser: accelerated_paint #{n}: {}x{}, gpu copy {:.2}ms; {}",
+                    "browser: accelerated_paint #{n}: {}x{}, gpu copy {:.2}ms \
+                     (open {open}us create {create}us submit {submit}us wait {wait}us); {}",
                     snap.width,
                     snap.height,
                     us as f64 / 1000.0,
