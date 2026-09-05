@@ -418,7 +418,7 @@ impl<'a> Renderer<'a> {
                     .text_color(if active { theme.text } else { theme.text_muted })
                     .border_b_1()
                     .border_color(if active {
-                        theme.accent
+                        theme.text
                     } else {
                         gpui::transparent_black()
                     })

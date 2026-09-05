@@ -23,10 +23,10 @@ pub struct CardTheme {
     /// The primary button plate and its label (`solid`, `on_solid`).
     pub solid: Hsla,
     pub on_solid: Hsla,
-    /// The selected accent, for the active tab rule and focus (`accent`).
+    /// The selected accent, for focus only; the active tab rule and code
+    /// runs use `text` (critic round 2).
     pub accent: Hsla,
-    /// Inline code (`code_text` over `code_wash`).
-    pub code_text: Hsla,
+    /// The wash behind inline code; the ink is the surrounding text's.
     pub code_wash: Hsla,
     /// Input plate (`input_bg`).
     pub input_bg: Hsla,
