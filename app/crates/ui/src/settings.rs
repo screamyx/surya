@@ -984,6 +984,7 @@ mod tests {
             legacy_accent_color: None,
             servers: Vec::new(),
             active_server: None,
+            browser_zoom: std::collections::HashMap::new(),
         };
         settings.save(dir.path()).unwrap();
         let json = std::fs::read_to_string(UiSettings::path(dir.path())).unwrap();
