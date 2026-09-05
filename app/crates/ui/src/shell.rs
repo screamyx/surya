@@ -242,13 +242,21 @@ pub fn cluster_clearance(
         .max(0.0)
 }
 
+/// First-frame estimate of the page-title row: titlebar clearance, the
+/// DISPLAY and CAPTION leadings scaled by the interface rem (they are
+/// `ui_rems`, so they follow the UI font size), the 2px gap and the paddings.
+/// Assumes a sub-line (space or branch), the common case; without one it
+/// over-estimates by one caption line for the single frame before the
+/// paint-time measure in `title_stack` replaces it.
+fn title_row_seed(cx: &App) -> f32 {
+    let rem_px = crate::typography::font_size(cx).pixels();
+    let text = (crate::surya::DISPLAY.leading + crate::surya::CAPTION.leading) * rem_px / 16.0;
+    Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0 + text + 2.0 + 6.0
+}
+
 /// (Re-)apply the whole app keymap: clears every binding, restores the composer
 /// map, then binds the customizable shortcuts from `keymap` (feature-inventory
 /// §1.4). Invalid persisted combos fall back to that shortcut's default.
-/// First-frame estimate of the page-title row (titlebar clearance + display
-/// line + caption line + paddings); the paint-time measure replaces it.
-const TITLE_ROW_SEED: f32 = Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0 + 30.0 + 2.0 + 18.0 + 6.0;
-
 pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
     fn valid_or_default(combo: &str, fallback: &str) -> String {
         let candidate = platform_combo(combo);
@@ -1297,6 +1305,9 @@ impl Shell {
                         t.on_own_send(chat_id.clone(), message_id.clone(), cx)
                     });
                 }
+                // The page title hides under the sheet: re-lay out now, not
+                // on the next unrelated notify.
+                ComposerEvent::SheetChanged => cx.notify(),
             }
         });
         // Spawn chips open their subagent's transcript as a right-pane tab.
@@ -1392,7 +1403,7 @@ impl Shell {
             inbox_stack: std::rc::Rc::new(std::cell::Cell::new(0.0)),
             // Seeded with the title row's resting height for the same reason:
             // frame one must not paint the transcript over the title.
-            title_stack: std::rc::Rc::new(std::cell::Cell::new(TITLE_ROW_SEED)),
+            title_stack: std::rc::Rc::new(std::cell::Cell::new(title_row_seed(cx))),
             archived_open: true,
             archived_shown: 0,
             archived_hover: None,
