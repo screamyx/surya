@@ -79,13 +79,23 @@ pub(crate) fn install(cx: &mut gpui::App) {
     }
     let base = Duration::from_millis(base_ms());
     let max = Duration::from_millis(100);
+    // `SURYA_PUMP_TIMER=clock`: the idle chain waits on the browser's own
+    // clock; gpui's timer on Windows lands on the 15.6 ms process tick
+    // (haktui: 16 ms asked, 31 ms taken). Unset, gpui's timer: the baseline.
+    let on_clock = crate::clock::on_clock();
+    println!("browser: pump base={}ms timer={}", base.as_millis(), crate::clock::label());
     cx.spawn(async move |cx: &mut gpui::AsyncApp| {
         let mut wait = base;
         let mut seen_frames = crate::render::frames();
         let mut seen = (INPUT_SEQ.load(Ordering::Relaxed), PUMP_ASKS.load(Ordering::Relaxed));
         loop {
             IDLE_ARMED.fetch_add(1, Ordering::Relaxed);
-            let timer = cx.background_executor().timer(wait).fuse();
+            let timer = if on_clock {
+                futures::future::Either::Right(crate::clock::after(wait).map(|_| ()))
+            } else {
+                futures::future::Either::Left(cx.background_executor().timer(wait))
+            }
+            .fuse();
             futures::pin_mut!(timer);
             futures::select! {
                 _ = timer => {}

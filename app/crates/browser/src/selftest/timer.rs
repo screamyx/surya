@@ -24,10 +24,11 @@ pub(super) fn spawn(cx: &mut gpui::App, after: u64) {
             ours_us.push(t.elapsed().as_micros());
         }
         println!(
-            "selftest: TIMER asked={}ms x{ROUNDS} gpui {} | ours {}",
+            "selftest: TIMER asked={}ms x{ROUNDS} gpui {} | ours {} pump_timer={}",
             ASK.as_millis(),
             stats(&mut gpui_us),
-            stats(&mut ours_us)
+            stats(&mut ours_us),
+            super::pump_timer()
         );
     })
     .detach();
