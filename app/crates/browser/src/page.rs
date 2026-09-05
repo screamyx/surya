@@ -73,15 +73,23 @@ pub(crate) fn update_page(f: impl FnOnce(&mut Page)) {
     }
 }
 
-/// What a typed address means. A scheme is taken as written; a bare host
-/// gets `https://`; anything with a space or no dot is a search.
+/// What a typed address means. `http` and `https` are taken as written and
+/// any other scheme is refused (empty string): `file://` would read the
+/// disk into a pane an agent can drive, `chrome://` is Chrome's own
+/// settings. A bare host gets `https://`; anything with a space or no dot
+/// is a search.
 pub fn navigate_to(typed: &str) -> String {
     let t = typed.trim();
     if t.is_empty() {
         return String::new();
     }
-    if t.contains("://") || t.starts_with("about:") || t.starts_with("data:") {
-        return t.to_string();
+    if let Some((scheme, _)) = t.split_once("://") {
+        let scheme = scheme.to_ascii_lowercase();
+        return if scheme == "http" || scheme == "https" { t.to_string() } else { String::new() };
+    }
+    if t.contains(':') && !t.contains('.') && !t.starts_with("localhost") {
+        // `about:blank`, `chrome:settings`, `javascript:...`: refused too.
+        return String::new();
     }
     if t.starts_with("localhost") || t.starts_with("127.") {
         return format!("http://{t}");
@@ -114,9 +122,19 @@ mod tests {
     fn typed_addresses_become_urls() {
         assert_eq!(navigate_to("example.com"), "https://example.com");
         assert_eq!(navigate_to("http://a.b/c"), "http://a.b/c");
+        assert_eq!(navigate_to("HTTPS://a.b/c"), "HTTPS://a.b/c");
         assert_eq!(navigate_to("localhost:8457"), "http://localhost:8457");
         assert_eq!(navigate_to("two words"), "https://duckduckgo.com/?q=two+words");
         assert_eq!(navigate_to("  "), "");
+    }
+
+    #[test]
+    fn only_http_and_https_are_taken_as_written() {
+        assert_eq!(navigate_to("file:///etc/passwd"), "");
+        assert_eq!(navigate_to("chrome://settings"), "");
+        assert_eq!(navigate_to("about:blank"), "");
+        assert_eq!(navigate_to("javascript:alert(1)"), "");
+        assert_eq!(navigate_to("ftp://x.y/z"), "");
     }
 
     #[test]

@@ -2235,6 +2235,7 @@ impl Shell {
         if !tabs.contains(&RightSurface::Browser) {
             tabs.push(RightSurface::Browser);
         }
+        surya_browser::reopen();
         self.set_right_active(RightSurface::Browser, cx);
         if !self.right_pane_open(cx) {
             self.toggle_right_pane(cx);
@@ -2280,9 +2281,10 @@ impl Shell {
                         .update(cx, |s, _| s.unwatch_subagent_doc(&tab.doc_id));
                 }
             }
-            // The page keeps running; closing the tab only hides it.
+            // The tab is the browser: closing it closes Chromium's page.
+            // The globe makes a new one on the last address.
             #[cfg(feature = "browser")]
-            RightSurface::Browser => {}
+            RightSurface::Browser => surya_browser::close(),
             RightSurface::Picker => {}
         }
         self.panels.update(&key, |p| {
@@ -7582,6 +7584,13 @@ impl Render for Shell {
         // rest (surya-browser).
         #[cfg(feature = "browser")]
         surya_browser::pump(window, cx);
+        // Off screen, the browser stops compositing (surya-browser).
+        #[cfg(feature = "browser")]
+        surya_browser::set_visible(
+            matches!(self.route, Route::Chat)
+                && self.right_pane_open(cx)
+                && self.resolved_right_active(cx) == RightSurface::Browser,
+        );
         #[cfg(feature = "browser")]
         if self.debug_open_browser {
             self.debug_open_browser = false;

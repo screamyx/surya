@@ -29,7 +29,12 @@ RUN='
          SURYA_CEF_CACHE="'"$DATA"'/cef" SURYA_BROWSER_DUMP="'"$OUT"'/frames" RUST_LOG=info
   "'"$BIN"'" > "'"$LOG"'" 2>&1 &
   APP=$!
-  sleep '"$WAIT"'
+  # gpui'"'"'s X11 backend on a headless server draws one frame and then waits
+  # for an Expose (measured 2026-09-05: renders stayed at 1 for 40s, went to
+  # 13 within 6s of one xrefresh). Kick it once the window is up and once
+  # more before the grab.
+  sleep 10; command -v xrefresh >/dev/null && xrefresh
+  sleep $(( '"$WAIT"' > 13 ? '"$WAIT"' - 13 : 1 )); command -v xrefresh >/dev/null && xrefresh; sleep 3
   ffmpeg -loglevel error -y -f x11grab -video_size '"${W}x${H}"' -i "$DISPLAY" -frames:v 1 "'"$SHOT"'"
   kill $APP 2>/dev/null; sleep 1; kill -9 $APP 2>/dev/null
 '
@@ -42,6 +47,7 @@ else
 fi
 echo "--- log: $LOG"
 grep -E "browser: (create|created|view_rect #1|on_paint #1|on_paint #[0-9]+:|address|load_end|LOAD ERROR|cef initialize|switches)" "$LOG" | head -20
+grep -E "browser: view ->" "$LOG" | head -2
 LAST=$(grep -E "^browser: t=" "$LOG" | tail -1)
 echo "--- last heartbeat: ${LAST:-none}"
 ASKED=$(grep -c "browser: create asked=1" "$LOG")

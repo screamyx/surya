@@ -6772,7 +6772,7 @@ dependencies = [
 name = "surya-a2ui"
 version = "0.2.34"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "gpui",
  "serde",
  "serde_json",

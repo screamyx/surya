@@ -165,9 +165,12 @@ pub fn start(cx: &mut gpui::App) {
 }
 
 /// Load a typed address in the page. `typed` is what the person wrote; see
-/// [`navigate_to`] for how it becomes a URL.
+/// [`navigate_to`] for how it becomes a URL, and which it refuses.
 pub fn navigate(typed: &str) {
     let url = navigate_to(typed);
+    if url.is_empty() {
+        return;
+    }
     page::update_page(|p| p.begin_navigation(&url));
     if let Some(frame) = client::browser().and_then(|b| b.main_frame()) {
         frame.load_url(Some(&CefString::from(url.as_str())));
@@ -208,4 +211,60 @@ pub fn stop() {
 /// Keyboard focus into or out of the page.
 pub fn set_focus(on: bool) {
     events::set_focus(on);
+}
+
+/// The pane is on screen, or not. Call every frame; it only acts on a change.
+pub fn set_visible(on: bool) {
+    if !disabled() {
+        client::set_visible(on);
+    }
+}
+
+/// Close the browser: the Browser tab was closed. Chromium's renderer for
+/// the page goes away; the CEF process stays for a later [`reopen`].
+pub fn close() {
+    if !disabled() {
+        client::close();
+    }
+}
+
+/// Make the browser again after a [`close`], on the page it last showed
+/// (or the start page). A no-op while one exists.
+pub fn reopen() {
+    if disabled() || !STARTED.load(Ordering::Acquire) || client::is_open() {
+        return;
+    }
+    let last = page::page().url;
+    let url = if last.is_empty() { start_url() } else { last };
+    let made = client::open(&url);
+    println!("browser: reopen asked=1 made={} url={url}", u8::from(made));
+    pump::schedule_pump(0);
+}
+
+/// Bring CEF down with the app: close the browser, pump until it is gone,
+/// then `cef_shutdown`. Main thread, from `on_app_quit`. Without this the
+/// helper processes outlive a clean quit until their parent dies.
+pub fn shutdown() {
+    if disabled() || !STARTED.load(Ordering::Acquire) {
+        return;
+    }
+    client::close();
+    let started = std::time::Instant::now();
+    let mut pumps = 0u32;
+    while client::is_open() && started.elapsed() < std::time::Duration::from_secs(3) {
+        do_message_loop_work();
+        pumps += 1;
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    // A few more turns so CEF finishes its own teardown before shutdown.
+    for _ in 0..20 {
+        do_message_loop_work();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    println!(
+        "browser: shutdown closed={} pumps={pumps} {}",
+        u8::from(!client::is_open()),
+        client::lifecycle_counters()
+    );
+    cef::shutdown();
 }
