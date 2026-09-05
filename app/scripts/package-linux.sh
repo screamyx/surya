@@ -113,7 +113,9 @@ if [[ "$BROWSER" == 1 ]]; then
   mkdir -p "$STAGE/locales"
   cp -a "$BUILT/locales/." "$STAGE/locales/"
   cp "$REPO/deploy/CEF-LICENSE.txt" "$STAGE/CEF-LICENSE.txt"
-  CEF_VERSION=$(sed -n 's/.*cef_binary_\([^+]*\)+g[0-9a-f]*+chromium-\([0-9.]*\).*/CEF \1, Chromium \2/p' "$BUILT/archive.json" | head -1)
+  # `{p;q}` rather than a `| head -1`: head closes the pipe, sed dies of
+  # SIGPIPE, and under `pipefail` that fails the whole packaging run.
+  CEF_VERSION=$(sed -n 's/.*cef_binary_\([^+]*\)+g[0-9a-f]*+chromium-\([0-9.]*\).*/CEF \1, Chromium \2/{p;q}' "$BUILT/archive.json")
   if [[ -z "$CEF_VERSION" ]]; then
     echo "archive.json beside the binary does not name a cef_binary_<cef>+g<hash>+chromium-<version> archive" >&2
     exit 1
@@ -137,35 +139,67 @@ fi
 
 cat >"$STAGE/install.sh" <<'INSTALL'
 #!/usr/bin/env bash
-# Install Zeron into ~/.local (no root needed).
+# Install Zeron into ~/.local (no root needed for the app itself).
+#
+# The app is installed as a DIRECTORY, not a lone binary. With the browser
+# pane, zeron loads libcef.so, the .pak files, locales/ and the
+# zeron-browser-helper from its own folder (the binary carries an $ORIGIN
+# rpath, apps/zeron/build.rs), and it looks for chrome-sandbox there too. A
+# copy of just the binary into ~/.local/bin would find none of that: no
+# browser pane at all, and no sandbox. So everything goes to
+# ~/.local/lib/zeron and ~/.local/bin/zeron is a symlink to it. Both the
+# dynamic loader and the app resolve the symlink before expanding $ORIGIN, so
+# the runtime is found either way.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-install -Dm755 "$HERE/zeron" "$HOME/.local/bin/zeron"
+LIBDIR="${ZERON_PREFIX:-$HOME/.local}/lib/zeron"
+BINDIR="${ZERON_PREFIX:-$HOME/.local}/bin"
+
+mkdir -p "$LIBDIR" "$BINDIR"
+# Everything except this script and the two desktop-integration files, which
+# belong in the XDG locations below.
+for entry in "$HERE"/*; do
+  name="$(basename "$entry")"
+  case "$name" in
+    install.sh|zeron.desktop|zeron.png) continue ;;
+  esac
+  rm -rf "$LIBDIR/${name:?}"
+  cp -a "$entry" "$LIBDIR/$name"
+done
+chmod 755 "$LIBDIR/zeron"
+[ -f "$LIBDIR/zeron-browser-helper" ] && chmod 755 "$LIBDIR/zeron-browser-helper"
+ln -sfn "$LIBDIR/zeron" "$BINDIR/zeron"
+
 install -Dm644 "$HERE/zeron.desktop" "$HOME/.local/share/applications/zeron.desktop"
 install -Dm644 "$HERE/zeron.png" "$HOME/.local/share/icons/hicolor/1024x1024/apps/zeron.png"
 command -v update-desktop-database >/dev/null 2>&1 \
   && update-desktop-database "$HOME/.local/share/applications" || true
 
 # The browser pane runs each web page in a separate, locked-down process, so
-# that a bad page cannot reach the rest of your machine. Chromium needs this
-# small helper to be owned by root before it can do that, and setting the
-# owner is the one step here that asks for your password.
+# that a bad page cannot reach the rest of your machine. Chromium can only do
+# that if this small helper is owned by root, which is the one step here that
+# asks for your password.
 #
-# You can skip it. The app still runs, and it prints at start-up that pages
-# are not sandboxed. To do it later, run this script again.
-if [ -f "$HERE/chrome-sandbox" ] && [ "${ZERON_SKIP_SANDBOX_SETUP:-}" != "1" ]; then
+# This step is REQUIRED for sandboxed pages. There is no automatic fallback:
+# if you skip it, web pages keep running with your own permissions for good,
+# and the app says so every time it starts. Run this script again to do it.
+if [ -f "$LIBDIR/chrome-sandbox" ] && [ "${ZERON_SKIP_SANDBOX_SETUP:-}" != "1" ]; then
   if command -v sudo >/dev/null 2>&1; then
     echo "Setting up the browser page sandbox (asks for your password)."
-    if sudo chown root:root "$HERE/chrome-sandbox" && sudo chmod 4755 "$HERE/chrome-sandbox"; then
+    if sudo chown root:root "$LIBDIR/chrome-sandbox" && sudo chmod 4755 "$LIBDIR/chrome-sandbox"; then
       echo "Page sandbox ready."
     else
-      echo "Skipped. Web pages will run unsandboxed; the app will say so when it starts."
+      echo "NOT set up. Web pages will run with your own permissions until you"
+      echo "run this script again."
     fi
   else
-    echo "No sudo here, so the page sandbox is not set up. Web pages will run unsandboxed."
+    echo "No sudo on this system, so the page sandbox was NOT set up. Web pages"
+    echo "will run with your own permissions. Ask an administrator to run:"
+    echo "  sudo chown root:root $LIBDIR/chrome-sandbox && sudo chmod 4755 $LIBDIR/chrome-sandbox"
   fi
 fi
-echo "Installed. Make sure ~/.local/bin is on your PATH."
+echo "Installed to $LIBDIR (command: $BINDIR/zeron)."
+echo "Make sure $BINDIR is on your PATH."
 INSTALL
 chmod 755 "$STAGE/install.sh"
 

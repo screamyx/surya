@@ -162,9 +162,17 @@ fn decide() -> Decision {
 
 #[cfg(target_os = "linux")]
 fn platform_decision() -> Decision {
-    if let Some(path) = suid_helper() {
+    decide_linux(&suid_candidates())
+}
+
+/// The decision, given the `chrome-sandbox` paths to consider. Split out from
+/// [`platform_decision`] so the present / absent / wrong-mode cases are
+/// testable without a root-owned file or an environment.
+#[cfg(target_os = "linux")]
+fn decide_linux(candidates: &[std::path::PathBuf]) -> Decision {
+    if let Some(path) = candidates.iter().find(|p| is_suid_root(p)) {
         let shown = path.display().to_string();
-        return Decision::on(format!("SUID helper {shown}"), Some(path));
+        return Decision::on(format!("SUID helper {shown}"), Some(path.clone()));
     }
     // Opt-in only: see the header for why an unverified namespace sandbox is
     // not the default.
@@ -176,9 +184,9 @@ fn platform_decision() -> Decision {
     // it names the file that was missing and the two commands that fix it.
     // The kernel's own answer goes in too: it says yes on the machine where
     // Chromium says no, and that is worth seeing rather than guessing at.
-    let expected = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|d| d.join("chrome-sandbox")))
+    let expected = candidates
+        .last()
+        .cloned()
         .unwrap_or_else(|| std::path::PathBuf::from("chrome-sandbox"));
     let shown = expected.display();
     let kernel_allows_ns = user_namespaces_available();
@@ -217,11 +225,12 @@ fn platform_decision() -> Decision {
     Decision::off("no sandbox policy for this platform yet")
 }
 
-/// The SUID `chrome-sandbox` Chromium would accept: root-owned, mode 4755.
-/// Checked beside the executable, which is where the packaged app puts it,
-/// and at `CHROME_DEVEL_SANDBOX` when the environment already names one.
+/// Where a `chrome-sandbox` might be, most specific last: the path the
+/// environment names, then the one beside the executable, which is where the
+/// packaged app puts it. The last entry is the one the "not sandboxed" line
+/// tells the reader to fix.
 #[cfg(target_os = "linux")]
-fn suid_helper() -> Option<std::path::PathBuf> {
+fn suid_candidates() -> Vec<std::path::PathBuf> {
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
     if let Some(named) = std::env::var_os("CHROME_DEVEL_SANDBOX") {
         candidates.push(std::path::PathBuf::from(named));
@@ -231,17 +240,20 @@ fn suid_helper() -> Option<std::path::PathBuf> {
             candidates.push(dir.join("chrome-sandbox"));
         }
     }
-    candidates.into_iter().find(|p| is_suid_root(p))
+    candidates
 }
 
+/// The exact thing Chromium demands: a regular file owned by root with mode
+/// 4755, no more and no less. Testing only for the setuid bit would accept a
+/// root-owned 4700, which Chromium finds, refuses, and aborts on - the very
+/// failure quoted at the top of this file. The permission bits are compared
+/// whole for that reason.
 #[cfg(target_os = "linux")]
 fn is_suid_root(path: &std::path::Path) -> bool {
     use std::os::unix::fs::MetadataExt as _;
     use std::os::unix::fs::PermissionsExt as _;
     let Ok(md) = std::fs::metadata(path) else { return false };
-    // 0o4000 is the setuid bit; 0o111 that it is executable at all.
-    let mode = md.permissions().mode();
-    md.is_file() && md.uid() == 0 && mode & 0o4000 != 0 && mode & 0o111 != 0
+    md.is_file() && md.uid() == 0 && md.permissions().mode() & 0o7777 == 0o4755
 }
 
 /// Can this process create a user namespace? Answered by doing it, in a
@@ -280,9 +292,16 @@ mod tests {
         assert_eq!(Decision::off("x").no_sandbox_setting(), 1);
     }
 
+    /// `decide` reads the environment, and cargo runs these tests as threads
+    /// of one process, so a test that sets a variable has to be the only one
+    /// touching the environment while it does. Every such test takes this.
+    static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn the_escape_hatch_wins_and_names_itself() {
-        // SAFETY: single-threaded test process.
+        let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        // SAFETY: the lock above makes this the only thread in this process
+        // writing the environment for the length of the test.
         unsafe { std::env::set_var("SURYA_NO_SANDBOX", "1") };
         let d = decide();
         unsafe { std::env::remove_var("SURYA_NO_SANDBOX") };
@@ -292,6 +311,8 @@ mod tests {
 
     #[test]
     fn every_decision_carries_a_reason() {
+        // Reads the environment; see ENV.
+        let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
         let d = platform_decision();
         assert!(!d.why.is_empty(), "a decision with no reason is not reportable");
         // An `off` must never be silent: it is the thing a reviewer reads.
@@ -311,6 +332,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn the_namespace_path_disables_the_setuid_one() {
+        // Reads the environment; see ENV.
+        let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
         // Chromium aborts rather than fall back when a non-SUID
         // chrome-sandbox sits beside the binary, so an `on` that rests on
         // namespaces must always carry the switch that skips the SUID path.
@@ -322,6 +345,39 @@ mod tests {
                 "namespace sandbox without the switch: {d:?}"
             );
         }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_helper_is_judged_by_owner_and_exact_mode() {
+        use std::os::unix::fs::PermissionsExt as _;
+        let dir = std::env::temp_dir().join(format!("surya-sandbox-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let helper = dir.join("chrome-sandbox");
+
+        // Absent: nothing to accept.
+        let _ = std::fs::remove_file(&helper);
+        let d = decide_linux(std::slice::from_ref(&helper));
+        assert!(!d.on, "a missing helper was accepted: {d:?}");
+        // The off line has to name the path the reader must fix.
+        assert!(d.why.contains(&helper.display().to_string()), "{d:?}");
+
+        // Present but ours, mode 0755: this is what the cef build script and
+        // the tarball ship, and Chromium will not take it.
+        std::fs::write(&helper, b"not really chrome-sandbox").unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(!decide_linux(std::slice::from_ref(&helper)).on, "0755 was accepted");
+
+        // Setuid bit set but still owned by us: also not what Chromium wants,
+        // and the check must not be fooled by the bit alone.
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o4755)).unwrap();
+        assert!(!decide_linux(std::slice::from_ref(&helper)).on, "non-root 4755 was accepted");
+
+        // A directory is never the helper, whatever its mode.
+        assert!(!is_suid_root(&dir), "a directory was accepted");
+
+        let _ = std::fs::remove_file(&helper);
+        let _ = std::fs::remove_dir(&dir);
     }
 
     #[cfg(target_os = "linux")]
