@@ -96,7 +96,7 @@ async fn drain_until(
     events: &mut Vec<TerminalEvent>,
     predicate: impl Fn(&[TerminalEvent]) -> bool,
 ) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     while !predicate(events) {
         let event = tokio::time::timeout_at(deadline, rx.recv())
             .await
@@ -688,7 +688,7 @@ async fn spaces_sync_stamps_git_presence_and_reacts_to_git_init() {
     core.spaces_sync.reconcile_now().await;
 
     let mut spaces_rx = core.workspace.watch_spaces();
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let space = loop {
         {
             let spaces = spaces_rx.borrow().clone();
@@ -710,7 +710,7 @@ async fn spaces_sync_stamps_git_presence_and_reacts_to_git_init() {
     // `git init` later flips the stamp (watcher and/or explicit recheck).
     git(&folder, &["init", "-b", "main"]).await;
     core.spaces_sync.reconcile_now().await;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let space = loop {
         {
             let spaces = spaces_rx.borrow().clone();
@@ -791,7 +791,7 @@ async fn diff_sync_publishes_without_rewriting_chat_branch() {
 
     // Initial snapshot lands after the debounce; poll the watch.
     let mut diffs_rx = core.diff_sync.watch_diffs();
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let diff = loop {
         {
             let diffs = diffs_rx.borrow().clone();
@@ -1218,7 +1218,7 @@ async fn rpc_dispatch_for_m5_methods() {
         .subscribe(methods::WATCH_CHECKOUT_DIFFS, serde_json::Value::Null)
         .await
         .expect("WatchCheckoutDiffs");
-    let first = tokio::time::timeout(Duration::from_secs(5), diffs_stream.recv())
+    let first = tokio::time::timeout(zeron_test_deadlines::WAIT, diffs_stream.recv())
         .await
         .expect("first diffs item")
         .expect("stream alive");
@@ -1276,7 +1276,7 @@ async fn rpc_dispatch_for_m5_methods() {
         )
         .await
         .expect("WriteTerminal");
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let mut transcript = Vec::new();
     loop {
         let item = tokio::time::timeout_at(deadline, stream.recv())

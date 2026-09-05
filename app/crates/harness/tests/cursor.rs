@@ -67,7 +67,7 @@ async fn run_to_first_done(
     controls: RunControls,
 ) -> Vec<AgentEvent> {
     let mut stream = harness.run(req, controls).await.expect("run starts");
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(zeron_test_deadlines::WAIT, async {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");
@@ -173,7 +173,7 @@ async fn steer_after_done_becomes_the_next_turn() {
         .await
         .expect("run starts");
 
-    let events = tokio::time::timeout(Duration::from_secs(10), async {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async {
         let mut events = Vec::new();
         let mut dones = 0;
         while let Some(ev) = stream.next().await {
@@ -230,7 +230,7 @@ async fn interrupt_maps_to_interrupted_done() {
         .await
         .expect("run starts");
 
-    let events = tokio::time::timeout(Duration::from_secs(10), async move {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");

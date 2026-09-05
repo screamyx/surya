@@ -251,7 +251,7 @@ async fn wait_for<T: Clone + PartialEq>(
     rx: &mut tokio::sync::watch::Receiver<T>,
     check: impl Fn(&T) -> bool,
 ) {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(zeron_test_deadlines::WAIT, async {
         loop {
             if check(&rx.borrow()) {
                 return;
@@ -527,7 +527,7 @@ async fn sign_out_invalidates_pending_and_in_flight_oauth_callbacks() {
         "{callback}?code=in-flight&state={second_state}"
     )));
     tokio::time::timeout(
-        Duration::from_secs(5),
+        zeron_test_deadlines::WAIT,
         edge.state.exchange_started.notified(),
     )
     .await

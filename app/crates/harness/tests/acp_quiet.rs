@@ -123,7 +123,7 @@ async fn generic_dropped_reply_settles_off_the_quiet_window() {
     let events = run_and_collect(
         AcpHarness::grok(),
         "scenario:quiet-starve",
-        Duration::from_secs(20),
+        zeron_test_deadlines::WAIT,
     )
     .await;
     assert_eq!(
@@ -155,7 +155,7 @@ async fn open_tool_call_holds_the_quiet_settle_off() {
     let events = run_and_collect(
         AcpHarness::grok(),
         "scenario:quiet-tool-guard",
-        Duration::from_secs(20),
+        zeron_test_deadlines::WAIT,
     )
     .await;
     assert_eq!(

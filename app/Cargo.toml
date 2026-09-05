@@ -13,6 +13,7 @@ members = [
     "crates/ui",
     "crates/syntax",
     "crates/a2ui",
+    "crates/test-deadlines",
     "apps/zeron",
 ]
 # surya-browser is a path dependency, not a member: it links Chromium (CEF)
@@ -37,6 +38,7 @@ zeron-update = { path = "crates/update" }
 zeron-ui = { path = "crates/ui" }
 zeron-syntax = { path = "crates/syntax" }
 zeron-theme = { path = "crates/theme" }
+zeron-test-deadlines = { path = "crates/test-deadlines" }
 # surya: haktui's CEF browser pane, behind the `browser` feature on zeron-ui and zeron.
 surya-browser = { path = "crates/browser" }
 surya-a2ui = { path = "crates/a2ui" }

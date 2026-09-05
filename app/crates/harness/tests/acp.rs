@@ -77,7 +77,7 @@ async fn run_to_end(
 ) -> Vec<AgentEvent> {
     let stream = harness.run(req, controls).await.expect("run starts");
     tokio::time::timeout(
-        Duration::from_secs(10),
+        zeron_test_deadlines::WAIT,
         stream.map(|r| r.expect("stream event")).collect::<Vec<_>>(),
     )
     .await
@@ -263,7 +263,7 @@ async fn steering_extension_injects_mid_turn() {
         .run(request("scenario:steer-ext"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(Duration::from_secs(10), async move {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         while let Some(ev) = stream.next().await {
@@ -309,7 +309,7 @@ async fn steer_racing_the_turn_end_never_emits_steered_after_done() {
         .run(request("scenario:steer-race"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(Duration::from_secs(10), async move {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         while let Some(ev) = stream.next().await {
@@ -357,7 +357,7 @@ async fn rejected_steer_queues_and_delivers_at_the_turn_boundary() {
         .run(request("scenario:steer-queue"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(Duration::from_secs(10), async move {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         let mut steer = Some(steer);
@@ -411,7 +411,7 @@ async fn interrupt_sends_session_cancel_and_ends_interrupted() {
         .run(request("scenario:interrupt"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(Duration::from_secs(10), async move {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         while let Some(ev) = stream.next().await {
@@ -436,7 +436,7 @@ async fn wedged_agent_escalates_to_signals_and_still_ends_interrupted() {
         .run(request("scenario:wedge"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(Duration::from_secs(10), async move {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         while let Some(ev) = stream.next().await {
@@ -641,7 +641,7 @@ async fn prompt_complete_extension_settles_a_hung_prompt_response() {
         .run(request("scenario:prompt-complete-hang"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(Duration::from_secs(10), async {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");
@@ -674,7 +674,7 @@ async fn stale_prompt_complete_never_settles_a_newer_turn() {
         .run(request("scenario:prompt-complete-stale"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(Duration::from_secs(10), async {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");

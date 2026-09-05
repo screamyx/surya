@@ -83,7 +83,7 @@ async fn run_to_end(
 ) -> Vec<AgentEvent> {
     let stream = harness.run(req, controls).await.expect("run starts");
     tokio::time::timeout(
-        Duration::from_secs(10),
+        zeron_test_deadlines::WAIT,
         stream.map(|r| r.expect("stream event")).collect::<Vec<_>>(),
     )
     .await
@@ -452,7 +452,7 @@ async fn interrupt_sends_turn_interrupt_and_maps_aborted() {
         .await
         .expect("run starts");
 
-    let events = tokio::time::timeout(Duration::from_secs(10), async move {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");
@@ -488,7 +488,7 @@ async fn unresponsive_child_is_reaped_with_interrupted_done() {
         .await
         .expect("run starts");
 
-    let events = tokio::time::timeout(Duration::from_secs(10), async move {
+    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");

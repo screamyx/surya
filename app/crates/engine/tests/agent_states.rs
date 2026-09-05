@@ -76,7 +76,7 @@ fn asks_permission(request_id: &str, command: &str) -> AgentEvent {
 }
 
 async fn wait_for<F: FnMut() -> bool>(mut predicate: F, what: &str) {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     while !predicate() {
         assert!(
             tokio::time::Instant::now() < deadline,

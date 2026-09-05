@@ -283,7 +283,7 @@ fn idle(fake: &FakeOpencode, session: &str) {
 async fn next_event(
     stream: &mut (impl futures::Stream<Item = Result<AgentEvent, HarnessError>> + Unpin),
 ) -> AgentEvent {
-    tokio::time::timeout(Duration::from_secs(10), stream.next())
+    tokio::time::timeout(zeron_test_deadlines::WAIT, stream.next())
         .await
         .expect("event within budget")
         .expect("stream open")
@@ -292,7 +292,7 @@ async fn next_event(
 
 /// Poll until `path` has received `n` POSTs; returns their bodies.
 async fn wait_posts(fake: &FakeOpencode, path: &str, n: usize) -> Vec<Value> {
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(zeron_test_deadlines::WAIT, async {
         loop {
             let posts = fake.posts_to(path);
             if posts.len() >= n {
