@@ -21,6 +21,10 @@ static LAST_PAINT_US: AtomicU64 = AtomicU64::new(0);
 static SEEN_FRAMES: AtomicU64 = AtomicU64::new(0);
 /// Renders of the root view, which is where a browser frame gets drawn.
 static RENDERS: AtomicU64 = AtomicU64::new(0);
+/// Renders that found a frame the previous render had not: the frames the
+/// pane showed, one per CEF paint at best. A render that finds no new frame
+/// draws the frame it already showed and does not count.
+static SHOWN: AtomicU64 = AtomicU64::new(0);
 
 /// A power of two, so `head % RING` is a mask. 1024 samples is eight
 /// seconds of frames at 120 Hz, more than any self-test window.
@@ -46,11 +50,17 @@ pub(crate) fn on_render() {
     if frames == SEEN_FRAMES.swap(frames, Ordering::AcqRel) {
         return;
     }
+    SHOWN.fetch_add(1, Ordering::Relaxed);
     let painted = LAST_PAINT_US.load(Ordering::Acquire);
     if painted == 0 {
         return;
     }
     push(now_us().saturating_sub(painted));
+}
+
+/// Frames shown so far (renders that drew a new CEF frame).
+pub(crate) fn shown() -> u64 {
+    SHOWN.load(Ordering::Relaxed)
 }
 
 fn push(gap_us: u64) {
@@ -78,18 +88,20 @@ pub(crate) fn summary(since: u64) -> String {
     }
     let mut w: Vec<u64> = (first..head).map(|i| SAMPLES[(i as usize) % RING].load(Ordering::Acquire)).collect();
     w.sort_unstable();
+    let at = |p: usize| w[(w.len() * p / 100).min(w.len() - 1)] as f64 / 1000.0;
     format!(
-        "p2d n={} median={:.1}ms p90={:.1}ms max={:.1}ms",
+        "p2d n={} median={:.1}ms p90={:.1}ms p95={:.1}ms max={:.1}ms",
         w.len(),
         w[w.len() / 2] as f64 / 1000.0,
-        w[(w.len() * 9 / 10).min(w.len() - 1)] as f64 / 1000.0,
+        at(90),
+        at(95),
         w[w.len() - 1] as f64 / 1000.0
     )
 }
 
 /// For a counters line: the last ring of samples, plus the clock's pair.
 pub(crate) fn counters() -> String {
-    format!("app_renders={} {} {}", renders(), crate::clock::counters(), summary(0))
+    format!("app_renders={} shown={} {} {}", renders(), shown(), crate::clock::counters(), summary(0))
 }
 
 #[cfg(test)]
@@ -106,6 +118,7 @@ mod tests {
         assert!(s.contains("n=10"), "{s}");
         assert!(s.contains("median=6.0ms"), "{s}");
         assert!(s.contains("p90=10.0ms"), "{s}");
+        assert!(s.contains("p95=10.0ms"), "{s}");
         assert!(s.contains("max=10.0ms"), "{s}");
     }
 
