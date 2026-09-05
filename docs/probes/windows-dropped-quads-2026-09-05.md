@@ -1,4 +1,84 @@
-# Probe: primary buttons paint as dim text on Windows (the "pill bug")
+# Probe: filled quads drop on Windows (the "pill bug")
+
+## Answer (round 5, seat surya-cef, 11:10 to 11:30)
+
+The Windows shader reads the quad buffer with the wrong stride.
+The fork added a `fade: EdgeFadeParams` field (8 floats, 32 bytes) to the GPU-facing `Quad` and `PolychromeSprite` structs and taught the Metal and wgpu shaders about it, but never touched the DirectX HLSL.
+On Windows the instance buffer is built from the Rust struct (192 bytes per quad) while the shader still declares the old 160-byte layout, so every quad after the first in a batch is read from the wrong offset.
+Which quads survive depends on where each batch starts, so the drops move whenever the scene is rebuilt (a scroll, a theme switch) and stay put between rebuilds, exactly what round 4 measured.
+
+Sources, all read in the vendored fork checkout `~/.cargo/git/checkouts/zed-d032abea1bc23d84/e2ddcc6` (wingleeio/zed rev e2ddcc68, the rev `app/Cargo.toml:71` pins):
+
+| Side | File and line | What it says |
+| --- | --- | --- |
+| Rust quad | `crates/gpui/src/scene.rs:577-588` | `pub struct Quad { ... pub border_widths: Edges<ScaledPixels>, pub fade: EdgeFadeParams, }` |
+| Rust image | `crates/gpui/src/scene.rs:807-817` | `pub struct PolychromeSprite { ... pub corner_radii: Corners<ScaledPixels>, pub fade: EdgeFadeParams, pub tile: AtlasTile, }` |
+| Rust fade | `crates/gpui/src/scene.rs:563-572` | `pub struct EdgeFadeParams { pub top_y: f32, pub bottom_y: f32, pub band_top: f32, pub band_bottom: f32, pub left_x: f32, pub right_x: f32, pub band_left: f32, pub band_right: f32, }` |
+| HLSL quad | `crates/gpui_windows/src/shaders.hlsl:496-505` | `struct Quad { uint order; uint border_style; Bounds bounds; Bounds content_mask; Background background; Hsla border_color; Corners corner_radii; Edges border_widths; };` (no fade) |
+| HLSL image | `crates/gpui_windows/src/shaders.hlsl:1204-1213` | `struct PolychromeSprite { ... Corners corner_radii; AtlasTile tile; };` (no fade) |
+| wgpu quad | `crates/gpui_wgpu/src/shaders.wgsl:550-560` | `struct Quad { ... border_widths: Edges, fade: EdgeFadeParams, }` (has fade, this is why Linux paints) |
+| Metal | `crates/gpui_macos/src/shaders.metal:37,111,220` | `float edge_fade_alpha(float2 position, EdgeFadeParams fade);` and `background_color.a *= edge_fade;` (has fade) |
+| Buffer stride | `crates/gpui_windows/src/directx_renderer.rs:1027` and `:1056` | `create_buffer(device, std::mem::size_of::<T>(), buffer_size)`; `:1508-1523` sets `StructureByteStride: element_size` with `D3D11_RESOURCE_MISC_BUFFER_STRUCTURED` |
+| Draw | `crates/gpui_windows/src/directx_renderer.rs:506-526` `draw_quads` and `:1119-1141` `draw_range` | one `DrawInstanced` per batch over a view of `first_instance..instance_count` |
+| CPU side | `crates/gpui/src/window.rs:4054`, `:4372`, `:4533` | `fade: self.scaled_edge_fade()` on every quad and image; `:3623-3660` fills it, zeroed outside a fade scope |
+
+Byte sizes from the field lists above: `Background` is 72 bytes (tag 4, color_space 4, solid 16, angle 4, two 20-byte stops, pad 4).
+HLSL `Quad` is 4+4+16+16+72+16+16+16 = 160 bytes, the Rust one 192.
+HLSL `PolychromeSprite` is 4+4+4+4+16+16+16+32 = 96 bytes, the Rust one 128, and there the extra field sits before `tile`, so even the first image of a batch reads its atlas tile from the fade bytes.
+
+Fork history (`git log` in `~/.cargo/git/db/zed-d032abea1bc23d84`):
+`shaders.hlsl` was last changed by upstream on 2026-07-09 (`f281770034`, "Store GPU-facing bools as PaddedBool32").
+The fade landed in `ef2f35c3d9` "per-pixel EdgeFade for quads and images (metal + wgpu)" and `5d1f83d9f2` "horizontal per-pixel EdgeFade", both touching `scene.rs`, `window.rs` and `shaders.wgsl` only.
+`Shadow`, `Underline`, `MonochromeSprite`, `Background`, `AtlasTile` and `TransformationMatrix` match on both sides, which is why text, icons, shadows and real underlines keep painting.
+The "underlines" that dropped in the Add server dialog are 1px border-only quads (`window.rs` `paint_quad` splits them into strips, more quads per batch), not `Underline` primitives.
+
+Round 4's ruled-out list stands: window background mode and theme colours are not involved, and neither is the D3D11 blend state (`directx_renderer.rs:1411-1427` is upstream's SrcAlpha/InvSrcAlpha, unchanged).
+
+## Reproduction on dtry (DEBUG build)
+
+Box: dtry, NVIDIA GeForce RTX 4080 (plus the AMD iGPU), Windows PowerShell 5.1, cargo 1.97.1 MSVC.
+Tree: this repo at 3407d5f (main 4737c75 plus PR #52), shipped to `E:\surya-cef`, own cargo home `E:\surya-cef-cargo` (a copy of surya-remote's) and target `E:\surya-cef-target`.
+Engine: the remote service on this box (`ws://pc-ajim:27700`, saved Servers entry), the app on the last selected chat "Display All Leads Table".
+Shots: `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` of the zeron window from a session-1 scheduled task (`E:\surya-cef-pshot.ps1`), because the window came up behind the owner's terminal and Chrome and `SetForegroundWindow` from a task does not raise it.
+`ZERON_DEMO_CARDS` was set but the fixture chat never seeded within the 22 s before the shot (no "demo cards seeded" line), so the comparison uses a real chat instead of the a2ui cards.
+
+| Build | What changed | exe time | Shot |
+| --- | --- | --- | --- |
+| A | `cargo build -p zeron` (debug), nothing patched | 11:20:41 | `docs/images/dtry-r5-A-unpatched-hlsl.png` |
+| B | same tree, only the vendored `shaders.hlsl` in `E:\surya-cef-cargo\git\checkouts\zed-d032abea1bc23d84\e2ddcc6\crates\gpui_windows\src\` patched by `E:\surya-cef-hlsl-patch.ps1` (adds `struct EdgeFadeParams` at line 88, `EdgeFadeParams fade;` at 516 in `Quad` and at 1224 in `PolychromeSprite`), then `cargo clean -p gpui_windows` and `cargo build -p zeron` | 11:23:40 | `docs/images/dtry-r5-B-hlsl-fade-field.png` |
+
+Same window size (1336x888), same chat, same scroll position. Elements checked: asked=5.
+
+| Element | A (unpatched) | B (fade field added) |
+| --- | --- | --- |
+| User bubble "reply" | bare text, no bubble | filled rounded bubble |
+| User bubble "In one short line..." | filled | filled |
+| Transcript column container (rounded card behind the chat) | missing, text sits on the window background | drawn, with its border |
+| "L" avatar circle next to "Local only" | missing | drawn |
+| "Thought process" chevron chip | bare arrow | round chip |
+
+Dropped in A: seen=4 of 5. Dropped in B: seen=0 of 5.
+The only difference between the two binaries is the 32-byte field in the two HLSL structs, so the stride mismatch is the cause, not the blend state, the atlas or the window background path.
+
+Cargo notes for whoever repeats this: a change inside a git checkout under `CARGO_HOME` does not trigger a rebuild (`rerun-if-changed` on `shaders.hlsl` is not enough for a git dependency), hence the `cargo clean -p gpui_windows`.
+The first debug build from a warm cargo home and a cold target took 3m18s; the patched rebuild 36s.
+Left on dtry: `E:\surya-cef`, `E:\surya-cef-cargo`, `E:\surya-cef-target`, `E:\surya-cef-*.ps1`, the two shots; the scheduled tasks are deleted and the app is stopped.
+
+## Smallest fix candidate (not applied on any branch)
+
+Add the field to the two HLSL structs so the stride matches again.
+Ignoring the field in the shader is enough to stop the drops; it just means no per-pixel edge fade on Windows until the fragment shaders learn it like `shaders.wgsl` did.
+
+1. `crates/gpui_windows/src/shaders.hlsl:88`, before `struct TransformationMatrix`: add `struct EdgeFadeParams { float top_y; float bottom_y; float band_top; float band_bottom; float left_x; float right_x; float band_left; float band_right; };`
+2. `crates/gpui_windows/src/shaders.hlsl:504`, after `Edges border_widths;` in `struct Quad`: add `EdgeFadeParams fade;`
+3. `crates/gpui_windows/src/shaders.hlsl:1211`, between `Corners corner_radii;` and `AtlasTile tile;` in `struct PolychromeSprite`: add `EdgeFadeParams fade;`
+
+Follow-up for the fork, not for the RC: port `edge_fade_alpha` from `shaders.wgsl` into `quad_fragment` and `polychrome_sprite_fragment` so scroll-edge fades work on Windows too, and add a `const_assert`-style size check between `scene.rs` and each shader so the next new field cannot silently skip a backend.
+The fix belongs in the gpui fork (a new rev pinned in `app/Cargo.toml:71-72`), not in this repo.
+
+---
+
+# Round 4 (surya-remote): primary buttons paint as dim text on Windows
 
 Date: 2026-09-05, 09:16 to 10:00 local. Seat surya-remote, round 4 on dtry.
 Build: `main` at ca5abe9 (theme PR #2 merged as a139718), `cargo build --release -p zeron` on dtry, cargo 1.97.1, exe 09:18:50.
