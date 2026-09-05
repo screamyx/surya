@@ -415,6 +415,7 @@ pub enum ShortcutId {
     ToggleTerminal,
     ToggleFiles,
     ToggleTasks,
+    ToggleInbox,
     NewSession,
     NextSession,
     PrevSession,
@@ -423,12 +424,13 @@ pub enum ShortcutId {
 }
 
 impl ShortcutId {
-    pub const ALL: [ShortcutId; 9 + JUMP_SLOTS] = [
+    pub const ALL: [ShortcutId; 10 + JUMP_SLOTS] = [
         ShortcutId::ToggleSidebar,
         ShortcutId::ToggleChanges,
         ShortcutId::ToggleTerminal,
         ShortcutId::ToggleFiles,
         ShortcutId::ToggleTasks,
+        ShortcutId::ToggleInbox,
         ShortcutId::NewSession,
         ShortcutId::NextSession,
         ShortcutId::PrevSession,
@@ -452,6 +454,7 @@ impl ShortcutId {
             ShortcutId::ToggleTerminal => "Toggle terminal",
             ShortcutId::ToggleFiles => "Toggle files pane",
             ShortcutId::ToggleTasks => "Toggle tasks pane",
+            ShortcutId::ToggleInbox => "Toggle the needs-you list",
             ShortcutId::NewSession => "New session",
             ShortcutId::NextSession => "Next session",
             ShortcutId::PrevSession => "Previous session",
@@ -474,6 +477,7 @@ impl ShortcutId {
             ShortcutId::ToggleTerminal => "mod-j",
             ShortcutId::ToggleFiles => "mod-shift-f",
             ShortcutId::ToggleTasks => "mod-shift-t",
+            ShortcutId::ToggleInbox => "mod-shift-i",
             ShortcutId::NewSession => "mod-n",
             // Ctrl+Tab on every platform — but spelled the way THAT platform's
             // recorder spells ctrl (see `combo_from_keystroke`). Off macOS
@@ -516,6 +520,7 @@ pub struct KeymapConfig {
     pub toggle_terminal: String,
     pub toggle_files: String,
     pub toggle_tasks: String,
+    pub toggle_inbox: String,
     pub new_session: String,
     pub next_session: String,
     pub prev_session: String,
@@ -535,6 +540,7 @@ impl Default for KeymapConfig {
             toggle_terminal: ShortcutId::ToggleTerminal.default_combo().into(),
             toggle_files: ShortcutId::ToggleFiles.default_combo().into(),
             toggle_tasks: ShortcutId::ToggleTasks.default_combo().into(),
+            toggle_inbox: ShortcutId::ToggleInbox.default_combo().into(),
             new_session: ShortcutId::NewSession.default_combo().into(),
             next_session: ShortcutId::NextSession.default_combo().into(),
             prev_session: ShortcutId::PrevSession.default_combo().into(),
@@ -552,6 +558,7 @@ impl KeymapConfig {
             ShortcutId::ToggleTerminal => &self.toggle_terminal,
             ShortcutId::ToggleFiles => &self.toggle_files,
             ShortcutId::ToggleTasks => &self.toggle_tasks,
+            ShortcutId::ToggleInbox => &self.toggle_inbox,
             ShortcutId::NewSession => &self.new_session,
             ShortcutId::NextSession => &self.next_session,
             ShortcutId::PrevSession => &self.prev_session,
@@ -571,6 +578,7 @@ impl KeymapConfig {
             ShortcutId::ToggleTerminal => self.toggle_terminal = combo,
             ShortcutId::ToggleFiles => self.toggle_files = combo,
             ShortcutId::ToggleTasks => self.toggle_tasks = combo,
+            ShortcutId::ToggleInbox => self.toggle_inbox = combo,
             ShortcutId::NewSession => self.new_session = combo,
             ShortcutId::NextSession => self.next_session = combo,
             ShortcutId::PrevSession => self.prev_session = combo,

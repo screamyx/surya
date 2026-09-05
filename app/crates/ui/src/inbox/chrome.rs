@@ -49,11 +49,7 @@ pub fn badge(_theme: &Theme, text: impl Into<SharedString>, tone: Hsla) -> Div {
 
 /// A round status dot, for an agent row.
 pub fn dot(color: Hsla) -> Div {
-    div()
-        .flex_none()
-        .size(px(6.0))
-        .rounded(px(999.0))
-        .bg(color)
+    div().flex_none().size(px(6.0)).rounded(px(999.0)).bg(color)
 }
 
 /// How loud a button is.
@@ -97,9 +93,9 @@ pub fn button(theme: &Theme, tone: ButtonTone, label: impl Into<SharedString>) -
     .child(label.into())
 }
 
-/// A quieter chip for a SETTING rather than an action: no border, muted
-/// text, so it does not read as a fourth button next to Allow and Deny.
-pub fn setting_chip(theme: &Theme, text: impl Into<SharedString>) -> Div {
+/// The shape both chips share: quieter than a button, no border, muted text,
+/// so neither reads as a fourth button next to Allow and Deny.
+fn chip_base(theme: &Theme, text: impl Into<SharedString>) -> Div {
     div()
         .flex_none()
         .px(px(6.0))
@@ -107,9 +103,25 @@ pub fn setting_chip(theme: &Theme, text: impl Into<SharedString>) -> Div {
         .rounded(px(6.0))
         .text_size(ui_rems(11.0))
         .text_color(theme.text_faint)
+        .child(text.into())
+}
+
+/// A chip for a SETTING the user can change, like the scope on "Always
+/// allow". It IS clickable, so it takes a pointer cursor and lights on hover.
+pub fn setting_chip(theme: &Theme, text: impl Into<SharedString>) -> Div {
+    chip_base(theme, text)
         .cursor_pointer()
         .hover(|s| s.bg(theme.element_hover).text_color(theme.text_muted))
-        .child(text.into())
+}
+
+/// A chip that is only TEXT: "pick one or more" next to a multi-select.
+///
+/// Deliberately without the pointer cursor and the hover of [`setting_chip`].
+/// It reused that chip and so lit up under the mouse, which promised a click
+/// that does nothing. A hint the user tries to press is a worse hint than no
+/// hint at all.
+pub fn hint_chip(theme: &Theme, text: impl Into<SharedString>) -> Div {
+    chip_base(theme, text)
 }
 
 /// A group heading: "Waiting for you", "Running", and the like.

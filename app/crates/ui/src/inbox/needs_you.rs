@@ -13,8 +13,8 @@ use zeron_proto::{Chat, NeedsYouItem, NeedsYouKind, PermissionDecision, UserInpu
 use zeron_rpc::methods;
 
 use crate::inbox::chrome::{
-    ButtonTone, badge, body_text, button, command_text, empty_state, kind_color, row_card,
-    setting_chip,
+    ButtonTone, badge, body_text, button, command_text, empty_state, hint_chip, kind_color,
+    row_card, setting_chip,
 };
 use crate::inbox::model::{
     AlwaysAllowScope, InboxRow, inbox_rows, remember_for, respond_input_params,
@@ -95,6 +95,13 @@ impl NeedsYouPane {
         inbox_rows(&self.items, &self.chats)
     }
 
+    /// How many things are waiting. The rail badge and the shell's
+    /// auto-show rule both want the count, and neither needs the rows built
+    /// to get it.
+    pub fn count(&self) -> usize {
+        self.items.len()
+    }
+
     fn start_watches(&mut self, cx: &mut Context<Self>) {
         let Some(engine) = self
             .state
@@ -123,7 +130,8 @@ impl NeedsYouPane {
                         let alive = this.update(cx, |pane, cx| {
                             // Anything the engine no longer lists has been
                             // answered; stop holding its row disabled.
-                            pane.answering.retain(|id| items.iter().any(|i| &i.id == id));
+                            pane.answering
+                                .retain(|id| items.iter().any(|i| &i.id == id));
                             pane.items = items;
                             cx.notify();
                         });
@@ -294,9 +302,10 @@ impl NeedsYouPane {
             .when(busy, |el| el.opacity(0.55))
             .child(header)
             .child(title)
-            .when(!row.prompt.is_empty() && row.kind != NeedsYouKind::Permission, |el| {
-                el.child(body_text(theme, row.prompt.clone()))
-            })
+            .when(
+                !row.prompt.is_empty() && row.kind != NeedsYouKind::Permission,
+                |el| el.child(body_text(theme, row.prompt.clone())),
+            )
             .when_some(row.tool_command.clone(), |el, command| {
                 el.child(command_text(theme, command))
             })
@@ -405,7 +414,7 @@ impl NeedsYouPane {
                         // Nothing picked yet: a HINT, not a button. Drawn as
                         // a button it read as a fourth option sitting in the
                         // same row as the real ones.
-                        el.child(setting_chip(theme, "pick one or more"))
+                        el.child(hint_chip(theme, "pick one or more"))
                     })
                     .when(row.multi_select && picked_count > 0, |el| {
                         el.child(

@@ -242,7 +242,8 @@ fn group(id: ShortcutId) -> &'static str {
         | ShortcutId::ToggleChanges
         | ShortcutId::ToggleTerminal
         | ShortcutId::ToggleFiles
-        | ShortcutId::ToggleTasks => "Panels",
+        | ShortcutId::ToggleTasks
+        | ShortcutId::ToggleInbox => "Panels",
         ShortcutId::NewSession
         | ShortcutId::NextSession
         | ShortcutId::PrevSession
@@ -260,6 +261,9 @@ fn description(id: ShortcutId) -> &'static str {
         ShortcutId::ToggleTerminal => "Show or hide the terminal for the current session.",
         ShortcutId::ToggleFiles => "Show or hide the file tree and editor for the current space.",
         ShortcutId::ToggleTasks => "Show or hide the task board for the current space.",
+        ShortcutId::ToggleInbox => {
+            "Show or hide the needs-you list at the top of the feed."
+        }
         ShortcutId::NewSession => "Open a blank session canvas to start a new session.",
         ShortcutId::NextSession => "Select the next session in the sidebar, wrapping at the end.",
         ShortcutId::PrevSession => {
