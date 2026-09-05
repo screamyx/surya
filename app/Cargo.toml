@@ -48,7 +48,13 @@ loro = "1.13"
 # frames, cross-checked by its js_snapshots tests).
 loro-protocol = "0.3"
 
-# gpui — the wingleeio/zed fork: upstream f14fea9 + commits on
+# gpui — screamyx/gpui-surya, branch surya/hlsl-edge-fade: wingleeio/zed at
+# e2ddcc68 (kept there as branch wingleeio-e2ddcc68) plus f910653 which adds
+# the EdgeFadeParams field to the HLSL Quad and PolychromeSprite. Without it
+# the Windows structured-buffer stride (192 B per quad from the Rust struct)
+# disagreed with the shader's 160 B and filled quads dropped per frame
+# (docs/probes/windows-dropped-quads-2026-09-05.md). The wingleeio history:
+# the wingleeio/zed fork: upstream f14fea9 + commits on
 # `comet/edge-fade-horizontal` (tip of `comet/line-wrap-closing-punctuation`
 # + 5d1f83d horizontal per-pixel EdgeFade for quads/images; rebase when bumping the
 # upstream rev): a6bf17c fixes BOTH wrap-rule copies (LineWrapper +
@@ -68,14 +74,14 @@ loro-protocol = "0.3"
 # stopped vending CABackdropLayer for Selection — window blur went dead);
 # b68970e rasterizes BackdropBlur in the wgpu renderer (frosted floats on
 # Linux — the Metal path's snapshot/blur/composite, ported).
-gpui = { git = "https://github.com/wingleeio/zed", rev = "e2ddcc6805f8c5088e62a60dfe517abcccd61a9a" }
-gpui_platform = { git = "https://github.com/wingleeio/zed", rev = "e2ddcc6805f8c5088e62a60dfe517abcccd61a9a", features = [
+gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "f910653f77cc0d5cee9cb874d6c7b06fe5b06e4a" }
+gpui_platform = { git = "https://github.com/screamyx/gpui-surya", rev = "f910653f77cc0d5cee9cb874d6c7b06fe5b06e4a", features = [
     "wayland",
     "x11",
     "font-kit",
     "runtime_shaders",
 ] }
-gpui_tokio = { git = "https://github.com/wingleeio/zed", rev = "e2ddcc6805f8c5088e62a60dfe517abcccd61a9a" }
+gpui_tokio = { git = "https://github.com/screamyx/gpui-surya", rev = "f910653f77cc0d5cee9cb874d6c7b06fe5b06e4a" }
 
 # diffs
 similar = "2"
