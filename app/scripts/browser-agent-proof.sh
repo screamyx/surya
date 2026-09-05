@@ -125,7 +125,7 @@ grep -E "^browser-agent:|^devtools:|^browser: (created|load_end|address)" "$OUT/
 LINE=$(grep -E "^browser-mock: tools_called=" "$OUT/engine.log" | tail -1)
 CALLED=$(sed -n 's/.*tools_called=\([0-9]*\).*/\1/p' <<<"$LINE"); CALLED=${CALLED:-0}
 OKS=$(sed -n 's/.*tools_called=[0-9]* ok=\([0-9]*\).*/\1/p' <<<"$LINE"); OKS=${OKS:-0}
-CARD=$(grep -c "screenshot shown in the transcript as card" "$OUT/engine.log"); CARD=${CARD:-0}
+CARD=$(grep -c "^browser-mock: card emitted=1" "$OUT/engine.log"); CARD=${CARD:-0}
 FRAMES=$(ls "$OUT/frames" 2>/dev/null | wc -l)
 echo "proof: tools_called=$CALLED ok=$OKS card=$CARD attached=$ATTACHED screenshot=$SHOT ($(stat -c %s "$SHOT" 2>/dev/null || echo 0) bytes) frames=$FRAMES"
 [ "$CALLED" -eq 4 ] && [ "$OKS" -eq 4 ] && [ "$ATTACHED" -ge 1 ]

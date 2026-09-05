@@ -13,6 +13,7 @@
 
 use std::sync::Mutex;
 
+use cef::{ImplBrowserHost as _, MouseButtonType, MouseEvent};
 use futures::channel::oneshot;
 use serde_json::{Value, json};
 
@@ -139,30 +140,24 @@ async fn locate(id: u64) -> Result<(f64, f64), String> {
     Ok((x, y))
 }
 
-async fn mouse(kind: &str, x: f64, y: f64) -> Result<(), String> {
-    devtools::call(
-        "Input.dispatchMouseEvent",
-        json!({
-            "type": kind,
-            "x": x,
-            "y": y,
-            "button": "left",
-            "clickCount": 1,
-        }),
-    )
-    .await
-    .map(|_| ())
-}
-
 /// A real click at the element's centre: move, press, release, through
-/// Chromium's input path, so a page's own handlers see what a person's
-/// click would give them.
+/// the same CEF input path the owner's mouse takes (`events.rs`), so a
+/// page's own handlers see what a person's click gives them. DevTools'
+/// `Input.dispatchMouseEvent` was tried first and did nothing under
+/// offscreen rendering (measured on :7, 2026-09-05: three events answered,
+/// the link never followed); CEF's own `send_mouse_click_event` is what
+/// this crate has proven.
 async fn click(id: u64) -> Result<Value, String> {
     let (x, y) = locate(id).await?;
-    mouse("mouseMoved", x, y).await?;
-    mouse("mousePressed", x, y).await?;
-    mouse("mouseReleased", x, y).await?;
-    Ok(json!({ "clicked": id, "x": x, "y": y }))
+    let Some(host) = crate::client::host() else {
+        return Err("no browser is open in the pane".into());
+    };
+    let event = MouseEvent { x: x.round() as i32, y: y.round() as i32, modifiers: 0 };
+    crate::pump::mark_input();
+    host.send_mouse_move_event(Some(&event), 0);
+    host.send_mouse_click_event(Some(&event), MouseButtonType::LEFT, 0, 1);
+    host.send_mouse_click_event(Some(&event), MouseButtonType::LEFT, 1, 1);
+    Ok(json!({ "clicked": id, "x": event.x, "y": event.y }))
 }
 
 /// Focus the element, select what it holds, and insert the text over it.

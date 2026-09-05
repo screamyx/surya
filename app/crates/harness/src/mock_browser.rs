@@ -246,12 +246,20 @@ async fn session(url: String, tx: mpsc::UnboundedSender<AgentEvent>) {
             snapshot = output.clone();
         }
         println!("browser-mock: {tool} ok={} tools_called={called} ok={ok}", u8::from(!is_error));
+        if is_error {
+            println!("browser-mock: {tool} error: {}", output.lines().next().unwrap_or(""));
+        }
         emit(AgentEvent::ToolResult { id: id.clone(), is_error, output: Some(output), diff: None });
-        if *tool == "browser_screenshot"
-            && !is_error
-            && let Some(card) = mcp.last_card()
-        {
-            emit(card);
+        if *tool == "browser_screenshot" && !is_error {
+            match mcp.last_card() {
+                Some(card) => {
+                    if let AgentEvent::Card { card_id, .. } = &card {
+                        println!("browser-mock: card emitted=1 card_id={card_id}");
+                    }
+                    emit(card);
+                }
+                None => println!("browser-mock: card emitted=0 (no record in {})", mcp.card_store.display()),
+            }
         }
     }
     println!("browser-mock: tools_called={called} ok={ok}");
