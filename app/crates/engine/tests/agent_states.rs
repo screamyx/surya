@@ -469,6 +469,7 @@ fn rules_persist_across_an_engine_restart() {
             workspace_path: None,
             tool_name: "Bash".into(),
             pattern: "git status*".into(),
+            exact: false,
             created_at: chrono::Utc::now(),
         })
         .expect("adds");

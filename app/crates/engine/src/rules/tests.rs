@@ -219,6 +219,71 @@ fn a_wildcard_pattern_cannot_widen_a_single_answer() {
     ));
 }
 
+/// Leading blanks must not buy a pattern any slack: `"   r*"` for
+/// `"   rm -rf x"` is still just `r*`, which stops at the first word.
+#[test]
+fn leading_whitespace_does_not_widen_a_pattern() {
+    let padded = request("Bash", "   rm -rf x");
+    assert!(matches!(
+        AllowRules::from_remember(
+            &RememberRule {
+                scope: RuleScope::Global,
+                pattern: "   r*".into(),
+                name: None,
+            },
+            &padded,
+            "/repos/x",
+        ),
+        Err(RulesError::PatternMissesRequest { .. })
+    ));
+    // Reaching past the first word is still fine, padding and all.
+    assert!(
+        AllowRules::from_remember(
+            &RememberRule {
+                scope: RuleScope::Global,
+                pattern: "rm -rf *".into(),
+                name: None,
+            },
+            &padded,
+            "/repos/x",
+        )
+        .is_ok()
+    );
+}
+
+/// "Remember this one command" on a command that CONTAINS a wildcard must
+/// pin the literal, not store a glob that approves far more.
+#[test]
+fn remembering_an_exact_command_containing_a_wildcard_pins_only_that_command() {
+    let dir = tempfile::tempdir().unwrap();
+    let rules = AllowRules::open(dir.path());
+    let shown = request("Bash", "ls *.txt");
+    let rule = AllowRules::from_remember(
+        &RememberRule {
+            scope: RuleScope::Global,
+            // Empty: "just this command".
+            pattern: String::new(),
+            name: None,
+        },
+        &shown,
+        "/repos/x",
+    )
+    .expect("an exact pin is never refused by the anchoring check");
+    assert!(rule.exact, "stored as a literal, not as a glob");
+    assert_eq!(rule.pattern, "ls *.txt");
+    rules.add(rule).unwrap();
+
+    // The same command again is auto-allowed…
+    assert!(rules.matching(&shown, "/repos/x").is_some());
+    // …and nothing the glob would have swept up is.
+    for other in ["ls notes.txt", "ls a.txt b.txt", "ls "] {
+        assert!(
+            rules.matching(&request("Bash", other), "/repos/x").is_none(),
+            "{other:?} was never approved"
+        );
+    }
+}
+
 /// The settings page is not filtered: there the user is authoring the rule
 /// with their eyes open, and a broad pattern is the whole point.
 #[test]
@@ -233,6 +298,7 @@ fn a_broad_rule_written_in_settings_is_still_accepted() {
             workspace_path: None,
             tool_name: "Bash".into(),
             pattern: "*".into(),
+            exact: false,
             created_at: Utc::now(),
         })
         .expect("AddAllowRule is explicit authorship, not an answer");

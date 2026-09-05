@@ -119,6 +119,7 @@ impl AllowRules {
                 && r.workspace_path == rule.workspace_path
                 && r.tool_name == rule.tool_name
                 && r.pattern == rule.pattern
+                && r.exact == rule.exact
         }) {
             return Ok(existing.clone());
         }
@@ -142,13 +143,21 @@ impl AllowRules {
         request: &PermissionRequest,
         cwd: &str,
     ) -> Result<AllowRule, RulesError> {
-        let pattern = remember.pattern.trim();
-        let pattern = if pattern.is_empty() {
+        // An empty pattern means "just this command, exactly". It is stored
+        // with the exact flag rather than as a glob: a command may itself
+        // contain `*` or `?` (`rm -rf build/*`, `ls *.txt`), and storing that
+        // as a pattern would either widen the rule far past what was pinned
+        // or fail the anchoring check for a command the user did approve.
+        let typed = remember.pattern.trim();
+        let exact = typed.is_empty();
+        let pattern = if exact {
             request.command.clone()
         } else {
-            pattern.to_string()
+            typed.to_string()
         };
-        if let Err(reason) = literal_prefix_covers(&pattern, &request.command) {
+        if !exact
+            && let Err(reason) = literal_prefix_covers(&pattern, &request.command)
+        {
             return Err(RulesError::PatternMissesRequest {
                 pattern,
                 command: request.command.clone(),
@@ -170,6 +179,7 @@ impl AllowRules {
             workspace_path,
             tool_name: request.tool_name.clone(),
             pattern,
+            exact,
             created_at: Utc::now(),
         })
     }
@@ -238,6 +248,11 @@ fn literal_prefix_covers(pattern: &str, command: &str) -> Result<(), &'static st
     if literal.is_empty() {
         return Err("it starts with a wildcard, so it would match every command this tool runs");
     }
+    // Compare against the command with its leading blanks removed, the same
+    // way `split_whitespace` sees it. Keeping them here let `"   r*"` count
+    // its three spaces toward the length test and slip past for
+    // `"   rm -rf x"`.
+    let command = command.trim_start();
     if !command.starts_with(literal) {
         return Err("its literal part is not how the command starts");
     }
