@@ -841,9 +841,9 @@ mod tests {
             // The floor is 11, not the 12 this test opened with. WCAG asks
             // 4.5 for AA and 7 for AAA; 11 is far above both and exists only
             // to catch a palette that has gone flat, not to pin a figure. The
-            // dark card lands at 11.62 and forcing it past 12 would mean
-            // darkening the very tone that lifts a floating card off the pane
-            // under it.
+            // dark card is the tightest at 11.51, and forcing it past 12 would
+            // mean darkening the very tone that lifts a floating card off the
+            // pane under it.
             let body = colors.text.contrast(colors.background);
             assert!(body >= 11.0, "{id}: body text {body:.2}:1 under 11:1");
             let muted = colors.text_muted.contrast(colors.background);
@@ -865,6 +865,24 @@ mod tests {
                 assert!(muted >= 4.5, "{id}: muted on {plane} {muted:.2}:1 under AA");
                 let faint = colors.text_faint.contrast(surface);
                 assert!(faint >= 4.5, "{id}: faint on {plane} {faint:.2}:1 under AA");
+            }
+
+            // `raised` is chips and pills. Every text role must stay AA on
+            // it, but the 11:1 body floor deliberately does not apply: that
+            // floor is a reading-comfort rule for paragraphs, and a chip
+            // carries two words.
+            //
+            // This assertion earned itself the moment it was written: light
+            // `text_faint` was 4.27:1 here. It had been sized against the
+            // panel alone, and a chip sits on a slightly darker plate.
+            let raised = colors.raised;
+            for (role, color) in [
+                ("text", colors.text),
+                ("muted", colors.text_muted),
+                ("faint", colors.text_faint),
+            ] {
+                let ratio = color.contrast(raised);
+                assert!(ratio >= 4.5, "{id}: {role} on raised {ratio:.2}:1 under AA");
             }
 
             // The canvas carries no text in this layout - it is the bare

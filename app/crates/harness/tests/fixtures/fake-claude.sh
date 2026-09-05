@@ -88,6 +88,31 @@ case "$first" in
   emit '{"type":"result","subtype":"success","result":"wrapped up","errors":[],"usage":{"input_tokens":3,"output_tokens":3},"session_id":"sess-wake"}'
   ;;
 
+*scenario:permission*)
+  # A single Bash permission request that BLOCKS until the host answers, so a
+  # smoke run can watch the needs-you queue fill and drain. `scenario:askuser`
+  # above expects an auto-allow; this one is for a real host gate, and it
+  # reports the decision it actually got rather than assuming allow.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash"],"cwd":"/tmp","session_id":"sess-perm"}'
+  emit '{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Running the migration."}}}'
+  emit '{"type":"control_request","request_id":"cr-perm","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"php artisan migrate --seed"}}}'
+  # Blocks here: no further frame until the host decides.
+  read -r perm || exit 1
+  case "$perm" in
+  *'"request_id":"cr-perm"'*'"behavior":"allow"'*)
+    emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"tool-perm","name":"Bash","input":{"command":"php artisan migrate --seed"}}]}}'
+    emit '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"tool-perm","is_error":false}]}}'
+    emit '{"type":"result","subtype":"success","result":"permission allowed","errors":[],"usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-perm"}'
+    ;;
+  *'"behavior":"deny"'*)
+    emit '{"type":"result","subtype":"success","result":"permission denied","errors":[],"usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-perm"}'
+    ;;
+  *)
+    emit '{"type":"result","subtype":"error_during_execution","errors":["permission answer was neither allow nor deny"],"usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-perm"}'
+    ;;
+  esac
+  ;;
+
 *scenario:askuser*)
   emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash"],"cwd":"/tmp","session_id":"sess-ask"}'
   # A plain tool permission request: must be auto-allowed.

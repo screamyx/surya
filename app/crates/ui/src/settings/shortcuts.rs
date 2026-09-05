@@ -238,9 +238,12 @@ const GROUP_ORDER: [&str; 3] = ["Panels", "Sessions", "Jump to session"];
 /// The section a shortcut's row renders under.
 fn group(id: ShortcutId) -> &'static str {
     match id {
-        ShortcutId::ToggleSidebar | ShortcutId::ToggleChanges | ShortcutId::ToggleTerminal => {
-            "Panels"
-        }
+        ShortcutId::ToggleSidebar
+        | ShortcutId::ToggleChanges
+        | ShortcutId::ToggleTerminal
+        | ShortcutId::ToggleFiles
+        | ShortcutId::ToggleTasks
+        | ShortcutId::ToggleInbox => "Panels",
         ShortcutId::NewSession
         | ShortcutId::NextSession
         | ShortcutId::PrevSession
@@ -256,6 +259,11 @@ fn description(id: ShortcutId) -> &'static str {
         ShortcutId::ToggleSidebar => "Show or hide sessions and settings navigation.",
         ShortcutId::ToggleChanges => "Show or hide changes for the current session.",
         ShortcutId::ToggleTerminal => "Show or hide the terminal for the current session.",
+        ShortcutId::ToggleFiles => "Show or hide the file tree and editor for the current space.",
+        ShortcutId::ToggleTasks => "Show or hide the task board for the current space.",
+        ShortcutId::ToggleInbox => {
+            "Show or hide the needs-you list at the top of the feed."
+        }
         ShortcutId::NewSession => "Open a blank session canvas to start a new session.",
         ShortcutId::NextSession => "Select the next session in the sidebar, wrapping at the end.",
         ShortcutId::PrevSession => {

@@ -47,8 +47,9 @@ ws.onopen = async () => {
 ws.onerror = (e) => { console.error("seed failed", e.message || e); process.exit(1); };
 JS
 
+# Takes the display lock itself: never wrap this script in an outer flock.
 exec 9>/store/surya-display7.lock
-flock 9
+flock -w "${SHOT_LOCK_WAIT:-120}" 9 || { echo "display lock busy after ${SHOT_LOCK_WAIT:-120}s, holder: $(fuser /store/surya-display7.lock 2>/dev/null) (shot=0)"; exit 3; }
 ZERON_DATA_DIR="$WORK/ui" ZERON_IPC_PORT=$PORT DISPLAY=$DISPLAY_NO \
   "$ZERON" --tasks-demo --tasks-space space-demo > "$WORK/demo.log" 2>&1 &
 DEMO=$!
