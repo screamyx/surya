@@ -5,6 +5,7 @@
 //! harness-level passthrough (rate-limit meters), never persisted into docs.
 
 pub mod agent;
+pub mod build;
 pub mod card;
 pub mod entities;
 pub mod files;

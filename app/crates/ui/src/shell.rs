@@ -50,8 +50,7 @@ use crate::settings::{
 };
 use crate::state::{
     AppState, ConnectionStatus, EngineBootConfig, EngineMode, GatePhase, Indicator, OrgRow,
-    RemoteEngineTarget,
-    format_time_ago, org_name_valid, parse_orgs, sort_memberships,
+    RemoteEngineTarget, format_time_ago, org_name_valid, parse_orgs, sort_memberships,
 };
 use crate::terminal::panel::{TerminalPanel, ToggleTerminal, clamp_terminal_height};
 use crate::theme::Theme;
@@ -4087,7 +4086,8 @@ impl Shell {
         // not a transparent column on the frost. Its width is pinned to the
         // WIDER tween endpoint so a collapse slides the card out behind the
         // container's clip instead of squashing its rows as it goes.
-        let stable = stable_panel_content_width(target, self.active_tween_endpoints(self.sidebar_tween));
+        let stable =
+            stable_panel_content_width(target, self.active_tween_endpoints(self.sidebar_tween));
         self.pane_container(
             self.sidebar_tween,
             target,
@@ -6264,7 +6264,44 @@ impl Shell {
                         cx.notify();
                     })),
             )
+            .children(self.render_engine_skew_banner(theme, cx))
             .into_any_element()
+    }
+
+    /// The version-skew strip: shown while the attached engine was built from
+    /// a different commit than this app. It floats just under the titlebar so
+    /// it never shifts the transcript; nothing is refused, a send that then
+    /// misbehaves has its reason on screen.
+    fn render_engine_skew_banner(
+        &self,
+        theme: &Theme,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let message = self.state.read(cx).engine_skew.clone()?;
+        Some(
+            div()
+                .id("engine-skew-banner")
+                .absolute()
+                .top(px(Theme::TITLEBAR_HEIGHT + 8.0))
+                .left_0()
+                .right_0()
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .max_w(px(720.0))
+                        .px(px(12.0))
+                        .py(px(6.0))
+                        .rounded(px(8.0))
+                        .bg(theme.warning_muted)
+                        .border_1()
+                        .border_color(theme.warning)
+                        .text_size(crate::typography::ui_rems(13.0))
+                        .text_color(theme.text)
+                        .child(SharedString::from(message)),
+                )
+                .into_any_element(),
+        )
     }
 
     /// The "↓ Scroll to bottom" pill (round-9 §3): a LABELED rounded-full
@@ -8080,9 +8117,7 @@ impl Render for Shell {
             // forward the slot instead of eating it.
             .on_action(cx.listener(|this, jump: &JumpSession, _, cx| {
                 let pickers = this.composer.read(cx).pickers().clone();
-                let handled = pickers.update(cx, |pickers, cx| {
-                    pickers.jump_model_slot(jump.0, cx)
-                });
+                let handled = pickers.update(cx, |pickers, cx| pickers.jump_model_slot(jump.0, cx));
                 if !handled && !this.overlay_owns_keyboard(cx) {
                     this.jump_to_session(jump.0, cx)
                 }
@@ -8229,22 +8264,18 @@ impl Render for Shell {
                 } else {
                     0.0
                 };
-                let card: AnyElement = crate::surya::panel(
-                    &Theme::of(cx).clone(),
-                    crate::surya::ELEVATION_PANEL,
-                )
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_row()
-                    .when(sidebar_now_px > 0.5, |el| {
-                        el.ml(px(crate::surya::PANEL_GAP))
-                    })
-                    .when(right_now_px > 0.5, |el| {
-                        el.mr(px(crate::surya::PANEL_GAP))
-                    })
-                    .child(main)
-                    .into_any_element();
+                let card: AnyElement =
+                    crate::surya::panel(&Theme::of(cx).clone(), crate::surya::ELEVATION_PANEL)
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .flex_row()
+                        .when(sidebar_now_px > 0.5, |el| {
+                            el.ml(px(crate::surya::PANEL_GAP))
+                        })
+                        .when(right_now_px > 0.5, |el| el.mr(px(crate::surya::PANEL_GAP)))
+                        .child(main)
+                        .into_any_element();
                 // The whole app page is one keyed `animate-in` entrance (zeron
                 // App.tsx `<div key={phase} className="animate-in h-full">`):
                 // arriving from the splash or any gate fades the page in; the
