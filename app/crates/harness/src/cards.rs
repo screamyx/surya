@@ -17,27 +17,63 @@ pub fn is_card_tool(name: &str) -> bool {
     name == "show_card" || name.ends_with("__show_card")
 }
 
-/// `(surface_id, envelopes)` for a card payload in any accepted shape.
-/// `default_surface` names the surface when the payload does not.
-pub fn envelope_list(input: &Value, default_surface: &str) -> (String, Vec<Value>) {
+/// Whether this call's own input carries a card worth drawing.
+///
+/// RAW A2UI always does, even a lone `createSurface`: the protocol allows
+/// components to arrive in a later message, and the renderer draws
+/// placeholders until they do.
+///
+/// The SHORTHAND branch is the one to guard. It builds a well-formed surface
+/// out of whatever object it is handed, so a surya short-form card -
+/// `{"shape":"table",...}`, whose A2UI lives in the sidecar's record and not
+/// in the tool input - lifts to a valid envelope list with an empty component
+/// array. Drawing that is a blank card where the user expected an answer, so
+/// callers treat it as "no card" and show the tool call instead.
+pub fn lifts_to_a_drawable_card(input: &Value) -> bool {
+    let payload = card_payload(input);
+    match &payload {
+        // Raw envelopes, in any of their accepted spellings.
+        Value::Array(items) => !items.is_empty(),
+        Value::Object(obj)
+            if obj.get("messages").is_some_and(Value::is_array)
+                || ENVELOPE_KEYS.iter().any(|k| obj.contains_key(*k)) =>
+        {
+            true
+        }
+        // Shorthand: only when it actually names components.
+        Value::Object(obj) => obj
+            .get("components")
+            .and_then(Value::as_array)
+            .is_some_and(|components| !components.is_empty()),
+        _ => false,
+    }
+}
+
+const ENVELOPE_KEYS: &[&str] = &["createSurface", "updateComponents", "updateDataModel"];
+
+/// Unwrap the `card`/`json` envelope and decode a JSON string payload.
+fn card_payload(input: &Value) -> Value {
     let input = input
         .get("card")
         .or_else(|| input.get("json"))
         .unwrap_or(input);
-    let input = match input {
+    match input {
         Value::String(text) => serde_json::from_str::<Value>(text).unwrap_or(Value::Null),
         other => other.clone(),
-    };
+    }
+}
+
+/// `(surface_id, envelopes)` for a card payload in any accepted shape.
+/// `default_surface` names the surface when the payload does not.
+pub fn envelope_list(input: &Value, default_surface: &str) -> (String, Vec<Value>) {
+    let input = card_payload(input);
     let envelopes: Vec<Value> = match &input {
         Value::Array(items) => items.clone(),
         Value::Object(obj) if obj.get("messages").is_some_and(Value::is_array) => obj["messages"]
             .as_array()
             .cloned()
             .unwrap_or_default(),
-        Value::Object(obj)
-            if ["createSurface", "updateComponents", "updateDataModel"]
-                .iter()
-                .any(|k| obj.contains_key(*k)) =>
+        Value::Object(obj) if ENVELOPE_KEYS.iter().any(|k| obj.contains_key(*k)) =>
         {
             vec![input.clone()]
         }

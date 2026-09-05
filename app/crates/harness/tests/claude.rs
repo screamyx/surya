@@ -756,29 +756,139 @@ async fn a_resolved_show_card_call_emits_one_card_event_in_transcript_order() {
     assert!(card < later_call, "card={card} later_call={later_call}");
 }
 
-/// Without the surya option there is no card store to read, so the card is
-/// lifted from the call's own input instead. Still a card, still no chip.
+/// Without a store, a SHORT-FORM card lifts to nothing: its A2UI lives in the
+/// sidecar's record, not in the tool input. Better the tool chip than a blank
+/// card where the user expected an answer.
 #[tokio::test]
-async fn without_a_card_store_the_card_is_lifted_from_the_call_input() {
+async fn without_a_store_a_short_form_card_shows_its_chip_not_a_blank_card() {
     let (controls, _steer, _token) = controls("A");
     let events = run_to_end(&harness(), request("scenario:card"), controls).await;
     let cards = events
         .iter()
         .filter(|e| matches!(e, AgentEvent::Card { .. }))
         .count();
+    let chip = events
+        .iter()
+        .any(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_card_ok"));
+    assert_eq!((cards, chip), (0, true), "card_events={cards} chip={chip}");
+}
+
+/// Raw A2UI in the call's input still draws with no store at all: that is what
+/// the input lift is for.
+#[tokio::test]
+async fn without_a_store_raw_a2ui_input_still_draws() {
+    let (controls, _steer, _token) = controls("A");
+    let events = run_to_end(&harness(), request("scenario:card-raw"), controls).await;
+    let cards: Vec<_> = events
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::Card { .. }))
+        .collect();
     let chips = events
         .iter()
-        .filter(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_card_ok"))
+        .filter(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_raw"))
         .count();
+    assert_eq!(
+        (cards.len(), chips),
+        (1, 0),
+        "card_events={} chips={chips}",
+        cards.len()
+    );
+}
+
+/// A card whose store record cannot be found is a VISIBLE failure, not an
+/// empty card: with a store configured, its record is the only truth, so the
+/// call falls back to its tool chip rather than to the call's own input.
+#[tokio::test]
+async fn a_configured_store_with_no_record_shows_the_chip_not_an_empty_card() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("cards.jsonl");
+    // The store exists but holds a record for a different call.
+    std::fs::write(
+        &store,
+        serde_json::json!({
+            "card_id": "card_other",
+            "surface_id": "s",
+            "tool_use_id": "toolu_someone_else",
+            "a2ui": []
+        })
+        .to_string()
+            + "\n",
+    )
+    .unwrap();
+
+    let mut req = request("scenario:card");
+    req.surya = Some(zeron_proto::SuryaOptions {
+        agent_id: "seat-1".into(),
+        workspace: "demo".into(),
+        mcp_binary: None,
+        card_store: Some(store.to_string_lossy().into()),
+        mail_socket: None,
+        catalog_id: None,
+    });
+    let (controls, _steer, _token) = controls("A");
+    let events = run_to_end(&harness(), req, controls).await;
+
+    let cards = events
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::Card { .. }))
+        .count();
+    let chip = events
+        .iter()
+        .any(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_card_ok"));
+    let result = events
+        .iter()
+        .any(|e| matches!(e, AgentEvent::ToolResult { id, .. } if id == "toolu_card_ok"));
+    assert_eq!(
+        (cards, chip, result),
+        (0, true, true),
+        "card_events={cards} chip={chip} result={result}"
+    );
+}
+
+/// A run that dies before the `result` frame still shows the card it was
+/// drawing. The synthetic Done is sent straight down the channel and never
+/// passes through the normalizer, so the held call has to be flushed there.
+#[tokio::test]
+async fn a_crash_mid_card_still_shows_the_held_call() {
+    let (controls, _steer, _token) = controls("A");
+    let events = run_to_end(&harness(), request("scenario:card-crash"), controls).await;
+
+    let chip = events
+        .iter()
+        .any(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_card_ok"));
+    let done_is_last = matches!(events.last(), Some(AgentEvent::Done { .. }));
+    assert!(chip, "the held call is flushed on the crash path: {events:?}");
+    assert!(done_is_last, "and it lands before the Done: {events:?}");
+}
+
+/// A subagent's `show_card` is held back like the parent's, so a short-form
+/// card never renders as an empty one on a nested transcript.
+#[tokio::test]
+async fn a_subagent_show_card_is_held_back_too() {
+    let (controls, _steer, _token) = controls("A");
+    let events = run_to_end(&harness(), request("scenario:card-subagent"), controls).await;
+
+    // Everything a subagent emits stays wrapped and attributed.
+    let inner: Vec<&AgentEvent> = events
+        .iter()
+        .filter_map(|e| match e {
+            AgentEvent::Subagent { event, .. } => Some(event.as_ref()),
+            _ => None,
+        })
+        .collect();
+    let chips = inner
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_sub_card"))
+        .count();
+    let cards = inner
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::Card { .. }))
+        .count();
+    // No store here, so the input lift draws it - the point is that the call
+    // is held and resolved on its result, not emitted as a chip at call time.
     assert_eq!(
         (cards, chips),
         (1, 0),
-        "tool_uses=2 card_events={cards} chips_for_the_drawn_card={chips}"
-    );
-    // The failed call keeps its chip either way.
-    assert!(
-        events
-            .iter()
-            .any(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_card_bad"))
+        "subagent card_events={cards} chips={chips}; inner={inner:?}"
     );
 }
