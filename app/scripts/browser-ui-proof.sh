@@ -94,7 +94,10 @@ sleep 16; command -v xrefresh >/dev/null && xrefresh; sleep 2
 # Coordinates in the 1440x900 window, read off an earlier frame: the tab row
 # sits at y=55, the first tab's close X at x=1013, the second tab at x=1090,
 # and the address field at x=250 (its left end, clear of the buttons).
-TAB1_X=1013; TAB2=1090; ROW_Y=55; BAR_X=250; BAR_Y=88
+# BAR_X must be INSIDE the pane. 250 was in the middle column, on the pane
+# divider, and the click dragged it: the whole layout moved in one run's
+# frames before anyone noticed.
+TAB1_X=1013; TAB2=1090; ROW_Y=55; BAR_X=1200; BAR_Y=88
 PAGE_X=$(( W - 200 )); PAGE_Y=$(( H / 2 ))
 
 # ctrl-tab and shift-ctrl-tab. comet binds both context-less for its own
