@@ -394,6 +394,13 @@ Owner, 03:23 on 2026-09-06, verbatim: "use windows mcp however you want".
 - Any seat may drive dtry through the windows-dtry MCP for proofs, shots and input, subject only to the GUI arbiter (decision 28: one GUI session at a time, surya-cef3 grants the slot).
 - The schtasks /it + conhost --headless route for shots still works and stays valid; seats pick whichever is faster. Input via the MCP injection remains the reliable path (SendKeys never reaches the gpui window).
 
+## 32. The mockup is deleted
+
+Owner, 04:01 on 2026-09-06: "the mockup was a typescript backend with react frontend web app, nothing to do with current version of surya. in fact, you can delete them now".
+
+- `mockup/` (134 files) is removed from main. It was the pre-fork web prototype, not a design reference for the GPUI app (decision 26 already made comet's look the reference).
+- Any future design sandbox is a new decision, not a revival of this tree.
+
 ## Open
 
 None at day zero.

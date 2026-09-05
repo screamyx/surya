@@ -2,7 +2,6 @@
 
 Guidance for Claude Code, Codex, and any other agent working in this repository.
 `CLAUDE.md` is a one-line `@AGENTS.md` shim so every tool reads this same file.
-`mockup/AGENTS.md` holds the mockup's own rules and applies to work inside `mockup/`.
 
 ## What surya is
 
@@ -19,7 +18,6 @@ Start from the newest `## STATE AT` block near its end.
 |---|---|
 | `app/` | The comet subtree and the cargo workspace. Every cargo command runs here. |
 | `app/crates/browser/` | `surya-browser`, CEF 151 composited into the gpui window. Excluded from the workspace, see below. |
-| `mockup/` | Frozen React mockup of the twelve surfaces, the design reference for builders of the real app. It does not ship. |
 | `deploy/` | `install-engine.sh`, `surya-engine.service`, `windows/build.ps1`. End-user steps are in `docs/quickstart.md`. |
 | `docs/` | Decisions, handoff, research, critique rounds, proof shots. |
 | `tokens/ taste/ components/ accessibility/ frameworks/ workflows/ content/ design-systems/ scripts/` | The ux-ui-agent-skills design kit. Not part of the app build. Loaded on demand by the `ux-ui-expert` skill. |
@@ -50,7 +48,7 @@ cd crates/browser && cargo test               # the browser crate is its own wor
 
 ## Rules
 
-- Every file 500 lines max, in the mockup and in the app (decision 13). Split before you cross it.
+- Every file 500 lines max (decision 13). Split before you cross it.
 - Never run cargo in a checkout another agent shares. Build and test in your own git worktree. The shared checkout is docs-only.
 - Windows is the product, Mac is next, Linux is a test bench (decision 28). A Linux run is smoke, never RC proof.
 - The look is comet's own and the features are ours (decision 26). New panes use comet's tokens.
@@ -76,7 +74,7 @@ cd crates/browser && cargo test               # the browser crate is its own wor
 ## Design work
 
 The design kit is for look-and-feel judgment, not for the Rust build.
-Invoke the `ux-ui-expert` skill when a task is about visual design, tokens, or a mockup screen.
+Invoke the `ux-ui-expert` skill when a task is about visual design or tokens.
 It carries the persona, the verification gates, and the router to the `design-*` skills.
 Its HTML gates do not apply to GPUI code.
 `/critique` renders screenshots of a build and argues for rejection. Run it after a UI change, never instead of the tests.
