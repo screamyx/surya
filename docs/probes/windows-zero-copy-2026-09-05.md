@@ -47,7 +47,7 @@ Same page both runs: a CSS spinner plus a `requestAnimationFrame` counter, serve
 | paints in 50 s | frames=2935 | accel=3120 copied=3120 waited=0 failed=0 (frames=2937) |
 | callback cost per paint, avg | copy 0.06 ms | 1.45 ms |
 | callback cost per paint, max | copy 0.41 ms | 11.29 ms |
-| element cost per paint, avg | upload 0.07 ms | 0 (the renderer opens the handle) |
+| element cost per paint, avg | upload 0.07 ms | 0 (the renderer opens the handle; the heartbeat's `upload_ms` stays at 0 with the flag on, the zero-copy numbers follow it as `zero_copy=on ...`) |
 | gpui renders in 50 s | 3118 | 3013 |
 | page on screen | `docs/images/browser-zero-copy-off.png` | `docs/images/browser-zero-copy-on.png` |
 
