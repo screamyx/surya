@@ -128,7 +128,7 @@ pub fn counters() -> String {
     let (w, h) = crate::render::last_size();
     format!(
         "renders={} work_did={} pump_asks={} timer_armed={} timer_fired={} idle_armed={} idle_ran={} \
-         idle_refresh={} inputs={} frames={} size={w}x{h} {} \
+         idle_refresh={} inputs={} frames={} size={w}x{h} {} {} \
          copy_ms n={cn} last={clast:.2} avg={cavg:.2} max={cmax:.2} \
          upload_ms n={n} last={last:.2} avg={avg:.2} max={max:.2}",
         RENDERS.load(Ordering::Relaxed),
@@ -142,6 +142,12 @@ pub fn counters() -> String {
         INPUT_SEQ.load(Ordering::Relaxed),
         crate::render::frames(),
         crate::client::lifecycle_counters(),
+        crate::tabs::counters(),
+    ) + &format!(
+        " bg_paints={} kept_frames={} {}",
+        crate::render::background_paints(),
+        crate::render::kept_frames(),
+        crate::zero_copy::counters()
     )
 }
 

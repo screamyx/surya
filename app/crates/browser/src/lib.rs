@@ -25,11 +25,15 @@ mod page;
 mod pump;
 mod render;
 mod surface;
+pub mod tabs;
+mod zero_copy;
 
 pub use events::counters as input_counters;
-pub use page::{navigate_to, page, Page};
+pub use page::{navigate_to, FindState, Page};
+pub use tabs::{active_tab, page, set_zoom, tab_activate, tab_close, tab_open, tabs, zoom, TabId, TabInfo};
 pub use pump::{counters, pump};
 pub use surface::{panel, surface, surface_origin};
+pub use zero_copy::counters as zero_copy_counters;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -168,24 +172,52 @@ pub fn start(cx: &mut gpui::App, scheme: ColorScheme) {
     }
     pump::install(cx);
     let url = start_url();
-    let made = client::open(&url);
-    println!("browser: create asked=1 made={} url={url}", u8::from(made));
+    let id = tabs::tab_open(&url);
+    let made = tabs::active_browser() != 0;
+    println!("browser: create asked=1 made={} url={url} tab={id}", u8::from(made));
     // Kick the loop once so CEF gets going before its first callback.
     pump::schedule_pump(0);
     pump::start_heartbeat();
 }
 
-/// Load a typed address in the page. `typed` is what the person wrote; see
-/// [`navigate_to`] for how it becomes a URL, and which it refuses.
+/// Whether CEF is running in this process, so a tab can have a browser.
+pub(crate) fn has_cef() -> bool {
+    !disabled() && STARTED.load(Ordering::Acquire)
+}
+
+/// Load a typed address in the active tab. `typed` is what the person
+/// wrote; see [`navigate_to`] for how it becomes a URL, and which it
+/// refuses. With no tab open, one opens.
 pub fn navigate(typed: &str) {
     let url = navigate_to(typed);
     if url.is_empty() {
         return;
     }
-    page::update_page(|p| p.begin_navigation(&url));
+    if tabs::count() == 0 {
+        tabs::tab_open(&url);
+        return;
+    }
+    tabs::update_active(|p| p.begin_navigation(&url));
     if let Some(frame) = client::browser().and_then(|b| b.main_frame()) {
         frame.load_url(Some(&CefString::from(url.as_str())));
     }
+    pump::schedule_pump(0);
+}
+
+/// Find in the active tab; the running count lands in [`Page::find`].
+/// `find_next` steps the current search, otherwise a new one starts.
+pub fn find(text: &str, forward: bool, find_next: bool) {
+    if text.is_empty() {
+        stop_find(true);
+        return;
+    }
+    client::find(text, forward, find_next);
+    pump::schedule_pump(0);
+}
+
+/// End the search; `clear_selection` also drops the highlight.
+pub fn stop_find(clear_selection: bool) {
+    client::stop_find(clear_selection);
     pump::schedule_pump(0);
 }
 
@@ -231,25 +263,24 @@ pub fn set_visible(on: bool) {
     }
 }
 
-/// Close the browser: the Browser tab was closed. Chromium's renderer for
-/// the page goes away; the CEF process stays for a later [`reopen`].
+/// Close every tab: the Browser surface was closed. Chromium's renderers
+/// go away; the CEF process stays for a later [`reopen`].
 pub fn close() {
     if !disabled() {
-        client::close();
+        tabs::close_all();
     }
 }
 
-/// Make the browser again after a [`close`], on the page it last showed
-/// (or the start page). A no-op while one exists.
+/// Open a tab again after a [`close`], on the address last shown (or the
+/// start page). A no-op while a tab exists.
 pub fn reopen() {
-    if disabled() || !STARTED.load(Ordering::Acquire) || client::is_open() {
+    if disabled() || !STARTED.load(Ordering::Acquire) || tabs::count() > 0 {
         return;
     }
-    let last = page::page().url;
+    let last = tabs::last_url();
     let url = if last.is_empty() { start_url() } else { last };
-    let made = client::open(&url);
-    println!("browser: reopen asked=1 made={} url={url}", u8::from(made));
-    pump::schedule_pump(0);
+    let id = tabs::tab_open(&url);
+    println!("browser: reopen asked=1 made={} url={url} tab={id}", u8::from(tabs::active_browser() != 0));
 }
 
 /// Bring CEF down with the app: close the browser, pump until it is gone,
@@ -259,7 +290,7 @@ pub fn shutdown() {
     if disabled() || !STARTED.load(Ordering::Acquire) {
         return;
     }
-    client::close();
+    tabs::close_all();
     let started = std::time::Instant::now();
     let mut pumps = 0u32;
     while client::is_open() && started.elapsed() < std::time::Duration::from_secs(3) {
@@ -277,5 +308,7 @@ pub fn shutdown() {
         u8::from(!client::is_open()),
         client::lifecycle_counters()
     );
+    // A browser that did not answer in time still had a frame slot.
+    render::forget_all();
     cef::shutdown();
 }

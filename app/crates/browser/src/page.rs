@@ -1,9 +1,17 @@
 //! The half of a browser that is the window rather than the page: what the
-//! address bar shows. Ported from haktui's `chrome.rs`, trimmed to one page.
+//! address bar shows for one tab. Ported from haktui's `chrome.rs`. The
+//! tabs, and which page is the active one, live in `tabs.rs`.
 
-use std::sync::Mutex;
+/// Where find-in-page stands: "3 of 12". `final_update` is CEF's word that
+/// the count is complete rather than still growing.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FindState {
+    pub current: u32,
+    pub total: u32,
+    pub final_update: bool,
+}
 
-/// Everything the address bar reads. One page, one browser.
+/// Everything the address bar reads for one tab.
 #[derive(Clone, Debug, Default)]
 pub struct Page {
     pub url: String,
@@ -19,6 +27,9 @@ pub struct Page {
     pub error: Option<String>,
     /// How far the load is, 0 to 1.
     pub progress: f32,
+    /// The current find-in-page result, until the search stops or the
+    /// page navigates.
+    pub find: Option<FindState>,
 }
 
 impl Page {
@@ -31,12 +42,14 @@ impl Page {
         self.error = None;
         self.loading = true;
         self.progress = 0.0;
+        self.find = None;
     }
 
     pub fn committed(&mut self, url: String) {
         self.url = url;
         self.pending = None;
         self.error = None;
+        self.find = None;
     }
 
     pub fn progressed(&mut self, progress: f64) {
@@ -49,27 +62,6 @@ impl Page {
         self.pending = None;
         self.loading = false;
         self.progress = 1.0;
-    }
-}
-
-static PAGE: Mutex<Page> = Mutex::new(Page {
-    url: String::new(),
-    title: String::new(),
-    loading: false,
-    can_back: false,
-    can_forward: false,
-    pending: None,
-    error: None,
-    progress: 0.0,
-});
-
-pub fn page() -> Page {
-    PAGE.lock().map(|p| p.clone()).unwrap_or_default()
-}
-
-pub(crate) fn update_page(f: impl FnOnce(&mut Page)) {
-    if let Ok(mut p) = PAGE.lock() {
-        f(&mut p);
     }
 }
 
@@ -154,5 +146,16 @@ mod tests {
         p.committed("https://b/".into());
         assert_eq!(p.shown_address(), "https://b/");
         assert!(p.pending.is_none());
+    }
+
+    #[test]
+    fn a_navigation_clears_the_find_result() {
+        let mut p = Page::default();
+        p.find = Some(FindState { current: 3, total: 12, final_update: true });
+        p.begin_navigation("https://b");
+        assert!(p.find.is_none());
+        p.find = Some(FindState { current: 1, total: 1, final_update: false });
+        p.committed("https://b/".into());
+        assert!(p.find.is_none());
     }
 }
