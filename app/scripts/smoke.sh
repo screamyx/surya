@@ -34,9 +34,17 @@ CARGO="${SURYA_SMOKE_CARGO:-$([ -x /store/surya-cargo ] && echo /store/surya-car
 WORK="$(mktemp -d /tmp/surya-smoke.XXXXXX)"
 FAKE_CLAUDE="$ROOT/crates/harness/tests/fixtures/fake-claude.sh"
 FAILURES=0
+SKIPS=0
 ENGINE_PID=""
 
 # A free loopback port, asked of the kernel rather than guessed.
+# `rpc_probe --stream` waits up to 30 s for an item, so a loop counted in
+# iterations can sit for half an hour on a wedged stream. Every poll loop gets
+# a wall-clock deadline instead.
+POLL_SECONDS=45
+deadline() { echo $(($(date +%s) + POLL_SECONDS)); }
+before() { [ "$(date +%s)" -lt "$1" ]; }
+
 free_port() { python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()'; }
 
 # Every counter prints as a pair, and a mismatch is the exit code.
@@ -44,7 +52,9 @@ check() { # check <label> <expected> <actual>
   if [ "$2" = "$3" ]; then printf 'ok   %s %s\n' "$1" "$3"
   else printf 'FAIL %s expected=%s got=%s\n' "$1" "$2" "$3"; FAILURES=$((FAILURES + 1)); fi
 }
-skip() { printf 'SKIP %s: %s\n' "$1" "$2"; }
+# A skipped step is not a passed step. Counted, and the run says PARTIAL with
+# its own exit code, so CI can refuse it while a human still sees what ran.
+skip() { printf 'SKIP %s: %s\n' "$1" "$2"; SKIPS=$((SKIPS + 1)); }
 
 # grep exits 1 when it matches nothing, and `set -o pipefail` turns that into a
 # dead script rather than a counter of zero. Every count goes through here.
@@ -183,13 +193,36 @@ run_turn() { # run_turn <chat> <prompt>
 }
 run_turn smoke-a "scenario:happy warm up A"
 run_turn smoke-b "scenario:happy warm up B"
-sleep 3
+# Wait on the engine's own status rather than a fixed sleep: a loaded runner
+# was the flakiest thing in this script.
+wait_idle() { # wait_idle <chat>...
+  local dl; dl="$(deadline)"
+  while before "$dl"; do
+    local snap idle=1
+    snap="$(probe WatchSessions '{}' --stream 1 || true)"
+    for chat in "$@"; do
+      printf '%s' "$snap" | python3 -c '
+import json,sys
+chat=sys.argv[1]
+try: rows=json.load(sys.stdin)
+except Exception: sys.exit(1)
+rows=rows if isinstance(rows,list) else rows.get("sessions",[])
+sys.exit(0 if any(r.get("chatId")==chat and r.get("status")=="idle" for r in rows) else 1)
+' "$chat" || idle=0
+    done
+    [ "$idle" = "1" ] && return 0
+    sleep 0.3
+  done
+  printf 'note: gave up waiting for %s to go idle after %ss\n' "$*" "$POLL_SECONDS"
+}
+wait_idle smoke-a smoke-b
 # The BODY carries the scenario, so the mail turn itself completes.
 SEND="$(ZERON_DATA_DIR="$WORK/engine" ZERON_IPC_PORT="$PORT" "$ZERON" mail send smoke-b "scenario:happy please check the diff" --from smoke-a)"
 sent="$(printf '%s' "$SEND" | sed -n 's/^sent=\([0-9]*\).*/\1/p')"
 sent="${sent:-0}"
 delivered=0; acked=0; carried=0
-for _ in $(seq 1 60); do
+DL="$(deadline)"
+while before "$DL"; do
   ROWS="$(probe 'Mail.List' '{"agent":"smoke-b"}')"
   delivered="$(printf '%s' "$ROWS" | python3 -c 'import json,sys;print(sum(1 for m in json.load(sys.stdin)["messages"] if m["deliveredAt"]))')"
   acked="$(printf '%s' "$ROWS" | python3 -c 'import json,sys;print(sum(1 for m in json.load(sys.stdin)["messages"] if m["ackedAt"]))')"
@@ -208,35 +241,80 @@ echo
 echo "== e. cards (PR #7) =="
 probe Mutate "$(printf '{"op":"createChat","chatId":"smoke-card","spaceId":"sp-smoke","deviceId":"%s"}' "$DEVICE")" >/dev/null
 probe Mutate '{"op":"renameChat","chatId":"smoke-card","title":"smoke-card"}' >/dev/null
-run_turn smoke-card "scenario:card draw me one"
-tool_uses=0; card_parts=0
-for _ in $(seq 1 60); do
+# `card-raw` and not `card`: the short-form `card` scenario's input holds no
+# A2UI, so its Card can only be lifted from the store surya-mcp writes, and
+# this run never calls show_card through the sidecar. `card-raw` carries its
+# A2UI in the tool input and is drawable without a store - which is what a
+# transcript-level assertion can honestly prove.
+run_turn smoke-card "scenario:card-raw draw me one"
+card_parts=0; from_input=0
+DL="$(deadline)"
+while before "$DL"; do
   CARD="$(probe WatchDocMessages '{"chatId":"smoke-card"}' --stream 1 || true)"
-  # The fixture plays two show_card calls, one good and one that FAILS, plus
-  # an ordinary Bash tool. The good one is lifted into a Card part
-  # (`"kind":"card"`); the failed one stays a tool call naming show_card. So
-  # one of each is exactly right, and a card for the failed call would be a bug.
-  tool_uses="$(once '"tool":"show_card"' "$CARD")"
+  # A drawn card REPLACES its tool chip, so counting a leftover show_card
+  # tool_use would be counting the failure case. What proves the storeless
+  # path is the card carrying the surface id from the tool input.
   card_parts="$(once '"kind":"card"' "$CARD")"
+  from_input="$(once '"surfaceId":"s1"' "$CARD")"
   if [ "$card_parts" = "1" ]; then break; fi
   sleep 0.5
 done
 printf '%s\n' "$CARD" >"$WORK/cards.json"
-check "cards tool_uses=" 1 "$tool_uses"
-check "cards card_parts=" 1 "$card_parts"
+check "cards drawn=" 1 "$card_parts"
+check "cards from_tool_input=" 1 "$from_input"
 
 # -------------------------------------------------------------- f. states
 echo
 echo "== f. states (PR #9) =="
-if probe WatchNeedsYou '{}' --stream 1 >"$WORK/needsyou.json" 2>/dev/null; then
-  check "needs_you asked=1 stream_open=" 1 1
-  printf 'note: the first frame is the current (empty) set; a permission-blocked\n'
-  printf '      session needs a fake-claude scenario that asks for one.\n'
+if ! grep -q 'scenario:permission' "$FAKE_CLAUDE"; then
+  skip "needs_you" "this fake-claude has no scenario:permission (PR #42)"
 else
-  skip "needs_you" "WatchNeedsYou not served by this engine"
+  probe Mutate "$(printf '{"op":"createChat","chatId":"smoke-perm","spaceId":"sp-smoke","deviceId":"%s"}' "$DEVICE")" >/dev/null
+  probe Mutate '{"op":"renameChat","chatId":"smoke-perm","title":"smoke-perm"}' >/dev/null
+  # The scenario blocks on a can_use_tool request until the host answers, so
+  # the queue must fill and then drain - one asked, one seen, one answered.
+  run_turn smoke-perm "scenario:permission run the migration"
+  asked=1; seen=0; answered=0; request_id=""
+  DL="$(deadline)"
+  while before "$DL"; do
+    NEEDS="$(probe WatchNeedsYou '{}' --stream 1 || true)"
+    request_id="$(printf '%s' "$NEEDS" | python3 -c '
+import json,sys
+try: rows=json.load(sys.stdin)
+except Exception: sys.exit(0)
+rows=rows if isinstance(rows,list) else rows.get("items",[])
+for r in rows:
+    if r.get("chatId")=="smoke-perm":
+        print(r.get("id","")); break
+' || true)"
+    [ -n "$request_id" ] && { seen=1; break; }
+    sleep 0.3
+  done
+  if [ "$seen" = "1" ]; then
+    probe RespondPermission "$(printf '{"requestId":"%s","decision":"allow"}' "$request_id")" >/dev/null
+    # Answered means the queue DRAINS: the card the user was asked to act on
+    # is gone. The harness result string is not a transcript part, so looking
+    # for it there would assert on something the doc never holds.
+    DL="$(deadline)"
+    while before "$DL"; do
+      LEFT="$(probe WatchNeedsYou '{}' --stream 1 || true)"
+      if [ "$(once 'smoke-perm' "$LEFT")" = "0" ]; then answered=1; break; fi
+      sleep 0.3
+    done
+  fi
+  check "needs_you asked=" 1 "$asked"
+  check "needs_you seen=" 1 "$seen"
+  check "needs_you answered=" 1 "$answered"
 fi
 
 echo
-if [ "$FAILURES" -eq 0 ]; then echo "SMOKE OK: every counter matched"; exit 0; fi
-echo "SMOKE FAILED: $FAILURES mismatched"
-exit 1
+if [ "$FAILURES" -gt 0 ]; then
+  echo "SMOKE FAILED: $FAILURES mismatched, $SKIPS skipped"
+  exit 1
+fi
+if [ "$SKIPS" -gt 0 ]; then
+  echo "SMOKE PARTIAL: every counter matched, but $SKIPS step(s) never ran"
+  exit 2
+fi
+echo "SMOKE OK: every counter matched, 0 skipped"
+exit 0
