@@ -315,6 +315,17 @@ GitHub-hosted jobs stopped starting at 12:35 local. Every run since, main pushes
 - This supersedes the ci.yml header's "GitHub-hosted on purpose" (PR #37 era). If the owner restores billing, moving back is one `runs-on` edit plus restoring those steps.
 - Owner order 12:48, verbatim: "no more spawn on user's side, only on this side of luvus". No new seats on the `user` uid from now; the live user seats run to their retirement and are not respawned.
 
+## 25. The Windows RC ships with the browser pane
+
+Owner ruling, 2026-09-05 13:10, verbatim: "wait no. windows version with cef must ship tomorrow".
+
+Context: raven told the owner the Windows zip does not carry the browser (build.ps1 never enables the `browser` feature, the CEF runtime is not packaged) and proposed post-RC. Overruled.
+
+- The RC2 zip for FINAL MAIN (2026-09-06 12:15) is built with `--features browser` and ships the CEF runtime next to `zeron.exe`; a real page must paint in the pane on dtry before the zip is called final.
+- Path: the OSR CPU-upload path (the one proven on Linux) first; D3D11 zero-copy only if it comes free.
+- Owners: surya-cef2 (crate, CEF packaging step in build.ps1, dtry proof), surya-remote (rest of build.ps1, boot-dial timeout, cmd quoting, final zip). One builder on dtry at a time, agreed over agb.
+- The cut order in the 12:44 handoff is amended: the browser pane on Windows is no longer cuttable. If it is not painting by 2026-09-06 09:00, raven escalates to the owner instead of cutting.
+
 ## Open
 
 None at day zero.
