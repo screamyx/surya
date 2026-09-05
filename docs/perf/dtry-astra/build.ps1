@@ -21,7 +21,7 @@ $env:ZERON_BUILD_COMMIT_TIME = [string][DateTimeOffset]::UtcNow.ToUnixTimeSecond
 Get-Command cargo -ErrorAction Stop | Out-Null
 $ErrorActionPreference = 'Continue'
 & cargo --version 2>&1 | Out-File -Append -Encoding utf8 $log
-& cargo build --release -p zeron --features browser 2>&1 | Out-File -Append -Encoding utf8 $log
+& cargo build --locked --release -p zeron --features browser 2>&1 | Out-File -Append -Encoding utf8 $log
 $result = $LASTEXITCODE
 "BUILD_EXIT=$result end=$(Get-Date -Format o)" | Out-File -Append -Encoding utf8 $log
 exit $result

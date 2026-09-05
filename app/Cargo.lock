@@ -6783,10 +6783,12 @@ dependencies = [
 name = "surya-browser"
 version = "0.2.34"
 dependencies = [
+ "async-channel",
  "cef",
  "futures",
  "gpui",
  "image",
+ "windows 0.62.2",
 ]
 
 [[package]]
