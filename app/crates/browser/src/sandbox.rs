@@ -59,6 +59,9 @@ pub(crate) struct Decision {
     pub why: String,
     /// The SUID helper to point Chromium at, when that is the mechanism.
     pub devel_sandbox: Option<std::path::PathBuf>,
+    /// Chromium command-line switches this decision needs. Appended by
+    /// `cef_app::switches`, which runs later, inside `initialize`.
+    pub switches: Vec<String>,
 }
 
 impl Decision {
