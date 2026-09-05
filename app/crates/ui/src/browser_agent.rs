@@ -25,6 +25,8 @@ const OP_DEADLINE: Duration = Duration::from_secs(25);
 const RETRY: Duration = Duration::from_secs(2);
 
 static WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Said once: a refused watch is a wrong token, not a missing engine.
+static REFUSED_WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static CALLED: AtomicU64 = AtomicU64::new(0);
 static OK: AtomicU64 = AtomicU64::new(0);
 
@@ -37,22 +39,29 @@ pub fn counters() -> String {
     )
 }
 
-/// The pane token this engine wants: `ZERON_IPC_TOKEN`, else the engine's
-/// `ipc-token` file under the data dir (the embedded engine wrote it there;
-/// a daemon on this machine shares the same default dir). `None` when
-/// neither exists, and then the watch is refused and says so.
-pub fn pane_token(data_dir: Option<&Path>) -> Option<String> {
-    std::env::var("ZERON_IPC_TOKEN")
+/// The pane token this engine wants.
+///
+/// `dialed` FIRST: it is the token this app authenticated to this engine
+/// with, so it is the one the engine will accept. The local file is a
+/// fallback for the embedded case, where nothing was dialed. Reading the
+/// file first was wrong wherever the app and the engine are not the same
+/// process - a remote engine, and every Windows install - because the app's
+/// own data dir holds a different secret, or none.
+pub fn pane_token(dialed: Option<&str>, data_dir: Option<&Path>) -> Option<String> {
+    let non_empty = |t: String| {
+        let t = t.trim().to_string();
+        (!t.is_empty()).then_some(t)
+    };
+    if let Some(t) = dialed.map(str::to_string).and_then(non_empty) {
+        return Some(t);
+    }
+    if let Some(t) = std::env::var("ZERON_IPC_TOKEN").ok().and_then(non_empty) {
+        return Some(t);
+    }
+    let dir = data_dir?;
+    std::fs::read_to_string(zeron_engine::ipc::token_path(dir))
         .ok()
-        .map(|t| t.trim().to_string())
-        .filter(|t| !t.is_empty())
-        .or_else(|| {
-            let dir = data_dir?;
-            std::fs::read_to_string(zeron_engine::ipc::token_path(dir))
-                .ok()
-                .map(|t| t.trim().to_string())
-                .filter(|t| !t.is_empty())
-        })
+        .and_then(non_empty)
 }
 
 /// Attach the pane to this engine. Returns the standing task; it resubscribes
@@ -60,9 +69,12 @@ pub fn pane_token(data_dir: Option<&Path>) -> Option<String> {
 pub fn spawn(cx: &mut Context<AppState>, handle: EngineHandle, data_dir: Option<PathBuf>) -> Task<()> {
     cx.spawn(async move |this, cx| {
         loop {
-            let token = pane_token(data_dir.as_deref()).unwrap_or_default();
+            let token =
+                pane_token(handle.dialed_token(), data_dir.as_deref()).unwrap_or_default();
             if token.is_empty() && !WARNED.swap(true, Ordering::AcqRel) {
-                println!("browser-agent: no pane token (ZERON_IPC_TOKEN or {{data_dir}}/ipc-token); the engine will refuse the watch");
+                println!(
+                    "browser-agent: no pane token (the engine was dialed without one, and neither ZERON_IPC_TOKEN nor {{data_dir}}/ipc-token is set); the engine will refuse the watch"
+                );
             }
             match handle
                 .client()
@@ -104,6 +116,16 @@ pub fn spawn(cx: &mut Context<AppState>, handle: EngineHandle, data_dir: Option<
                     }
                 }
                 Err(err) => {
+                    // A refusal is not the same as "no engine yet". Say it
+                    // once, out loud: a wrong token retries silently forever
+                    // otherwise, and the pane just looks dead.
+                    let refused = err.to_string().to_lowercase().contains("token")
+                        || err.to_string().to_lowercase().contains("unauthor");
+                    if refused && !REFUSED_WARNED.swap(true, Ordering::AcqRel) {
+                        println!(
+                            "browser-agent: the engine REFUSED Browser.Watch ({err}). The pane token does not match the engine's - on a remote or Windows engine it is the token this app dialed with, not a file in this machine's data dir."
+                        );
+                    }
                     tracing::debug!(error = %err, "Browser.Watch unavailable; retrying");
                 }
             }
@@ -137,5 +159,40 @@ mod tests {
         let err = reply_for(4, Err("no element".into()));
         assert_eq!(err["error"], "no element");
         assert!(err.get("ok").is_none());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pane_token;
+
+    fn write(dir: &std::path::Path, token: &str) {
+        std::fs::write(zeron_engine::ipc::token_path(dir), token).unwrap();
+    }
+
+    /// Case 3, remote and Windows: the app dialed the engine with a token, and
+    /// THAT is the one the engine will accept. The app's own data dir may hold
+    /// a different secret entirely - reading it first is how the pane ended up
+    /// refused on every non-embedded engine.
+    #[test]
+    fn the_dialed_token_beats_this_machines_file() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "this-machines-token");
+        assert_eq!(
+            pane_token(Some("dialed-token"), Some(dir.path())).as_deref(),
+            Some("dialed-token")
+        );
+        // Embedded: nothing was dialed, so the file it just wrote is right.
+        assert_eq!(
+            pane_token(None, Some(dir.path())).as_deref(),
+            Some("this-machines-token")
+        );
+        // Neither: the watch is refused, and `spawn` says so once.
+        assert_eq!(pane_token(None, None), None);
+        // A blank dialed token is not a token.
+        assert_eq!(
+            pane_token(Some("  "), Some(dir.path())).as_deref(),
+            Some("this-machines-token")
+        );
     }
 }
