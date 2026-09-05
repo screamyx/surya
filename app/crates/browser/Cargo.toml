@@ -1,0 +1,22 @@
+[package]
+name = "surya-browser"
+# Not a workspace member (see app/Cargo.toml `exclude`), so no inheritance.
+version = "0.2.34"
+edition = "2024"
+license = "MIT"
+publish = false
+description = "haktui's offscreen Chromium (CEF) pane, ported onto comet's gpui"
+
+# Its own root: app/Cargo.toml excludes this crate so CI never pulls CEF.
+# Build it through `cargo build -p zeron --features browser`; run its tests
+# from this directory (`cargo test`, needs CEF_PATH and a cargo slot).
+[workspace]
+
+[dependencies]
+gpui = { git = "https://github.com/wingleeio/zed", rev = "e2ddcc6805f8c5088e62a60dfe517abcccd61a9a" }
+futures = "0.3"
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Offscreen Chromium. The build script downloads the CEF binary for the
+# target into CEF_PATH (or OUT_DIR) and copies the runtime files next to the
+# binaries in the target dir; see README.md.
+cef = "151.8.0"

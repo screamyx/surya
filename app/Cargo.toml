@@ -15,6 +15,10 @@ members = [
     "crates/a2ui",
     "apps/zeron",
 ]
+# surya-browser is a path dependency, not a member: it links Chromium (CEF)
+# and its build script downloads the CEF binary, which `cargo check
+# --workspace` (CI) must never pull. `-p zeron --features browser` builds it.
+exclude = ["crates/browser"]
 
 [workspace.package]
 version = "0.2.34"
@@ -33,6 +37,8 @@ zeron-update = { path = "crates/update" }
 zeron-ui = { path = "crates/ui" }
 zeron-syntax = { path = "crates/syntax" }
 zeron-theme = { path = "crates/theme" }
+# surya: haktui's CEF browser pane, behind the `browser` feature on zeron-ui and zeron.
+surya-browser = { path = "crates/browser" }
 surya-a2ui = { path = "crates/a2ui" }
 
 # CRDT
