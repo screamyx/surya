@@ -56,7 +56,7 @@ The self-test spaces its sixty wheel events with gpui's 16 ms timer, so on Windo
 
 Measured 01:10 to 01:14 on 2026-09-06 by seat `surya-browser-perf2`.
 Build: tree `d5234ca` (main after #85, with #86 merged in; osprey's merge commit on `feat/browser-perf`), release, `E:\surya-perf-target`, dtry session 1, one run at a time, GUI slot from surya-cef3.
-On this tree the pump's default is the pool timer (`browser: pump base=8ms timer=pool`), `SURYA_PUMP_TIMER=clock` selects #86's clock, and CEF's frame rate is whatever the tree sets without PR 2's `display.rs` (no `browser: frame rate` line is printed).
+On this tree the pump's default is the pool timer (`browser: pump base=8ms timer=pool`), `SURYA_PUMP_TIMER=clock` selects #86's clock, and CEF is capped at 60 (`client.rs` line 49, `set_windowless_frame_rate(60)`; PR 2's `display.rs` is not in this tree, so no `browser: frame rate` line is printed).
 Logs: `E:\surya-perf-runs\<run>.out.log` on dtry, copies in `/tmp/perf2-runs/` on the build box.
 Lines from `docs/perf/dtry/lines.py`, exact:
 
