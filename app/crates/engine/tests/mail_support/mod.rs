@@ -102,7 +102,7 @@ impl Harness for FailingHarness {
         _controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
         let events: Vec<Result<AgentEvent, HarnessError>> = vec![Ok(AgentEvent::Done {
-            status: DoneStatus::Error,
+            status: DoneStatus::Errored,
             result: None,
             error: Some("the harness fell over".into()),
             session_id: None,
@@ -189,4 +189,3 @@ pub fn settled(core: &EngineCore, chat: &str) -> bool {
         .session_status(chat)
         .is_some_and(|s| matches!(s.status, SessionStatus::Idle | SessionStatus::Errored))
 }
-

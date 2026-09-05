@@ -142,7 +142,11 @@ mod tests {
         let block = m.envelope_block();
         let opens: Vec<&str> = block.lines().filter(|l| l.starts_with("[MAIL ")).collect();
         let closes: Vec<&str> = block.lines().filter(|l| l.starts_with("[/MAIL ")).collect();
-        assert_eq!(opens, vec!["[MAIL m1 from a]"], "one header, at column zero");
+        assert_eq!(
+            opens,
+            vec!["[MAIL m1 from a]"],
+            "one header, at column zero"
+        );
         assert_eq!(closes, vec!["[/MAIL m1]"], "one closing line");
     }
 

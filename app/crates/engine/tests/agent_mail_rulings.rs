@@ -7,7 +7,7 @@ mod mail_support;
 use std::sync::Arc;
 use std::time::Duration;
 
-use mail_support::{CHAT_B, EchoHarness, FailingHarness, request, settled, wait_for, user_texts};
+use mail_support::{CHAT_B, EchoHarness, FailingHarness, request, settled, user_texts, wait_for};
 use zeron_engine::{EngineCore, HarnessRegistry};
 use zeron_proto::HarnessId;
 
@@ -27,7 +27,9 @@ async fn a_repeated_delivery_id_does_not_redeliver() {
     core.workspace
         .create_chat(CHAT_B, None, Some(&core.device_id), None, None)
         .expect("chat");
-    core.workspace.rename_chat(CHAT_B, "Pre-titled").expect("title");
+    core.workspace
+        .rename_chat(CHAT_B, "Pre-titled")
+        .expect("title");
     core.sessions
         .dispatch(CHAT_B, HarnessId::Mock, request("first turn"), None)
         .await
@@ -88,7 +90,9 @@ async fn an_errored_turn_requeues_its_mail() {
     core.workspace
         .create_chat(CHAT_B, None, Some(&core.device_id), None, None)
         .expect("chat");
-    core.workspace.rename_chat(CHAT_B, "Pre-titled").expect("title");
+    core.workspace
+        .rename_chat(CHAT_B, "Pre-titled")
+        .expect("title");
     core.sessions
         .dispatch(CHAT_B, HarnessId::Mock, request("first turn"), None)
         .await
@@ -173,6 +177,7 @@ async fn the_seats_delivery_id_becomes_the_row_id() {
             "the migration is ready",
             None,
             Some("d_abc"),
+            false,
         )
         .await
         .expect("send");
@@ -180,16 +185,17 @@ async fn the_seats_delivery_id_becomes_the_row_id() {
     let row = core
         .mail
         .list(Some("seat-2"))
+        .await
         .unwrap()
         .into_iter()
         .next()
         .expect("row");
     assert_eq!(row.id, "d_abc");
     assert_eq!(row.body, "the migration is ready");
-    assert!(core.mail.ack("d_abc").await.expect("ack"), "the seat's id acks");
+    assert!(
+        core.mail.ack("d_abc").await.expect("ack"),
+        "the seat's id acks"
+    );
 
     core.shutdown().await;
 }
-
-/// A repeated delivery id must not reset the row. The seat retries a
-/// `send_message`; the agent must not read the same message twice.

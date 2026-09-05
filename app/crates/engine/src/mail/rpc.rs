@@ -71,10 +71,11 @@ impl RpcService for MailRpc {
                 // vouch for it. Anything else is a claim, and the envelope
                 // says so.
                 let receipt = match &p.from_chat {
-                    Some(chat) => self
-                        .mail
-                        .send_verified(chat, &p.to, &p.body, p.to_device.as_deref())
-                        .await,
+                    Some(chat) => {
+                        self.mail
+                            .send_verified(chat, &p.to, &p.body, p.to_device.as_deref())
+                            .await
+                    }
                     None => {
                         self.mail
                             .send(

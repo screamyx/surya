@@ -129,8 +129,7 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     assert_eq!(delivered_fanout, 2);
 
     for (chat, id) in [CHAT_A, CHAT_B].iter().zip(fanout.ids.iter()) {
-        let line =
-            format!("[MAIL {id} from unverified:owner]\n  standup in five\n[/MAIL {id}]");
+        let line = format!("[MAIL {id} from unverified:owner]\n  standup in five\n[/MAIL {id}]");
         assert!(
             user_texts(&core, chat).iter().any(|t| t == &line),
             "{chat} must carry its own copy: {line}"
@@ -139,7 +138,6 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
 
     core.shutdown().await;
 }
-
 
 #[tokio::test(flavor = "multi_thread")]
 async fn mail_to_an_unknown_agent_queues_instead_of_failing() {
@@ -167,6 +165,3 @@ async fn mail_to_an_unknown_agent_queues_instead_of_failing() {
 
     core.shutdown().await;
 }
-
-/// The surya-mcp seat's record shape, straight through the engine: its
-/// `delivery_id` becomes the row id, and `text` is the body.
