@@ -41,6 +41,7 @@ pub mod shell;
 pub mod sound;
 pub mod state;
 pub mod syntax_cache;
+pub mod tasks;
 pub mod terminal;
 pub mod theme;
 pub mod theme_library;

@@ -4610,6 +4610,7 @@ impl Transcript {
             self.card_states.insert(row_id.clone(), (version, state));
         }
         let card_theme = crate::cards::card_theme(theme);
+        let policy = crate::cards::image_policy(self.state.read(cx));
         let weak = cx.entity().downgrade();
         let key = row_id.clone();
         let on_event: surya_a2ui::render::OnEvent = Rc::new(move |event, window, cx| {
@@ -4622,6 +4623,8 @@ impl Transcript {
             card,
             state,
             theme: &card_theme,
+            policy: &policy,
+            budget: surya_a2ui::Budget::default(),
             key: row_id.clone(),
             on_event,
         }

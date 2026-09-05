@@ -1,6 +1,5 @@
 //! Leaf components: Text, Image, Divider, TextField, CheckBox.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use gpui::prelude::*;
@@ -11,6 +10,7 @@ use gpui::{
 use serde_json::json;
 
 use crate::data::resolve_string;
+use crate::images::ImageDecision;
 use crate::inline::{InkStyle, parse_inline, styled_text};
 use crate::model::*;
 use crate::render::{CARD_PADDING, Ctx, Renderer};
@@ -19,6 +19,19 @@ use crate::theme::CardTheme;
 
 /// Header images bleed to the plate edge, like the mockup's cover photo.
 const HEADER_IMAGE_HEIGHT: f32 = 176.0;
+/// Longest text a single Text or field shows; the rest is clipped with an
+/// ellipsis so a 100 MB string cannot become a 100 MB layout.
+pub const MAX_TEXT_CHARS: usize = 4_000;
+/// Labels (tab titles, checkbox labels) are shorter still.
+pub const MAX_LABEL_CHARS: usize = 200;
+
+/// `s` cut to `max` chars with an ellipsis when it was longer.
+pub fn clip(s: &str, max: usize) -> String {
+    match s.char_indices().nth(max) {
+        Some((ix, _)) => format!("{}…", &s[..ix]),
+        None => s.to_owned(),
+    }
+}
 
 pub(crate) fn text(
     r: &Renderer,
@@ -27,7 +40,7 @@ pub(crate) fn text(
     variant: TextVariant,
 ) -> AnyElement {
     let theme = r.theme;
-    let value = resolve_string(&r.state.data, &ctx.scope, text);
+    let value = clip(&resolve_string(&r.state.data, &ctx.scope, text), MAX_TEXT_CHARS);
     let runs = parse_inline(&value);
     let (size, line, weight, color) = match variant {
         TextVariant::H1 => (24.0, 30.0, FontWeight::SEMIBOLD, theme.text),
@@ -68,12 +81,21 @@ pub(crate) fn image(
 ) -> AnyElement {
     let theme = r.theme;
     let url = resolve_string(&r.state.data, &ctx.scope, url);
-    if url.trim().is_empty() {
-        return r.fallback_box("Image without a url");
-    }
-    let source: ImageSource = match url.strip_prefix("file://") {
-        Some(path) => ImageSource::Resource(Resource::Path(Arc::from(Path::new(path)))),
-        None => ImageSource::from(url.as_str()),
+    // The host's policy decides what may load: no fetch happens for a URL
+    // it did not clear (a card is model-authored, and gpui fetches on
+    // render with no click).
+    let source: ImageSource = match r.policy.decide(&url) {
+        ImageDecision::File(path) => {
+            ImageSource::Resource(Resource::Path(Arc::from(path.as_path())))
+        }
+        ImageDecision::Data { format, bytes } => {
+            ImageSource::Image(Arc::new(gpui::Image::from_bytes(format, bytes)))
+        }
+        ImageDecision::Remote(remote) => ImageSource::from(remote.as_str()),
+        ImageDecision::Placeholder(host) => {
+            return r.fallback_box(&format!("remote image from {host} (remote images are off)"));
+        }
+        ImageDecision::Denied(reason) => return r.fallback_box(&reason),
     };
     let fit = match fit {
         ImageFit::Contain => ObjectFit::Contain,
@@ -83,9 +105,9 @@ pub(crate) fn image(
         ImageFit::ScaleDown => ObjectFit::ScaleDown,
     };
     let alt = description
-        .map(|d| resolve_string(&r.state.data, &ctx.scope, d))
+        .map(|d| clip(&resolve_string(&r.state.data, &ctx.scope, d), MAX_LABEL_CHARS))
         .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| url.clone());
+        .unwrap_or_else(|| clip(&url, MAX_LABEL_CHARS));
     let wash = theme.element_hover;
     let muted = theme.text_faint;
     let mono = theme.font_mono.clone();
@@ -160,9 +182,9 @@ pub(crate) fn text_field(
     variant: TextFieldVariant,
 ) -> AnyElement {
     let theme = r.theme;
-    let label = resolve_string(&r.state.data, &ctx.scope, label);
+    let label = clip(&resolve_string(&r.state.data, &ctx.scope, label), MAX_LABEL_CHARS);
     let binding = CardState::binding_for(&c.id, &ctx.scope, value);
-    let current = r.state.read_string(&binding, value, &ctx.scope);
+    let current = clip(&r.state.read_string(&binding, value, &ctx.scope), MAX_TEXT_CHARS);
     let focused = r.state.focused.as_deref() == Some(c.id.as_str());
     let shown = match variant {
         TextFieldVariant::Obscured => "•".repeat(current.chars().count()),
@@ -281,7 +303,7 @@ pub(crate) fn check_box(
     value: &Dynamic<bool>,
 ) -> AnyElement {
     let theme = r.theme;
-    let label = resolve_string(&r.state.data, &ctx.scope, label);
+    let label = clip(&resolve_string(&r.state.data, &ctx.scope, label), MAX_LABEL_CHARS);
     let binding = CardState::binding_for_bool(&c.id, &ctx.scope, value);
     let checked = r.state.read_bool(&binding, value, &ctx.scope);
     let on_event = r.on_event.clone();

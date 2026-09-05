@@ -103,10 +103,7 @@ fn text_result(text: String, is_error: bool) -> Value {
 
 fn call_tool(config: &Config, params: &Value) -> Value {
     let name = params.get("name").and_then(Value::as_str).unwrap_or("");
-    let arguments = params
-        .get("arguments")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
+    let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
     match name {
         "show_card" => match cards::show(config, &arguments) {
             Ok(card) => text_result(
@@ -278,13 +275,7 @@ mod tests {
             body["card_id"].as_str().unwrap().starts_with("card_"),
             "{body}"
         );
-        assert_eq!(
-            std::fs::read_to_string(&config.card_store)
-                .unwrap()
-                .lines()
-                .count(),
-            1
-        );
+        assert_eq!(std::fs::read_to_string(&config.card_store).unwrap().lines().count(), 1);
     }
 
     #[test]
