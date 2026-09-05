@@ -5,6 +5,7 @@
 //! uploads once and copies nothing. The shared-texture paths (Windows D3D11,
 //! Mac IOSurface) need haktui's gpui patch and are not ported.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -31,15 +32,28 @@ struct FrameBuf {
     seq: u64,
     img: Arc<RenderImage>,
 }
-static FRAME: Mutex<Option<FrameBuf>> = Mutex::new(None);
+/// The latest frame of every browser, by CEF identifier. A parked tab keeps
+/// its last frame, so switching back to it shows something at once.
+static FRAMES: Mutex<Option<HashMap<i32, FrameBuf>>> = Mutex::new(None);
 
-/// Frames CEF delivered so far.
+/// Frames CEF delivered so far, all browsers.
 pub(crate) fn frames() -> u64 {
     PAINTS.load(Ordering::Relaxed)
 }
 
+/// The active tab's latest frame.
 pub(crate) fn frame() -> Option<(u64, Arc<RenderImage>)> {
-    FRAME.lock().ok()?.as_ref().map(|f| (f.seq, f.img.clone()))
+    let id = crate::tabs::active_browser();
+    FRAMES.lock().ok()?.as_ref()?.get(&id).map(|f| (f.seq, f.img.clone()))
+}
+
+/// The browser is gone; so is its frame.
+pub(crate) fn forget(browser: i32) {
+    if let Ok(mut guard) = FRAMES.lock()
+        && let Some(map) = guard.as_mut()
+    {
+        map.remove(&browser);
+    }
 }
 
 pub(crate) fn last_size() -> (i32, i32) {
@@ -100,7 +114,7 @@ wrap_render_handler! {
 
         fn on_paint(
             &self,
-            _browser: Option<&mut Browser>,
+            browser: Option<&mut Browser>,
             type_: PaintElementType,
             _dirty: Option<&[Rect]>,
             buffer: *const u8,
@@ -128,8 +142,9 @@ wrap_render_handler! {
             };
             let img = Arc::new(RenderImage::new(vec![image::Frame::new(buf)]));
             let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-            if let Ok(mut slot) = FRAME.lock() {
-                *slot = Some(FrameBuf { seq: n, img });
+            let id = browser.map(|b| b.identifier()).unwrap_or(0);
+            if let Ok(mut guard) = FRAMES.lock() {
+                guard.get_or_insert_with(HashMap::new).insert(id, FrameBuf { seq: n, img });
             }
             LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
             let us = t0.elapsed().as_micros() as u64;
