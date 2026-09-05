@@ -226,9 +226,35 @@ async fn type_text(browser: i32, id: u64, text: &str) -> Result<Value, String> {
     Ok(json!({ "typed": text.chars().count(), "into": id }))
 }
 
+/// Half a second of faint damage in the page, so frames keep coming while a
+/// screenshot request lands; see [`screenshot`]. One pixel at the top-left
+/// corner, near-invisible, gone after forty animation frames.
+const SHOT_NUDGE_JS: &str = "(() => { const d = document.createElement('div'); \
+    d.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;background:#000;opacity:0.02;pointer-events:none;z-index:2147483647'; \
+    document.documentElement.appendChild(d); let n = 0; \
+    const tick = () => { d.style.opacity = (n++ % 2) ? '0.02' : '0.03'; if (n < 40) requestAnimationFrame(tick); else d.remove(); }; \
+    requestAnimationFrame(tick); return true; })()";
+
 /// The page as PNG, base64 as DevTools hands it over; decoded by whoever
 /// writes it to disk or a card.
+///
+/// `Page.captureScreenshot` answers only once the renderer's forced redraw
+/// has been *presented*, and under offscreen rendering a frame with no
+/// damage is never painted: on a page that sits still the call waits
+/// forever (dtry 2026-09-06 02:03: asked, never answered, the pane's frame
+/// count unchanged for the whole 25 s; :7 proof6 the same with the view
+/// still unsized). So the page is given damage first: CEF repaints the view,
+/// and the page blinks one faint pixel for half a second, so a painted frame
+/// follows the request whatever the page is doing.
 async fn screenshot(browser: i32) -> Result<Value, String> {
+    devtools::fire(
+        browser,
+        "Runtime.evaluate",
+        json!({ "expression": SHOT_NUDGE_JS, "returnByValue": true }),
+    );
+    if let Some(host) = devtools::browser(browser).and_then(|b| b.host()) {
+        host.invalidate(cef::PaintElementType::VIEW);
+    }
     let result = devtools::call(browser, "Page.captureScreenshot", json!({ "format": "png" })).await?;
     let data = result["data"].as_str().ok_or("Page.captureScreenshot returned no data")?;
     Ok(json!({ "png_base64": data, "mime": "image/png" }))
@@ -263,6 +289,14 @@ mod tests {
         assert!(js.contains("(() => {") && js.ends_with("})()"));
         assert!(js.contains("data-surya-id"));
         assert!(js.contains("el.type === 'password'") && js.contains("one-time-code"));
+    }
+
+    #[test]
+    fn the_screenshot_nudge_is_an_expression_that_cleans_up_after_itself() {
+        let js = SHOT_NUDGE_JS.trim();
+        assert!(js.starts_with("(() => {") && js.ends_with("})()"));
+        assert!(js.contains("requestAnimationFrame") && js.contains("d.remove()"));
+        assert!(js.contains("pointer-events:none"), "the pixel must never take a click");
     }
 
     #[test]
