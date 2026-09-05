@@ -352,7 +352,14 @@ impl EngineCore {
             device_id,
             local_import,
             workspace_scope: profile.scope(),
-            pane_token: crate::ipc::load_or_create_token(profile.device_root()).ok(),
+            // `ZERON_IPC_TOKEN` first, like the socket itself (`ipc.rs`), so an
+            // engine and an app started with one token in their environment
+            // agree even across data dirs; else the data dir's file.
+            pane_token: std::env::var(crate::ipc::TOKEN_ENV)
+                .ok()
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .or_else(|| crate::ipc::load_or_create_token(profile.device_root()).ok()),
             mail_ingress: std::sync::Mutex::new(None),
             auth: std::sync::Mutex::new(None),
             links: std::sync::Mutex::new(None),
