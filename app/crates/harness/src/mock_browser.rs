@@ -216,7 +216,7 @@ async fn session(url: String, tx: mpsc::UnboundedSender<AgentEvent>) {
     let mut called = 0u32;
     let mut ok = 0u32;
     let mut snapshot = String::new();
-    let steps: [(&str, Box<dyn Fn(&str) -> Option<Value>>); 4] = [
+    let steps: [(&str, Box<dyn Fn(&str) -> Option<Value> + Send + Sync>); 4] = [
         ("browser_open", Box::new({
             let url = url.clone();
             move |_| Some(json!({ "url": url }))

@@ -79,7 +79,7 @@ fn id_arg(args: &Value) -> Result<u64, String> {
 /// Load a URL and wait for it. The same allowlist as the address bar: a
 /// `file:` URL or a private scheme is refused, not loaded.
 async fn open(url: &str) -> Result<Value, String> {
-    let resolved = crate::page::navigate_to(url);
+    let resolved = crate::navigate_to(url);
     if resolved.is_empty() {
         return Err(format!("refused to open {url:?}: only http(s) addresses and localhost are allowed"));
     }
@@ -87,7 +87,7 @@ async fn open(url: &str) -> Result<Value, String> {
     let loaded = wait_for_load();
     crate::navigate(&resolved);
     loaded.await;
-    let page = crate::page::page();
+    let page = crate::page();
     Ok(json!({
         "url": page.url,
         "title": page.title,
