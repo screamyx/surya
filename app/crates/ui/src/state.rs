@@ -1018,6 +1018,7 @@ impl AppState {
         self.transcript = entries;
         self.transcript_replayed = true;
         self.ack_pending_send_from_transcript();
+        self.prune_answered_requests();
     }
 
     /// Apply a `WatchDocMessages` delta frame in place. `Err` = this copy has
@@ -1038,7 +1039,31 @@ impl AppState {
             echoes.retain(|echo| !transcript.iter().any(|e| e.id == echo.id));
         }
         self.ack_pending_send_from_transcript();
+        self.prune_answered_requests();
         Ok(())
+    }
+
+    /// Drop the local "answered" marks the doc has caught up with.
+    ///
+    /// The set only exists to hide a question sheet between the answer and
+    /// the doc frame that resolves it. Once that frame lands the mark has
+    /// done its job, and an id left behind would suppress a sheet - and keep
+    /// the inbox row collapsed - for as long as the app runs.
+    fn prune_answered_requests(&mut self) {
+        if self.answered_requests.is_empty() {
+            return;
+        }
+        let resolved: Vec<String> = self
+            .answered_requests
+            .iter()
+            .filter(|request_id| {
+                crate::composer::input_request_resolved(&self.transcript, request_id)
+            })
+            .cloned()
+            .collect();
+        for request_id in resolved {
+            self.answered_requests.remove(&request_id);
+        }
     }
 
     /// A subagent doc's current transcript copy (empty until its watch's
@@ -1467,6 +1492,9 @@ impl AppState {
         self.spaces_synced = false;
         self.transcript.clear();
         self.transcript_replayed = false;
+        // Nothing local survives a sign-out. The set suppresses a question
+        // sheet, so an id left here would suppress one for the next account.
+        self.answered_requests.clear();
         self.echoes.clear();
         self.pending_sends.clear();
         self.upload_progress = None;
@@ -2850,6 +2878,44 @@ mod tests {
             created_at: None,
             version: None,
         }
+    }
+
+    /// The "answered" mark hides a question sheet until the doc catches up.
+    /// It must not outlive that: a mark left behind suppresses the sheet, and
+    /// keeps the inbox row collapsed, for as long as the app runs.
+    #[test]
+    fn an_answered_mark_lasts_only_until_the_doc_resolves_it() {
+        use zeron_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
+
+        let entry = |resolved: bool| SessionMessageEntry {
+            id: "m1".into(),
+            role: MessageRole::Assistant,
+            parts: vec![MessagePart::Input {
+                id: "in-req-1".into(),
+                request_id: "req-1".into(),
+                questions: Vec::new(),
+                resolved,
+            }],
+            created_at: 0,
+            device_id: "d".into(),
+            status: Some(MessageStatus::Streaming),
+            continuation_of: None,
+        };
+
+        let mut state = AppState::new();
+        state.answered_requests.insert("req-1".into());
+        state.answered_requests.insert("req-other".into());
+
+        // The doc has not caught up yet: both marks stand.
+        state.apply_transcript(vec![entry(false)]);
+        assert!(state.answered_requests.contains("req-1"));
+        assert!(state.answered_requests.contains("req-other"));
+
+        // Resolved: this one has done its job. A mark for a request this
+        // transcript says nothing about is left alone.
+        state.apply_transcript(vec![entry(true)]);
+        assert!(!state.answered_requests.contains("req-1"));
+        assert!(state.answered_requests.contains("req-other"));
     }
 
     #[test]
