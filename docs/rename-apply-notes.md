@@ -30,27 +30,36 @@ generated compat module that names the old prefix on purpose.
   check under their new names (`surya-proto`, `surya-doc`, `surya-sync`,
   `surya-harness`, `surya-engine`, `surya-rpc`, `surya-update`, `surya-ui`,
   `surya-syntax`, `surya-theme`, `surya-a2ui`, `surya-mcp`).
-- Headless tests, the CI set: **383 passed, 0 failed**.
+- Headless tests, the CI set: **383 passed, 0 failed** on a clean run;
+  `315 passed, 1 failed` on a loaded one, from a flake that fails on main too
+  (below). Cargo stops the remaining test binaries after a failure, which is
+  why the totals differ.
 
-## The one failure, and why it is not the rename
+## The one failure: pre-existing on main, not the rename
 
-The first full run came back `316 passed, 1 failed`:
 `surya-engine`'s `empty_reasoning_deltas_are_heartbeats_not_journal_noise`
-counted 0 non-empty reasoning deltas where it wanted 1. (316, not 383, because
-cargo stops the remaining test binaries once one fails.)
+counts 0 non-empty reasoning deltas where it wants 1. It failed in two of
+three loaded full runs on the renamed tree, which is too often to wave off as
+noise.
 
-Three checks, in order:
+The decisive check is the one that isolates the variable: **the same test,
+the same loaded full-suite run, on unrenamed main**.
 
-| Check | Result |
+| Run | Result |
 | --- | --- |
-| the same test on unrenamed main | passes |
-| the same test alone on the renamed tree | passes |
-| the whole suite again on the renamed tree | 383 passed, 0 failed |
+| renamed tree, loaded full suite | fails (2 of 3) |
+| renamed tree, that test alone | passes |
+| unrenamed main, that test alone | passes |
+| **unrenamed main, loaded full suite** | **fails** |
 
-It did not reproduce. The test polls (`wait_for`) for the run to complete
-before counting journal entries, and nothing in it touches the name, so on a
-box this loaded it reads as a timing flake rather than a rename fault. Worth
-watching before the RC, but it is not a reason to hold the rename.
+It fails on main too. The rename does not cause it. The test polls
+(`wait_for`) for a run to complete before counting journal entries, and on a
+saturated box that poll loses. It belongs on the flake list, and it is not a
+reason to hold the rename.
+
+Recorded because an earlier version of this note called it a load flake on
+weaker evidence - one isolated pass - and the isolated run was never the
+comparison that mattered.
 
 ## A collision the plan did not foresee
 
@@ -70,29 +79,43 @@ to "Surya Dark" would put two themes called "Surya Dark" in one picker.
 
 This is the reason to run the script rather than review it.
 
-## What it deliberately does not do
+## The compat the script does write
 
-The behavioural compat work is real edits at named call sites, not
-substitution. The script prints this list when it finishes:
+**The env alias, routed.** `app/crates/proto/src/env_compat.rs` reads
+`SURYA_<name>`, falls back to `ZERON_<name>`, and warns once per variable per
+process. It lives in proto because that is what everything already depends on,
+and its signatures mirror `std::env` exactly - `var` returns the same
+`Result`, `var_os` the same `Option` - so every call site keeps its `.ok()`,
+`.is_err()` and `.unwrap_or_else(|_| …)` untouched. The script then routes the
+16 user-set reads through it: `files_routed=6`,
+`user_set_reads_still_direct=2`.
 
-1. **Route the env reads.** The script generates
-   `app/crates/engine/src/env_compat.rs` (`SURYA_*`, then `ZERON_*` with a
-   one-time warning, for the 16 user-set variables) and declares the module,
-   but the call sites still read `SURYA_*` only. **Until they are routed
-   through it, a user's existing `ZERON_*` is ignored** - the opposite of what
-   the alias is for. Call sites: `main.rs`, `daemon.rs`, engine `lib.rs`,
-   `ipc.rs`, `profile.rs`, `repos.rs`, `sessions.rs`, ui
-   `sound`/`transcript`/`composer`.
-2. **Data dir adoption.** Unresolved, and the two sources disagree: the
-   coordinator's brief says **copy** `~/.zeron` (keeps a rollback), while
-   `docs/rename-zeron-to-surya.md` row 5 says **rename** (atomic, matches the
-   0.2.0 `.comet-native` migration). Needs a decision before anyone writes it.
-3. **systemd**: ship `surya.service` and remove the old unit on install, or two
-   units race for one IPC port.
-4. **URL scheme**: register `surya://` and keep `zeron://` for one release.
-5. **Bundle ids** (`sh.zeron.app`) wait on the owner picking a domain.
-6. **`cargo update -w`** to regenerate `Cargo.lock`. Not run by the script, so
-   it works without a toolchain.
+Those two are deliberate: `crates/mcp/src/tasks.rs` belongs to the tasks seat,
+and `crates/rpc/tests/device_room.rs` is a test. Dev and test knobs
+(`SURYA_MOCK_*`, `SURYA_DEMO_*`, `SURYA_ACP_*`) keep reading `std::env`
+directly - nothing outside this repo sets them, so they need no alias.
+
+**Three compat blocks**, each marker-guarded so a second run skips them
+(`compat_blocks_added=3`):
+
+| Block | Why |
+| --- | --- |
+| `links.rs` parses `zeron://` as well as `surya://` | deep links live in chats people already have |
+| `lib.rs` registers both schemes | the OS has to route the old one |
+| `daemon.rs` disables and removes `zeron.service` on install | two enabled units race for one IPC port |
+
+**`cargo update -w`** runs when cargo is on PATH (`cargo_update=ok`) and is
+skipped with a note when it is not, so the script still works without a
+toolchain.
+
+## What it still does not do
+
+1. **Data dir.** Ruled: **copy** `~/.zeron` to `~/.surya` on first start, never
+   rename, because a copy keeps a rollback. That is a real migration at the
+   point the data dir is resolved, with its own test - not a substitution, so
+   it is not in this script.
+2. **Bundle ids** (`sh.zeron.app`, the notify id, the conversation URL type)
+   wait on the owner picking a domain.
 
 ## How to run it
 
