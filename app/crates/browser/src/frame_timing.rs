@@ -71,7 +71,8 @@ pub(crate) fn summary(since: Mark) -> String {
 
 fn summarize(shown: u64, pump: u64, handoff: u64, surface: u64, mut gaps: Vec<u64>) -> String {
     gaps.sort_unstable();
-    let p95 = gaps.get(gaps.len() * 95 / 100).copied().unwrap_or(0);
+    let rank = (gaps.len() * 95).div_ceil(100);
+    let p95 = gaps.get(rank.saturating_sub(1)).copied().unwrap_or(0);
     let per_frame = if shown == 0 { 0.0 } else { (pump + handoff + surface) as f64 / shown as f64 / 1000.0 };
     format!(
         "surface_shown={shown} main_pump_us={pump} main_handoff_us={handoff} \
@@ -101,5 +102,11 @@ mod tests {
         let summary = summarize(0, 0, 0, 0, Vec::new());
         assert!(summary.contains("surface_p2d_n=0"));
         assert!(summary.contains("main_ms_per_shown=0.000"));
+    }
+
+    #[test]
+    fn p95_uses_the_nearest_rank_when_the_sample_count_is_a_multiple_of_twenty() {
+        let summary = summarize(20, 0, 0, 0, (1..=20).map(|n| n * 1000).collect());
+        assert!(summary.contains("surface_p2d_p95_ms=19.000"));
     }
 }
