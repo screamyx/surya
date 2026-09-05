@@ -267,7 +267,7 @@ async fn rows_dark_command_delivers_over_the_peer_relay_exactly_once() {
         .expect("queue on A");
 
     // B executes it — allow the 10s rows grace plus relay dial time.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     loop {
         if complete_assistant_count(&core_b) == 1 {
             break;

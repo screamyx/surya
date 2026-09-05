@@ -478,7 +478,7 @@ async fn headless_stop_rpc_drains_the_daemon_and_releases_ipc() {
     engine_config.ipc_port = port;
     let daemon = tokio::spawn(Engine::new(engine_config).run());
 
-    let client = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+    let client = tokio::time::timeout(zeron_test_deadlines::WAIT, async {
         loop {
             if let Ok(client) = connect_ws(&format!("ws://127.0.0.1:{port}")).await {
                 break client;
@@ -496,7 +496,7 @@ async fn headless_stop_rpc_drains_the_daemon_and_releases_ipc() {
             .unwrap(),
         serde_json::json!({ "ok": true })
     );
-    tokio::time::timeout(std::time::Duration::from_secs(5), daemon)
+    tokio::time::timeout(zeron_test_deadlines::WAIT, daemon)
         .await
         .expect("headless engine did not stop")
         .expect("headless task panicked")
@@ -524,7 +524,7 @@ async fn headless_sign_out_closes_joined_edge_rooms_and_stops_daemon() {
     engine_config.ipc_port = port;
     let daemon = tokio::spawn(Engine::new(engine_config).run());
 
-    let client = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+    let client = tokio::time::timeout(zeron_test_deadlines::WAIT, async {
         loop {
             if let Ok(client) = connect_ws(&format!("ws://127.0.0.1:{port}")).await {
                 break client;
@@ -552,7 +552,7 @@ async fn headless_sign_out_closes_joined_edge_rooms_and_stops_daemon() {
             .expect("SignOut reply must reach the caller before IPC closes"),
         serde_json::json!({ "ok": true })
     );
-    tokio::time::timeout(std::time::Duration::from_secs(5), daemon)
+    tokio::time::timeout(zeron_test_deadlines::WAIT, daemon)
         .await
         .expect("headless engine did not stop after sign-out")
         .expect("headless task panicked")
@@ -600,7 +600,7 @@ async fn online_runtime_shutdown_stops_edge_workers_and_retires_the_graph() {
     )
     .await;
 
-    tokio::time::timeout(std::time::Duration::from_secs(30), runtime.shutdown())
+    tokio::time::timeout(zeron_test_deadlines::WAIT, runtime.shutdown())
         .await
         .expect("shutdown never returned — an Edge worker did not join");
     let after = requests.load(Ordering::SeqCst);

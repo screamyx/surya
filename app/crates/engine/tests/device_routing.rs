@@ -293,7 +293,7 @@ async fn simulated_ios_change_request(
         .await
         .expect("send iOS subscription");
 
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     loop {
         let message = tokio::time::timeout_at(deadline, socket.next())
             .await
@@ -408,7 +408,7 @@ async fn checkout_change_request_stream_matches_locally_and_through_device_routi
     core_a.set_links(LinkCache::new(link_config));
     let client = zeron_rpc::memory_client(core_a.rpc_service());
 
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let mut remote = loop {
         match client
             .subscribe_checked(
@@ -430,7 +430,7 @@ async fn checkout_change_request_stream_matches_locally_and_through_device_routi
             }
         }
     };
-    let remote_frame = tokio::time::timeout(Duration::from_secs(5), remote.recv())
+    let remote_frame = tokio::time::timeout(zeron_test_deadlines::WAIT, remote.recv())
         .await
         .expect("remote frame before timeout")
         .expect("remote initial frame");
@@ -470,7 +470,7 @@ async fn checkout_change_request_stream_matches_locally_and_through_device_routi
 
     core_a.disconnect_edge();
     assert!(
-        tokio::time::timeout(Duration::from_secs(5), remote.recv())
+        tokio::time::timeout(zeron_test_deadlines::WAIT, remote.recv())
             .await
             .expect("remote stream closes after link")
             .is_none()
@@ -506,7 +506,7 @@ async fn unsupported_remote_change_request_watch_keeps_the_shared_device_link() 
 
     // The host can take a moment to attach to the room. Once attached, an old
     // host rejects only the capability added by this version.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     loop {
         match client
             .subscribe_checked(
@@ -586,7 +586,7 @@ async fn target_device_id_routes_over_the_relay() {
 
     // Unary forward: ListHarnesses answered by B through the relay. (The host relay
     // dials with backoff; retry until its session is up.)
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let remote = loop {
         match client
             .call(
@@ -642,7 +642,7 @@ async fn target_device_id_routes_over_the_relay() {
         .expect("remote subscribe");
     // The watch emits its current value first ([] if B's publish pass hasn't run yet),
     // then re-emits on every doc change — read until B's entry arrives.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     loop {
         let item = tokio::time::timeout_at(deadline, stream.recv())
             .await
@@ -736,7 +736,7 @@ async fn terminal_stream_proxies_over_the_relay() {
     let client = zeron_rpc::memory_client(core_a.rpc_service());
 
     // OpenTerminal forwards to B once the relay session is up.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let session = loop {
         match client
             .call(
@@ -786,7 +786,7 @@ async fn terminal_stream_proxies_over_the_relay() {
         )
         .await
         .expect("remote write");
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let mut transcript = Vec::new();
     loop {
         let item = tokio::time::timeout_at(deadline, stream.recv())

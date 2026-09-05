@@ -97,7 +97,7 @@ async fn blank_journaled_chat_recovers_entries_from_fat_rollback() {
 
     // Phase 3: boot — the salvage sweep must refill the blank doc on its own.
     let core = assemble(&dir);
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let entries = loop {
         let entries = core
             .doc_host

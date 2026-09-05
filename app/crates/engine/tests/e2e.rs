@@ -177,7 +177,7 @@ async fn wait_for<F>(mut predicate: F, what: &str)
 where
     F: FnMut() -> bool,
 {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     while !predicate() {
         assert!(
             tokio::time::Instant::now() < deadline,
@@ -355,7 +355,7 @@ async fn session_status_transitions_idle_working_idle() {
     );
 
     let mut seen = Vec::new();
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     loop {
         let status = tokio::time::timeout_at(deadline, watch.changed())
             .await
@@ -790,7 +790,7 @@ async fn rpc_surface_over_in_memory_transport() {
         .subscribe(zeron_rpc::methods::WATCH_SESSIONS, serde_json::Value::Null)
         .await
         .unwrap();
-    let first_sessions = tokio::time::timeout(Duration::from_secs(5), sessions_stream.recv())
+    let first_sessions = tokio::time::timeout(zeron_test_deadlines::WAIT, sessions_stream.recv())
         .await
         .unwrap()
         .unwrap();
@@ -803,7 +803,7 @@ async fn rpc_surface_over_in_memory_transport() {
         )
         .await
         .unwrap();
-    let initial = tokio::time::timeout(Duration::from_secs(5), messages_stream.recv())
+    let initial = tokio::time::timeout(zeron_test_deadlines::WAIT, messages_stream.recv())
         .await
         .unwrap()
         .unwrap();
@@ -828,7 +828,7 @@ async fn rpc_surface_over_in_memory_transport() {
     // The doc-messages stream emits delta frames until the transcript settles:
     // user entry + completed assistant entry with the folded parts. Applying
     // each frame client-side mirrors what both viewports do.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     let mut materialized: Vec<SessionMessageEntry> = vec![];
     let settled = loop {
         let item = tokio::time::timeout_at(deadline, messages_stream.recv())
@@ -849,7 +849,7 @@ async fn rpc_surface_over_in_memory_transport() {
     }
 
     // WatchSessions eventually reports the settled Idle session.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     loop {
         let item = tokio::time::timeout_at(deadline, sessions_stream.recv())
             .await

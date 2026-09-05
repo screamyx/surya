@@ -9520,6 +9520,7 @@ dependencies = [
  "zeron-proto",
  "zeron-rpc",
  "zeron-sync",
+ "zeron-test-deadlines",
  "zeron-update",
 ]
 
@@ -9542,6 +9543,7 @@ dependencies = [
  "tracing",
  "uuid",
  "zeron-proto",
+ "zeron-test-deadlines",
 ]
 
 [[package]]
@@ -9629,6 +9631,10 @@ dependencies = [
  "tree-sitter-typescript",
  "tree-sitter-yaml",
 ]
+
+[[package]]
+name = "zeron-test-deadlines"
+version = "0.2.34"
 
 [[package]]
 name = "zeron-theme"

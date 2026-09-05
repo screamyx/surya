@@ -169,9 +169,9 @@ async fn watch_emits_on_external_edits() {
         std::fs::write(&target, format!("fn main() {{ edit {i} }}\n")).unwrap();
         // Something in `target/` should never show up.
         std::fs::write(d.join("target/noise.o"), b"\0").unwrap();
-        let batch = tokio::time::timeout(Duration::from_secs(3), batches.next())
+        let batch = tokio::time::timeout(zeron_test_deadlines::WAIT, batches.next())
             .await
-            .expect("a batch within 3s")
+            .expect("a batch before the deadline")
             .expect("stream open");
         assert_eq!(batch.seq as usize, i + 1);
         assert!(!batch.truncated);
@@ -196,7 +196,7 @@ async fn watch_emits_on_external_edits() {
     // Create + delete arrive with their kinds.
     let fresh = d.join("src/new.rs");
     std::fs::write(&fresh, "x\n").unwrap();
-    let batch = tokio::time::timeout(Duration::from_secs(3), batches.next())
+    let batch = tokio::time::timeout(zeron_test_deadlines::WAIT, batches.next())
         .await
         .unwrap()
         .unwrap();
@@ -210,7 +210,7 @@ async fn watch_emits_on_external_edits() {
     );
     tokio::time::sleep(Duration::from_millis(250)).await;
     std::fs::remove_file(&fresh).unwrap();
-    let batch = tokio::time::timeout(Duration::from_secs(3), batches.next())
+    let batch = tokio::time::timeout(zeron_test_deadlines::WAIT, batches.next())
         .await
         .unwrap()
         .unwrap();

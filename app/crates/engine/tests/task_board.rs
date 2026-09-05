@@ -8,7 +8,6 @@
 //! tool body under test is the file the MCP seat will wire in.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use zeron_engine::{EngineCore, HarnessRegistry};
 use zeron_proto::{HarnessId, Task, TaskStatus};
@@ -25,9 +24,9 @@ fn assemble(dir: &std::path::Path) -> EngineCore {
 }
 
 async fn next_board(rx: &mut tokio::sync::mpsc::Receiver<serde_json::Value>) -> Vec<Task> {
-    let item = tokio::time::timeout(Duration::from_secs(30), rx.recv())
+    let item = tokio::time::timeout(zeron_test_deadlines::WAIT, rx.recv())
         .await
-        .expect("WatchTasks emits within 30s")
+        .expect("WatchTasks emits before the deadline")
         .expect("stream alive");
     serde_json::from_value(item).expect("board decodes as Vec<Task>")
 }

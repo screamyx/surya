@@ -152,7 +152,7 @@ async fn init_repo(dir: &Path) {
 
 /// Poll until `probe` yields Some, or panic at the deadline.
 async fn wait_for<T>(what: &str, mut probe: impl FnMut() -> Option<T>) -> T {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     loop {
         if let Some(value) = probe() {
             return value;
@@ -1077,7 +1077,7 @@ exit 0
         "https://cursor.com/loginDeepControl?challenge=fake"
     );
 
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
     loop {
         let poll = accounts.poll_login(&start.login_id).await.expect("poll");
         match poll.status {
