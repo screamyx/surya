@@ -9,7 +9,12 @@
 #     flock /store/surya-display7.lock app/scripts/browser-scheme-proof.sh [seconds]
 #
 # Same display-lock rules as browser-xvfb-proof.sh: the caller holds the lock
-# for the run only. Needs python3 (http.server + PIL for the measurement).
+# for the run only. On a loaded box the page sometimes never loads: the app
+# log shows Chromium's "Network service crashed or was terminated, restarting
+# service" about a second after "engine core assembled" and no load_end
+# (2026-09-05: 5 of 6 runs without SURYA_CEF_LOG, 0 of 2 with it, in and out
+# of heavy.slice alike). Cause not found; rerun, and set SURYA_CEF_LOG=<file>
+# to keep Chromium's own log for the next look. Needs python3 (http.server + PIL for the measurement).
 # `SURYA_SCHEME_MODES="dark"` runs one mode (a rerun after a starved launch);
 # the default is both. A cold debug launch on a loaded box needs 180 s or
 # more before the pane opens (measured 2026-09-05: 150 s to load_end).
@@ -63,9 +68,13 @@ for MODE in $MODES; do
     dark)  EXPECT="mean < 64"  ; OK=$(awk -v m="$MEAN" 'BEGIN{print (m+0 < 64) ? 1 : 0}') ;;
   esac
   [ "$MEAN" = "none" ] && OK=0
+  # A white frame is also what CEF paints before any page (its opaque
+  # background), so a match needs the page to have actually loaded.
+  LOADED=$(grep -c "browser: load_end status=200" "$RUN/zeron.log" 2>/dev/null); LOADED=${LOADED:-0}
+  [ "$LOADED" -ge 1 ] || OK=0
   MATCHED=$((MATCHED + OK))
   echo "$MODE: $SWITCHES"
-  echo "$MODE: last frame luminance $LUM (expected $EXPECT) matched=$OK window=$RUN/window.png"
+  echo "$MODE: load_end=$LOADED last frame luminance $LUM (expected $EXPECT) matched=$OK window=$RUN/window.png"
 done
 echo "proof: asked=$ASKED matched=$MATCHED"
 [ "$MATCHED" -eq "$ASKED" ]
