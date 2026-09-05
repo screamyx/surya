@@ -1065,6 +1065,9 @@ pub struct Shell {
     /// paint and used next frame, the same trick as `bottom_stack`. The
     /// transcript underlay starts below it.
     title_stack: std::rc::Rc<std::cell::Cell<f32>>,
+    /// Paint-time height of the engine-skew banner, 0 when it is not shown.
+    /// The banner wraps, so its height is not a constant to hardcode.
+    skew_stack: std::rc::Rc<std::cell::Cell<f32>>,
     /// The sidebar's archived accordion (t3code Sidebar): OPEN by default
     /// (user request), session-transient. `archived_shown` pages the
     /// expanded list ("Show more" reveals another page).
@@ -1417,6 +1420,7 @@ impl Shell {
             // Seeded with the title row's resting height for the same reason:
             // frame one must not paint the transcript over the title.
             title_stack: std::rc::Rc::new(std::cell::Cell::new(title_row_seed(cx))),
+            skew_stack: std::rc::Rc::new(std::cell::Cell::new(0.0)),
             archived_open: true,
             archived_shown: 0,
             archived_hover: None,
@@ -6447,7 +6451,19 @@ impl Shell {
             0.0
         };
         // Everything the main-area underlay must start below.
-        let top_h = title_h + inbox_pad;
+        //
+        // On the Needs you route the banner is ADDED, not floated over. The
+        // transcript can scroll whatever the banner covers out from under it;
+        // the page's "Needs you / N waiting" heading is fixed chrome and never
+        // moves, so a banner over it hides it for as long as the skew lasts
+        // (osprey, 02:12). Measured rather than assumed: the banner wraps, so
+        // its height is not a constant.
+        let skew_h = if inbox_page_up {
+            self.skew_stack.get()
+        } else {
+            0.0
+        };
+        let top_h = title_h + inbox_pad + skew_h;
         // File dropzone over the ENTIRE conversation column (transcript +
         // composer, not just the pill): dragging OS files anywhere across the
         // chat area shows the "Drop images to attach" veil; a drop stages the
@@ -6589,7 +6605,11 @@ impl Shell {
                         cx.notify();
                     })),
             )
-            .children(self.render_engine_skew_banner(top_h, theme, cx))
+            // The banner floats at `title_h + inbox_pad`, the chrome above the
+            // surface. On the Needs you route `top_h` also carries the
+            // banner's own height, so passing `top_h` here would push the
+            // banner down by itself, one frame at a time.
+            .children(self.render_engine_skew_banner(title_h + inbox_pad, theme, cx))
             .into_any_element()
     }
 
@@ -6613,12 +6633,19 @@ impl Shell {
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let message = self.state.read(cx).engine_skew.clone()?;
+        // Every early return clears the measure. A stale height would keep the
+        // Needs you page pushed down by a banner that is no longer there.
+        let Some(message) = self.state.read(cx).engine_skew.clone() else {
+            self.skew_stack.set(0.0);
+            return None;
+        };
         if self.engine_skew_dismissed.as_deref() == Some(message.as_str()) {
+            self.skew_stack.set(0.0);
             return None;
         }
         let text = message.clone();
         let hover_bg = theme.wash(0.08);
+        let measured = self.skew_stack.clone();
         Some(
             div()
                 .absolute()
@@ -6627,6 +6654,17 @@ impl Shell {
                 .right_0()
                 .flex()
                 .justify_center()
+                // Its own height, for the surfaces that must start below it
+                // rather than let it float over them. Paint-time, used next
+                // frame, the same trick as the title row.
+                .child(
+                    gpui::canvas(
+                        move |bounds, _, _| measured.set(f32::from(bounds.size.height) + 8.0),
+                        |_, _, _, _| {},
+                    )
+                    .absolute()
+                    .inset_0(),
+                )
                 .child(
                     div()
                         .id("engine-skew-banner")
