@@ -250,9 +250,13 @@ impl ClaudeHarness {
             cmd.arg(&files.system_append);
             // The cards skill, as a one-skill plugin. Without this the agent
             // is told a card beats prose and given no reference for writing
-            // one; with it the skill shows up as `surya:surya-cards`.
-            cmd.arg("--plugin-dir");
-            cmd.arg(&files.plugin_dir);
+            // one; with it the skill shows up as `surya:surya-cards`. Only
+            // these two args are gated on it - everything above still applies
+            // when the skill could not be written.
+            if let Some(plugin_dir) = &files.plugin_dir {
+                cmd.arg("--plugin-dir");
+                cmd.arg(plugin_dir);
+            }
             // surya is the host of every agent, so surya owns mail
             // (decision 19). The CLI's own cross-session messaging talks to
             // Claude Code sessions surya does not know about, and an agent
@@ -1064,4 +1068,6 @@ mod tests {
         // Original input is preserved alongside the answers.
         assert!(updated["questions"].is_array());
     }
+
+
 }
