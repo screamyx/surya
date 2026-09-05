@@ -10,7 +10,7 @@ use zeron_proto::{NeedsYouKind, PermissionDecision};
 
 use super::{NeedsYouPane, OpenChat};
 use crate::inbox::chrome::{
-    ButtonTone, badge, body_text, button, command_text, hint_chip, kind_color, row_card,
+    ButtonTone, badge, body_text, button, command_text, hint_chip, kind_color, row_line,
     setting_chip,
 };
 use crate::inbox::model::{InboxRow, answered_in_the_open_chat, title_adds_to_badge};
@@ -21,6 +21,7 @@ impl NeedsYouPane {
     pub(super) fn render_row(
         &self,
         row: &InboxRow,
+        first: bool,
         open_chat: Option<&str>,
         open_sheet: Option<&str>,
         cx: &mut Context<Self>,
@@ -29,7 +30,7 @@ impl NeedsYouPane {
         let tone = kind_color(row.kind, theme);
         let busy = self.answering.contains(&row.id);
         if answered_in_the_open_chat(row, open_chat, open_sheet) {
-            return self.render_collapsed_row(row, tone, busy, cx);
+            return self.render_collapsed_row(row, first, tone, busy, cx);
         }
         let header = div()
             .flex()
@@ -53,7 +54,7 @@ impl NeedsYouPane {
             .text_color(theme.text)
             .child(SharedString::from(row.title.clone()));
 
-        row_card(theme)
+        row_line(theme, first)
             .id(SharedString::from(format!("needs-you-{}", row.id)))
             .when(busy, |el| el.opacity(0.55))
             .child(header)
@@ -75,6 +76,7 @@ impl NeedsYouPane {
     fn render_collapsed_row(
         &self,
         row: &InboxRow,
+        first: bool,
         tone: gpui::Hsla,
         busy: bool,
         cx: &mut Context<Self>,
@@ -85,7 +87,7 @@ impl NeedsYouPane {
         } else {
             row.prompt.clone()
         };
-        row_card(theme)
+        row_line(theme, first)
             .id(SharedString::from(format!("needs-you-{}", row.id)))
             .when(busy, |el| el.opacity(0.55))
             .flex_row()
@@ -106,7 +108,7 @@ impl NeedsYouPane {
             // Tapping the row hands the user to the sheet it points at, so
             // the line is a way there and not just a label.
             .cursor_pointer()
-            .hover(|s| s.border_color(theme.border_strong))
+            .hover(|s| s.bg(theme.element_hover))
             .on_click(cx.listener(|pane, _, window, cx| {
                 if let Some(focus) = pane
                     .state

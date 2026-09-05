@@ -150,7 +150,27 @@ pub fn empty_state(theme: &Theme, text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
-/// The card every inbox row sits in.
+/// One row of the needs-you list.
+///
+/// A plain list line, not a card: no fill, no outline, no corners. The rows
+/// are told apart by the hairline between them, which `first` drops for the
+/// top one so the list does not open with a rule against the pane's own
+/// border.
+pub fn row_line(theme: &Theme, first: bool) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.0))
+        .px(px(2.0))
+        .py(px(10.0))
+        .when(!first, |el| {
+            el.border_t_1().border_color(theme.border)
+        })
+}
+
+/// The card a RULES row sits in. The rules page is a table of saved
+/// settings, not the needs-you queue, so it keeps its card until someone
+/// rules otherwise.
 pub fn row_card(theme: &Theme) -> Div {
     div()
         .flex()

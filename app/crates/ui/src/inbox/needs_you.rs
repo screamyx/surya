@@ -298,7 +298,10 @@ impl Render for NeedsYouPane {
         // alongside the shared borrow `Theme::of(cx)` holds.
         let cards: Vec<gpui::AnyElement> = rows
             .iter()
-            .map(|row| self.render_row(row, open_chat.as_deref(), open_sheet.as_deref(), cx))
+            .enumerate()
+            .map(|(ix, row)| {
+                self.render_row(row, ix == 0, open_chat.as_deref(), open_sheet.as_deref(), cx)
+            })
             .collect();
         let empty = cards.is_empty();
         let theme = Theme::of(cx);
@@ -308,8 +311,8 @@ impl Render for NeedsYouPane {
             .overflow_y_scroll()
             .flex()
             .flex_col()
-            .gap(px(8.0))
-            .p(px(12.0))
+            .px(px(12.0))
+            .py(px(4.0))
             .when_some(self.failure.clone(), |el, failure| {
                 el.child(
                     div()
