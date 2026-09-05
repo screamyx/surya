@@ -14,7 +14,7 @@
 //! runnable itself. `pump()` from a render is a free extra pump.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use cef::do_message_loop_work;
@@ -28,7 +28,6 @@ static IDLE_ARMED: AtomicU64 = AtomicU64::new(0);
 static IDLE_RAN: AtomicU64 = AtomicU64::new(0);
 static IDLE_REFRESH: AtomicU64 = AtomicU64::new(0);
 static TIMER_ARMED: AtomicU64 = AtomicU64::new(0);
-static TIMER_FIRED: AtomicU64 = AtomicU64::new(0);
 static INPUT_SEQ: AtomicU64 = AtomicU64::new(0);
 
 static WAKE: OnceLock<UnboundedSender<()>> = OnceLock::new();
@@ -52,7 +51,7 @@ pub(crate) fn schedule_pump(delay_ms: i64) {
         return;
     }
     TIMER_ARMED.fetch_add(1, Ordering::Relaxed);
-    clock_after(Duration::from_millis(delay_ms.min(100) as u64), tx.clone());
+    crate::clock::wake_after(Duration::from_millis(delay_ms.min(100) as u64), tx.clone());
 }
 
 /// Called the moment an input event is handed to CEF, so the idle chain
@@ -65,7 +64,7 @@ pub(crate) fn mark_input() {
     }
 }
 
-fn base_ms() -> u64 {
+pub(crate) fn base_ms() -> u64 {
     std::env::var("SURYA_PUMP_MS")
         .ok()
         .and_then(|v| v.trim().parse::<u64>().ok())
@@ -81,13 +80,23 @@ pub(crate) fn install(cx: &mut gpui::App) {
     }
     let base = Duration::from_millis(base_ms());
     let max = Duration::from_millis(100);
+    // `SURYA_PUMP_TIMER=clock`: the idle chain waits on the browser's own
+    // clock; gpui's timer on Windows lands on the 15.6 ms process tick
+    // (haktui: 16 ms asked, 31 ms taken). Unset, gpui's timer: the baseline.
+    let on_clock = crate::clock::on_clock();
+    println!("browser: pump base={}ms timer={}", base.as_millis(), crate::clock::label());
     cx.spawn(async move |cx: &mut gpui::AsyncApp| {
         let mut wait = base;
         let mut seen_frames = crate::render::frames();
         let mut seen = (INPUT_SEQ.load(Ordering::Relaxed), PUMP_ASKS.load(Ordering::Relaxed));
         loop {
             IDLE_ARMED.fetch_add(1, Ordering::Relaxed);
-            let timer = cx.background_executor().timer(wait).fuse();
+            let timer = if on_clock {
+                futures::future::Either::Right(crate::clock::after(wait).map(|_| ()))
+            } else {
+                futures::future::Either::Left(cx.background_executor().timer(wait))
+            }
+            .fuse();
             futures::pin_mut!(timer);
             futures::select! {
                 _ = timer => {}
@@ -120,6 +129,7 @@ pub fn pump(_window: &mut gpui::Window, _cx: &mut gpui::App) {
         return;
     }
     RENDERS.fetch_add(1, Ordering::Relaxed);
+    crate::perf::on_render();
     work_now();
 }
 
@@ -137,7 +147,7 @@ pub fn counters() -> String {
         WORK_DID.load(Ordering::Relaxed),
         PUMP_ASKS.load(Ordering::Relaxed),
         TIMER_ARMED.load(Ordering::Relaxed),
-        TIMER_FIRED.load(Ordering::Relaxed),
+        crate::clock::fired(),
         IDLE_ARMED.load(Ordering::Relaxed),
         IDLE_RAN.load(Ordering::Relaxed),
         IDLE_REFRESH.load(Ordering::Relaxed),
@@ -150,7 +160,7 @@ pub fn counters() -> String {
         crate::render::background_paints(),
         crate::render::kept_frames(),
         crate::zero_copy::counters()
-    )
+    ) + &format!(" {}", crate::perf::counters())
 }
 
 /// Print the counters every 5 seconds from a plain thread that reads atomics
@@ -176,56 +186,4 @@ pub(crate) fn start_heartbeat() {
             }
         })
         .expect("heartbeat thread");
-}
-
-/// A small clock thread: `clock_after(d, tx)` sends on `tx` after `d`. One
-/// thread serves every wait, earliest first, so a burst of CEF asks does not
-/// spawn a thread each.
-struct Clock {
-    heap: Mutex<std::collections::BinaryHeap<std::cmp::Reverse<(Instant, u64)>>>,
-    pending: Mutex<std::collections::HashMap<u64, UnboundedSender<()>>>,
-    seq: AtomicU64,
-    wake: std::sync::Condvar,
-}
-
-static CLOCK: OnceLock<std::sync::Arc<Clock>> = OnceLock::new();
-
-fn clock_after(d: Duration, tx: UnboundedSender<()>) {
-    let clock = CLOCK.get_or_init(|| {
-        let clock = std::sync::Arc::new(Clock {
-            heap: Mutex::new(Default::default()),
-            pending: Mutex::new(Default::default()),
-            seq: AtomicU64::new(0),
-            wake: std::sync::Condvar::new(),
-        });
-        let worker = clock.clone();
-        std::thread::Builder::new()
-            .name("surya-browser-clock".into())
-            .spawn(move || loop {
-                let mut heap = worker.heap.lock().unwrap();
-                let now = Instant::now();
-                match heap.peek().copied() {
-                    None => {
-                        drop(worker.wake.wait(heap).unwrap());
-                    }
-                    Some(std::cmp::Reverse((due, id))) if due <= now => {
-                        heap.pop();
-                        drop(heap);
-                        if let Some(tx) = worker.pending.lock().unwrap().remove(&id) {
-                            TIMER_FIRED.fetch_add(1, Ordering::Relaxed);
-                            let _ = tx.unbounded_send(());
-                        }
-                    }
-                    Some(std::cmp::Reverse((due, _))) => {
-                        drop(worker.wake.wait_timeout(heap, due - now).unwrap());
-                    }
-                }
-            })
-            .expect("clock thread");
-        clock
-    });
-    let id = clock.seq.fetch_add(1, Ordering::Relaxed);
-    clock.pending.lock().unwrap().insert(id, tx);
-    clock.heap.lock().unwrap().push(std::cmp::Reverse((Instant::now() + d, id)));
-    clock.wake.notify_one();
 }
