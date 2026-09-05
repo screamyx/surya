@@ -30,10 +30,16 @@ pub struct MailIngressPaths {
 }
 
 impl MailIngressPaths {
-    /// The defaults from the brief: runtime socket first, home file always.
+    /// Runtime socket first, home file always. On Windows there is no socket:
+    /// `socket` is `None` and every message arrives over the jsonl file, which
+    /// is why the file half is not an optional fallback.
     pub fn detect() -> Self {
-        let socket = std::env::var_os("XDG_RUNTIME_DIR")
-            .map(|dir| PathBuf::from(dir).join("surya").join("mail.sock"));
+        let socket = if cfg!(unix) {
+            std::env::var_os("XDG_RUNTIME_DIR")
+                .map(|dir| PathBuf::from(dir).join("surya").join("mail.sock"))
+        } else {
+            None
+        };
         let jsonl = Some(crate::repos::home_dir().join(".surya").join("mail.jsonl"));
         Self { socket, jsonl }
     }
@@ -70,6 +76,14 @@ impl MailIngress {
     /// skipped: mail over RPC must keep working when the seat channel does not.
     pub fn start(mail: Mail, paths: MailIngressPaths) -> Self {
         let mut tasks = Vec::new();
+        if paths.socket.is_none() {
+            // Said once, at start, so a Windows operator reading the log knows
+            // which route mail takes here rather than wondering why the socket
+            // never appears.
+            tracing::info!(
+                "mail socket unavailable on this platform; the jsonl channel carries every message"
+            );
+        }
         if let Some(socket) = paths.socket {
             match start_socket(mail.clone(), socket.clone()) {
                 Ok(task) => tasks.push(task),
@@ -115,6 +129,10 @@ fn restrict(path: &Path) {
 #[cfg(not(unix))]
 fn restrict(_path: &Path) {}
 
+/// The socket half of the channel. Unix only: it is a unix-domain socket, and
+/// Windows has no `tokio::net::UnixListener`. The jsonl half runs everywhere,
+/// so mail still arrives on Windows - one route instead of two.
+#[cfg(unix)]
 fn start_socket(mail: Mail, path: PathBuf) -> std::io::Result<tokio::task::JoinHandle<()>> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -153,6 +171,14 @@ fn start_socket(mail: Mail, path: PathBuf) -> std::io::Result<tokio::task::JoinH
             });
         }
     }))
+}
+
+#[cfg(not(unix))]
+fn start_socket(_mail: Mail, path: PathBuf) -> std::io::Result<tokio::task::JoinHandle<()>> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        format!("unix sockets are not available on this platform ({})", path.display()),
+    ))
 }
 
 fn start_jsonl(mail: Mail, path: PathBuf) -> std::io::Result<tokio::task::JoinHandle<()>> {
@@ -240,6 +266,20 @@ async fn accept(mail: &Mail, line: &str) -> Result<Option<super::MailReceipt>, c
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn there_is_always_a_route_in() {
+        let paths = MailIngressPaths::detect();
+        assert!(
+            paths.jsonl.is_some(),
+            "the jsonl channel is the one every platform has"
+        );
+        #[cfg(not(unix))]
+        assert!(
+            paths.socket.is_none(),
+            "no unix socket off unix: it would fail to bind on every start"
+        );
+    }
 
     #[test]
     fn the_seats_record_shape_parses() {
