@@ -367,6 +367,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn the_helper_is_judged_by_owner_and_exact_mode() {
+        // decide_linux reads SURYA_SANDBOX; see ENV.
+        let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
         use std::os::unix::fs::PermissionsExt as _;
         let dir = std::env::temp_dir().join(format!("surya-sandbox-test-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
