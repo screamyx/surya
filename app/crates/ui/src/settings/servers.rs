@@ -43,7 +43,9 @@ pub fn parse_server(name: &str, host: &str, port: &str, token: &str) -> Result<S
         return Err("Host is required (an IP address or a name your network resolves).".into());
     }
     let port = match port.trim() {
-        "" => inline_port.unwrap_or("27654"),
+        // The port deploy/install-engine.sh serves on; the loopback daemon's
+        // 27654 is never what a remote entry means.
+        "" => inline_port.unwrap_or("27700"),
         given => given,
     };
     let port: u16 = port
@@ -151,7 +153,7 @@ impl ServersPage {
         };
         let name = field("Name (optional)", cx);
         let host = field("Host, e.g. 100.64.0.9 or build-box", cx);
-        let port = field("Port (default 27654)", cx);
+        let port = field("Port (default 27700)", cx);
         let token = field("Token from `zeron status` on that machine", cx);
         window.focus(&host.focus_handle(cx), cx);
         self.add = Some(AddDialog {
@@ -437,7 +439,7 @@ mod tests {
     #[test]
     fn port_field_wins_and_defaults() {
         assert_eq!(parse_server("", "h:1", "2", "").unwrap().port, 2);
-        assert_eq!(parse_server("", "h", "", "").unwrap().port, 27654);
+        assert_eq!(parse_server("", "h", "", "").unwrap().port, 27700);
     }
 
     #[test]
