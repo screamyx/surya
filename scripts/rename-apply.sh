@@ -5,13 +5,14 @@
 #   scripts/rename-apply.sh            # apply, then print the counters
 #   scripts/rename-apply.sh --check    # list the files it would touch
 #
-# Re-runnable: every transform matches only the OLD spelling and every
-# generated file is written once, so a second run is a no-op.
+# Re-runnable: every transform matches only a form it has not produced, and
+# every generated file is written once, so a second run is a no-op. The data
+# dir adoption pair is the subtle one - see `advance_data_dir_migration`.
 #
-# It does the mechanical categories. It does NOT write the behavioural compat
-# code (data dir adoption, systemd unit, URL scheme); those are real edits at
-# named call sites and are listed at the end as work for a human. The script
-# says so rather than pretending.
+# It does the mechanical categories plus the compat that is a substitution:
+# the env alias and its call sites, both URL schemes, the old systemd unit,
+# and the data dir adoption pair. What is left needs an owner decision and is
+# listed at the end rather than guessed at.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -39,6 +40,15 @@ in_scope_files() {
 #   zeron.sh       the domain, until surya has one (row 10)
 #   zeron-dark     comet's two builtin themes: their ids, family and display
 #   zeron-light    names are user state, saved in ui-settings.json (row 19)
+#
+#   LEGACY_UNIT    the compat blocks below name the OLD unit, scheme and
+#   LEGACY_SCHEME  registration ON PURPOSE. Unmasked, a SECOND run renames
+#   register_url_  them too: LEGACY_UNIT becomes "surya.service" and the
+#   scheme("zeron")  install then disables and deletes the CURRENT unit, the
+#                  scheme compat starts comparing surya:// to itself, and the
+#                  duplicate registration is re-added every run. Measured, not
+#                  imagined - it took eight stacked register_url_scheme lines
+#                  to notice.
 # --------------------------------------------------------------------------
 mask() {
   sed -e 's/zeronsh/\x01PROVENANCE\x01/g' \
@@ -48,7 +58,10 @@ mask() {
       -e 's/"Zeron Dark"/\x01THEMENAMED\x01/g' \
       -e 's/"Zeron Light"/\x01THEMENAMEL\x01/g' \
       -e 's/family_id: "zeron"/\x01THEMEFAMID\x01/g' \
-      -e 's/family("zeron", "Zeron"/\x01THEMEFAM\x01/g'
+      -e 's/family("zeron", "Zeron"/\x01THEMEFAM\x01/g' \
+      -e 's/LEGACY_UNIT: &str = "zeron.service"/\x01LEGACYUNIT\x01/g' \
+      -e 's|LEGACY_SCHEME: &str = "zeron://open/chat/"|\x01LEGACYSCHEME\x01|g' \
+      -e 's|register_url_scheme("zeron").detach(); // surya-rename: legacy|\x01LEGACYREG\x01|g'
 }
 unmask() {
   sed -e 's/\x01PROVENANCE\x01/zeronsh/g' \
@@ -60,7 +73,10 @@ unmask() {
       -e 's/\x01THEMEFAMID\x01/family_id: "zeron"/g' \
       -e 's/\x01THEMEFAM\x01/family("zeron", "Zeron"/g' \
       -e 's/\x01DATADIR\x01/.surya/g' \
-      -e 's/\x01DATADIRPREV\x01/.zeron/g'
+      -e 's/\x01DATADIRPREV\x01/.zeron/g' \
+      -e 's/\x01LEGACYUNIT\x01/LEGACY_UNIT: \&str = "zeron.service"/g' \
+      -e 's|\x01LEGACYSCHEME\x01|LEGACY_SCHEME: \&str = "zeron://open/chat/"|g' \
+      -e 's|\x01LEGACYREG\x01|register_url_scheme("zeron").detach(); // surya-rename: legacy|g'
 }
 
 # Comet's two builtin themes keep their user-visible identity above, but their
@@ -73,9 +89,35 @@ unmask() {
 # `.surya`. The global substitution alone gets this WRONG - it rewrites the
 # first argument and leaves the second, producing `(".surya", ".comet-native")`
 # and silently dropping the whole zeron -> surya adoption, which is the one
-# this release needs. Masked here so both names land right.
+# this release needs.
+#
+# The ALREADY-ADVANCED pair is masked too. Without that a second run eats the
+# surviving `.zeron` and leaves `(".surya", ".surya")` - a call that adopts a
+# directory from itself, which is the same silent no-copy, arrived at from the
+# other side. The counters do not catch it; the double-run check below does.
+#
+# Matched on the two string arguments with `\s*` between them, not on the whole
+# line: rustfmt is free to wrap this call, and a whole-line literal would
+# quietly stop matching if it ever did.
 advance_data_dir_migration() {
-  sed -e 's/adopt_and_report(&home, "\.zeron", "\.comet-native")/adopt_and_report(\&home, "\x01DATADIR\x01", "\x01DATADIRPREV\x01")/g'
+  perl -0pe 's/"\.zeron",(\s*)"\.comet-native"/"\x01DATADIR\x01",$1"\x01DATADIRPREV\x01"/gs;
+             s/"\.surya",(\s*)"\.zeron"/"\x01DATADIR\x01",$1"\x01DATADIRPREV\x01"/gs'
+}
+
+# The adoption call is the one thing in this script whose absence is silent
+# and expensive: the tree still compiles, still looks renamed, and every
+# upgrading user starts signed out. So it is asserted, not assumed.
+assert_data_dir_call_present() {
+  local main=app/apps/zeron/src/main.rs
+  [ -f "$main" ] || main=app/apps/surya/src/main.rs
+  local hits
+  hits=$({ "${RG[@]}" -o -U '"\.zeron",\s*"\.comet-native"|"\.surya",\s*"\.zeron"' "$main" 2>/dev/null || true; } | wc -l | tr -d ' ')
+  if [ "$hits" != "1" ]; then
+    echo "FATAL: expected hits=1 for the data dir adoption pair in $main, got $hits." >&2
+    echo "Either the call moved, or rustfmt reshaped it past this rule. Fix the" >&2
+    echo "rule before renaming: without it every upgrading user starts signed out." >&2
+    exit 1
+  fi
 }
 
 rename_legacy_theme_fns() {
@@ -109,6 +151,7 @@ count "  of which zeron.sh (keep)" 'zeron\.sh'
 count "ZERON_* env vars" 'ZERON_[A-Z0-9_]+'
 BEFORE=$(hits_of '[Zz]eron')
 
+assert_data_dir_call_present
 mapfile -t FILES < <(in_scope_files)
 echo
 echo "## files in scope: ${#FILES[@]}"
@@ -341,9 +384,9 @@ if [ -f "$LINKS" ] && ! grep -q 'LEGACY_SCHEME' "$LINKS"; then
 fi
 
 UI=app/crates/ui/src/lib.rs
-if [ -f "$UI" ] && ! grep -q 'register_url_scheme("zeron")' "$UI"; then
-  perl -pi -e 's{^(\s*)cx\.register_url_scheme\("surya"\)\.detach\(\);}{$1cx.register_url_scheme("surya").detach();\n$1// One release: the OS still routes surya:// links minted before the rename.\n$1cx.register_url_scheme("zeron").detach();}' "$UI"
-  grep -q 'register_url_scheme("zeron")' "$UI" && { COMPAT=$((COMPAT + 1)); echo "  lib.rs registers zeron:// too"; }
+if [ -f "$UI" ] && ! grep -q 'surya-rename: legacy' "$UI"; then
+  perl -pi -e 's{^(\s*)cx\.register_url_scheme\("surya"\)\.detach\(\);$}{$1cx.register_url_scheme("surya").detach();\n$1// One release: the OS still routes links minted before the rename.\n$1cx.register_url_scheme("zeron").detach(); // surya-rename: legacy}' "$UI"
+  grep -q 'surya-rename: legacy' "$UI" && { COMPAT=$((COMPAT + 1)); echo "  lib.rs registers zeron:// too"; }
 fi
 
 # Two units enabled means two daemons racing for one IPC port.
@@ -403,14 +446,11 @@ cat <<'TODO'
 
 ## NOT done by this script - decisions or owner input
 
-  1. Data dir: copy `~/.zeron` to `~/.surya` on first start (ruled: COPY, not
-     rename - it keeps a rollback). Needs a real migration at the point the
-     data dir is resolved, with its own test; not a substitution.
-  2. Bundle ids (`sh.zeron.app`, the notify id, the conversation URL type)
+  1. Bundle ids (`sh.zeron.app`, the notify id, the conversation URL type)
      wait on the owner picking a domain.
-  3. `crates/mcp/src/tasks.rs` reads SURYA_IPC_PORT directly and is NOT routed
+  2. `crates/mcp/src/tasks.rs` reads SURYA_IPC_PORT directly and is NOT routed
      here: that file belongs to the tasks seat.
-  4. Dev and test knobs (`SURYA_MOCK_*`, `SURYA_DEMO_*`, `SURYA_ACP_*`, and
+  3. Dev and test knobs (`SURYA_MOCK_*`, `SURYA_DEMO_*`, `SURYA_ACP_*`, and
      the rest) rename without an alias on purpose - nothing outside this repo
      sets them.
 TODO
