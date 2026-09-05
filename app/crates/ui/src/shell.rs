@@ -4367,7 +4367,19 @@ impl Shell {
             .border_b_1()
             .border_color(theme.border)
             .child(
-                entry("rail-home", icons::HOME, "Home", active.is_none(), true, theme).on_click(
+                // Home is lit when no right-pane surface is open AND the Needs
+                // you page is not up. Without the second half the rail lies:
+                // the page fills the main area while Home keeps its plate, so
+                // two entries read as current and neither is where you are.
+                entry(
+                    "rail-home",
+                    icons::HOME,
+                    "Home",
+                    active.is_none() && !inbox_on,
+                    true,
+                    theme,
+                )
+                .on_click(
                     cx.listener(|this, _, _, cx| {
                         if this.right_pane_open(cx) {
                             this.toggle_right_pane(cx);
