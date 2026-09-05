@@ -248,6 +248,10 @@ probe Mutate '{"op":"renameChat","chatId":"smoke-card","title":"smoke-card"}' >/
 # transcript-level assertion can honestly prove.
 run_turn smoke-card "scenario:card-raw draw me one"
 card_parts=0; from_input=0
+# Assigned in the loop below and read after it. A zero-iteration loop is not
+# reachable today (the deadline is set on the line under this one), but `set -u`
+# would kill the script rather than fail the check if it ever became so.
+CARD=""
 DL="$(deadline)"
 while before "$DL"; do
   CARD="$(probe WatchDocMessages '{"chatId":"smoke-card"}' --stream 1 || true)"

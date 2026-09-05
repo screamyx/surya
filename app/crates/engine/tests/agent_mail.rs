@@ -115,18 +115,18 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     );
 
     let ids = fanout.ids.clone();
+    // Count inside the wait and assert that number. Reading a second snapshot
+    // after the predicate passes asserts a `delivered_at` that has had time to
+    // move: an errored turn requeues a row and nulls the column again.
+    let mut delivered_fanout = 0;
     wait_until!("both fan-out copies delivered", {
         let all = core.mail.list(None).await.unwrap();
-        ids.iter()
-            .all(|id| all.iter().any(|m| &m.id == id && m.delivered_at.is_some()))
+        delivered_fanout = ids
+            .iter()
+            .filter(|id| all.iter().any(|m| &m.id == *id && m.delivered_at.is_some()))
+            .count();
+        delivered_fanout == ids.len()
     });
-
-    let delivered_fanout = {
-        let all = core.mail.list(None).await.unwrap();
-        ids.iter()
-            .filter(|id| all.iter().any(|m| &&m.id == id && m.delivered_at.is_some()))
-            .count()
-    };
     println!("proof 2: sent=1 delivered={delivered_fanout}");
     assert_eq!(delivered_fanout, 2);
 
