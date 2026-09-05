@@ -77,7 +77,12 @@ impl TasksPane {
         cx.spawn(async move |this, cx| {
             let result = client.call(methods::MUTATE, params).await;
             let _ = this.update(cx, |pane, cx| {
-                pane.error = result.err().map(|e| SharedString::from(e.to_string()));
+                if let Err(err) = result {
+                    pane.error = Some(SharedString::from(err.to_string()));
+                    pane.model.clear_pending();
+                } else {
+                    pane.error = None;
+                }
                 cx.notify();
             });
         })
@@ -133,6 +138,9 @@ impl TasksPane {
         let Some(plan) = self.model.plan_drop(&task_id, &target) else {
             return;
         };
+        // Move the card now; the watch frames reconcile (model.rs).
+        self.model
+            .apply_optimistic(plan.clone(), std::time::Instant::now());
         if let Some(status) = plan.status {
             self.mutate(
                 serde_json::json!({ "op": "updateTask", "taskId": plan.task_id, "status": status }),

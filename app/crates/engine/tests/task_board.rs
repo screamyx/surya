@@ -226,4 +226,12 @@ async fn reorder_keeps_board_order_across_a_restart() {
         .expect("subscribe all boards");
     let snapshot = next_board(&mut all).await;
     assert_eq!(snapshot.len(), 3, "unfiltered watch carries every board");
+    // No params at all (`null` on the wire) means the same thing.
+    let mut null_params = client
+        .subscribe(methods::WATCH_TASKS, serde_json::Value::Null)
+        .await
+        .expect("subscribe with null params");
+    let snapshot = next_board(&mut null_params).await;
+    println!("null_params_asked=1 boards_seen={}", snapshot.len());
+    assert_eq!(snapshot.len(), 3, "null params = every board");
 }
