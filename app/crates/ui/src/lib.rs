@@ -180,10 +180,9 @@ pub fn run_app(config: UiConfig) {
             cx,
         );
         composer::init(cx);
-        // files::init runs inside shell::apply_keymap (which clears and
-        // rebuilds the keymap when the shell mounts); binding it here too
-        // would only be discarded.
-        terminal::panel::init(cx);
+        // files::init and the terminal toggle are bound inside
+        // shell::apply_keymap, which clears and rebuilds the whole keymap when
+        // the shell mounts; a boot-time bind_keys here would only be discarded.
         app_menus::init(cx);
         // CEF before the window: one browser per process, pumped from the
         // shell's render and an idle chain (surya-browser). After

@@ -264,6 +264,29 @@ fn title_row_seed(cx: &App) -> f32 {
     Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0 + text + 2.0 + 6.0
 }
 
+/// Measured, not assumed: after the clear, one line per key context says
+/// whether its probe key is bound (`asked=1 bound=N`, RUST_LOG=info). A boot-
+/// time `bind_keys` outside this function is discarded by the clear, which is
+/// how the files editor lost Enter once (PR #91).
+fn log_keymap_proof(cx: &App, keymap: &KeymapConfig) {
+    let probe = |context: &str, combo: &str, action: &str| {
+        let Ok(keystroke) = Keystroke::parse(combo) else {
+            tracing::warn!(target: "surya_keys", context, combo, "probe combo does not parse");
+            return;
+        };
+        let bound = cx
+            .all_bindings_for_input(&[keystroke])
+            .iter()
+            .filter(|b| b.action().name().ends_with(action))
+            .count();
+        tracing::info!(target: "surya_keys", context, combo, action, asked = 1, bound, "keymap applied");
+    };
+    probe("Composer", "enter", "Submit");
+    probe("FilesEditor", "enter", "Newline");
+    probe("Shell", &platform_combo(&keymap.toggle_terminal), "ToggleTerminal");
+    probe("Shell", &platform_combo(&keymap.toggle_files), "ToggleFiles");
+}
+
 /// (Re-)apply the whole app keymap: clears every binding, restores the composer
 /// map, then binds the customizable shortcuts from `keymap` (feature-inventory
 /// §1.4). Invalid persisted combos fall back to that shortcut's default.
@@ -282,20 +305,6 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
     // The files editor's context rides on the composer's actions and has to
     // be re-bound here too: a boot-time bind_keys is wiped by the clear above.
     crate::files::init(cx);
-    // Measured, not assumed: the files editor's Enter binding must be in the
-    // live keymap after the clear (RUST_LOG=info shows the pair).
-    if let Ok(enter) = Keystroke::parse("enter") {
-        let bindings = cx.all_bindings_for_input(&[enter]);
-        let files_editor_bound = bindings
-            .iter()
-            .any(|b| format!("{:?}", b.predicate()).contains("FilesEditor"));
-        tracing::info!(
-            target: "surya_keys",
-            enter_bindings = bindings.len(),
-            files_editor_bound,
-            "keymap applied"
-        );
-    }
     // Fixed app-level shortcuts (Settings on every platform; ⌘Q quit, ⌘W
     // close, ⌘M minimize, ⌘H hide on macOS) — these back the native menu
     // key equivalents and must survive keymap re-application.
@@ -376,6 +385,7 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ))
     }));
+    log_keymap_proof(cx, keymap);
 }
 
 /// The settings sections (feature-inventory §1.5 routes).
