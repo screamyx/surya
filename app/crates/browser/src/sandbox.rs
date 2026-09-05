@@ -41,6 +41,9 @@ pub(crate) struct Decision {
 }
 
 impl Decision {
+    // Only Linux can currently answer "on", so on every other target this
+    // constructor is reachable from the tests alone.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     fn on(why: impl Into<String>, devel_sandbox: Option<std::path::PathBuf>) -> Self {
         Self { on: true, why: why.into(), devel_sandbox }
     }
