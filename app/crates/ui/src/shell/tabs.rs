@@ -155,6 +155,7 @@ impl Shell {
                 None => (SharedString::from(""), None, None, true),
             }
         };
+        let _ = (title, on_canvas);
 
         // The new-session `+` renders in the WINDOW-CONTROL CLUSTER whenever a
         // session is selected (`render_titlebar_cluster`) — this row budgets
@@ -309,19 +310,9 @@ impl Shell {
                                 )
                             },
                         )
-                        .child(
-                            div()
-                                .min_w_0()
-                                .truncate()
-                                .text_size(crate::typography::ui_rems(12.0))
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(if on_canvas {
-                                    theme.text_muted.opacity(0.7)
-                                } else {
-                                    theme.text.opacity(0.85)
-                                })
-                                .child(title),
-                        )
+                        // Critique round 3, N2: the title already sits in the
+                        // page-title tier and the session row; the strip keeps
+                        // only the harness icon and the "project @ device" tag.
                         .when_some(target, |el, target| {
                             el.child(
                                 div()
