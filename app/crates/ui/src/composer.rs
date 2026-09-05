@@ -3465,6 +3465,12 @@ pub struct Composer {
 impl EventEmitter<ComposerEvent> for Composer {}
 
 impl Composer {
+    /// The question sheet is on screen (the wizard is mounted). The shell
+    /// gates the page title on this, not on a proxy of it.
+    pub fn question_sheet_visible(&self) -> bool {
+        self.wizard.is_some()
+    }
+
     /// The picker entity, for the shell's canvas target selectors.
     pub fn pickers(&self) -> &Entity<Pickers> {
         &self.pickers

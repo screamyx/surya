@@ -245,6 +245,10 @@ pub fn cluster_clearance(
 /// (Re-)apply the whole app keymap: clears every binding, restores the composer
 /// map, then binds the customizable shortcuts from `keymap` (feature-inventory
 /// §1.4). Invalid persisted combos fall back to that shortcut's default.
+/// First-frame estimate of the page-title row (titlebar clearance + display
+/// line + caption line + paddings); the paint-time measure replaces it.
+const TITLE_ROW_SEED: f32 = Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0 + 30.0 + 2.0 + 18.0 + 6.0;
+
 pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
     fn valid_or_default(combo: &str, fallback: &str) -> String {
         let candidate = platform_combo(combo);
@@ -1386,7 +1390,9 @@ impl Shell {
             // first frame's clearance isn't zero (the measure corrects it).
             bottom_stack: std::rc::Rc::new(std::cell::Cell::new(120.0)),
             inbox_stack: std::rc::Rc::new(std::cell::Cell::new(0.0)),
-            title_stack: std::rc::Rc::new(std::cell::Cell::new(0.0)),
+            // Seeded with the title row's resting height for the same reason:
+            // frame one must not paint the transcript over the title.
+            title_stack: std::rc::Rc::new(std::cell::Cell::new(TITLE_ROW_SEED)),
             archived_open: true,
             archived_shown: 0,
             archived_hover: None,
@@ -4385,12 +4391,7 @@ impl Shell {
     /// `clear_titlebar` is false when something above already cleared the
     /// floating titlebar - the needs-you list does. Keeping the padding then
     /// spends 44 px of the feed on nothing and crowds the first message.
-    fn render_page_title(
-        &mut self,
-        theme: &Theme,
-        clear_titlebar: bool,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn render_page_title(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let (title, sub) = {
             let state = self.state.read(cx);
             // Keyed off `active_chat`, like `current_space`, so title and
@@ -4417,11 +4418,7 @@ impl Shell {
             .gap(px(2.0))
             .px(px(crate::surya::PANEL_PAD + 12.0))
             // The titlebar floats over the card; start below it.
-            .pt(px(if clear_titlebar {
-                Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0
-            } else {
-                10.0
-            }))
+            .pt(px(Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0))
             .pb(px(6.0))
             .child(
                 div()
@@ -6285,8 +6282,6 @@ impl Shell {
         }
 
         let _ = (text, border);
-        // Read before the outlet is built: the page title below drops its
-        // titlebar clearance when the list above has already cleared it.
         let inbox_on = self.inbox_visible(cx);
         let has_selection = self.state.read(cx).selected_chat.is_some();
         let has_spaces = !self.state.read(cx).spaces.is_empty();
@@ -6298,8 +6293,7 @@ impl Shell {
         // (new-chat mode mints the chat id on first send).
         // Critique round 4, I4: while a question sheet is up the title hides
         // (at 1100x700 the sheet reached the title and drew over it).
-        let sheet_up = has_selection
-            && crate::composer::pending_input_request(&self.state.read(cx).transcript).is_some();
+        let sheet_up = has_selection && self.composer.read(cx).question_sheet_visible();
         let outlet: AnyElement = if has_selection {
             self.transcript.clone().into_any_element()
         } else if !has_spaces && !no_project {
@@ -6370,7 +6364,7 @@ impl Shell {
         // the title row is the FIRST thing under the titlebar, the needs-you
         // list sits under it, the transcript under both.
         let title_row =
-            (has_selection && !sheet_up).then(|| self.render_page_title(theme, true, cx));
+            (has_selection && !sheet_up).then(|| self.render_page_title(theme, cx));
         let has_title = title_row.is_some();
         let title_h = if has_title { self.title_stack.get() } else { 0.0 };
         // The list is a real flex child, the transcript below it is an
@@ -6382,8 +6376,15 @@ impl Shell {
         } else {
             0.0
         };
+        // The list's own titlebar clearance is decided THIS frame (it flips
+        // with the title row), so it is added here rather than measured.
+        let inbox_pad = if inbox.is_some() && !has_title {
+            Theme::TITLEBAR_HEIGHT
+        } else {
+            0.0
+        };
         // Everything the transcript underlay must start below.
-        let top_h = title_h + inbox_h;
+        let top_h = title_h + inbox_pad + inbox_h;
         // File dropzone over the ENTIRE conversation column (transcript +
         // composer, not just the pill): dragging OS files anywhere across the
         // chat area shows the "Drop images to attach" veil; a drop stages the
@@ -6420,10 +6421,13 @@ impl Shell {
                 el.child(
                     div()
                         .flex_none()
+                        // The title row above already cleared the titlebar;
+                        // this padding sits OUTSIDE the measured content.
+                        .pt(px(inbox_pad))
+                        .child(
+                    div()
                         .relative()
                         .max_h(px(320.0))
-                        // The title row above already cleared the titlebar.
-                        .pt(px(if has_title { 0.0 } else { Theme::TITLEBAR_HEIGHT }))
                         .border_b_1()
                         .border_color(theme.border)
                         .child(
@@ -6435,6 +6439,7 @@ impl Shell {
                             .inset_0(),
                         )
                         .child(pane),
+                        ),
                 )
             })
             .child(
