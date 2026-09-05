@@ -5,6 +5,7 @@ Ported 2026-09-05 from `haktui/crates/haktui/src/browser/` (`osr.rs`,
 `osr_input.rs`, `chrome.rs`), split into files under 500 lines.
 
 Off by default. Build with `cargo build -p zeron --features browser`.
+Tests: `cd app/crates/browser && cargo test` (the crate is its own workspace root; CI does not run it).
 
 ## How a frame gets on screen
 
