@@ -39,6 +39,9 @@ pub fn install(cx: &mut App) {
     if let Some(after) = seconds("SURYA_PROOF_DEVICE") {
         cx.spawn(async move |cx| {
             cx.background_executor().timer(Duration::from_secs(after)).await;
+            // `innerWidth` is the layout viewport: a page with a viewport
+            // meta lays out at the device width (the probe page has one);
+            // one without falls back to Chromium's 980px mobile layout.
             let width = json!({ "js": "innerWidth" });
             let before = surya_browser::agent::run("browser_eval", &width).await;
             surya_browser::emulation::set_device(surya_browser::emulation::Device::IPhone15);
@@ -54,8 +57,10 @@ pub fn install(cx: &mut App) {
                 .map(|m| m.width as i64)
                 .unwrap_or(0);
             let matched = u8::from(b > 0 && b != wanted) + u8::from(a == wanted);
+            let screen = surya_browser::agent::run("browser_eval", &json!({ "js": "screen.width" })).await;
             println!(
-                "proof: device asked=2 matched={matched} before={b} after={a} wanted={wanted} {}",
+                "proof: device asked=2 matched={matched} before={b} after={a} wanted={wanted} screen={} {}",
+                read(&screen),
                 surya_browser::devtools::counters()
             );
         })

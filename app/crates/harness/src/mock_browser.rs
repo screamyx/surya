@@ -164,14 +164,16 @@ impl Mcp {
         }
     }
 
-    /// The last card the server recorded, as the app would show it.
+    /// The last card the server recorded, as the app shows it: its own row
+    /// after the chip, under `{tool_use_id}:shot` like the claude driver
+    /// (`normalize.rs`), because a part id is one kind only in the doc.
     fn last_card(&self) -> Option<AgentEvent> {
         let text = std::fs::read_to_string(&self.card_store).ok()?;
         let record: Value = serde_json::from_str(text.lines().last()?).ok()?;
         Some(AgentEvent::Card {
             card_id: record["card_id"].as_str()?.to_string(),
             surface_id: record["surface_id"].as_str()?.to_string(),
-            tool_use_id: record["tool_use_id"].as_str()?.to_string(),
+            tool_use_id: format!("{}:shot", record["tool_use_id"].as_str()?),
             a2ui: record["a2ui"].as_array()?.clone(),
         })
     }
