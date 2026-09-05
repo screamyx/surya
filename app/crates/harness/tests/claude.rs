@@ -72,6 +72,7 @@ fn controls(
         }),
         steering: steer_rx,
         interrupt: token.clone(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     (controls, steer_tx, token)
 }
@@ -303,6 +304,7 @@ async fn ask_user_question_round_trips_through_the_control_channel() {
         }),
         steering: steer_rx,
         interrupt: token.clone(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     let events = run_to_end(&harness(), request("scenario:askuser"), controls).await;
 

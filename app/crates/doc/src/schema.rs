@@ -136,6 +136,14 @@ fn to_doc_part(part: &MessagePart) -> Result<DocPartJson, DocError> {
             reasoning: Some(text.clone()),
             ..Default::default()
         },
+        // The body rides `text` so a build that does not know this kind
+        // falls through to the text renderer and still shows the sentence.
+        MessagePart::Notice { id, text } => DocPartJson {
+            id: id.clone(),
+            kind: "notice".into(),
+            text: Some(text.clone()),
+            ..Default::default()
+        },
         MessagePart::Tool {
             id,
             call,
@@ -258,6 +266,10 @@ fn from_doc_part(p: DocPartJson) -> MessagePart {
         "reasoning" => MessagePart::Reasoning {
             id: p.id,
             text: p.reasoning.unwrap_or_default(),
+        },
+        "notice" => MessagePart::Notice {
+            id: p.id.clone(),
+            text: p.text.clone().unwrap_or_default(),
         },
         "card" => MessagePart::Card {
             id: p.id.clone(),

@@ -9,6 +9,7 @@ pub mod card;
 pub mod entities;
 pub mod files;
 pub mod motion;
+pub mod state;
 pub mod tasks;
 pub mod view;
 pub mod workspace;
@@ -16,6 +17,7 @@ pub mod workspace;
 pub use agent::*;
 pub use card::*;
 pub use entities::*;
+pub use state::*;
 pub use tasks::*;
 pub use workspace::*;
 

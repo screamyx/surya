@@ -54,10 +54,11 @@ use zeron_proto::{
     SteeringMode, UserInputAnswer, UserInputQuestion,
 };
 
+use crate::permission::PermissionGate;
 use crate::{Harness, HarnessError, RunControls, Signal, send_signal, shutdown_child};
 use catalog::{apply_ultrathink, static_models, to_effort};
 use normalize::Normalizer;
-use wire::{ControlRequestFrame, Frame, allow_response, control_response_line};
+use wire::{ControlRequestFrame, Frame, allow_response, control_response_line, deny_response};
 
 /// Locate the device's installed Claude Code CLI: `CLAUDE_CODE_EXECUTABLE`,
 /// then our own PATH, then the login-shell PATH snapshot (the user's shell
@@ -639,6 +640,7 @@ async fn run_session(session: Session) {
         request_input,
         mut steering,
         interrupt,
+        permission,
     } = controls;
     let request_input = Arc::new(request_input);
 
@@ -666,7 +668,7 @@ async fn run_session(session: Session) {
                         }
                     };
                     if let Frame::ControlRequest(req) = frame {
-                        handle_control_request(req, &request_input, &stdin_tx);
+                        handle_control_request(req, &request_input, &permission, &stdin_tx);
                         continue;
                     }
                     for ev in norm.normalize(frame, interrupted) {
@@ -772,16 +774,20 @@ type RequestInputFn = Box<
         + Sync,
 >;
 
-/// Serve one `can_use_tool` control request. Every tool is auto-approved
-/// (unattended parity — the CLI still blocks until SOME response arrives, so
-/// every request must be answered); `AskUserQuestion` is intercepted —
-/// surface the questions through the engine's input bridge (which owns the
-/// `InputRequested`/`InputResolved` lifecycle), wait for the user's answers
-/// (in a subtask so the frame loop keeps flowing), and hand them back keyed
-/// by question text, as the tool expects.
+/// Serve one `can_use_tool` control request. Ordinary tools go to the host's
+/// [`PermissionGate`] — an always-allow rule answers instantly, otherwise the
+/// request parks in the needs-you inbox (surya decision 20). The CLI blocks
+/// until SOME response arrives, so every request must be answered: an
+/// ungated gate allows, and a gate whose host went away DENIES. Neither
+/// hangs, and the one that cannot ask fails closed.
+/// `AskUserQuestion` is intercepted instead — surface the questions through
+/// the engine's input bridge (which owns the `InputRequested`/`InputResolved`
+/// lifecycle), wait for the user's answers (in a subtask so the frame loop
+/// keeps flowing), and hand them back keyed by question text.
 fn handle_control_request(
     req: ControlRequestFrame,
     request_input: &Arc<RequestInputFn>,
+    permission: &PermissionGate,
     stdin_tx: &mpsc::UnboundedSender<StdinMsg>,
 ) {
     if req.request.subtype != "can_use_tool" {
@@ -792,8 +798,32 @@ fn handle_control_request(
         return;
     }
     if req.request.tool_name != "AskUserQuestion" {
-        let line = control_response_line(&req.request_id, allow_response(req.request.input));
-        let _ = stdin_tx.send(StdinMsg::Line(line));
+        // Ungated (headless parity): answer on the spot, no round trip.
+        if !permission.is_gated() {
+            let line = control_response_line(&req.request_id, allow_response(req.request.input));
+            let _ = stdin_tx.send(StdinMsg::Line(line));
+            return;
+        }
+        let permission = permission.clone();
+        let stdin_tx = stdin_tx.clone();
+        tokio::spawn(async move {
+            let request = zeron_proto::PermissionRequest {
+                request_id: req.request_id.clone(),
+                tool_name: req.request.tool_name.clone(),
+                command: crate::permission::describe_tool_command(Some(&req.request.input)),
+                input: Some(req.request.input.clone()),
+            };
+            let response = match permission.ask(request).await {
+                zeron_proto::PermissionDecision::Allow => allow_response(req.request.input),
+                zeron_proto::PermissionDecision::Deny => {
+                    deny_response("The user did not allow this tool.")
+                }
+            };
+            let _ = stdin_tx.send(StdinMsg::Line(control_response_line(
+                &req.request_id,
+                response,
+            )));
+        });
         return;
     }
     let request_input = Arc::clone(request_input);

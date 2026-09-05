@@ -55,6 +55,7 @@ fn controls() -> (RunControls, mpsc::Sender<SteerMessage>, CancellationToken) {
         }),
         steering: steer_rx,
         interrupt: token.clone(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     (controls, steer_tx, token)
 }
