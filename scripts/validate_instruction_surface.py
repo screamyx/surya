@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Guard the always-on instruction surface after the CLAUDE.md split.
+"""Guard the ux-ui-expert skill's instruction surface after the split.
 
-CLAUDE.md loads on every turn, so depth was moved to .claude/rules/ and loads only
-when the work calls for it. That split has two failure modes, and this gate catches
-both:
+The persona (.claude/skills/ux-ui-expert/SKILL.md) is what the model reads when the
+skill is invoked, so depth was moved to rules/ beside it and loads only when the work
+calls for it. That split has two failure modes, and this gate catches both:
 
   1. A critical always-on rule gets demoted into a rule file, where the model may
      never read it (the emoji ban and the gate protocol must never move).
@@ -22,11 +22,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-BRIEF = ROOT / "CLAUDE.md"
-RULES = ROOT / ".claude" / "rules"
+BRIEF = ROOT / ".claude" / "skills" / "ux-ui-expert" / "SKILL.md"
+RULES = BRIEF.parent / "rules"
 MAX_LINES = 320
 
-# (label, regex) - must be present in CLAUDE.md itself, not only in a rule file.
+# (label, regex) - must be present in SKILL.md itself, not only in a rule file.
 ALWAYS_ON = [
     ("emoji ban, stated as absolute",      r"ABSOLUTE: zero emoji"),
     ("emoji gate named",                   r"check_no_emoji\.py"),
@@ -49,19 +49,19 @@ def main():
 
     for label, pattern in ALWAYS_ON:
         if not re.search(pattern, brief):
-            issues.append(f"demoted: CLAUDE.md no longer states the {label}")
+            issues.append(f"demoted: SKILL.md no longer states the {label}")
 
     if n_lines > MAX_LINES:
-        issues.append(f"size: CLAUDE.md is {n_lines} lines, over the {MAX_LINES}-line always-on budget")
+        issues.append(f"size: SKILL.md is {n_lines} lines, over the {MAX_LINES}-line budget")
 
-    routed = set(re.findall(r"\.claude/rules/([a-z0-9-]+\.md)", brief))
+    routed = set(re.findall(r"\.claude/skills/ux-ui-expert/rules/([a-z0-9-]+\.md)", brief))
     on_disk = {p.name for p in RULES.glob("*.md")} if RULES.is_dir() else set()
     for orphan in sorted(on_disk - routed):
-        issues.append(f"orphan: .claude/rules/{orphan} exists but CLAUDE.md never routes to it")
+        issues.append(f"orphan: rules/{orphan} exists but SKILL.md never routes to it")
     for missing in sorted(routed - on_disk):
-        issues.append(f"dangling: CLAUDE.md routes to .claude/rules/{missing}, which does not exist")
+        issues.append(f"dangling: SKILL.md routes to rules/{missing}, which does not exist")
 
-    print(f"CLAUDE.md: {n_lines}/{MAX_LINES} lines, {len(ALWAYS_ON)} always-on rules checked, "
+    print(f"SKILL.md: {n_lines}/{MAX_LINES} lines, {len(ALWAYS_ON)} always-on rules checked, "
           f"{len(on_disk)} rule file(s), {len(routed)} routed.")
     if issues:
         print(f"\nFAIL: {len(issues)} problem(s) on the instruction surface:")

@@ -1,6 +1,6 @@
 # WCAG 2.2 AAA — Upgrade Guide
 
-AA is our minimum (CLAUDE.md). This is the **AAA delta** — the additional success criteria to target when a product serves users who need the highest support (government, healthcare, education, accessibility-first brands). AAA is rarely required wholesale; adopt the criteria that fit the audience.
+AA is our minimum (ux-ui-expert/SKILL.md). This is the **AAA delta** — the additional success criteria to target when a product serves users who need the highest support (government, healthcare, education, accessibility-first brands). AAA is rarely required wholesale; adopt the criteria that fit the audience.
 
 > Conformance note: W3C states AAA conformance is not achievable for all content. Treat this as a prioritized enhancement list, not a pass/fail gate.
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * KEYBOARD OPERABILITY gate — WCAG 2.2 SC 2.1.1 (Keyboard) and the P0 rule in
- * CLAUDE.md: "Keyboard navigable — Tab reaches it, Enter/Space activates it."
+ * ux-ui-expert/SKILL.md: "Keyboard navigable — Tab reaches it, Enter/Space activates it."
  *
  * The kit already gated how focus LOOKS (verify_states measures the ring) and
  * that a modal holds focus (verify_focustrap). Nothing checked the thing both

@@ -71,7 +71,7 @@ const checks = [
    'node scripts/verify_interactive.mjs examples/component-states && node scripts/verify_interactive.mjs examples/sample-app'],
   ['Eval harness — the 14-gate cold-start scorer runs green on the reference app',
    'node evals/run.mjs --self-test'],
-  ['Instruction surface — always-on rules stay in CLAUDE.md, every rule file routed, brief within budget',
+  ['Instruction surface - always-on rules stay in the ux-ui-expert SKILL.md, every rule file routed, persona within budget',
    'python3 scripts/validate_instruction_surface.py'],
   ['Starter template — reference layout complete, tokens resolve, seeded theme passes WCAG (light + dark)',
    'python3 scripts/validate_template.py'],

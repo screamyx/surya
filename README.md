@@ -25,5 +25,5 @@ See `docs/decisions.md`.
 
 ## Status
 
-Day zero.
-Nothing runs yet.
+In active development toward the 1.0 release candidate, which ships when it is complete (decision 30).
+`docs/decisions.md` records every ruling, and the newest `docs/handoff-*.md` records where the work stands right now.

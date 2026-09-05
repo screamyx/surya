@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate that every component spec in components/ meets the house quality bar.
 
-Each spec should document (per CLAUDE.md Component Quality Bar): anatomy, variants,
+Each spec should document (per ux-ui-expert/SKILL.md Component Quality Bar): anatomy, variants,
 the states, token mapping, and accessibility. This checks the spec docs themselves —
 not generated code.
 

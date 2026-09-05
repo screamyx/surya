@@ -79,9 +79,9 @@ pub(crate) fn install(cx: &mut gpui::App) {
     }
     let base = Duration::from_millis(base_ms());
     let max = Duration::from_millis(100);
-    // `SURYA_PUMP_TIMER=clock`: the idle chain waits on the browser's own
-    // clock; gpui's timer on Windows lands on the 15.6 ms process tick
-    // (haktui: 16 ms asked, 31 ms taken). Unset, gpui's timer: the baseline.
+    // The idle chain waits on the browser's own clock; gpui's timer on
+    // Windows lands on the 15.6 ms process tick (haktui: 16 ms asked, 31 ms
+    // taken). `SURYA_PUMP_TIMER=pool` keeps gpui's, as the control.
     let on_clock = crate::clock::on_clock();
     println!("browser: pump base={}ms timer={}", base.as_millis(), crate::clock::label());
     cx.spawn(async move |cx: &mut gpui::AsyncApp| {

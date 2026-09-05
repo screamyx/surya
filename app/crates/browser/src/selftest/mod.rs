@@ -62,23 +62,36 @@ fn wheel(dy: i32) -> bool {
     true
 }
 
-/// Frames and renders at one instant, for a before/after pair.
+/// Frames, renders and shown frames at one instant, for a before/after pair.
 #[derive(Clone, Copy)]
 struct Counts {
     cef_frames: u64,
     app_frames: u64,
+    shown: u64,
     p2d_mark: u64,
 }
 
 fn counts() -> Counts {
-    Counts { cef_frames: crate::render::frames(), app_frames: crate::perf::renders(), p2d_mark: crate::perf::mark() }
+    Counts {
+        cef_frames: crate::render::frames(),
+        app_frames: crate::perf::renders(),
+        shown: crate::perf::shown(),
+        p2d_mark: crate::perf::mark(),
+    }
 }
 
-fn delta(before: Counts) -> (u64, u64, String) {
+/// `cef_frames= app_frames= shown=` over the window, and the p2d summary.
+/// `shown` is the renders that drew a frame the previous render had not:
+/// the pair the tables want is `cef_frames` painted, `shown` shown.
+fn delta(before: Counts) -> (String, String) {
     let now = counts();
     (
-        now.cef_frames - before.cef_frames,
-        now.app_frames - before.app_frames,
+        format!(
+            "cef_frames={} app_frames={} shown={}",
+            now.cef_frames - before.cef_frames,
+            now.app_frames - before.app_frames,
+            now.shown - before.shown
+        ),
         crate::perf::summary(before.p2d_mark),
     )
 }
