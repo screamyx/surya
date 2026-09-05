@@ -159,12 +159,10 @@ pub(crate) fn pull_request_badge(
                     .text_color(color.opacity(0.85)),
             )
         })
-        // Tabular figures give the badge a stable width as PR numbers change.
-        // It used to swap to the mono family for the same effect, which made a
-        // PR number read as code sitting in a row of interface text.
+        // Monospace digits give the badge a stable tabular width as PR numbers change.
         .child(
             div()
-                .font_features(crate::surya::tabular())
+                .font_family(theme.font_mono.clone())
                 .child(model.number),
         )
         .into_any_element()

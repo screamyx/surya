@@ -1,0 +1,4 @@
+cargo 1.97.1 (c980f4866 2026-06-30)
+external texture GPU test: asked=32 frames=32 dropped=0 pixels_asked=256 pixels_matched=256
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.18s
+exit=0

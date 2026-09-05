@@ -302,6 +302,7 @@ The plan and the counts are in `docs/rename-zeron-to-surya.md` (PR #16): "zeron 
 - iOS bundle id and the Cloudflare edge are out of scope for the RC; they keep the zeron names until the owner picks a domain.
 - Amended 11:03 (PR #48): the data-dir adoption is one helper `adopt(home, current, previous)` that COPIES into `<current>.incoming` and renames it in atomically; the pre-existing `.comet-native` migration now goes through it too, so it copies where it used to rename (accepted, safer, one path). After the rename the pair is (`.surya`, `.zeron`) and the `.comet-native` step drops.
 - Amended 10:33 from the rename dry run (PR #41): the data dir is COPIED, not renamed (this decision wins over row 5 of the plan). Comet's two built-in themes become `comet_light` / `comet_dark` and keep their display names ("Zeron Light/Dark" stays as the provenance label); `surya_light` / `surya_dark` already exist from PR #2, so a literal rename would collide (E0428).
+- Amended 20:20 by the comet-look revert (PR #82). Those are the Rust *function* names; the variant ids in the registry are the strings `zeron-light` and `zeron-dark`, and they are what the code and the settings file carry. Two things follow for whoever does the rename. Comet's pair is the shipped default again, so `ThemeSelection::default()`, the `ThemeRegistry::resolve` fallback and `Theme::for_appearance`'s fallback all name those strings and must move with them. And every `ui-settings.json` on disk stores the selection as a string, so renaming the ids without a settings migration silently drops users onto the fallback. `UiSettings::migrated` now has a schema version and one rule; the rename adds the second.
 
 ## 24. CI runs on a self-hosted runner on pc-ajim; the owner's spawn order narrows to user2
 
@@ -338,6 +339,52 @@ Context: the owner saw the RC2 preview screens and did not like the surya look (
 - The surya themes and `surya.rs` stay in the tree, selectable but not default, so a reversal is cheap.
 - Owner: surya-theme, branch fix/comet-look, before the 2026-09-06 11:45 freeze; proof = side-by-side with upstream comet at the import commit.
 - Amended 19:32, owner verbatim: "the new gui should look like zeron's comet, but with our feature built in". So comet's own elements keep comet's exact shape, including its rounded glass question panel that replaces the composer (states had found it is comet's, not ours); permissions mirror that panel. What goes is only what surya added on top: the needs-you cards over the transcript, the surya chrome and tokens. The 19:26 "box/modal, remove them" refers to those additions.
+
+## 27. Zero-copy stays off; the frame-rate work targets the clock and the present cadence
+
+Coordinator ruling (raven), 2026-09-05 21:13, under the owner's 06:17 autonomy order; the owner read the advice at 20:50 and said "fold your recommendation on the zero-copy".
+
+Measured on the owner's RTX 4080 (PR #85, docs/probes/windows-zero-copy-2026-09-05.md), same animating page, 45 to 50 s each:
+
+| path | main-thread cost per frame |
+|---|---|
+| zero-copy on (GPU copy inside CEF's paint callback) | avg 1.39 ms, max 10.38 ms |
+| zero-copy off (CPU copy + upload, the shipping path) | avg 0.13 ms, max 0.41 ms |
+
+The cost of the new path is the wait for the GPU to finish the copy. CEF's contract forces that wait (cef_render_handler.h 161-167: the pooled texture cannot be touched after the callback returns). The seat's probe showed its own texture-to-texture copy on the same context waits as long, so the stall is GPU scheduling across three contexts, not something the app can skip. At the RC pane size (518x786, about 1.6 MB a frame) the CPU copy is trivial. Neither path is where frames go missing at 120 Hz (8.3 ms budget).
+
+- PR #85 merges with `SURYA_BROWSER_ZERO_COPY` default OFF. The mechanism stays in the tree as the proven fallback with its counters and probe.
+- No more seat time on zero-copy before the RC. The remaining post-RC items on it: `passed()` treats any error HRESULT as device-lost (d3d11.rs:194); the fork's four minor notes from gpui-surya#1.
+- The frame-rate work (surya-browser-perf, then the Codex gpt-6-astra xhigh seat) targets the levers haktui's spike measured (haktui docs/spike-scroll-frame-rate-2026-08-28.md): own high-resolution frame clock (Windows thread-pool timers tick at 15.6 ms, so a 16 ms timer fires every 31 ms), CEF windowless frame rate = display rate, DXGI maximum frame latency 1 via a second fork PR, then presenting on the vsync beat. Baseline first: shown frames out of 120 on the owner's machine, measured with #86's instruments on main with #85 in, before any lever moves. The xhigh seat's brief names the cadence gap as its target, not the copy.
+- AMENDED 21:47, owner verbatim: "i thought we're chasing the slow zero-copy gpu frames, scroll frame-rate work and agent's cdp now? i want them in the RC". So all three are RC scope, not post-RC: the zero-copy cost is chased now (the lever to test first: run CEF's UI thread off gpui's main thread, `multi_threaded_message_loop`, so the GPU wait no longer blocks the app's frame; then pane-size gating), the frame-rate levers land as PRs tonight (perf's PR 2, the fork latency patch, present on the vsync beat), and agent CDP (#87) merges tonight. The Codex gpt-6-astra xhigh seat is spawned NOW, in parallel with surya-browser-perf, cef2 coordinating the shared files. What is green by the 11:45 freeze ships; a flag defaults ON only where the owner's machine measures it better, otherwise it ships in the tree behind the flag. The baseline-first rule stands for the frame-rate levers.
+- Zero-copy earns its keep only at large pane sizes: the CPU path grows with pixel count (a 4K pane is about 33 MB a frame, several ms), the GPU wait does not. If the browser pane ever fills a 4K display, turn the flag on by pane size. Post-RC item.
+
+## 28. Windows is the product, Mac next, Linux is a test bench only
+
+Owner ruling, 2026-09-05 22:23, verbatim: "btw i mainly gonna use surya on windows, and in the future mac, but never on linux. linux can stay as testing ground, but its not proof for RC".
+
+- An RC gate is proven on the owner's Windows machine (dtry) or it is not proven. A :7 Linux run is smoke, useful to catch a crash early, never the evidence a PR ships on.
+- Every RC-scoped feature gets a dtry proof before the freeze: comet look (#82) shots at both sizes, one browser per tab (#83), agent CDP (#87), zero-copy on/off pair (#85), frame-rate baseline and levers (#86, perf PR 2, astra), permission chip (states). One seat on the dtry GUI slot at a time, announced over agb, cef2 arbitrates.
+- Linux packaging and sandbox (#80) are not RC gates. They merge when green as test-bench infrastructure, and no further seat time goes to Linux-only polish before the RC.
+- Mac is the next platform after the RC; nothing tonight targets it.
+- Amends decision 25's proof clause and every "proof on :7" line in briefs written today.
+
+## 29. One end-to-end acceptance test on Windows before the RC, while the owner sleeps
+
+Owner order, 2026-09-05 22:43, verbatim: "once all done, do one end-to-end test, testing every button, surface, features etc. to make sure everything works exactly as planned. do the test when im asleep".
+
+- Runs on dtry (decision 28) on the newest main build after the browser-wave merges, engine reinstalled to the same sha, once the owner is off dtry (he says so, or no owner input on dtry after 01:00).
+- One Codex gpt-6-astra (high) tester seat (owner 22:45: "model for e2e tester is astra, make sure he has the right tool for it windows-dtry mcp, maybe /zoom") drives the app over the windows-dtry MCP, zoom CLI for fine detail, through every rail entry, page, button and feature (list in /tmp/surya-e2e-acceptance.md), a screenshot per step into the gallery, a PASS/FAIL row per step in docs/acceptance/e2e-2026-09-06.md, FAILs filed to raven as they appear; the owning seats fix, raven re-runs the failed steps.
+- Supersedes the 22:07 note that deferred the acceptance round to 04:00-08:00: the trigger is "merges done and owner asleep", not the clock.
+
+## 30. The 13:00 deadline is scrapped; the RC ships when it is complete
+
+Owner ruling, 2026-09-06 00:52, verbatim: "scrape the deadline. take as many time as you want to build RC. list all the things not included in RC".
+
+- No clock gate any more: the 11:45 freeze, the 12:15 FINAL MAIN and the 13:00 ship are gone (the freeze cron was deleted at 00:53).
+- The RC ships when every RC-scoped PR is merged with a dtry proof (decision 28), the end-to-end acceptance run (decision 29) is green, and the rename (decision 23) has landed. The sequence is unchanged (freeze -> rename PR -> FINAL MAIN -> final round -> RC note -> Taildrop -> retire seats); only its trigger changed from the clock to "done".
+- "Ship un-renamed if the rename is late" is withdrawn: the rename lands before the RC.
+- The not-in-RC list below is the owner's to pull from; anything he names moves into RC scope.
 
 ## Open
 

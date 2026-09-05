@@ -1,5 +1,17 @@
 # The surya look
 
+> **Superseded 2026-09-05.**
+> The owner reversed this at 19:25: "just revert back the gui to how zeron's
+> comet look", then "i mean only the theme, not functionality, features", then
+> at 19:32 "the new gui should look like zeron's comet, but with our feature
+> built in".
+> The app ships comet's own `zeron-light` / `zeron-dark` again and comet's flat
+> chrome. See [comet-look-restore.md](comet-look-restore.md).
+> Nothing below was deleted. `surya-light` and `surya-dark` are still built in
+> and still pickable in Appearance, and `crates/ui/src/surya.rs` still holds
+> the geometry and the type scale. This page is what those describe, kept so
+> that bringing the look back is a decision and not a rebuild.
+
 Floating rounded panels on a soft canvas.
 Light first, dark as good.
 Decision 22, from the owner's three sketches: "inspiration: raycast, craft, cleanshot".

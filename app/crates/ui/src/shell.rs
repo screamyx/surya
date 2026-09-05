@@ -252,16 +252,17 @@ pub fn cluster_clearance(
         .max(0.0)
 }
 
-/// First-frame estimate of the page-title row: titlebar clearance, the
-/// DISPLAY and CAPTION leadings scaled by the interface rem (they are
-/// `ui_rems`, so they follow the UI font size), the 2px gap and the paddings.
+/// First-frame estimate of the page-title row: titlebar clearance, the title
+/// and sub-line leadings scaled by the interface rem (they are `ui_rems`, so
+/// they follow the UI font size), the 2px gap and the paddings.
 /// Assumes a sub-line (space or branch), the common case; without one it
-/// over-estimates by one caption line for the single frame before the
-/// paint-time measure in `title_stack` replaces it.
+/// over-estimates by one sub-line for the single frame before the paint-time
+/// measure in `title_stack` replaces it.
 fn title_row_seed(cx: &App) -> f32 {
     let rem_px = crate::typography::font_size(cx).pixels();
-    let text = (crate::surya::DISPLAY.leading + crate::surya::CAPTION.leading) * rem_px / 16.0;
-    Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0 + text + 2.0 + 6.0
+    // 16px title and 12px sub at gpui's default 1.4 line height.
+    let text = (16.0 * 1.4 + 12.0 * 1.4) * rem_px / 16.0;
+    Theme::TITLEBAR_HEIGHT + 10.0 + text + 2.0 + 6.0
 }
 
 /// (Re-)apply the whole app keymap: clears every binding, restores the composer
@@ -359,6 +360,13 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ))
     }));
+    // LAST, and it has to be: the browser pane binds ctrl-tab and cmd-w with
+    // no context, as the bindings above do, and gpui breaks a same-depth tie
+    // by insertion order. Bound earlier, the pane's tab switch would lose to
+    // NextSession. The pane's handlers only exist while it is focused, so
+    // these fall through to the bindings above whenever it is not.
+    #[cfg(feature = "browser")]
+    crate::browser_pane::init(cx);
 }
 
 /// The settings sections (feature-inventory §1.5 routes).
@@ -1053,13 +1061,9 @@ pub struct Shell {
     /// the transcript's bottom clearance, and the jump pill's anchor (the
     /// same one-frame lag every fade here rides).
     bottom_stack: std::rc::Rc<std::cell::Cell<f32>>,
-    /// How tall the needs-you list is right now, 0 when it is not shown.
-    /// The transcript is an absolute underlay spanning the whole column, so
-    /// without this it would run up behind the list (measured at paint, used
-    /// next frame, same as `bottom_stack`).
-    inbox_stack: std::rc::Rc<std::cell::Cell<f32>>,
-    /// Paint-time height of the page-title row above the feed (same trick as
-    /// `inbox_stack`): the transcript underlay starts below it.
+    /// Paint-time height of the page-title row above the feed: measured at
+    /// paint and used next frame, the same trick as `bottom_stack`. The
+    /// transcript underlay starts below it.
     title_stack: std::rc::Rc<std::cell::Cell<f32>>,
     /// The sidebar's archived accordion (t3code Sidebar): OPEN by default
     /// (user request), session-transient. `archived_shown` pages the
@@ -1410,7 +1414,6 @@ impl Shell {
             // Seed with the compact composer stack's rough height so the
             // first frame's clearance isn't zero (the measure corrects it).
             bottom_stack: std::rc::Rc::new(std::cell::Cell::new(120.0)),
-            inbox_stack: std::rc::Rc::new(std::cell::Cell::new(0.0)),
             // Seeded with the title row's resting height for the same reason:
             // frame one must not paint the transcript over the title.
             title_stack: std::rc::Rc::new(std::cell::Cell::new(title_row_seed(cx))),
@@ -1999,6 +2002,11 @@ impl Shell {
         // decides what that means (it owns routing, the pane does not).
         cx.subscribe(&pane, |this, _, event: &crate::inbox::OpenChat, cx| {
             let chat_id = event.0.clone();
+            // Close the page on the way out. The pane IS the main area now,
+            // so selecting a chat behind it would look like the click did
+            // nothing: the conversation, and the sheet the row points at,
+            // are both underneath the queue until this line runs.
+            this.inbox_shown = Some(false);
             this.state
                 .update(cx, |state, cx| state.select_chat(Some(chat_id), cx));
         })
@@ -2026,11 +2034,15 @@ impl Shell {
 
     /// Is the needs-you list on screen? It follows the queue unless the user
     /// has said otherwise this session.
-    fn inbox_visible(&self, cx: &App) -> bool {
-        if let Some(forced) = self.inbox_shown {
-            return forced;
-        }
-        self.inbox_count(cx) > 0
+    /// Whether the Needs you page is open.
+    ///
+    /// It used to open itself whenever anything was waiting, which is how the
+    /// queue ended up drawn over the conversation. Owner, 2026-09-05 19:26:
+    /// "the box/modal, remove them". The queue now opens only when the user
+    /// asks for it, from the rail entry or its shortcut; the badge on that
+    /// entry is what says something is waiting.
+    fn inbox_visible(&self, _cx: &App) -> bool {
+        self.inbox_shown == Some(true)
     }
 
     /// How many things are waiting, 0 before the pane exists.
@@ -4301,22 +4313,16 @@ impl Shell {
             }
         };
         let target = self.sidebar_target();
-        // The rail is a floating card on the canvas (surya look, decision 22),
-        // not a transparent column on the frost. Its width is pinned to the
-        // WIDER tween endpoint so a collapse slides the card out behind the
-        // container's clip instead of squashing its rows as it goes.
-        let stable =
-            stable_panel_content_width(target, self.active_tween_endpoints(self.sidebar_tween));
+        // Transparent — the sidebar sits directly on the frost shell; the main
+        // card's own border provides the separation. The content row spans the
+        // full window height (the titlebar overlays it), so the column pads
+        // itself below the chrome.
         self.pane_container(
             self.sidebar_tween,
             target,
-            crate::surya::panel(&theme, crate::surya::ELEVATION_PANEL)
+            div()
                 .h_full()
-                .w(px(stable))
-                .flex_none()
-                // The titlebar floats over the whole content row, so the
-                // card's own chrome starts below it.
-                .pt(px(Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET))
+                .pt(px(Theme::TITLEBAR_HEIGHT))
                 .child(inner)
                 .into_any_element(),
         )
@@ -4467,15 +4473,14 @@ impl Shell {
             .flex()
             .flex_col()
             .gap(px(2.0))
-            .px(px(crate::surya::PANEL_PAD + 12.0))
-            // The titlebar floats over the card; start below it.
-            .pt(px(Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0))
+            .px(px(16.0))
+            // The titlebar floats over the column; start below it.
+            .pt(px(Theme::TITLEBAR_HEIGHT + 10.0))
             .pb(px(6.0))
             .child(
                 div()
-                    .text_size(crate::surya::DISPLAY.rems())
-                    .line_height(crate::surya::DISPLAY.line_height())
-                    .font_weight(crate::surya::DISPLAY.weight)
+                    .text_size(crate::typography::ui_rems(16.0))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(theme.text)
                     .truncate()
                     .child(SharedString::from(title)),
@@ -4483,7 +4488,7 @@ impl Shell {
             .when(!sub.is_empty(), |d| {
                 d.child(
                     div()
-                        .text_size(crate::surya::CAPTION.rems())
+                        .text_size(crate::typography::ui_rems(12.0))
                         .text_color(theme.text_muted)
                         .child(SharedString::from(sub)),
                 )
@@ -4830,14 +4835,12 @@ impl Shell {
         };
         let (hover, text) = (theme.glass_hover(), theme.text);
         let selected_wash = crate::theme::glass_selected_bg();
-        // One tone for every secondary line in the row: the device line, the
-        // branch line and the corner. It was `text_muted.opacity(0.5)`, which
-        // is around 2.3:1 on the panel - under AA, and on a SELECTED row it
-        // sank so far into the wash that a pixel sample of the critic's
-        // round-2 frame could barely separate the device text from the row
-        // background. `text_faint` is the token for exactly this job and is
-        // held to AA on every plane that carries text.
-        let subline = theme.text_faint;
+        // Comet's own tone for the row's secondary lines (owner order,
+        // 2026-09-05 19:25). Round 2 of the critique had moved it to
+        // `text_faint` because 0.5 muted measures about 2.3:1 on the panel;
+        // that reading still stands and is on the post-revert list, but it is
+        // a change to comet's look and so it went back with the rest.
+        let subline = theme.text_muted.opacity(0.5);
         let select_id = id.clone();
         let menu_id = id.clone();
         // Hover fades over transition-colors (zeron session-row.tsx) — both
@@ -6344,8 +6347,22 @@ impl Shell {
         // (new-chat mode mints the chat id on first send).
         // Critique round 4, I4: while a question sheet is up the title hides
         // (at 1100x700 the sheet reached the title and drew over it).
-        let sheet_up = has_selection && self.composer.read(cx).question_sheet_visible();
-        let outlet: AnyElement = if has_selection {
+        // Either panel stands the page title down: they are the same height
+        // and the sheet drew over the title at 1100x700 (round 4, I4). A gate
+        // that named only the question would let the permission panel walk
+        // straight back into that overlap.
+        let sheet_up = has_selection
+            && (self.composer.read(cx).question_sheet_visible()
+                || self.composer.read(cx).permission_sheet_visible(cx));
+        // The Needs you page. The rail entry and its shortcut open it and it
+        // takes the main area, the way Settings does - it never stacks over
+        // the conversation. `inbox_on` is `inbox_shown == Some(true)`, so it
+        // only ever appears because the user asked for it.
+        let inbox_page = inbox_on.then(|| self.inbox_pane(cx)).flatten();
+        let inbox_page_up = inbox_page.is_some();
+        let outlet: AnyElement = if let Some(pane) = inbox_page {
+            pane.into_any_element()
+        } else if has_selection {
             self.transcript.clone().into_any_element()
         } else if !has_spaces && !no_project {
             // Onboarding (first boot / after the destructive wipe): no folders
@@ -6370,14 +6387,10 @@ impl Shell {
                                 .text_color(theme.text.opacity(0.09)),
                         )
                         .child(
-                            // The one display moment in the app: an empty
-                            // window with a single thing to do. 16px medium
-                            // read as a slightly bold row, not as a headline.
                             div()
                                 .mt(px(24.0))
-                                .text_size(crate::surya::DISPLAY.rems())
-                                .line_height(crate::surya::DISPLAY.line_height())
-                                .font_weight(crate::surya::DISPLAY.weight)
+                                .text_size(crate::typography::ui_rems(16.0))
+                                .font_weight(gpui::FontWeight::MEDIUM)
                                 .text_color(theme.text)
                                 .child(SharedString::from("Add a project to get started")),
                         )
@@ -6407,35 +6420,34 @@ impl Shell {
         };
 
         let status = self.render_status_strip(cx);
-        // Decision 20: what needs you sits at the top of the feed, at full
-        // weight, above the transcript. It is built only when it will be
-        // shown, so a session that never blocks never pays for it.
-        let inbox = inbox_on.then(|| self.inbox_pane(cx)).flatten();
+        // Decision 20 said what needs you sits at the top of the feed, above
+        // the transcript. The owner reversed that on 2026-09-05 19:26 - the
+        // rows read as boxes stacked over the conversation - so the list lives
+        // only in the sidebar's "Needs you" page now. The rail entry and its
+        // count are unchanged, and `inbox_visible` still drives them.
+        //
+        // The mount stays wired rather than deleted: the measure, the padding
+        // and the underlay offset below all still work, so putting the list
+        // back over the feed is this one binding.
         // Page-title tier (critique round 2, L3; ordering per round 4, I1):
         // the title row is the FIRST thing under the titlebar, the needs-you
         // list sits under it, the transcript under both.
-        let title_row =
-            (has_selection && !sheet_up).then(|| self.render_page_title(theme, cx));
+        // The Needs you page carries its own heading, so the chat title stands
+        // down while it is up.
+        let title_row = (has_selection && !sheet_up && !inbox_page_up)
+            .then(|| self.render_page_title(theme, cx));
         let has_title = title_row.is_some();
         let title_h = if has_title { self.title_stack.get() } else { 0.0 };
-        // The list is a real flex child, the transcript below it is an
-        // absolute underlay over the WHOLE column. Its top has to be pushed
-        // down by the list's measured height or the two paint over each other
-        // (the chat title came out through the first card, 11:11 shot).
-        let inbox_h = if inbox.is_some() {
-            self.inbox_stack.get()
-        } else {
-            0.0
-        };
-        // The list's own titlebar clearance is decided THIS frame (it flips
-        // with the title row), so it is added here rather than measured.
-        let inbox_pad = if inbox.is_some() && !has_title {
+        // The Needs you page's titlebar clearance: without it the first row
+        // starts underneath the floating titlebar. Decided THIS frame (it
+        // flips with the title row) rather than measured.
+        let inbox_pad = if inbox_page_up && !has_title {
             Theme::TITLEBAR_HEIGHT
         } else {
             0.0
         };
-        // Everything the transcript underlay must start below.
-        let top_h = title_h + inbox_pad + inbox_h;
+        // Everything the main-area underlay must start below.
+        let top_h = title_h + inbox_pad;
         // File dropzone over the ENTIRE conversation column (transcript +
         // composer, not just the pill): dragging OS files anywhere across the
         // chat area shows the "Drop images to attach" veil; a drop stages the
@@ -6465,32 +6477,6 @@ impl Shell {
                             .inset_0(),
                         )
                         .child(row),
-                )
-            })
-            .when_some(inbox, |el, pane| {
-                let measured = self.inbox_stack.clone();
-                el.child(
-                    div()
-                        .flex_none()
-                        // The title row above already cleared the titlebar;
-                        // this padding sits OUTSIDE the measured content.
-                        .pt(px(inbox_pad))
-                        .child(
-                    div()
-                        .relative()
-                        .max_h(px(320.0))
-                        .border_b_1()
-                        .border_color(theme.border)
-                        .child(
-                            gpui::canvas(
-                                move |bounds, _, _| measured.set(f32::from(bounds.size.height)),
-                                |_, _, _, _| {},
-                            )
-                            .absolute()
-                            .inset_0(),
-                        )
-                        .child(pane),
-                        ),
                 )
             })
             .child(
@@ -6576,7 +6562,11 @@ impl Shell {
                         .inset_0(),
                     )
                     .child(status)
-                    .when(has_spaces, |el| el.child(self.composer.clone()))
+                    // Nothing to type into on the Needs you page: answering
+                    // happens in the session a row opens.
+                    .when(has_spaces && !inbox_page_up, |el| {
+                        el.child(self.composer.clone())
+                    })
                     .child(self.render_terminal_container(cx))
             })
             .child(
@@ -6599,18 +6589,27 @@ impl Shell {
                         cx.notify();
                     })),
             )
-            .children(self.render_engine_skew_banner(theme, cx))
+            .children(self.render_engine_skew_banner(top_h, theme, cx))
             .into_any_element()
     }
 
     /// The version-skew strip: shown while the attached engine was built from
-    /// a different commit than this app. It floats just under the titlebar so
-    /// it never shifts the transcript; nothing is refused, a send that then
-    /// misbehaves has its reason on screen. The outer row has no id and no
-    /// handlers, so clicks beside the card fall through to the transcript; the
-    /// card itself occludes. Dismiss hides that message for this app session.
+    /// a different commit than this app. It floats over the transcript so it
+    /// never shifts it; nothing is refused, a send that then misbehaves has
+    /// its reason on screen. The outer row has no id and no handlers, so
+    /// clicks beside the card fall through to the transcript; the card itself
+    /// occludes. Dismiss hides that message for this app session.
+    ///
+    /// `top` is where the transcript starts: the chrome above it, title row
+    /// and all. The banner used to sit at a fixed `TITLEBAR_HEIGHT + 8`, which
+    /// was the transcript's top back when nothing came between them. The page
+    /// title now starts at `TITLEBAR_HEIGHT + 10`, so the fixed offset put the
+    /// banner squarely on the session title (surya-cef3, on the owner's dtry
+    /// build). Following `top` puts it back on the transcript, which is the
+    /// surface it was always meant to cover.
     fn render_engine_skew_banner(
         &self,
+        top: f32,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
@@ -6623,7 +6622,7 @@ impl Shell {
         Some(
             div()
                 .absolute()
-                .top(px(Theme::TITLEBAR_HEIGHT + 8.0))
+                .top(px(top.max(Theme::TITLEBAR_HEIGHT) + 8.0))
                 .left_0()
                 .right_0()
                 .flex()
@@ -7028,15 +7027,21 @@ impl Shell {
         } else {
             bg
         };
-        let panel = crate::surya::panel(&theme, crate::surya::ELEVATION_PANEL)
+        let panel = div()
             .size_full()
             .flex()
             .flex_col()
+            // In takeover the panel's left edge IS the sidebar seam, which
+            // already carries the sidebar tone's right hairline — a second
+            // border there doubled up (user report).
+            .when(!self.right_pane_expanded, |el| {
+                el.border_l_1().border_color(theme.border)
+            })
             .bg(panel_bg)
-            // The titlebar is an overlay over the full-height content row;
-            // the panel's own chrome starts below it, less the canvas inset
-            // the card already sits down by.
-            .pt(px(Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET))
+            .overflow_hidden()
+            // The titlebar is a glass overlay over the full-height content
+            // row; the panel's own chrome starts below it.
+            .pt(px(Theme::TITLEBAR_HEIGHT))
             .child(content);
         let target = self.right_target(cx);
         self.right_pane_container(
@@ -7387,6 +7392,15 @@ impl Shell {
                         .rounded(px(4.0))
                         .relative()
                         .hover(|s| s.bg(crate::theme::wash(0.12)))
+                        // The tab itself starts a drag on mouse-down plus a
+                        // few pixels of travel, and a hand that moves while
+                        // clicking the ✕ turned the close into a drag: the
+                        // ghost followed the cursor and the click never
+                        // fired. Swallowing the left press here keeps the
+                        // drag off the close slot (Zed's tab pattern).
+                        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                            cx.stop_propagation();
+                        })
                         .on_click(cx.listener(move |this, _, window, cx| {
                             cx.stop_propagation();
                             this.close_right_surface(surface, window, cx);
@@ -8485,7 +8499,7 @@ impl Render for Shell {
             .bg(frost)
             .text_color(text)
             .font_family(font)
-            .text_size(crate::surya::BODY.rems())
+            .text_size(crate::typography::ui_rems(14.0))
             .on_drag_move(cx.listener(Self::on_sidebar_drag))
             .on_drag_move(cx.listener(Self::on_right_pane_drag))
             .on_drag_move(cx.listener(Self::on_terminal_drag))
@@ -8668,10 +8682,10 @@ impl Render for Shell {
                 let overlays = self.render_overlays(window.viewport_size(), window, cx);
                 // Copied out (not held) — `render_title_bar` needs `cx` mutable.
                 let border_color = Theme::of(cx).border;
-                // Floating panels on a soft canvas (decision 22, from the
-                // owner's three sketches). The conversation column is a card
-                // like the rail and the right pane, and the canvas shows
-                // between them.
+                // No inset cards (user request): the conversation column sits
+                // flush and unbordered, the transcript directly on the frost
+                // glass; the changes pane is a flush left-bordered glass panel
+                // (built inside `render_right_pane`).
                 let main = if main_transition.is_some() {
                     div()
                         .h_full()
@@ -8683,29 +8697,14 @@ impl Render for Shell {
                 } else {
                     main
                 };
-                // The seam between two cards is a margin on the CENTRE card,
-                // not a flex gap: the resize seams are zero-width flex
-                // children, so a gap on the row would count twice between the
-                // rail and the conversation and once against nothing when a
-                // pane is closed.
-                let sidebar_now_px = self.eval_tween(self.sidebar_tween, self.sidebar_target());
-                let right_now_px = if on_chat {
-                    self.eval_tween(self.right_tween, self.right_target(cx))
-                } else {
-                    0.0
-                };
-                let card: AnyElement =
-                    crate::surya::panel(&Theme::of(cx).clone(), crate::surya::ELEVATION_PANEL)
-                        .flex_1()
-                        .min_w_0()
-                        .flex()
-                        .flex_row()
-                        .when(sidebar_now_px > 0.5, |el| {
-                            el.ml(px(crate::surya::PANEL_GAP))
-                        })
-                        .when(right_now_px > 0.5, |el| el.mr(px(crate::surya::PANEL_GAP)))
-                        .child(main)
-                        .into_any_element();
+                let card: AnyElement = div()
+                    .flex_1()
+                    .min_w_0()
+                    .flex()
+                    .flex_row()
+                    .overflow_hidden()
+                    .child(main)
+                    .into_any_element();
                 // The whole app page is one keyed `animate-in` entrance (zeron
                 // App.tsx `<div key={phase} className="animate-in h-full">`):
                 // arriving from the splash or any gate fades the page in; the
@@ -8735,11 +8734,23 @@ impl Render for Shell {
                     Empty.into_any_element()
                 };
                 let title_bar = self.render_title_bar(cx);
-                // The full-height sidebar tone is gone: the rail is a card
-                // now and carries its own fill and hairline, so a second
-                // column painted under the titlebar would show as a tail
-                // above and below it.
-                let _ = border_color;
+                // Sidebar tone: a slightly lighter column behind the sidebar,
+                // spanning the FULL window height (under the traffic lights,
+                // through the titlebar, down to the bottom edge). Its width
+                // rides the same tween as the sidebar, so the tone melts away
+                // with the collapse instead of vanishing in a frame.
+                let sidebar_now = self.eval_tween(self.sidebar_tween, self.sidebar_target());
+                // Hairline on its right edge — full height like the tone,
+                // so the sidebar column reads as its own surface.
+                let sidebar_tone = div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .w(px(sidebar_now))
+                    .bg(crate::theme::wash(0.05))
+                    .border_r_1()
+                    .border_color(border_color);
                 // The content row spans the FULL window height — the titlebar
                 // overlays it (glass, no fill), so the transcript can scroll
                 // under the header and fade out at its edge. Columns that
@@ -8753,7 +8764,6 @@ impl Render for Shell {
                             .size_full()
                             .flex()
                             .flex_row()
-                            .p(px(crate::surya::CANVAS_INSET))
                             .child(sidebar)
                             .child(sidebar_seam)
                             .child(card)
@@ -8763,7 +8773,8 @@ impl Render for Shell {
                     .child(div().absolute().top_0().left_0().right_0().child(title_bar))
                     .child(self.render_titlebar_cluster(cx))
                     .children(overlays);
-                root.child(motion::fade_in("phase-app", page))
+                root.child(sidebar_tone)
+                    .child(motion::fade_in("phase-app", page))
             }
             GatePhase::Loading => root, // splash overlay covers boot
             GatePhase::OrgGate => {

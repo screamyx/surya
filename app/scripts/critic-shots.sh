@@ -6,6 +6,22 @@
 #   scripts/critic-shots.sh <out_dir> [path/to/zeron] [project_dir]
 # Writes <out_dir>/shell-{light,dark}-{1440x900,1100x700}.png and prints one
 # `shot=1 bytes=N` line per frame.
+#
+# SURYA_XTEST_PYTHON: the python that drives XTEST clicks, for the frames that
+# need one (SHOT_CLICK). It needs python-xlib, which the system python does
+# not have: without it every click dies with ModuleNotFoundError. Pillow, for
+# the black-frame test below, is worth putting in the same place. Build one
+# somewhere that outlives a worktree and a /tmp clear:
+#
+#   uv venv /store/surya-xtest-venv
+#   VIRTUAL_ENV=/store/surya-xtest-venv uv pip install python-xlib pillow
+#   SURYA_XTEST_PYTHON=/store/surya-xtest-venv/bin/python
+#
+# A click that fails ends the run with exit 5 and writes no png, rather than
+# returning a green-looking frame of a screen nobody drove. A grab that comes
+# back black ends it with exit 6, on the same reasoning. Both need the thing
+# they check to be checkable: with no Pillow the black test cannot run and the
+# frame is reported UNVERIFIED.
 set -euo pipefail
 OUT=${1:?out dir}; ZERON=${2:-${CARGO_TARGET_DIR:-target}/debug/zeron}
 PROJECT=${3:-$(cd "$(dirname "$0")/../.." && pwd)}
@@ -64,6 +80,9 @@ JS
 # its first paint. SURYA_SHOT_PANES="" skips the pane frames.
 # `ZERON_OPEN_BROWSER` is gone since PR #30: only `ZERON_OPEN_PANE` opens a pane.
 GEOMS="${SURYA_SHOT_GEOMS-1440x900 1100x700}" # "" skips the plain shell frames
+# How many pngs are on disk. A failure line that said frames=0 after six good
+# frames would send the reader hunting for a rig that never ran.
+FRAMES=0
 shoot() { # shoot <name> <mode> <geom> <extra env...>
   local name=$1 mode=$2 geom=$3; shift 3
   local UI="$WORK/ui-$name"; mkdir -p "$UI"
@@ -75,19 +94,50 @@ shoot() { # shoot <name> <mode> <geom> <extra env...>
   DISPLAY=$DISPLAY_NO xrefresh; sleep 3
   if [ "${SHOT_WAIT:-24}" -gt 12 ]; then DISPLAY=$DISPLAY_NO xrefresh; sleep 3; fi
   # SHOT_CLICK="x,y": one XTEST click at that root position after the settle
-  # (scripts/x7-click.py, run with SURYA_XTEST_PYTHON or python3), then
-  # SHOT_CLICK_WAIT s more before the grab. The 1440x900 window sits at +80+50
-  # on the 1600x1000 display, so the titlebar globe is at 129,69.
+  # (scripts/x7-click.py, run with the SURYA_XTEST_PYTHON from the header),
+  # then SHOT_CLICK_WAIT s more before the grab. The 1440x900 window sits at
+  # +80+50 on the 1600x1000 display, so the titlebar globe is at 129,69.
   if [ -n "${SHOT_CLICK:-}" ]; then
-    "${SURYA_XTEST_PYTHON:-python3}" "$(dirname "$0")/x7-click.py" "$DISPLAY_NO" "${SHOT_CLICK%,*}" "${SHOT_CLICK#*,}" || echo "click failed"
+    # A click that did not happen must not produce a screenshot. x7-click.py
+    # exits non-zero when python-xlib is missing, and a rig that shrugged and
+    # shot anyway handed back `shot=1 panics=0` for a screen nobody touched
+    # (23:42, 2026-09-05). So this ends the run instead.
+    if ! "${SURYA_XTEST_PYTHON:-python3}" "$(dirname "$0")/x7-click.py" \
+        "$DISPLAY_NO" "${SHOT_CLICK%,*}" "${SHOT_CLICK#*,}"; then
+      echo "shot=0 frames=$FRAMES FAILED: the click at $SHOT_CLICK did not run, so $name would be a frame of an undriven screen"
+      echo "set SURYA_XTEST_PYTHON to a python with python-xlib (see the header)"
+      kill $APP 2>/dev/null || true; wait $APP 2>/dev/null || true
+      exit 5
+    fi
     sleep "${SHOT_CLICK_WAIT:-30}"; DISPLAY=$DISPLAY_NO xrefresh; sleep 3
   fi
   ffmpeg -loglevel error -y -f x11grab -video_size 1600x1000 -i "$DISPLAY_NO" -frames:v 1 "$OUT/$name.png"
   kill $APP 2>/dev/null || true; wait $APP 2>/dev/null || true
   local panics; panics=$(grep -c "panicked at" "$WORK/app-$name.log" || true)
   # A grab with <= 2 colours is a black display, not a frame (10:44 incident).
-  local colours; colours=$(python3 -c "from PIL import Image; im=Image.open('$OUT/$name.png').convert('RGB'); print(len(im.getcolors(1<<20) or [0]*3000))" 2>/dev/null || echo "?")
-  echo "shot=1 bytes=$(stat -c %s "$OUT/$name.png") colours=$colours panics=$panics out=$OUT/$name.png"
+  # Counting them needs Pillow. With it, a black grab is fatal and no png
+  # survives; without it, say so loudly rather than imply the frame was
+  # checked, because "colours=?" next to "shot=1" reads as a pass.
+  # Why the count failed matters: a missing Pillow is a box to fix, an
+  # unreadable png is a grab that went wrong, and swallowing both as "?" was
+  # how the old line came to assert "no Pillow here" for either.
+  local colours why
+  if ! colours=$(python3 -c "from PIL import Image; im=Image.open('$OUT/$name.png').convert('RGB'); print(len(im.getcolors(1<<20) or [0]*3000))" 2>"$WORK/colours-$name.err"); then
+    why=$(tail -1 "$WORK/colours-$name.err" 2>/dev/null || true)
+    colours="?"
+    case "$why" in
+      *"No module named 'PIL'"*) why="python3 here has no Pillow (pip install pillow)" ;;
+      *) why="the colour count failed: ${why:-python3 could not run}" ;;
+    esac
+    echo "WARN: $why, so a black display cannot be told from a frame; $name is UNVERIFIED"
+  elif [ "$colours" -le 2 ]; then
+    rm -f "$OUT/$name.png"
+    echo "shot=0 frames=$FRAMES FAILED: $name is a black display, not a frame (colours=$colours)"
+    echo "the X server mapped the window but never presented; see the display notes in AGENTS.md"
+    exit 6
+  fi
+  FRAMES=$((FRAMES + 1))
+  echo "shot=1 frames=$FRAMES bytes=$(stat -c %s "$OUT/$name.png") colours=$colours panics=$panics out=$OUT/$name.png"
   case "$name" in *browser*) grep -E "browser: (on_paint #1|load_end|LOAD ERROR)" "$WORK/app-$name.log" | head -3 || true;; esac
   grep -E "ZERON_OPEN_PANE" "$WORK/app-$name.log" | head -1 || true
 }
