@@ -83,6 +83,17 @@ impl ZoomMemory {
     }
 }
 
+/// Whether an `Edited` from the address field came from a person or from the
+/// pane writing the page's own address into it.
+///
+/// The pane cannot use a flag around its own write: `Context::emit` queues the
+/// event and subscribers run when effects flush, so the flag is already back
+/// to false when `Edited` lands. What the field holds is not subject to that
+/// race. If it still holds the pane's last write, nobody typed.
+pub fn is_user_edit(current: &str, last_written: &str) -> bool {
+    current != last_written
+}
+
 /// Why a typed address went nowhere, in words the person can act on. The
 /// crate takes `http` and `https` as written and refuses every other scheme:
 /// `file://` would read the disk into a pane an agent can drive, and
@@ -172,6 +183,21 @@ mod tests {
         assert_eq!(zoom_host("example.com").as_deref(), Some("example.com"));
         assert_eq!(zoom_host(""), None);
         assert_eq!(zoom_host("https://"), None);
+    }
+
+    #[test]
+    fn the_panes_own_write_is_not_a_user_edit() {
+        // What the pane put there, arriving back late as an Edited event.
+        assert!(!is_user_edit("https://example.com/", "https://example.com/"));
+        // A person typing over it.
+        assert!(is_user_edit("https://example.com/x", "https://example.com/"));
+        // An agent navigation the pane has not written yet: the field still
+        // holds the previous address, so this is NOT a user edit and the
+        // render pass is free to follow the page. This is the case that
+        // showed about:blank while the page was on two.html.
+        assert!(!is_user_edit("", ""));
+        // A person clearing the field is an edit, even to empty.
+        assert!(is_user_edit("", "https://example.com/"));
     }
 
     #[test]

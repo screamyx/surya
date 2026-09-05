@@ -147,10 +147,12 @@ fn button(
 }
 
 impl BrowserPane {
+    /// Write the field from the page. Remembering the text is what lets the
+    /// `Edited` subscription tell this apart from a person typing, however
+    /// late that event arrives.
     pub(super) fn set_url_text(&mut self, text: String, cx: &mut Context<Self>) {
-        self.syncing = true;
+        self.last_written = text.clone();
         self.url.update(cx, |input, cx| input.set_text(text, cx));
-        self.syncing = false;
     }
 
     pub(super) fn focus_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
