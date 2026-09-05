@@ -13,6 +13,8 @@ use std::sync::Mutex;
 
 use serde_json::json;
 
+use cef::ImplBrowser as _;
+
 use crate::{ColorScheme, devtools};
 
 /// 0 = never set (the start-up switch rules), 1 = light, 2 = dark.
