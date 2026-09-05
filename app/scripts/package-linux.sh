@@ -113,9 +113,11 @@ if [[ "$BROWSER" == 1 ]]; then
   mkdir -p "$STAGE/locales"
   cp -a "$BUILT/locales/." "$STAGE/locales/"
   cp "$REPO/deploy/CEF-LICENSE.txt" "$STAGE/CEF-LICENSE.txt"
-  # `{p;q}` rather than a `| head -1`: head closes the pipe, sed dies of
-  # SIGPIPE, and under `pipefail` that fails the whole packaging run.
-  CEF_VERSION=$(sed -n 's/.*cef_binary_\([^+]*\)+g[0-9a-f]*+chromium-\([0-9.]*\).*/CEF \1, Chromium \2/{p;q}' "$BUILT/archive.json")
+  # No pipe at all here. `| head -1` closes the pipe on sed, and under
+  # `pipefail` that SIGPIPE fails the whole packaging run; `s///{p;q}` is not
+  # valid sed either. Take every match, then keep the first line.
+  CEF_VERSION=$(sed -n 's/.*cef_binary_\([^+]*\)+g[0-9a-f]*+chromium-\([0-9.]*\).*/CEF \1, Chromium \2/p' "$BUILT/archive.json")
+  CEF_VERSION=${CEF_VERSION%%$'\n'*}
   if [[ -z "$CEF_VERSION" ]]; then
     echo "archive.json beside the binary does not name a cef_binary_<cef>+g<hash>+chromium-<version> archive" >&2
     exit 1
