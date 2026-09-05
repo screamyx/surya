@@ -31,6 +31,7 @@ pub mod files;
 pub mod frost;
 pub mod history;
 pub mod icons;
+pub mod inbox;
 pub mod links;
 pub mod loaders;
 pub mod markdown;
@@ -179,6 +180,7 @@ pub fn run_app(config: UiConfig) {
             cx,
         );
         composer::init(cx);
+        files::init(cx);
         terminal::panel::init(cx);
         app_menus::init(cx);
         // CEF before the window: one browser per process, pumped from the

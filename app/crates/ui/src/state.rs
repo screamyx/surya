@@ -104,6 +104,8 @@ pub enum EngineMode {
 #[async_trait]
 trait EngineBackend: Send + Sync {
     fn client(&self) -> &RpcClient;
+    /// The same client, shared: panes that outlive one render hold it by `Arc`.
+    fn client_arc(&self) -> Arc<RpcClient>;
     fn mode(&self) -> EngineMode;
     /// Graceful teardown (drains runs / flushes docs for the in-process engine).
     async fn shutdown(&self);
@@ -117,13 +119,16 @@ struct InProcessEngine {
     /// Serves this engine to other viewports over the IPC port. `None` when the
     /// port was already taken — the window still works over its own transport.
     ipc_task: Option<tokio::task::JoinHandle<()>>,
-    client: RpcClient,
+    client: Arc<RpcClient>,
 }
 
 #[async_trait]
 impl EngineBackend for InProcessEngine {
     fn client(&self) -> &RpcClient {
         &self.client
+    }
+    fn client_arc(&self) -> Arc<RpcClient> {
+        self.client.clone()
     }
     fn mode(&self) -> EngineMode {
         EngineMode::InProcess
@@ -224,6 +229,9 @@ struct RemoteEngine {
 impl EngineBackend for RemoteEngine {
     fn client(&self) -> &RpcClient {
         &self.client
+    }
+    fn client_arc(&self) -> Arc<RpcClient> {
+        self.client.clone()
     }
     fn mode(&self) -> EngineMode {
         EngineMode::Remote {
@@ -402,7 +410,7 @@ impl EngineHandle {
                 boot_task,
                 refresh_task,
                 ipc_task,
-                client,
+                client: Arc::new(client),
             }),
             engine_info,
             deferred_state: Some(state_rx.clone()),
@@ -502,6 +510,11 @@ impl EngineHandle {
 
     pub fn client(&self) -> &RpcClient {
         self.inner.client()
+    }
+
+    /// Shared handle on the client for long-lived panes (`Arc`, cheap clone).
+    pub fn client_arc(&self) -> Arc<RpcClient> {
+        self.inner.client_arc()
     }
 
     pub fn mode(&self) -> EngineMode {

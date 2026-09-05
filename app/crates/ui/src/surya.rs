@@ -201,11 +201,20 @@ pub fn panel(theme: &Theme, elevation: Elevation) -> gpui::Div {
         Elevation::Panel => panel_bg(theme),
         Elevation::Float => float_bg(theme),
     };
+    // Dark panels take the STRONG hairline. On a near-black canvas the
+    // shadow does nothing and the fill step can only go so far before text
+    // contrast suffers, so the edge is what actually says "card". Light keeps
+    // the quiet hairline: there the shadow works and a heavy edge would
+    // outline every panel like a table.
+    let edge = match theme.appearance {
+        crate::theme::Appearance::Dark => theme.border_strong,
+        crate::theme::Appearance::Light => theme.border,
+    };
     gpui::div()
         .bg(fill)
         .rounded(px(radius))
         .border_1()
-        .border_color(theme.border)
+        .border_color(edge)
         .shadow(shadow(elevation, theme))
         .overflow_hidden()
 }

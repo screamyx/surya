@@ -2527,10 +2527,15 @@ impl ComposerInput {
         self.line_height = px(INPUT_LINE_HEIGHT);
 
         // Chips read as inline code: the markdown renderer's recipe (mono font
-        // + the spectrum's `code_text`) over the rounded `code_wash` beneath.
+        // + the inline-code tone) over the rounded inline-code wash beneath.
         let (chip_font, chip_color) = {
             let theme = Theme::of(cx);
-            (gpui::font(theme.font_mono.clone()), theme.code_text)
+            (
+                gpui::font(theme.font_mono.clone()),
+                // Through the seam, not the raw token: a mention was orange
+                // while you typed it and neutral the moment it was sent.
+                crate::markdown::render::inline_code_text(theme),
+            )
         };
         let run_for = |len: usize, underline: bool, chip: bool| TextRun {
             len,
@@ -2903,8 +2908,8 @@ impl gpui::Element for ComposerTextElement {
         let origin = point(bounds.left(), bounds.top() - scroll);
         let selection_color = Theme::of(cx).selection;
         let caret_color = Theme::of(cx).caret;
-        // The inline-code recipe: chips use the spectrum wash like `code` spans.
-        let mention_color = Theme::of(cx).code_wash;
+        // The inline-code recipe: chips use the same wash as `code` spans.
+        let mention_color = crate::markdown::render::inline_code_wash(Theme::of(cx));
 
         let mut mention_quads = Vec::new();
         let mut mention_hits = Vec::new();

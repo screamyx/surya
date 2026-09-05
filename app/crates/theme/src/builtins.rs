@@ -284,7 +284,7 @@ fn surya_light() -> ThemeVariant {
         // Warm off-black, never #000000.
         text: "#26221e",
         muted: "#6a6157",
-        faint: "#7a7063",
+        faint: "#756b5e",
         accent: "#b4552d",
         danger: "#b4342a",
         warning: "#8a5a12",
@@ -312,21 +312,31 @@ fn surya_dark() -> ThemeVariant {
         name: "Surya Dark",
         appearance: Appearance::Dark,
         treatment: SurfaceTreatment::Opaque,
-        // Panels climb out of the canvas. The step is wide for a dark theme
-        // on purpose: a floating card has nothing but this tone difference,
-        // a hairline and a shadow to lift it, and a shadow does almost no
-        // work on a near-black ground.
-        background: "#232019",
+        // Panels climb out of the canvas, and the step is wide on purpose:
+        // a floating card has nothing but this tone difference, a hairline
+        // and a shadow to lift it, and a shadow does almost no work on a
+        // near-black ground.
+        //
+        // This started at #232019, a 1.22 ratio against the canvas. It
+        // measured fine and looked wrong. A ratio that low is dominated by
+        // the +0.05 flare term in the WCAG formula, so near black it says
+        // almost nothing about what the eye sees. The design critic's round-2
+        // frame settled it: two panels of #232019 with 5px of #0b0a08 between
+        // them read as one brown field with a line in it. 1.47 is a 9.2x step
+        // in raw luminance and reads as two cards. The whole text ramp moves
+        // with it - text that held 13:1 on the old panel would sit at 10.9 on
+        // the new card.
+        background: "#332e26",
         // Canvas: the darkest plane, warm.
         shell: "#0b0a08",
-        raised: "#3a342b",
+        raised: "#423c31",
         // A step ABOVE the panel, unlike the light pair where card == panel.
         // Dark separates layers by climbing; light separates them with the
         // hairline and the shadow.
-        card: "#2e2922",
-        text: "#ece6dc",
-        muted: "#a49a8c",
-        faint: "#9a9082",
+        card: "#3a342b",
+        text: "#faf7f1",
+        muted: "#c0b6a6",
+        faint: "#b6ab9b",
         accent: "#e08a5a",
         danger: "#e8836b",
         warning: "#e0b062",

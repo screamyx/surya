@@ -2,7 +2,9 @@
 //! inbox order, and the rule that answers before the user sees the card.
 
 use super::*;
-use zeron_proto::RuleScope;
+// Named here rather than in the parent: the parent only mentions these
+// two in `derive.rs`, so importing them there would read as unused.
+use zeron_proto::{AgentState, NeedsYouKind, RuleScope};
 
 fn states() -> AgentStates {
     AgentStates::new(AllowRules::open(
