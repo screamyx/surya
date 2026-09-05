@@ -22,15 +22,18 @@ if (-not $build) { $build = 'working' }
 if ($build -notin @('working', 'threaded', 'latency', 'present')) { throw "Unknown Astra build: $build" }
 $exe = if ($build -eq 'working') { 'E:\surya-astra-target\release\zeron.exe' } else { "E:\surya-astra-bin-$build\zeron.exe" }
 if (-not (Test-Path $exe)) { throw "Missing Astra executable: $exe" }
-$ours = @(Get-Process zeron -ErrorAction SilentlyContinue | Where-Object { $_.Path -like 'E:\surya-astra-*' })
+$helper = Join-Path (Split-Path $exe) 'zeron-browser-helper.exe'
+$shaFile = if ($build -eq 'working') { 'E:\surya-astra\SHA' } else { Join-Path (Split-Path $exe) 'SHA' }
+$binarySha = (Get-Content $shaFile).Trim()
+$ours = @(Get-Process zeron, zeron-browser-helper -ErrorAction SilentlyContinue | Where-Object { $_.Path -like 'E:\surya-astra-*' })
 if ($ours.Count) { throw 'A prior Astra run still owns a window' }
-"start=$(Get-Date -Format o) exe=$exe seconds=$Seconds" | Out-File -Encoding utf8 "$runs\$Name.launch.log"
+"start=$(Get-Date -Format o) exe=$exe sha=$binarySha seconds=$Seconds" | Out-File -Encoding utf8 "$runs\$Name.launch.log"
 $p = Start-Process conhost.exe -ArgumentList @('--headless', $exe) -WindowStyle Hidden -RedirectStandardOutput "$runs\$Name.out.log" -RedirectStandardError "$runs\$Name.err.log" -PassThru
 Start-Sleep -Seconds $Seconds
 $ours = @(Get-Process zeron -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe })
 foreach ($app in $ours) { $app.CloseMainWindow() | Out-Null }
 Start-Sleep -Seconds 6
-$remaining = @(Get-Process zeron -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe })
+$remaining = @(Get-Process zeron, zeron-browser-helper -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe -or $_.Path -eq $helper })
 "close_asked=$($ours.Count) close_remaining=$($remaining.Count)" | Out-File -Append -Encoding utf8 "$runs\$Name.launch.log"
 foreach ($app in $remaining) { Stop-Process -Id $app.Id -Force }
 "stopped=$(Get-Date -Format o)" | Out-File -Append -Encoding utf8 "$runs\$Name.launch.log"
