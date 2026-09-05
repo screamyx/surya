@@ -179,6 +179,7 @@ pub fn run_app(config: UiConfig) {
             cx,
         );
         composer::init(cx);
+        files::init(cx);
         terminal::panel::init(cx);
         app_menus::init(cx);
         // CEF before the window: one browser per process, pumped from the
