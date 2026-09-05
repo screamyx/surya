@@ -24,7 +24,7 @@ use gpui::{
 
 use gpui_tokio::Tokio;
 use zeron_engine::InstanceLock;
-use zeron_proto::{AuthState, WorkspaceScope};
+use zeron_proto::{AuthState, Space, WorkspaceScope};
 use zeron_rpc::methods;
 
 use crate::changes::{Changes, ChangesEvent};
@@ -67,6 +67,8 @@ actions!(
     [
         ToggleSidebar,
         ToggleChanges,
+        ToggleFiles,
+        ToggleTasks,
         AddSpacePalette,
         NewSession,
         OpenSettings,
@@ -270,6 +272,8 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             ToggleChanges,
             None,
         ),
+        KeyBinding::new(&platform_combo("mod-shift-f"), ToggleFiles, None),
+        KeyBinding::new(&platform_combo("mod-shift-t"), ToggleTasks, None),
         KeyBinding::new(
             &valid_or_default(&keymap.toggle_terminal, "mod-j"),
             ToggleTerminal,
@@ -420,6 +424,10 @@ pub enum RightSurface {
     /// haktui's offscreen Chromium with a URL bar (surya). One per process.
     #[cfg(feature = "browser")]
     Browser,
+    /// The space's file tree + editor (`crate::files::FilesPane`), one per space.
+    Files,
+    /// The space's task board (`crate::tasks::TasksPane`), one per space.
+    Tasks,
 }
 
 /// Per-chat panel open flags (zeron parity: `sessionPanels` — the terminal and
@@ -1051,6 +1059,14 @@ pub struct Shell {
     /// Ordered surface tabs per panel key (drag-reorderable; stale entries —
     /// closed terminals/diffs — are skipped at read time).
     right_tabs: std::collections::HashMap<String, Vec<RightSurface>>,
+    /// Cached Files pane, keyed by the space it was built for.
+    files_pane: Option<(String, Entity<crate::files::FilesPane>)>,
+    /// Cached Tasks pane, keyed by the space it was built for.
+    tasks_pane: Option<(String, Entity<crate::tasks::TasksPane>)>,
+    /// `ZERON_OPEN_PANE=files|tasks|browser`: open that surface on first
+    /// render (headless proof runs that cannot click), consumed once. Files
+    /// and Tasks wait until a space is known; the browser needs none.
+    debug_open_pane: Option<String>,
     /// In-flight surface-tab drag (slide animation state).
     right_tab_drag: Option<RightTabDragState>,
     /// Surface-tab strip scroll (the strip overflows horizontally, t3
@@ -1059,10 +1075,6 @@ pub struct Shell {
     /// The one Browser surface view, made on first open (surya).
     #[cfg(feature = "browser")]
     browser_pane: Option<Entity<crate::browser_pane::BrowserPane>>,
-    /// `ZERON_OPEN_BROWSER=1`: open the Browser surface on the first frame,
-    /// for proofs that cannot click the titlebar globe (xvfb, dtry).
-    #[cfg(feature = "browser")]
-    debug_open_browser: bool,
     /// Chat outlet vs settings pages.
     route: Route,
     /// Route history behind the titlebar back/forward buttons (§ nav history).
@@ -1350,12 +1362,13 @@ impl Shell {
             subagent_tabs: std::collections::HashMap::new(),
             subagent_seq: 0,
             right_tabs: std::collections::HashMap::new(),
+            files_pane: None,
+            tasks_pane: None,
+            debug_open_pane: std::env::var("ZERON_OPEN_PANE").ok(),
             right_tab_drag: None,
             right_tab_scroll: gpui::ScrollHandle::new(),
             #[cfg(feature = "browser")]
             browser_pane: None,
-            #[cfg(feature = "browser")]
-            debug_open_browser: std::env::var_os("ZERON_OPEN_BROWSER").is_some(),
             route,
             nav,
             devices_page: None,
@@ -1818,13 +1831,106 @@ impl Shell {
     /// new-session canvas, where the titlebar carries no toggle to close it
     /// again (an earlier user request).
     fn right_pane_open(&self, cx: &App) -> bool {
-        // The Browser tab is the exception to the new-session rule: the
-        // titlebar globe opens and closes it there (surya).
-        #[cfg(feature = "browser")]
-        let has_chat = !self.active_chat.is_empty() || self.browser_tab_present(cx);
-        #[cfg(not(feature = "browser"))]
-        let has_chat = !self.active_chat.is_empty();
-        has_chat && self.panels.get(&self.panel_key(cx)).changes_open
+        // Files, Tasks and the Browser are space surfaces, not chat surfaces:
+        // they open on the new-session canvas too, where no chat is active.
+        let has_host = !self.active_chat.is_empty() || self.space_surface_present(cx);
+        has_host && self.panels.get(&self.panel_key(cx)).changes_open
+    }
+
+    /// Whether this panel key holds a Files, Tasks or Browser tab.
+    fn space_surface_present(&self, cx: &App) -> bool {
+        let key = self.panel_key(cx);
+        self.right_tabs.get(&key).is_some_and(|tabs| {
+            tabs.iter().any(|t| {
+                #[cfg(feature = "browser")]
+                if matches!(t, RightSurface::Browser) {
+                    return true;
+                }
+                matches!(t, RightSurface::Files | RightSurface::Tasks)
+            })
+        })
+    }
+
+    /// The space the panes belong to: the active chat's folder's space, else
+    /// the sidebar's selected space.
+    fn current_space(&self, cx: &App) -> Option<Space> {
+        let state = self.state.read(cx);
+        if !self.active_chat.is_empty()
+            && let Some(chat) = state.chats.iter().find(|c| c.id == self.active_chat)
+            && let Some(cwd) = chat.cwd.as_deref()
+            && let Some(space) = state
+                .spaces
+                .iter()
+                .filter(|s| cwd == s.path || cwd.starts_with(&format!("{}/", s.path.trim_end_matches('/'))))
+                .max_by_key(|s| s.path.len())
+        {
+            return Some(space.clone());
+        }
+        let id = state.selected_space.as_deref()?;
+        state.spaces.iter().find(|s| s.id == id).cloned()
+    }
+
+    fn files_pane(&mut self, cx: &mut Context<Self>) -> Option<Entity<crate::files::FilesPane>> {
+        let space = self.current_space(cx)?;
+        if let Some((id, pane)) = &self.files_pane
+            && *id == space.id
+        {
+            return Some(pane.clone());
+        }
+        let engine = self.state.read(cx).engine().cloned()?;
+        let space_id = space.id.clone();
+        let pane = cx.new(|cx| crate::files::FilesPane::new(engine, space_id, cx));
+        self.files_pane = Some((space.id, pane.clone()));
+        Some(pane)
+    }
+
+    fn tasks_pane(&mut self, cx: &mut Context<Self>) -> Option<Entity<crate::tasks::TasksPane>> {
+        let space = self.current_space(cx)?;
+        if let Some((id, pane)) = &self.tasks_pane
+            && *id == space.id
+        {
+            return Some(pane.clone());
+        }
+        let engine = self.state.read(cx).engine().cloned()?;
+        let client = engine.client_arc();
+        let space_id = space.id.clone();
+        let name: SharedString = space
+            .name
+            .clone()
+            .unwrap_or_else(|| {
+                space
+                    .path
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or(&space.path)
+                    .to_string()
+            })
+            .into();
+        let pane = cx.new(|cx| crate::tasks::TasksPane::new(client, space_id, name, cx));
+        self.tasks_pane = Some((space.id, pane.clone()));
+        Some(pane)
+    }
+
+    /// Add (or focus) a space surface tab and make sure the pane is open.
+    fn add_space_surface(&mut self, surface: RightSurface, cx: &mut Context<Self>) {
+        let key = self.panel_key(cx);
+        let tabs = self.right_tabs.entry(key).or_default();
+        if !tabs.contains(&surface) {
+            tabs.push(surface);
+        }
+        self.set_right_active(surface, cx);
+        if !self.right_pane_open(cx) {
+            self.toggle_right_pane(cx);
+        }
+    }
+
+    /// Key / rail entry: close the pane if that surface is showing, else open it.
+    fn toggle_space_surface(&mut self, surface: RightSurface, cx: &mut Context<Self>) {
+        if self.right_pane_open(cx) && self.resolved_right_active(cx) == surface {
+            self.toggle_right_pane(cx);
+        } else {
+            self.add_space_surface(surface, cx);
+        }
     }
 
     /// The current chat's terminal flag (per-session, in-memory).
@@ -1933,6 +2039,8 @@ impl Shell {
                     .map(|tab| (*surface, tab.title.clone())),
                 #[cfg(feature = "browser")]
                 RightSurface::Browser => Some((*surface, browser_tab_title())),
+                RightSurface::Files => Some((*surface, SharedString::from("Files"))),
+                RightSurface::Tasks => Some((*surface, SharedString::from("Tasks"))),
                 RightSurface::Picker => None,
             })
             .collect()
@@ -2012,6 +2120,7 @@ impl Shell {
             RightSurface::Subagent(_) => {}
             #[cfg(feature = "browser")]
             RightSurface::Browser => {}
+            RightSurface::Files | RightSurface::Tasks => {}
             RightSurface::Picker => {}
         }
         cx.notify();
@@ -2285,6 +2394,8 @@ impl Shell {
             // The globe makes a new one on the last address.
             #[cfg(feature = "browser")]
             RightSurface::Browser => surya_browser::close(),
+            // The pane entities stay cached; closing the tab only hides them.
+            RightSurface::Files | RightSurface::Tasks => {}
             RightSurface::Picker => {}
         }
         self.panels.update(&key, |p| {
@@ -3700,7 +3811,7 @@ impl Shell {
                         cx.listener(|this, _, _, cx| {
                             #[cfg(feature = "browser")]
                             this.toggle_browser_pane(cx);
-                            let _ = cx;
+                            let _ = (this, cx);
                         }),
                     )),
                 )
@@ -3942,7 +4053,17 @@ impl Shell {
         let theme = Theme::of(cx).clone();
         let inner: AnyElement = match self.route {
             Route::Settings(section) => self.render_settings_nav(section, &theme, cx),
-            Route::Chat => self.render_chat_sidebar(&theme, cx),
+            Route::Chat => {
+                let entries = self.render_rail_entries(&theme, cx);
+                let chats = self.render_chat_sidebar(&theme, cx);
+                div()
+                    .size_full()
+                    .flex()
+                    .flex_col()
+                    .child(entries)
+                    .child(div().flex_1().min_h_0().child(chats))
+                    .into_any_element()
+            }
         };
         let target = self.sidebar_target();
         // The rail is a floating card on the canvas (surya look, decision 22),
@@ -3963,6 +4084,157 @@ impl Shell {
                 .child(inner)
                 .into_any_element(),
         )
+    }
+
+    /// Decision 11 rail entries above the session list: Home, Needs you,
+    /// Agents, Tasks, Files. Home and Files/Tasks act now; Needs you and
+    /// Agents wait for the inbox pane (feat/inbox-ui) and render dimmed.
+    fn render_rail_entries(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let active = if self.right_pane_open(cx) {
+            Some(self.resolved_right_active(cx))
+        } else {
+            None
+        };
+        let entry = |id: &'static str,
+                     icon_path: &'static str,
+                     label: &'static str,
+                     on: bool,
+                     enabled: bool,
+                     theme: &Theme| {
+            div()
+                .id(id)
+                .flex()
+                .items_center()
+                .gap(px(10.0))
+                .h(px(30.0))
+                .px(px(10.0))
+                .rounded(px(8.0))
+                .text_size(crate::typography::ui_rems(13.0))
+                .text_color(if enabled { theme.text } else { theme.text_faint })
+                .when(on, |d| d.bg(theme.element_active))
+                .when(enabled, |d| d.cursor_pointer().hover(|d| d.bg(theme.element_hover)))
+                .child(
+                    icon(icon_path)
+                        .size(px(15.0))
+                        .flex_none()
+                        .text_color(if enabled { theme.text_muted } else { theme.text_faint }),
+                )
+                .child(SharedString::from(label))
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(2.0))
+            .px(px(8.0))
+            .pt(px(6.0))
+            .pb(px(8.0))
+            .border_b_1()
+            .border_color(theme.border)
+            .child(
+                entry("rail-home", icons::HOME, "Home", active.is_none(), true, theme).on_click(
+                    cx.listener(|this, _, _, cx| {
+                        if this.right_pane_open(cx) {
+                            this.toggle_right_pane(cx);
+                        }
+                        cx.notify();
+                    }),
+                ),
+            )
+            // TODO(feat/inbox-ui): route to the inbox pane once it is on main.
+            .child(entry("rail-needs-you", icons::BELL, "Needs you", false, false, theme))
+            .child(entry("rail-agents", icons::BOT, "Agents", false, false, theme))
+            .child(
+                entry(
+                    "rail-tasks",
+                    icons::CHECKLIST,
+                    "Tasks",
+                    active == Some(RightSurface::Tasks),
+                    true,
+                    theme,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.toggle_space_surface(RightSurface::Tasks, cx)
+                })),
+            )
+            .child(
+                entry(
+                    "rail-files",
+                    icons::FOLDER,
+                    "Files",
+                    active == Some(RightSurface::Files),
+                    true,
+                    theme,
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.toggle_space_surface(RightSurface::Files, cx)
+                })),
+            )
+            .into_any_element()
+    }
+
+    /// The selected chat's title tier: display-size title, then space and
+    /// branch muted underneath. Empty when the chat is unknown.
+    fn render_page_title(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let (title, sub) = {
+            let state = self.state.read(cx);
+            let chat = state
+                .selected_chat
+                .as_deref()
+                .and_then(|id| state.chats.iter().find(|c| c.id == id));
+            let title = chat
+                .and_then(|c| c.title.clone())
+                .filter(|t| !t.trim().is_empty())
+                .unwrap_or_else(|| "New session".to_string());
+            let mut parts: Vec<String> = Vec::new();
+            if let Some(space) = self.current_space(cx) {
+                parts.push(space.name.clone().unwrap_or_else(|| {
+                    space.path.rsplit('/').next().unwrap_or(&space.path).to_string()
+                }));
+            }
+            if let Some(branch) = chat.and_then(|c| c.branch.clone()) {
+                parts.push(branch);
+            }
+            (title, parts.join("  ·  "))
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(2.0))
+            .px(px(crate::surya::PANEL_PAD + 12.0))
+            // The titlebar floats over the card; start below it.
+            .pt(px(Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET + 10.0))
+            .pb(px(6.0))
+            .child(
+                div()
+                    .text_size(crate::surya::DISPLAY.rems())
+                    .line_height(crate::surya::DISPLAY.line_height())
+                    .font_weight(crate::surya::DISPLAY.weight)
+                    .text_color(theme.text)
+                    .truncate()
+                    .child(SharedString::from(title)),
+            )
+            .when(!sub.is_empty(), |d| {
+                d.child(
+                    div()
+                        .text_size(crate::surya::CAPTION.rems())
+                        .text_color(theme.text_muted)
+                        .child(SharedString::from(sub)),
+                )
+            })
+            .into_any_element()
+    }
+
+    /// What a space surface shows when no space is selected yet.
+    fn render_no_space_note(&self, what: &'static str, theme: &Theme) -> AnyElement {
+        div()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .text_size(crate::typography::ui_rems(13.0))
+            .text_color(theme.text_faint)
+            .child(SharedString::from(format!("{what}: pick a space first")))
+            .into_any_element()
     }
 
     /// Settings-mode sidebar (zeron settings-sidebar.tsx): window-control
@@ -5796,7 +6068,17 @@ impl Shell {
         // at all → the onboarding card. The composer sits below the first two
         // (new-chat mode mints the chat id on first send).
         let outlet: AnyElement = if has_selection {
-            self.transcript.clone().into_any_element()
+            // Page-title tier (critique round 2, L3): the chat's title at
+            // display size with space + branch as the sub-line, above the
+            // transcript instead of squeezed into the 13px titlebar.
+            let title_row = self.render_page_title(theme, cx);
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(title_row)
+                .child(div().flex_1().min_h_0().child(self.transcript.clone()))
+                .into_any_element()
         } else if !has_spaces && !no_project {
             // Onboarding (first boot / after the destructive wipe): no folders
             // to work in yet — one clear affordance.
@@ -6260,6 +6542,14 @@ impl Shell {
                         .child(div().flex_1().min_h_0().child(changes))
                         .into_any_element()
                 }
+                RightSurface::Files => match self.files_pane(cx) {
+                    Some(pane) => pane.into_any_element(),
+                    None => self.render_no_space_note("Files", &theme),
+                },
+                RightSurface::Tasks => match self.tasks_pane(cx) {
+                    Some(pane) => pane.into_any_element(),
+                    None => self.render_no_space_note("Tasks", &theme),
+                },
                 RightSurface::Terminal(tab) => {
                     let panel = self.right_terminal_panel(cx);
                     // Keep the embedded panel's own active tab aligned with
@@ -6409,10 +6699,20 @@ impl Shell {
                             cx.listener(|this, _, _, cx| {
                                 #[cfg(feature = "browser")]
                                 this.add_browser_surface(cx);
-                                let _ = cx;
+                                let _ = (this, cx);
                             }),
                         ))
-                    }),
+                    })
+                    .child(row("surface-card-files", icons::FOLDER, "Files").on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.add_space_surface(RightSurface::Files, cx);
+                        }),
+                    ))
+                    .child(row("surface-card-tasks", icons::CHECKLIST, "Tasks").on_click(
+                        cx.listener(|this, _, _, cx| {
+                            this.add_space_surface(RightSurface::Tasks, cx);
+                        }),
+                    )),
             )
             .into_any_element()
     }
@@ -6587,6 +6887,8 @@ impl Shell {
                 RightSurface::Subagent(_) => icons::BOT,
                 #[cfg(feature = "browser")]
                 RightSurface::Browser => icons::GLOBAL,
+                RightSurface::Files => icons::FOLDER,
+                RightSurface::Tasks => icons::CHECKLIST,
                 _ => icons::TERMINAL,
             };
             // A live subagent tab swaps its icon for the mini working
@@ -7594,12 +7896,23 @@ impl Render for Shell {
                 && self.right_pane_open(cx)
                 && self.resolved_right_active(cx) == RightSurface::Browser,
         );
-        #[cfg(feature = "browser")]
-        if self.debug_open_browser {
-            self.debug_open_browser = false;
-            self.add_browser_surface(cx);
-        }
         self.viewport_width = f32::from(window.viewport_size().width);
+        if let Some(pane) = self.debug_open_pane.as_deref() {
+            let ready = match pane {
+                "browser" => true,
+                _ => self.current_space(cx).is_some(),
+            };
+            if ready {
+                let pane = self.debug_open_pane.take().unwrap_or_default();
+                match pane.as_str() {
+                    "files" => self.add_space_surface(RightSurface::Files, cx),
+                    "tasks" => self.add_space_surface(RightSurface::Tasks, cx),
+                    #[cfg(feature = "browser")]
+                    "browser" => self.add_browser_surface(cx),
+                    _ => {}
+                }
+            }
+        }
         // Appearance actions persist independently of the shell. Mirror the
         // globals before any later debounced settings save can overwrite them.
         self.settings.appearance = crate::appearance::mode(cx);
@@ -7722,6 +8035,16 @@ impl Render for Shell {
             .on_action(cx.listener(|this, _: &ToggleChanges, _, cx| {
                 if matches!(this.route, Route::Chat) {
                     this.toggle_right_pane(cx)
+                }
+            }))
+            .on_action(cx.listener(|this, _: &ToggleFiles, _, cx| {
+                if matches!(this.route, Route::Chat) {
+                    this.toggle_space_surface(RightSurface::Files, cx)
+                }
+            }))
+            .on_action(cx.listener(|this, _: &ToggleTasks, _, cx| {
+                if matches!(this.route, Route::Chat) {
+                    this.toggle_space_surface(RightSurface::Tasks, cx)
                 }
             }))
             // Chat-scoped like the panel toggles: Settings has no current

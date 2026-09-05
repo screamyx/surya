@@ -25,7 +25,7 @@ W=1600; H=1000
 
 RUN='
   set -u
-  export ZERON_DATA_DIR="'"$DATA"'" ZERON_OPEN_BROWSER=1 SURYA_BROWSER_URL="'"$URL"'" \
+  export ZERON_DATA_DIR="'"$DATA"'" ZERON_OPEN_PANE=browser SURYA_BROWSER_URL="'"$URL"'" \
          SURYA_CEF_CACHE="'"$DATA"'/cef" SURYA_BROWSER_DUMP="'"$OUT"'/frames" RUST_LOG=info
   "'"$BIN"'" > "'"$LOG"'" 2>&1 &
   APP=$!
