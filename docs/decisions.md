@@ -302,6 +302,7 @@ The plan and the counts are in `docs/rename-zeron-to-surya.md` (PR #16): "zeron 
 - iOS bundle id and the Cloudflare edge are out of scope for the RC; they keep the zeron names until the owner picks a domain.
 - Amended 11:03 (PR #48): the data-dir adoption is one helper `adopt(home, current, previous)` that COPIES into `<current>.incoming` and renames it in atomically; the pre-existing `.comet-native` migration now goes through it too, so it copies where it used to rename (accepted, safer, one path). After the rename the pair is (`.surya`, `.zeron`) and the `.comet-native` step drops.
 - Amended 10:33 from the rename dry run (PR #41): the data dir is COPIED, not renamed (this decision wins over row 5 of the plan). Comet's two built-in themes become `comet_light` / `comet_dark` and keep their display names ("Zeron Light/Dark" stays as the provenance label); `surya_light` / `surya_dark` already exist from PR #2, so a literal rename would collide (E0428).
+- Amended 20:20 by the comet-look revert (PR #82). Those are the Rust *function* names; the variant ids in the registry are the strings `zeron-light` and `zeron-dark`, and they are what the code and the settings file carry. Two things follow for whoever does the rename. Comet's pair is the shipped default again, so `ThemeSelection::default()`, the `ThemeRegistry::resolve` fallback and `Theme::for_appearance`'s fallback all name those strings and must move with them. And every `ui-settings.json` on disk stores the selection as a string, so renaming the ids without a settings migration silently drops users onto the fallback. `UiSettings::migrated` now has a schema version and one rule; the rename adds the second.
 
 ## 24. CI runs on a self-hosted runner on pc-ajim; the owner's spawn order narrows to user2
 
@@ -375,6 +376,15 @@ Owner order, 2026-09-05 22:43, verbatim: "once all done, do one end-to-end test,
 - Runs on dtry (decision 28) on the newest main build after the browser-wave merges, engine reinstalled to the same sha, once the owner is off dtry (he says so, or no owner input on dtry after 01:00).
 - One Codex gpt-6-astra (high) tester seat (owner 22:45: "model for e2e tester is astra, make sure he has the right tool for it windows-dtry mcp, maybe /zoom") drives the app over the windows-dtry MCP, zoom CLI for fine detail, through every rail entry, page, button and feature (list in /tmp/surya-e2e-acceptance.md), a screenshot per step into the gallery, a PASS/FAIL row per step in docs/acceptance/e2e-2026-09-06.md, FAILs filed to raven as they appear; the owning seats fix, raven re-runs the failed steps.
 - Supersedes the 22:07 note that deferred the acceptance round to 04:00-08:00: the trigger is "merges done and owner asleep", not the clock.
+
+## 30. The 13:00 deadline is scrapped; the RC ships when it is complete
+
+Owner ruling, 2026-09-06 00:52, verbatim: "scrape the deadline. take as many time as you want to build RC. list all the things not included in RC".
+
+- No clock gate any more: the 11:45 freeze, the 12:15 FINAL MAIN and the 13:00 ship are gone (the freeze cron was deleted at 00:53).
+- The RC ships when every RC-scoped PR is merged with a dtry proof (decision 28), the end-to-end acceptance run (decision 29) is green, and the rename (decision 23) has landed. The sequence is unchanged (freeze -> rename PR -> FINAL MAIN -> final round -> RC note -> Taildrop -> retire seats); only its trigger changed from the clock to "done".
+- "Ship un-renamed if the rename is late" is withdrawn: the rename lands before the RC.
+- The not-in-RC list below is the owner's to pull from; anything he names moves into RC scope.
 
 ## Open
 

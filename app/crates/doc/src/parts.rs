@@ -193,6 +193,40 @@ pub enum MessagePart {
         #[serde(default)]
         resolved: bool,
     },
+    /// A tool blocked on the user's permission.
+    ///
+    /// The twin of [`MessagePart::Input`], and deliberately so: a permission
+    /// is a question the agent is asking, and the user should not have to
+    /// learn two shapes for "something is waiting on you". It appears when
+    /// the ask arrives and flips to resolved when it is answered, which
+    /// leaves the answer in the transcript - a tool that did not run
+    /// otherwise leaves no trace at all.
+    ///
+    /// Comet auto-approved every tool and never emitted the event, so a doc
+    /// written by an older build simply has no part of this kind, and an
+    /// older reader falls through its `default` arm.
+    Permission {
+        id: String,
+        request_id: String,
+        tool_name: String,
+        /// The command or path the tool would act on, already rendered.
+        #[serde(default)]
+        command: String,
+        #[serde(default)]
+        resolved: bool,
+        /// How it was answered, once it was.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        decision: Option<zeron_proto::PermissionDecision>,
+        /// Why, for a deny.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+        /// The always-allow rule that answered it, when one did. Set when the
+        /// user chose "Always allow", which is what tells that apart from a
+        /// one-off Allow without a second `PermissionDecision` variant -
+        /// `resolve_permission` already returns the rule it created.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rule: Option<String>,
+    },
     Error {
         id: String,
         message: String,
@@ -234,6 +268,7 @@ impl MessagePart {
             | MessagePart::Reasoning { id, .. }
             | MessagePart::Tool { id, .. }
             | MessagePart::Input { id, .. }
+            | MessagePart::Permission { id, .. }
             | MessagePart::Notice { id, .. }
             | MessagePart::Error { id, .. }
             | MessagePart::Card { id, .. } => id,
@@ -264,6 +299,12 @@ impl MessagePart {
             MessagePart::Input { questions, .. } => {
                 serde_json::to_vec(questions).map_or(0, |v| v.len())
             }
+            MessagePart::Permission {
+                tool_name,
+                command,
+                reason,
+                ..
+            } => tool_name.len() + command.len() + reason.as_ref().map_or(0, String::len),
             MessagePart::Error { message, .. } => message.len(),
             MessagePart::Card { a2ui, .. } => a2ui
                 .as_ref()
@@ -406,6 +447,26 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                 }
             }
         }
+        AgentEvent::PermissionRequested {
+            request_id,
+            tool_name,
+            command,
+            ..
+        } => {
+            let id = format!("perm-{request_id}");
+            if !out.iter().any(|p| p.id() == id) {
+                out.push(MessagePart::Permission {
+                    id,
+                    request_id: request_id.clone(),
+                    tool_name: tool_name.clone(),
+                    command: command.clone(),
+                    resolved: false,
+                    decision: None,
+                    reason: None,
+                    rule: None,
+                });
+            }
+        }
         AgentEvent::Error { message } => {
             let id = format!("e{}", out.len());
             out.push(MessagePart::Error {
@@ -517,10 +578,36 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
             rule,
             reason,
         } => {
-            // Three outcomes leave a line: a rule allowed it, or it was
-            // denied and the tool never ran. A plain Allow the user clicked
-            // needs none — the tool call itself is the record.
-            let text = match (decision, rule, reason) {
+            // Mark the ask, if the user was asked. An auto-allowed tool
+            // resolves without ever having been asked, so there is nothing
+            // to mark and nothing should have appeared.
+            let mut asked = false;
+            for p in out.iter_mut() {
+                if let MessagePart::Permission {
+                    request_id: rid,
+                    resolved,
+                    decision: answered,
+                    reason: why,
+                    rule: by_rule,
+                    ..
+                } = p
+                    && rid == request_id
+                {
+                    asked = true;
+                    *resolved = true;
+                    *answered = Some(*decision);
+                    *why = reason.clone();
+                    *by_rule = rule.clone();
+                }
+            }
+            // The chip above states the outcome, so a second line about the
+            // same answer would say it twice. What is left for a notice is
+            // the case with no chip at all: a rule that allowed the tool
+            // without asking, which the user should still see happen.
+            let text = if asked {
+                None
+            } else {
+                match (decision, rule, reason) {
                 (zeron_proto::PermissionDecision::Allow, Some(rule), _) => {
                     Some(format!("allowed by rule {rule}"))
                 }
@@ -531,6 +618,7 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                     Some("not allowed".to_string())
                 }
                 (zeron_proto::PermissionDecision::Allow, None, _) => None,
+                }
             };
             if let Some(text) = text {
                 let id = format!("{request_id}-permission");
@@ -751,10 +839,12 @@ mod tests {
     /// the refusal has to say so itself — otherwise the turn just has a
     /// silent gap where the user said no.
     #[test]
-    fn a_denied_permission_lands_as_a_notice_with_its_reason() {
+    fn the_ask_is_a_part_and_the_answer_lands_on_it() {
         use zeron_proto::PermissionDecision;
         let mut parts = Vec::new();
-        // The ask itself is not a part: it lives in the needs-you inbox.
+        // The ask used to live only in the needs-you inbox. The owner
+        // reversed that on 2026-09-05: a tool waiting on you belongs in the
+        // conversation, where the user is already looking.
         fold_event_into_parts(
             &mut parts,
             &AgentEvent::PermissionRequested {
@@ -764,7 +854,23 @@ mod tests {
                 input: None,
             },
         );
-        assert!(parts.is_empty(), "a pending ask is not transcript text");
+        assert!(matches!(
+            &parts[0],
+            MessagePart::Permission { tool_name, command, resolved: false, .. }
+                if tool_name == "Bash" && command == "rm -rf /"
+        ));
+
+        // Re-delivery of the ask does not double it.
+        fold_event_into_parts(
+            &mut parts,
+            &AgentEvent::PermissionRequested {
+                request_id: "perm-1".into(),
+                tool_name: "Bash".into(),
+                command: "rm -rf /".into(),
+                input: None,
+            },
+        );
+        assert_eq!(parts.len(), 1);
 
         fold_event_into_parts(
             &mut parts,
@@ -775,30 +881,29 @@ mod tests {
                 reason: Some("you denied it".into()),
             },
         );
+        // One part still, now answered: the chip states the outcome, so the
+        // notice that used to carry it would say the same thing twice.
         assert_eq!(parts.len(), 1);
-        let MessagePart::Notice { id, text } = &parts[0] else {
-            panic!("expected a Notice, got {:?}", parts[0]);
+        let MessagePart::Permission {
+            resolved,
+            decision,
+            reason,
+            ..
+        } = &parts[0]
+        else {
+            panic!("expected the Permission part, got {:?}", parts[0]);
         };
-        assert_eq!(id, "perm-1-permission");
-        assert_eq!(text, "not allowed: you denied it");
-
-        // Re-delivery of the same frame does not double the line.
-        fold_event_into_parts(
-            &mut parts,
-            &AgentEvent::PermissionResolved {
-                request_id: "perm-1".into(),
-                decision: PermissionDecision::Deny,
-                rule: None,
-                reason: Some("you denied it".into()),
-            },
-        );
-        assert_eq!(parts.len(), 1);
+        assert!(resolved);
+        assert_eq!(*decision, Some(PermissionDecision::Deny));
+        assert_eq!(reason.as_deref(), Some("you denied it"));
     }
 
     #[test]
-    fn a_deny_with_no_reason_still_says_something() {
+    fn a_deny_nobody_was_asked_for_still_says_something() {
         use zeron_proto::PermissionDecision;
         let mut parts = Vec::new();
+        // No ask was folded, so there is no chip to carry the outcome and
+        // the notice is the only trace the turn would otherwise have.
         fold_event_into_parts(
             &mut parts,
             &AgentEvent::PermissionResolved {

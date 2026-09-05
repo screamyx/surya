@@ -119,6 +119,19 @@ struct DocPartJson {
     a2ui_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     a2ui_bytes: Option<u64>,
+    /// `kind == "permission"`: which tool asked, what it would run, and how
+    /// it was answered. The sentence also rides `text`, so a build that does
+    /// not know this kind still shows what was asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tool_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    decision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rule: Option<String>,
 }
 
 /// App parts → doc part json (mirror of `toDocParts`).
@@ -195,6 +208,40 @@ fn to_doc_part(part: &MessagePart) -> Result<DocPartJson, DocError> {
             resolved: Some(*resolved),
             ..Default::default()
         },
+        MessagePart::Permission {
+            id: _,
+            request_id,
+            tool_name,
+            command,
+            resolved,
+            decision,
+            reason,
+            rule,
+        } => DocPartJson {
+            id: request_id.clone(),
+            kind: "permission".into(),
+            // Same trick as `notice`: the sentence rides `text`, so an older
+            // build falls through to the text renderer and the user still
+            // reads what was asked instead of seeing a blank.
+            text: Some(if command.is_empty() {
+                format!("Allow {tool_name}?")
+            } else {
+                format!("Allow {tool_name}? {command}")
+            }),
+            tool_name: Some(tool_name.clone()),
+            command: Some(command.clone()),
+            resolved: Some(*resolved),
+            decision: decision.map(|d| {
+                match d {
+                    zeron_proto::PermissionDecision::Allow => "allow",
+                    zeron_proto::PermissionDecision::Deny => "deny",
+                }
+                .to_owned()
+            }),
+            reason: reason.clone(),
+            rule: rule.clone(),
+            ..Default::default()
+        },
         MessagePart::Error { id, message } => DocPartJson {
             id: id.clone(),
             kind: "error".into(),
@@ -258,6 +305,20 @@ fn from_doc_part(p: DocPartJson) -> MessagePart {
                 .and_then(|q| serde_json::from_value(q).ok())
                 .unwrap_or_default(),
             resolved: p.resolved.unwrap_or(false),
+        },
+        "permission" => MessagePart::Permission {
+            id: format!("perm-{}", p.id),
+            request_id: p.id,
+            tool_name: p.tool_name.unwrap_or_default(),
+            command: p.command.unwrap_or_default(),
+            resolved: p.resolved.unwrap_or(false),
+            decision: match p.decision.as_deref() {
+                Some("allow") => Some(zeron_proto::PermissionDecision::Allow),
+                Some("deny") => Some(zeron_proto::PermissionDecision::Deny),
+                _ => None,
+            },
+            reason: p.reason,
+            rule: p.rule,
         },
         "error" => MessagePart::Error {
             id: p.id,
@@ -725,6 +786,25 @@ fn push_part(parts: &LoroList, part: &MessagePart) -> Result<(), DocError> {
     if let Some(message) = &doc_part.message {
         map.insert("message", message.as_str())?;
     }
+    // A permission's own fields. The map is written key by key, so a field
+    // that is not inserted here never reaches the doc, however faithfully
+    // `to_doc_part` filled it in (the panel read "Allow ?" with no tool for
+    // exactly this reason, 22:44 shot).
+    if let Some(tool_name) = &doc_part.tool_name {
+        map.insert("toolName", tool_name.as_str())?;
+    }
+    if let Some(command) = &doc_part.command {
+        map.insert("command", command.as_str())?;
+    }
+    if let Some(decision) = &doc_part.decision {
+        map.insert("decision", decision.as_str())?;
+    }
+    if let Some(reason) = &doc_part.reason {
+        map.insert("reason", reason.as_str())?;
+    }
+    if let Some(rule) = &doc_part.rule {
+        map.insert("rule", rule.as_str())?;
+    }
     if let Some(output) = &doc_part.output {
         map.insert("output", output.as_str())?;
     }
@@ -1136,6 +1216,25 @@ fn update_part_fields(map: &LoroMap, part: &MessagePart) -> Result<(), DocError>
     if let Some(message) = &doc_part.message {
         map.insert("message", message.as_str())?;
     }
+    // A permission's own fields. The map is written key by key, so a field
+    // that is not inserted here never reaches the doc, however faithfully
+    // `to_doc_part` filled it in (the panel read "Allow ?" with no tool for
+    // exactly this reason, 22:44 shot).
+    if let Some(tool_name) = &doc_part.tool_name {
+        map.insert("toolName", tool_name.as_str())?;
+    }
+    if let Some(command) = &doc_part.command {
+        map.insert("command", command.as_str())?;
+    }
+    if let Some(decision) = &doc_part.decision {
+        map.insert("decision", decision.as_str())?;
+    }
+    if let Some(reason) = &doc_part.reason {
+        map.insert("reason", reason.as_str())?;
+    }
+    if let Some(rule) = &doc_part.rule {
+        map.insert("rule", rule.as_str())?;
+    }
     if let Some(output) = &doc_part.output {
         map.insert("output", output.as_str())?;
     }
@@ -1270,6 +1369,91 @@ mod tests {
             }]
         );
         assert_eq!(doc.chat_id().as_deref(), Some("chat-1"));
+    }
+
+    /// A permission part survives the doc with the fields the panel reads.
+    ///
+    /// The map is written key by key, so `to_doc_part` filling a field is not
+    /// enough - it has to be inserted too. It was not, and the panel rendered
+    /// "Allow ?" with no tool name and no command (22:44 shot). Nothing in
+    /// the fold tests could catch that, because the fold was correct.
+    #[test]
+    fn a_permission_part_keeps_its_tool_and_command_through_the_doc() {
+        let part = MessagePart::Permission {
+            id: "perm-mock-1".into(),
+            request_id: "mock-1".into(),
+            tool_name: "Bash".into(),
+            command: "gh-axi pr view 266 --repo screamyx/surya".into(),
+            resolved: true,
+            decision: Some(zeron_proto::PermissionDecision::Deny),
+            reason: Some("you denied it".into()),
+            rule: None,
+        };
+        let doc = SessionDoc::init("chat-perm").unwrap();
+        let mut entry = user_entry("m1", "run it");
+        entry.role = MessageRole::Assistant;
+        entry.parts.push(part.clone());
+        doc.push_message(&entry).unwrap();
+
+        let read = doc.read_entries().unwrap();
+        let MessagePart::Permission {
+            tool_name,
+            command,
+            resolved,
+            decision,
+            reason,
+            ..
+        } = read[0]
+            .parts
+            .iter()
+            .find(|p| matches!(p, MessagePart::Permission { .. }))
+            .expect("the permission part came back")
+        else {
+            unreachable!()
+        };
+        assert_eq!(tool_name, "Bash");
+        assert_eq!(command, "gh-axi pr view 266 --repo screamyx/surya");
+        assert!(resolved);
+        assert_eq!(*decision, Some(zeron_proto::PermissionDecision::Deny));
+        assert_eq!(reason.as_deref(), Some("you denied it"));
+    }
+
+    /// The live path: a permission resolved mid-stream goes through
+    /// `SegmentWriter::sync` -> `update_part_fields`, which is a SECOND set of
+    /// inserts. Deleting them passes every other test in this file, and a
+    /// restored allow then renders "Denied - <cmd>", because the decision
+    /// never reached the doc.
+    #[test]
+    fn a_permission_resolved_mid_stream_carries_its_answer() {
+        let doc = SessionDoc::init("chat-perm-live").unwrap();
+        let asked = MessagePart::Permission {
+            id: "perm-live-1".into(),
+            request_id: "live-1".into(),
+            tool_name: "Bash".into(),
+            command: "gh-axi pr view 266".into(),
+            resolved: false,
+            decision: None,
+            reason: None,
+            rule: None,
+        };
+        let mut w = SegmentWriter::begin(&doc, "e1", "dev", 1).unwrap();
+        w.sync(&[asked.clone()]).unwrap();
+
+        let answered = MessagePart::Permission {
+            id: "perm-live-1".into(),
+            request_id: "live-1".into(),
+            tool_name: "Bash".into(),
+            command: "gh-axi pr view 266".into(),
+            resolved: true,
+            decision: Some(zeron_proto::PermissionDecision::Allow),
+            reason: None,
+            rule: Some("Bash gh-axi* in surya".into()),
+        };
+        w.sync(&[answered.clone()]).unwrap();
+
+        let entries = doc.read_entries().unwrap();
+        let live = entries.iter().find(|e| e.id == "e1").expect("streamed entry");
+        assert_eq!(live.parts[0], answered, "the answer reached the doc");
     }
 
     /// A card part survives the doc: written as kind "card" with its JSON,

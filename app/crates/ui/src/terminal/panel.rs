@@ -1485,6 +1485,13 @@ impl TerminalPanel {
                             .when(!selected, |el| el.invisible())
                             .cursor_pointer()
                             .hover(|s| s.bg(crate::theme::ink(0.09)))
+                            // The tab this sits in carries .on_drag, and a
+                            // press plus a few pixels of travel starts that
+                            // drag instead of closing. Same defect, same
+                            // fix, as the right-pane tab strip.
+                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation();
+                            })
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 cx.stop_propagation();
                                 this.close_tab(&chat_close2, key, window, cx);

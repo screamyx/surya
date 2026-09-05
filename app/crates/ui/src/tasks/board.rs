@@ -324,7 +324,7 @@ impl TasksPane {
                     .flex_1()
                     .min_h(px(160.0))
                     .p(px(8.0))
-                    .rounded(px(12.0))
+                    .rounded(px(Theme::PANEL_RADIUS))
                     .bg(theme.surface) // TOKEN: surya.column_bg
                     .flex()
                     .flex_col()
