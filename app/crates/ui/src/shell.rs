@@ -2027,11 +2027,15 @@ impl Shell {
 
     /// Is the needs-you list on screen? It follows the queue unless the user
     /// has said otherwise this session.
-    fn inbox_visible(&self, cx: &App) -> bool {
-        if let Some(forced) = self.inbox_shown {
-            return forced;
-        }
-        self.inbox_count(cx) > 0
+    /// Whether the Needs you page is open.
+    ///
+    /// It used to open itself whenever anything was waiting, which is how the
+    /// queue ended up drawn over the conversation. Owner, 2026-09-05 19:26:
+    /// "the box/modal, remove them". The queue now opens only when the user
+    /// asks for it, from the rail entry or its shortcut; the badge on that
+    /// entry is what says something is waiting.
+    fn inbox_visible(&self, _cx: &App) -> bool {
+        self.inbox_shown == Some(true)
     }
 
     /// How many things are waiting, 0 before the pane exists.
@@ -6337,7 +6341,15 @@ impl Shell {
         // Critique round 4, I4: while a question sheet is up the title hides
         // (at 1100x700 the sheet reached the title and drew over it).
         let sheet_up = has_selection && self.composer.read(cx).question_sheet_visible();
-        let outlet: AnyElement = if has_selection {
+        // The Needs you page. The rail entry and its shortcut open it and it
+        // takes the main area, the way Settings does - it never stacks over
+        // the conversation. `inbox_on` is `inbox_shown == Some(true)`, so it
+        // only ever appears because the user asked for it.
+        let inbox_page = inbox_on.then(|| self.inbox_pane(cx)).flatten();
+        let inbox_page_up = inbox_page.is_some();
+        let outlet: AnyElement = if let Some(pane) = inbox_page {
+            pane.into_any_element()
+        } else if has_selection {
             self.transcript.clone().into_any_element()
         } else if !has_spaces && !no_project {
             // Onboarding (first boot / after the destructive wipe): no folders
@@ -6405,12 +6417,13 @@ impl Shell {
         // and the underlay offset below all still work, so putting the list
         // back over the feed is this one binding.
         let inbox: Option<Entity<crate::inbox::NeedsYouPane>> = None;
-        let _ = inbox_on;
         // Page-title tier (critique round 2, L3; ordering per round 4, I1):
         // the title row is the FIRST thing under the titlebar, the needs-you
         // list sits under it, the transcript under both.
-        let title_row =
-            (has_selection && !sheet_up).then(|| self.render_page_title(theme, cx));
+        // The Needs you page carries its own heading, so the chat title stands
+        // down while it is up.
+        let title_row = (has_selection && !sheet_up && !inbox_page_up)
+            .then(|| self.render_page_title(theme, cx));
         let has_title = title_row.is_some();
         let title_h = if has_title { self.title_stack.get() } else { 0.0 };
         // The list is a real flex child, the transcript below it is an
@@ -6423,8 +6436,10 @@ impl Shell {
             0.0
         };
         // The list's own titlebar clearance is decided THIS frame (it flips
-        // with the title row), so it is added here rather than measured.
-        let inbox_pad = if inbox.is_some() && !has_title {
+        // with the title row), so it is added here rather than measured. The
+        // Needs you page takes the same clearance: without it the first row
+        // starts underneath the floating titlebar.
+        let inbox_pad = if (inbox.is_some() || inbox_page_up) && !has_title {
             Theme::TITLEBAR_HEIGHT
         } else {
             0.0
@@ -6571,7 +6586,11 @@ impl Shell {
                         .inset_0(),
                     )
                     .child(status)
-                    .when(has_spaces, |el| el.child(self.composer.clone()))
+                    // Nothing to type into on the Needs you page: answering
+                    // happens in the session a row opens.
+                    .when(has_spaces && !inbox_page_up, |el| {
+                        el.child(self.composer.clone())
+                    })
                     .child(self.render_terminal_container(cx))
             })
             .child(

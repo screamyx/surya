@@ -213,6 +213,78 @@ Comet has two selected treatments and always did, accent-tinted for
 `element_active` and neutral `glass_selected_bg` for the session list, and we use
 each where comet uses it.
 
+## Review round 1 (#82)
+
+The reviewer returned FIX with two real findings. Both are recorded here rather
+than only in the commit, because the first one is a mistake worth not repeating.
+
+**The Needs you rail entry opened nothing.**
+Setting the mount to `None` removed the shell's only mount of `NeedsYouPane`, so
+the rail entry and its shortcut toggled nothing while the entry kept
+highlighting and kept showing its badge.
+The comment I wrote said the list "lives in the sidebar's Needs you page".
+No such page existed.
+The "Waiting for you" block visible in the sidebar of my own frames is the
+`AgentsRail`, a different component, and I read it as proof without checking.
+
+Fixed by making it a real page.
+`inbox_visible` now means exactly "the Needs you page is open"; the old
+auto-open on `count > 0` is gone, and that auto-open is how the queue came to be
+drawn over the conversation in the first place.
+The pane mounts as the main-area outlet, the way Settings does, not as a strip
+above the transcript.
+The chat title stands down while it is up, the page takes the titlebar
+clearance, and the composer is suppressed under it.
+Main area rather than sidebar section because the rows carry a title, a prompt
+line and actions, and a 256px sidebar truncates all three.
+
+**Existing installs would have kept the surya colours.**
+`ui-settings.json` stores the theme selection as two strings and is rewritten on
+every settings change, so every install that ran a build between PR #2 and this
+revert holds `surya-light` / `surya-dark` explicitly - the owner's box included.
+The chrome would have reverted and the colours would not, which is the worst of
+both.
+
+`UiSettings` now carries a `schema_version`, and `migrated()` maps the surya pair
+back to comet's **once**, only for a file written before the field existed.
+Two tests: one that a pre-revert file comes back holding comet's pair, one that
+choosing surya deliberately afterwards survives the next launch.
+Without the second, the theme list would have an option that silently undoes
+itself.
+
+Two minor items also closed: `docs/decisions.md` now separates the Rust function
+names from the variant id strings, and records that the planned zeron-to-surya
+rename has to move the default selection and add a second settings migration or
+it drops users onto the fallback.
+The theme contrast test covers the default pair again, at comet's own measured
+numbers.
+
+## Comet's contrast, measured
+
+The default-pair test prints these and holds the floors just under them, so a
+palette that drifts is caught without pretending comet clears a bar it does not.
+
+| role | worst | where | WCAG |
+| --- | --- | --- | --- |
+| body | 11.84 | light canvas | AAA, twice over |
+| muted | 5.45 | light canvas | AA |
+| faint | 3.90 | light canvas | **under AA** |
+| accent | 6.09 | dark panel | AA |
+
+`zeron-light` panel and card: body 13.13, muted 6.04, faint 4.32.
+`zeron-dark` panel: 16.56, 8.66, 5.52.
+
+`text_faint` misses AA on the canvas plane, and in comet's flat layout the canvas
+is the sidebar column, which carries real text: session rows and their
+sub-lines.
+It is the same defect as the sub-line item above, one layer down.
+
+Ruling, raven 21:48: comet's value stays unmodified for the RC, because the
+order is comet's look.
+Both land on the post-RC list as one owner question - "faint text in light mode
+misses AA in two places, nudge it or keep comet's value" - carrying these
+numbers.
+
 ## Still open
 
 Permissions.

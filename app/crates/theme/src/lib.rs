@@ -837,6 +837,48 @@ mod tests {
         // Still shipped, still pickable in Appearance, just not the default.
         assert!(registry.variant("surya-light").is_some());
         assert!(registry.variant("surya-dark").is_some());
+
+        // The contrast floors follow the default pair rather than staying
+        // pinned to surya. They were written against surya because surya was
+        // the default; the point was always "whatever ships must be legible".
+        //
+        // These are comet's own numbers, measured and printed, not targets.
+        // The floors sit just under the worst value each role actually holds,
+        // so the test catches a palette that drifts without pretending comet
+        // clears a bar it does not:
+        //
+        //   role   worst   where              WCAG
+        //   body   11.84   light canvas       AAA, twice over
+        //   muted   5.45   light canvas       AA
+        //   faint   3.90   light canvas       UNDER AA (4.5)
+        //   accent  6.09   dark panel         AA
+        //
+        // `text_faint` misses AA on the light canvas, and the canvas is the
+        // sidebar column, which carries real text - session rows and their
+        // sub-lines. That is comet's value, unmodified since the import
+        // commit, and the owner's 2026-09-05 order is comet's look. It is
+        // recorded here rather than raised, so the next person to touch the
+        // palette sees the number instead of discovering it.
+        for id in ["zeron-light", "zeron-dark"] {
+            let variant = registry.variant(id).expect("zeron variant is built in");
+            let colors = &variant.colors;
+            for (plane, surface) in [
+                ("panel", colors.background),
+                ("card", colors.card),
+                ("canvas", colors.shell),
+            ] {
+                let body = colors.text.contrast(surface);
+                let muted = colors.text_muted.contrast(surface);
+                let faint = colors.text_faint.contrast(surface);
+                println!("{id} {plane}: body={body:.2} muted={muted:.2} faint={faint:.2}");
+                assert!(body >= 11.0, "{id}: text on {plane} {body:.2}:1 under 11:1");
+                assert!(muted >= 5.0, "{id}: muted on {plane} {muted:.2}:1 under 5:1");
+                assert!(faint >= 3.8, "{id}: faint on {plane} {faint:.2}:1 under 3.8:1");
+            }
+            let accent = variant.accent.primary.contrast(colors.background);
+            println!("{id} accent={accent:.2}");
+            assert!(accent >= 4.5, "{id}: accent {accent:.2}:1 under AA");
+        }
     }
 
     /// The fork's own pair must hold the contrast the taste doctrine asks for:
