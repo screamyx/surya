@@ -13,7 +13,7 @@ description = "haktui's offscreen Chromium (CEF) pane, ported onto comet's gpui"
 [workspace]
 
 [dependencies]
-gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "15443a0b1ef731da6085e60011c66177d85ca014" }
+gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "1a5638ebe6edd4e98ddf1b4278d2308330fe61ef" }
 futures = "0.3"
 async-channel = "2.5"
 image = { version = "0.25", default-features = false, features = ["png"] }
