@@ -1036,6 +1036,9 @@ pub struct Shell {
     /// without this it would run up behind the list (measured at paint, used
     /// next frame, same as `bottom_stack`).
     inbox_stack: std::rc::Rc<std::cell::Cell<f32>>,
+    /// Paint-time height of the page-title row above the feed (same trick as
+    /// `inbox_stack`): the transcript underlay starts below it.
+    title_stack: std::rc::Rc<std::cell::Cell<f32>>,
     /// The sidebar's archived accordion (t3code Sidebar): OPEN by default
     /// (user request), session-transient. `archived_shown` pages the
     /// expanded list ("Show more" reveals another page).
@@ -1383,6 +1386,7 @@ impl Shell {
             // first frame's clearance isn't zero (the measure corrects it).
             bottom_stack: std::rc::Rc::new(std::cell::Cell::new(120.0)),
             inbox_stack: std::rc::Rc::new(std::cell::Cell::new(0.0)),
+            title_stack: std::rc::Rc::new(std::cell::Cell::new(0.0)),
             archived_open: true,
             archived_shown: 0,
             archived_hover: None,
@@ -6292,18 +6296,12 @@ impl Shell {
         // bare canvas (the composer stack carries the affordances); no spaces
         // at all → the onboarding card. The composer sits below the first two
         // (new-chat mode mints the chat id on first send).
+        // Critique round 4, I4: while a question sheet is up the title hides
+        // (at 1100x700 the sheet reached the title and drew over it).
+        let sheet_up = has_selection
+            && crate::composer::pending_input_request(&self.state.read(cx).transcript).is_some();
         let outlet: AnyElement = if has_selection {
-            // Page-title tier (critique round 2, L3): the chat's title at
-            // display size with space + branch as the sub-line, above the
-            // transcript instead of squeezed into the 13px titlebar.
-            let title_row = self.render_page_title(theme, !inbox_on, cx);
-            div()
-                .size_full()
-                .flex()
-                .flex_col()
-                .child(title_row)
-                .child(div().flex_1().min_h_0().child(self.transcript.clone()))
-                .into_any_element()
+            self.transcript.clone().into_any_element()
         } else if !has_spaces && !no_project {
             // Onboarding (first boot / after the destructive wipe): no folders
             // to work in yet — one clear affordance.
@@ -6368,6 +6366,13 @@ impl Shell {
         // weight, above the transcript. It is built only when it will be
         // shown, so a session that never blocks never pays for it.
         let inbox = inbox_on.then(|| self.inbox_pane(cx)).flatten();
+        // Page-title tier (critique round 2, L3; ordering per round 4, I1):
+        // the title row is the FIRST thing under the titlebar, the needs-you
+        // list sits under it, the transcript under both.
+        let title_row =
+            (has_selection && !sheet_up).then(|| self.render_page_title(theme, true, cx));
+        let has_title = title_row.is_some();
+        let title_h = if has_title { self.title_stack.get() } else { 0.0 };
         // The list is a real flex child, the transcript below it is an
         // absolute underlay over the WHOLE column. Its top has to be pushed
         // down by the list's measured height or the two paint over each other
@@ -6377,6 +6382,8 @@ impl Shell {
         } else {
             0.0
         };
+        // Everything the transcript underlay must start below.
+        let top_h = title_h + inbox_h;
         // File dropzone over the ENTIRE conversation column (transcript +
         // composer, not just the pill): dragging OS files anywhere across the
         // chat area shows the "Drop images to attach" veil; a drop stages the
@@ -6391,6 +6398,23 @@ impl Shell {
             .h_full()
             .flex()
             .flex_col()
+            .when_some(title_row, |el, row| {
+                let measured = self.title_stack.clone();
+                el.child(
+                    div()
+                        .flex_none()
+                        .relative()
+                        .child(
+                            gpui::canvas(
+                                move |bounds, _, _| measured.set(f32::from(bounds.size.height)),
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .inset_0(),
+                        )
+                        .child(row),
+                )
+            })
             .when_some(inbox, |el, pane| {
                 let measured = self.inbox_stack.clone();
                 el.child(
@@ -6398,7 +6422,8 @@ impl Shell {
                         .flex_none()
                         .relative()
                         .max_h(px(320.0))
-                        .pt(px(Theme::TITLEBAR_HEIGHT))
+                        // The title row above already cleared the titlebar.
+                        .pt(px(if has_title { 0.0 } else { Theme::TITLEBAR_HEIGHT }))
                         .border_b_1()
                         .border_color(theme.border)
                         .child(
@@ -6442,7 +6467,7 @@ impl Shell {
                     div()
                         .absolute()
                         .inset_0()
-                        .top(px(inbox_h))
+                        .top(px(top_h))
                         .bottom(px(term_h))
                         .child(
                             crate::edge_fade::edge_faded(
@@ -6457,12 +6482,12 @@ impl Shell {
                             // needs-you list mounted, that list clears the
                             // titlebar instead and its bottom border is a hard
                             // edge, so the transcript starts crisp under it.
-                            .inset_top(if inbox_h > 0.0 {
+                            .inset_top(if top_h > 0.0 {
                                 0.0
                             } else {
                                 Theme::TITLEBAR_HEIGHT
                             })
-                            .band_top(if inbox_h > 0.0 {
+                            .band_top(if top_h > 0.0 {
                                 1.0
                             } else {
                                 Theme::TRANSCRIPT_FADE_BAND
