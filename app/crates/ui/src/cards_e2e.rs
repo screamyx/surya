@@ -105,6 +105,9 @@ fn controls() -> RunControls {
         }),
         steering: steer_rx,
         interrupt: CancellationToken::new(),
+        // Cards are not a permission surface; this test wants the harness to
+        // run unattended, which is what auto_allow means.
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     }
 }
 
