@@ -481,7 +481,10 @@ mod connect_tests {
             .expect("a silent endpoint must time out");
         assert!(err.to_string().contains("timed out"), "{err}");
         let took = started.elapsed();
-        assert!(took >= cap && took < Duration::from_secs(3), "took {took:?}");
+        assert!(
+            took >= cap && took < Duration::from_secs(3),
+            "took {took:?}"
+        );
         assert_eq!(CONNECT_TIMEOUT, Duration::from_secs(5));
     }
 }
