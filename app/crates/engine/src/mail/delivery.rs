@@ -160,6 +160,15 @@ impl Mail {
                 return Err(err);
             }
         };
+        // Test hook: widen the window between `dispatch` returning and the run
+        // id being recorded, so the race this settle pass exists for can be
+        // reproduced deterministically instead of waited for.
+        #[cfg(debug_assertions)]
+        if let Ok(ms) = std::env::var("ZERON_MAIL_SET_RUN_DELAY_MS")
+            && let Ok(ms) = ms.parse::<u64>()
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+        }
         let named = ids.clone();
         let run = run_id.clone();
         self.with_store(move |s| {
@@ -176,6 +185,20 @@ impl Mail {
             delivered = ids.len(),
             "mail delivered into a turn"
         );
+        // Settle once here, holding no assumption that the run is still alive.
+        //
+        // The ack pass only considers rows whose run id is set, which is what
+        // stops a status tick DURING dispatch from acking a turn nobody saw.
+        // The cost of that gate: a turn can finish before `dispatch` returns
+        // and `set_run` records the id, and then the Idle transition has
+        // already been and gone. Nothing else would ever wake the pump for
+        // this agent, so the row would sit delivered-and-unacked forever - not
+        // slowly, permanently. Cheap: settle_agent returns immediately while
+        // the run is live.
+        drop(_guard);
+        if let Err(err) = self.settle_agent(agent).await {
+            tracing::warn!(agent = %agent, error = %err, "settle after delivery failed");
+        }
         Ok(ids.len())
     }
 
