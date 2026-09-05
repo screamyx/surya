@@ -30,6 +30,8 @@ pub enum RulesError {
     WorkspaceRuleNeedsPath,
     #[error("no such rule: {0}")]
     NotFound(String),
+    #[error("the rule pattern {pattern:?} does not cover the command it was made from ({command:?})")]
+    PatternMissesRequest { pattern: String, command: String },
 }
 
 struct Inner {
@@ -122,17 +124,29 @@ impl AllowRules {
     }
 
     /// Build a rule from a permission answer's `remember` block.
+    ///
+    /// The pattern must match the command the user was actually looking at.
+    /// Without that check a client answering "Bash: ls" could send pattern
+    /// `*` with global scope and silently auto-allow every Bash command
+    /// forever — the card said one thing and the rule meant another. An
+    /// empty pattern is not a wildcard here: it pins the exact command.
     pub fn from_remember(
         remember: &RememberRule,
         request: &PermissionRequest,
         cwd: &str,
-    ) -> AllowRule {
+    ) -> Result<AllowRule, RulesError> {
         let pattern = remember.pattern.trim();
         let pattern = if pattern.is_empty() {
             request.command.clone()
         } else {
             pattern.to_string()
         };
+        if !zeron_proto::glob_match(&pattern, &request.command) {
+            return Err(RulesError::PatternMissesRequest {
+                pattern,
+                command: request.command.clone(),
+            });
+        }
         let workspace_path = (remember.scope == RuleScope::Workspace).then(|| cwd.to_string());
         let name = remember
             .name
@@ -141,7 +155,7 @@ impl AllowRules {
             .filter(|n| !n.is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| default_rule_name(&request.tool_name, &pattern, &workspace_path));
-        AllowRule {
+        Ok(AllowRule {
             id: new_id(),
             name,
             scope: remember.scope,
@@ -149,7 +163,7 @@ impl AllowRules {
             tool_name: request.tool_name.clone(),
             pattern,
             created_at: Utc::now(),
-        }
+        })
     }
 
     pub fn delete(&self, rule_id: &str) -> Result<(), RulesError> {
@@ -175,6 +189,14 @@ impl AllowRules {
         }
         let tmp = path.with_extension("json.tmp");
         std::fs::write(&tmp, serde_json::to_vec_pretty(rules)?)?;
+        // 0600 before the rename, never after: the table says which commands
+        // run without asking, so another local account must not be able to
+        // read it — and must certainly never win a race to write it.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+        }
         std::fs::rename(&tmp, path)?;
         Ok(())
     }
@@ -226,7 +248,7 @@ mod tests {
             pattern: "php artisan migrate*".into(),
             name: None,
         };
-        let rule = AllowRules::from_remember(&remember, &req, "/repos/project-jag");
+        let rule = AllowRules::from_remember(&remember, &req, "/repos/project-jag").expect("the pattern covers the command");
         assert_eq!(rule.name, "Bash php artisan migrate* in project-jag");
         rules.add(rule).unwrap();
 
@@ -257,7 +279,8 @@ mod tests {
             },
             &req,
             "/repos/x",
-        );
+        )
+        .expect("an empty pattern pins the exact command");
         assert_eq!(rule.pattern, "git push");
         assert_eq!(rule.workspace_path, None);
         assert_eq!(rule.name, "Bash git push");
@@ -275,7 +298,8 @@ mod tests {
             },
             &request("Bash", "git status"),
             "/repos/x",
-        );
+        )
+        .expect("the pattern covers the command");
         let stored = rules.add(rule).unwrap();
 
         let reopened = AllowRules::open(dir.path());
@@ -295,15 +319,18 @@ mod tests {
     fn adding_the_same_rule_twice_does_not_grow_the_table() {
         let dir = tempfile::tempdir().unwrap();
         let rules = AllowRules::open(dir.path());
-        let make = || AllowRules::from_remember(
-            &RememberRule {
-                scope: RuleScope::Global,
-                pattern: "ls*".into(),
-                name: None,
-            },
-            &request("Bash", "ls"),
-            "/repos/x",
-        );
+        let make = || {
+            AllowRules::from_remember(
+                &RememberRule {
+                    scope: RuleScope::Global,
+                    pattern: "ls*".into(),
+                    name: None,
+                },
+                &request("Bash", "ls"),
+                "/repos/x",
+            )
+            .expect("the pattern covers the command")
+        };
         let first = rules.add(make()).unwrap();
         let second = rules.add(make()).unwrap();
         assert_eq!(first.id, second.id);
@@ -322,13 +349,92 @@ mod tests {
             },
             &request("Bash", "ls"),
             "/repos/x",
-        );
+        )
+        .expect("* covers ls");
         rule.workspace_path = None;
         assert!(matches!(
             rules.add(rule),
             Err(RulesError::WorkspaceRuleNeedsPath)
         ));
         assert!(rules.list().is_empty());
+    }
+
+    /// The escalation this check exists to stop: the card said "Bash: ls",
+    /// so the rule it creates must not silently mean "Bash: anything".
+    #[test]
+    fn a_pattern_that_does_not_cover_the_shown_command_is_refused() {
+        let shown = request("Bash", "ls");
+        let widened = AllowRules::from_remember(
+            &RememberRule {
+                scope: RuleScope::Global,
+                // Matches `ls`, but also `rm -rf /` and everything else.
+                pattern: "rm*".into(),
+                name: None,
+            },
+            &shown,
+            "/repos/x",
+        );
+        assert!(matches!(
+            widened,
+            Err(RulesError::PatternMissesRequest { .. })
+        ));
+
+        // A wider pattern that still covers what the user saw is fine — that
+        // is the whole point of "always allow migrations", not just this one.
+        assert!(
+            AllowRules::from_remember(
+                &RememberRule {
+                    scope: RuleScope::Global,
+                    pattern: "ls*".into(),
+                    name: None,
+                },
+                &shown,
+                "/repos/x",
+            )
+            .is_ok()
+        );
+        // `*` covers everything, including what was shown, so it is allowed
+        // — a user who types a bare star has said what they mean.
+        assert!(
+            AllowRules::from_remember(
+                &RememberRule {
+                    scope: RuleScope::Global,
+                    pattern: "*".into(),
+                    name: None,
+                },
+                &shown,
+                "/repos/x",
+            )
+            .is_ok()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_rules_file_is_not_readable_by_other_local_accounts() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let rules = AllowRules::open(dir.path());
+        rules
+            .add(
+                AllowRules::from_remember(
+                    &RememberRule {
+                        scope: RuleScope::Global,
+                        pattern: "ls*".into(),
+                        name: None,
+                    },
+                    &request("Bash", "ls"),
+                    "/repos/x",
+                )
+                .unwrap(),
+            )
+            .unwrap();
+        let mode = std::fs::metadata(dir.path().join("allow-rules.json"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600, "the table says what runs without asking");
     }
 
     #[test]

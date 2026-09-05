@@ -44,14 +44,19 @@ impl PermissionGate {
         self.0.is_some()
     }
 
-    /// Ask, and wait. A dropped host resolver degrades to `Allow`: the CLI
-    /// blocks until SOME answer arrives, so a host that went away must
-    /// unblock the agent rather than wedge it forever.
+    /// Ask, and wait.
+    ///
+    /// A dropped host resolver is a `Deny`, never an `Allow`. The CLI blocks
+    /// until SOME answer arrives, so the gate must always answer — but the
+    /// answer to "nobody is there to approve this" is no. Deny unblocks the
+    /// agent exactly as well as Allow does, and it is the only reading that
+    /// is safe: deleting a chat with a permission still parked drops its
+    /// responder, and that must not run the tool.
     pub async fn ask(&self, request: PermissionRequest) -> PermissionDecision {
         let Some(ask) = self.0.as_ref() else {
             return PermissionDecision::Allow;
         };
-        ask(request).await.unwrap_or(PermissionDecision::Allow)
+        ask(request).await.unwrap_or(PermissionDecision::Deny)
     }
 }
 
@@ -144,8 +149,11 @@ mod tests {
         assert_eq!(decision, PermissionDecision::Allow);
     }
 
+    /// The gate must fail CLOSED. A host that goes away mid-request — the
+    /// chat was deleted, the engine dropped the responder — must not have
+    /// the tool run anyway. It still answers, so the agent is never wedged.
     #[tokio::test]
-    async fn a_dropped_host_resolver_unblocks_the_agent() {
+    async fn a_dropped_host_resolver_denies_rather_than_allowing() {
         let gate = PermissionGate::new(|_| {
             let (tx, rx) = oneshot::channel();
             drop(tx);
@@ -156,11 +164,11 @@ mod tests {
             .ask(PermissionRequest {
                 request_id: "r".into(),
                 tool_name: "Bash".into(),
-                command: "ls".into(),
+                command: "rm -rf /".into(),
                 input: None,
             })
             .await;
-        assert_eq!(decision, PermissionDecision::Allow);
+        assert_eq!(decision, PermissionDecision::Deny);
     }
 
     #[tokio::test]

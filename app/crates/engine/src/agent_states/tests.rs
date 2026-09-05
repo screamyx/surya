@@ -193,6 +193,48 @@ fn a_denied_answer_never_becomes_a_rule() {
     assert_eq!(rx.blocking_recv().unwrap(), PermissionDecision::Deny);
 }
 
+/// Deleting a chat with a permission still parked drops its responder. The
+/// gate turns that into a Deny, so the tool does not run — the fail-closed
+/// half of `PermissionGate::ask`.
+#[test]
+fn dropping_a_parked_permission_denies_it_rather_than_running_the_tool() {
+    let s = states();
+    let (tx, rx) = oneshot::channel();
+    s.open_permission("c", "c", "/repos/x", request("r", "Bash", "rm -rf /"), tx);
+    assert_eq!(s.needs_you().len(), 1);
+
+    s.drop_chat("c");
+    assert!(s.needs_you().is_empty());
+    // The responder went with the chat, so the receiver sees a closed
+    // channel — which the gate reads as Deny.
+    assert!(rx.blocking_recv().is_err(), "the responder was dropped");
+}
+
+/// The card said "Bash: ls". A client that answers with pattern `rm*` is
+/// asking for a rule that does not cover what the user approved, so the
+/// whole answer is refused rather than half-applied.
+#[test]
+fn a_remember_pattern_that_misses_the_shown_command_refuses_the_answer() {
+    let s = states();
+    let (tx, rx) = oneshot::channel();
+    s.open_permission("c", "c", "/repos/x", request("r", "Bash", "ls"), tx);
+    let refused = s.resolve_permission(
+        "r",
+        PermissionDecision::Allow,
+        Some(&RememberRule {
+            scope: RuleScope::Global,
+            pattern: "rm*".into(),
+            name: None,
+        }),
+    );
+    assert!(refused.is_err(), "the widened rule is refused");
+    assert!(s.rules().list().is_empty(), "and no rule was stored");
+    // The request stays parked, so nothing ran and the card is still there
+    // for an honest answer.
+    assert_eq!(s.needs_you().len(), 1);
+    drop(rx);
+}
+
 #[test]
 fn answering_an_unknown_permission_is_an_error_not_a_silent_success() {
     let s = states();
