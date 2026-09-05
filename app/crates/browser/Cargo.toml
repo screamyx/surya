@@ -13,10 +13,23 @@ description = "haktui's offscreen Chromium (CEF) pane, ported onto comet's gpui"
 [workspace]
 
 [dependencies]
-gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "f910653f77cc0d5cee9cb874d6c7b06fe5b06e4a" }
+gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "6316cce462c93dc1d85c22aebc5230553484d7f9" }
 futures = "0.3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 # Offscreen Chromium. The build script downloads the CEF binary for the
 # target into CEF_PATH (or OUT_DIR) and copies the runtime files next to the
 # binaries in the target dir; see README.md.
 cef = "151.8.0"
+
+# Zero-copy frames (`zero_copy/d3d11.rs`): this crate's own D3D11 device and
+# the GPU copy out of CEF's shared texture. The version is the one `cef`
+# itself pulls on Windows, so the tree carries one `windows` crate.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Security",
+] }
