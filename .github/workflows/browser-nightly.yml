@@ -139,9 +139,11 @@ jobs:
           # lock for the run, and give up rather than queue behind a long one.
           export DISPLAY="$DISP"
           export SURYA_CEF_LOG=/tmp/browser-nightly-cef.log
+          # `-e` is on for this shell, so the exit code has to be caught on
+          # the same line or the step dies before the check below runs.
+          rc=0
           timeout 900 flock -w 300 /store/surya-display7.lock \
-            scripts/browser-scheme-proof.sh 180
-          rc=$?
+            scripts/browser-scheme-proof.sh 180 || rc=$?
           if [ "$rc" -eq 124 ]; then
             echo "::warning::the proof timed out holding the display lock"
             exit 1

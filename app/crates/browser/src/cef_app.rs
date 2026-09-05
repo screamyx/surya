@@ -55,6 +55,10 @@ fn switches(scheme: ColorScheme) -> Vec<String> {
     if matches!(scheme, ColorScheme::Dark) {
         s.push("force-dark-mode".to_string());
     }
+    // What the sandbox decision needs on the command line. Empty unless
+    // `sandbox::decide_and_apply` asked for something; see sandbox.rs for
+    // why the namespace path needs `disable-setuid-sandbox`.
+    s.extend(crate::sandbox::switches());
     // `SURYA_CEF_SWITCHES=a,b=c`: extra Chromium switches for a diagnosis,
     // e.g. `enable-logging=stderr,v=1`.
     if let Ok(extra) = std::env::var("SURYA_CEF_SWITCHES") {

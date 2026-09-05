@@ -20,6 +20,27 @@
 //! turns the sandbox on when the answer is "one of them"; it only reports
 //! `Off` when it has a concrete reason, and prints that reason.
 //!
+//! The two are not independent, and this cost a CI run to learn. Chromium
+//! picks the SUID path whenever a `chrome-sandbox` file exists beside the
+//! binary, *before* it looks at whether that file is usable, and if it is
+//! not it stops there rather than trying namespaces. Measured on the CI
+//! runner, 2026-09-05, with the sandbox on and namespaces available:
+//!
+//! ```text
+//! browser: sandbox on=true (unprivileged user namespaces)
+//! [FATAL:sandbox/linux/suid/client/setuid_sandbox_host.cc:166] The SUID
+//! sandbox helper binary was found, but is not configured correctly. Rather
+//! than run without sandboxing I'm aborting now. You need to make sure that
+//! .../chrome-sandbox is owned by root and has mode 4755.
+//! ```
+//!
+//! The cef crate's build script copies `chrome-sandbox` next to the binary
+//! at mode 0755, so this is the *default* state of a developer build, not an
+//! edge case. `--disable-setuid-sandbox` is what tells Chromium to ignore
+//! that file and use the namespace sandbox it can actually build; the
+//! sandbox stays on. That switch is the reason this module has a
+//! [`switches`] side.
+//!
 //! The measurement for (1) is a real `fork` + `unshare(CLONE_NEWUSER)` in
 //! the child, not a read of `/proc/sys`. Three separate settings can deny
 //! user namespaces (`kernel.unprivileged_userns_clone`,
@@ -45,17 +66,32 @@ impl Decision {
     // constructor is reachable from the tests alone.
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     fn on(why: impl Into<String>, devel_sandbox: Option<std::path::PathBuf>) -> Self {
-        Self { on: true, why: why.into(), devel_sandbox }
+        Self { on: true, why: why.into(), devel_sandbox, switches: Vec::new() }
     }
 
     fn off(why: impl Into<String>) -> Self {
-        Self { on: false, why: why.into(), devel_sandbox: None }
+        Self { on: false, why: why.into(), devel_sandbox: None, switches: Vec::new() }
+    }
+
+    fn with_switch(mut self, switch: &str) -> Self {
+        self.switches.push(switch.to_string());
+        self
     }
 
     /// The value CEF's `Settings.no_sandbox` wants: 1 means *no* sandbox.
     pub(crate) fn no_sandbox_setting(&self) -> i32 {
         i32::from(!self.on)
     }
+}
+
+/// The decision this process made, for the parts of the code that run later.
+static DECISION: std::sync::OnceLock<Decision> = std::sync::OnceLock::new();
+
+/// The Chromium switches the sandbox decision needs, empty until
+/// [`decide_and_apply`] has run. Read by `cef_app::switches`, which Chromium
+/// calls from inside `initialize`, so the decision is always already there.
+pub(crate) fn switches() -> Vec<String> {
+    DECISION.get().map(|d| d.switches.clone()).unwrap_or_default()
 }
 
 /// Decide, apply the environment Chromium needs, and print the reason.
@@ -71,7 +107,8 @@ pub(crate) fn decide_and_apply() -> Decision {
         // environment, and before any other thread of ours touches it.
         unsafe { std::env::set_var("CHROME_DEVEL_SANDBOX", helper) };
     }
-    println!("browser: sandbox on={} ({})", d.on, d.why);
+    println!("browser: sandbox on={} ({}) switches={:?}", d.on, d.why, d.switches);
+    let _ = DECISION.set(d.clone());
     d
 }
 
@@ -92,7 +129,12 @@ fn platform_decision() -> Decision {
             Decision::on(format!("SUID helper {shown}"), Some(path))
         }
         None => match user_namespaces_available() {
-            true => Decision::on("unprivileged user namespaces", None),
+            // `--disable-setuid-sandbox` is not a weakening. Without it
+            // Chromium sees the mode-0755 chrome-sandbox the cef build
+            // script drops beside the binary, commits to the SUID path, and
+            // aborts; with it, it builds the namespace sandbox instead.
+            true => Decision::on("unprivileged user namespaces", None)
+                .with_switch("disable-setuid-sandbox"),
             false => Decision::off(
                 "no user namespaces (unshare(CLONE_NEWUSER) refused) and no SUID \
                  chrome-sandbox beside the binary; run the packaged install.sh, \
@@ -215,6 +257,29 @@ mod tests {
         // This source file: readable, not setuid, not root-owned.
         assert!(!is_suid_root(std::path::Path::new(file!())));
         assert!(!is_suid_root(std::path::Path::new("/definitely/not/here")));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_namespace_path_disables_the_setuid_one() {
+        // Chromium aborts rather than fall back when a non-SUID
+        // chrome-sandbox sits beside the binary, so an `on` that rests on
+        // namespaces must always carry the switch that skips the SUID path.
+        // (Measured: CI run 33964652975 failed exactly this way without it.)
+        let d = platform_decision();
+        if d.on && d.devel_sandbox.is_none() {
+            assert!(
+                d.switches.iter().any(|s| s == "disable-setuid-sandbox"),
+                "namespace sandbox without the switch: {d:?}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_suid_path_carries_no_switch() {
+        let d = Decision::on("SUID helper /x", Some("/x".into()));
+        assert!(d.switches.is_empty(), "{d:?}");
     }
 
     #[cfg(target_os = "linux")]
