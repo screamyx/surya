@@ -4,6 +4,7 @@
 
 mod auth_cli;
 mod daemon;
+mod mail_cli;
 mod update_cli;
 
 use clap::{Parser, Subcommand};
@@ -57,6 +58,12 @@ enum Command {
         #[command(subcommand)]
         command: DaemonCommand,
     },
+    /// Agent mail (decision 19): send, drain, ack — the thin shim existing
+    /// agb-shaped skills can alias to.
+    Mail {
+        #[command(subcommand)]
+        command: MailCommand,
+    },
     /// Check for a newer release and apply it (download → verify → swap →
     /// service restart). `--check` only reports (exits 1 when one is available).
     Update {
@@ -67,6 +74,30 @@ enum Command {
     FilesDemo {
         #[arg(value_name = "CHECKOUT")]
         checkout: std::path::PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum MailCommand {
+    /// Send to an agent id, a human alias, or `#workspace`.
+    Send {
+        /// Recipient address.
+        to: String,
+        /// Message body.
+        body: String,
+        /// Sender address written on the envelope.
+        #[arg(long, default_value = "cli")]
+        from: String,
+    },
+    /// Show mail: everything for one agent, or the recent feed.
+    Drain {
+        #[arg(long)]
+        agent: Option<String>,
+    },
+    /// Mark one message seen.
+    Ack {
+        /// Delivery id.
+        id: String,
     },
 }
 
@@ -198,6 +229,19 @@ fn main() -> anyhow::Result<()> {
         Some(Command::Sync) => {
             let runtime = tokio::runtime::Runtime::new()?;
             runtime.block_on(sync_cli(engine_config_from_env(None).ipc()))
+        }
+        Some(Command::Mail { command }) => {
+            let runtime = tokio::runtime::Runtime::new()?;
+            let ipc = engine_config_from_env(None).ipc();
+            runtime.block_on(async move {
+                match command {
+                    MailCommand::Send { to, body, from } => {
+                        mail_cli::send(ipc, &from, &to, &body).await
+                    }
+                    MailCommand::Drain { agent } => mail_cli::drain(ipc, agent.as_deref()).await,
+                    MailCommand::Ack { id } => mail_cli::ack(ipc, &id).await,
+                }
+            })
         }
         Some(Command::Update { check }) => {
             let runtime = tokio::runtime::Runtime::new()?;

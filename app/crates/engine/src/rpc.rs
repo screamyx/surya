@@ -461,6 +461,8 @@ pub struct EngineRpc {
     links: Option<std::sync::Arc<LinkCache>>,
     updater: Option<zeron_update::Updater>,
     local_import: Option<crate::local_import::LocalImporter>,
+    /// Agent mail sub-service (Mail.Send / Mail.List / Mail.Ack / WatchMail).
+    mail: Option<crate::mail::MailRpc>,
     engine_info: EngineInfo,
 }
 
@@ -498,6 +500,7 @@ impl EngineRpc {
             links: None,
             updater: None,
             local_import: None,
+            mail: None,
             engine_info,
         }
     }
@@ -517,6 +520,12 @@ impl EngineRpc {
     /// Attach the release checker (UpdateStatus stream + ApplyUpdate).
     pub fn with_updater(mut self, updater: zeron_update::Updater) -> Self {
         self.updater = Some(updater);
+        self
+    }
+
+    /// Attach agent mail — the `Mail.*` methods and the `WatchMail` feed.
+    pub fn with_mail(mut self, mail: crate::mail::Mail) -> Self {
+        self.mail = Some(crate::mail::MailRpc::new(mail));
         self
     }
 
@@ -1044,6 +1053,9 @@ fn forwardable(method: &str) -> bool {
 
 /// Forwardable methods whose reply is a stream (proxied item-by-item).
 fn is_stream_method(method: &str) -> bool {
+    if method == methods::WATCH_MAIL {
+        return true;
+    }
     matches!(
         method,
         methods::WATCH_DOC_MESSAGES
@@ -1217,6 +1229,11 @@ impl RpcService for EngineRpc {
         {
             let target = target.to_string();
             return self.forward(&target, method, params).await;
+        }
+        if crate::mail::MailRpc::handles(method)
+            && let Some(mail) = &self.mail
+        {
+            return mail.handle(method, params).await;
         }
         if AuthRpc::handles(method) {
             return AuthRpc::new(self.auth()?.clone())
