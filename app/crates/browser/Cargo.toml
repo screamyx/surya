@@ -20,3 +20,16 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # target into CEF_PATH (or OUT_DIR) and copies the runtime files next to the
 # binaries in the target dir; see README.md.
 cef = "151.8.0"
+
+# Zero-copy frames (`zero_copy/d3d11.rs`): this crate's own D3D11 device and
+# the GPU copy out of CEF's shared texture. The version is the one `cef`
+# itself pulls on Windows, so the tree carries one `windows` crate.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Security",
+] }
