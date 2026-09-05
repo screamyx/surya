@@ -3443,6 +3443,16 @@ pub struct Composer {
     failure_key: Option<String>,
     wizard: Option<Wizard>,
     wizard_focus: FocusHandle,
+    /// The permission panel's own focus. The wizard gets keys because it
+    /// mounts the composer input; this panel mounts nothing focusable, so it
+    /// has to hold focus itself or `on_key_down` never fires.
+    permission_focus: FocusHandle,
+    /// Focus the panel on the frame it appears, once (the lightbox does the
+    /// same with `preview_focus_pending`).
+    permission_focus_pending: bool,
+    /// The ask the panel is currently showing, so a NEW one arms the focus
+    /// and a redraw of the same one does not steal it back mid-typing.
+    permission_shown: Option<String>,
     advance_task: Option<Task<()>>,
     send_task: Option<Task<()>>,
     /// Interrupt/answer commands get their own slot: assigning `send_task`
@@ -3678,6 +3688,9 @@ impl Composer {
             failure: None,
             wizard: None,
             wizard_focus,
+            permission_focus: cx.focus_handle(),
+            permission_focus_pending: false,
+            permission_shown: None,
             failure_key: None,
             action_task: None,
             advance_task: None,
@@ -4762,6 +4775,17 @@ impl Composer {
             self.input.update(cx, |input, cx| input.set_text(draft, cx));
         }
 
+        // Permission panel lifecycle: a new ask takes focus once, so the
+        // keys work without the user clicking the panel first. Same ask
+        // redrawing does not re-focus.
+        let asking = self
+            .pending_permission(cx)
+            .map(|(request_id, _, _)| request_id);
+        if asking != self.permission_shown {
+            self.permission_focus_pending = asking.is_some();
+            self.permission_shown = asking;
+        }
+
         // Question panel lifecycle (wizard state cached per request id).
         match pending {
             Some((request_id, questions))
@@ -5675,10 +5699,15 @@ impl Composer {
             return;
         };
         let key = event.keystroke.key.as_str();
+        // A BARE digit answers. With a modifier held the keystroke belongs to
+        // an app shortcut (⌘2 jumps to a sidebar row), and consuming it here
+        // would write a permanent always-allow rule the user never asked for.
+        let bare = !event.keystroke.modifiers.modified();
         let answer = match key {
-            "1" => Some((zeron_proto::PermissionDecision::Allow, false)),
-            "2" => Some((zeron_proto::PermissionDecision::Allow, true)),
-            "3" | "escape" => Some((zeron_proto::PermissionDecision::Deny, false)),
+            "1" if bare => Some((zeron_proto::PermissionDecision::Allow, false)),
+            "2" if bare => Some((zeron_proto::PermissionDecision::Allow, true)),
+            "3" if bare => Some((zeron_proto::PermissionDecision::Deny, false)),
+            "escape" => Some((zeron_proto::PermissionDecision::Deny, false)),
             _ => None,
         };
         if let Some((decision, remember)) = answer {
@@ -5744,8 +5773,24 @@ impl Composer {
                             .min_w_0()
                             .text_size(crate::typography::ui_rems(13.5))
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(theme.text)
+                            .text_color(theme.text.opacity(0.9))
                             .child(label),
+                    )
+                    // The number chip, same 22px square the wizard uses. It is
+                    // also the only place the keys are written down, so the
+                    // panel says how to answer it without a legend.
+                    .child(
+                        div()
+                            .flex_none()
+                            .size(px(22.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(6.0))
+                            .bg(crate::theme::ink(0.05))
+                            .text_size(crate::typography::ui_rems(11.0))
+                            .text_color(theme.text_muted.opacity(0.6))
+                            .child(SharedString::from(format!("{}", ix + 1))),
                     )
                     .into_any_element()
             })
@@ -5753,7 +5798,7 @@ impl Composer {
 
         div()
             .id("permission-panel")
-            .track_focus(&self.wizard_focus)
+            .track_focus(&self.permission_focus)
             .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
                 this.on_permission_key(event, cx)
             }))
@@ -5787,6 +5832,8 @@ impl Composer {
                     .child(
                         div()
                             .text_size(crate::typography::ui_rems(15.0))
+                            .line_height(px(20.0))
+                            .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme.text)
                             .child(SharedString::from(format!("Allow {tool_name}?"))),
                     )
@@ -5810,12 +5857,22 @@ impl Composer {
             )
             .child(
                 div()
-                    .px(px(10.0))
+                    .px(px(16.0))
                     .py(px(10.0))
                     .flex()
                     .flex_col()
                     .gap(px(4.0))
                     .children(rows),
+            )
+            // Escape has no row of its own, so it is said out loud. A key the
+            // user cannot see is a key they do not have.
+            .child(
+                div()
+                    .px(px(16.0))
+                    .pb(px(14.0))
+                    .text_size(crate::typography::ui_rems(11.0))
+                    .text_color(theme.text_muted.opacity(0.6))
+                    .child("Esc denies"),
             )
             .into_any_element()
     }
@@ -6086,6 +6143,12 @@ impl Composer {
 /// the focused terminal panel is hidden — route here).
 impl Focusable for Composer {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
+        // While the permission panel is up the input is not mounted, so a
+        // fallback that routed there would focus nothing and the panel's keys
+        // would stay dead.
+        if self.pending_permission(cx).is_some() {
+            return self.permission_focus.clone();
+        }
         self.input.focus_handle(cx)
     }
 }
@@ -6366,6 +6429,9 @@ impl Render for Composer {
         // does. It is the one thing the user can act on, so it is the one
         // thing the composer offers.
         if let Some((request_id, tool_name, command)) = self.pending_permission(cx) {
+            if std::mem::take(&mut self.permission_focus_pending) {
+                window.focus(&self.permission_focus, cx);
+            }
             let panel = self.render_permission(request_id, tool_name, command, cx);
             return container.child(motion::fade_quick(
                 "composer-permission",
