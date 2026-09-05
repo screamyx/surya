@@ -69,6 +69,7 @@ actions!(
         ToggleChanges,
         ToggleFiles,
         ToggleTasks,
+        ToggleInbox,
         AddSpacePalette,
         NewSession,
         OpenSettings,
@@ -274,6 +275,7 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
         ),
         KeyBinding::new(&platform_combo("mod-shift-f"), ToggleFiles, None),
         KeyBinding::new(&platform_combo("mod-shift-t"), ToggleTasks, None),
+        KeyBinding::new(&platform_combo("mod-shift-i"), ToggleInbox, None),
         KeyBinding::new(
             &valid_or_default(&keymap.toggle_terminal, "mod-j"),
             ToggleTerminal,
@@ -1063,6 +1065,16 @@ pub struct Shell {
     files_pane: Option<(String, Entity<crate::files::FilesPane>)>,
     /// Cached Tasks pane, keyed by the space it was built for.
     tasks_pane: Option<(String, Entity<crate::tasks::TasksPane>)>,
+    /// The needs-you list at the top of the feed and the agent tree in the
+    /// sidebar (decisions 15 and 20). Built once and kept: both follow the
+    /// engine's own streams, so they are not per-space the way Files and
+    /// Tasks are.
+    inbox_pane: Option<Entity<crate::inbox::NeedsYouPane>>,
+    agents_rail: Option<Entity<crate::inbox::AgentsRail>>,
+    /// User's override for the needs-you list. `None` follows the queue:
+    /// visible while something waits, gone when nothing does (decision 20's
+    /// quiet state). `Some` means they said otherwise with mod-shift-i.
+    inbox_shown: Option<bool>,
     /// `ZERON_OPEN_PANE=files|tasks|browser`: open that surface on first
     /// render (headless proof runs that cannot click), consumed once. Files
     /// and Tasks wait until a space is known; the browser needs none.
@@ -1366,6 +1378,9 @@ impl Shell {
             right_tabs: std::collections::HashMap::new(),
             files_pane: None,
             tasks_pane: None,
+            inbox_pane: None,
+            agents_rail: None,
+            inbox_shown: None,
             debug_open_pane: std::env::var("ZERON_OPEN_PANE").ok(),
             right_tab_drag: None,
             right_tab_scroll: gpui::ScrollHandle::new(),
@@ -1899,6 +1914,69 @@ impl Shell {
         let pane = cx.new(|cx| crate::files::FilesPane::new(engine, space_id, cx));
         self.files_pane = Some((space.id, pane.clone()));
         Some(pane)
+    }
+
+    /// The needs-you list. Not keyed to a space: the engine publishes one
+    /// queue for every chat, and decision 20 wants the whole of it.
+    /// mod-shift-i. Flips the list against whatever it is showing NOW, so
+    /// the first press always does something visible whichever way the queue
+    /// had it.
+    fn toggle_inbox(&mut self, cx: &mut Context<Self>) {
+        let showing = self.inbox_visible(cx);
+        // Make sure it exists before showing it, or the first press opens
+        // nothing and reads as a dead key.
+        if !showing {
+            self.inbox_pane(cx);
+        }
+        self.inbox_shown = Some(!showing);
+        cx.notify();
+    }
+
+    fn inbox_pane(&mut self, cx: &mut Context<Self>) -> Option<Entity<crate::inbox::NeedsYouPane>> {
+        if let Some(pane) = &self.inbox_pane {
+            return Some(pane.clone());
+        }
+        self.state.read(cx).engine()?;
+        let state = self.state.clone();
+        let pane = cx.new(|cx| crate::inbox::NeedsYouPane::new(state, cx));
+        // Tapping a card opens its chat: the pane says which, the shell
+        // decides what that means (it owns routing, the pane does not).
+        cx.subscribe(&pane, |this, _, event: &crate::inbox::OpenChat, cx| {
+            let chat_id = event.0.clone();
+            this.state
+                .update(cx, |state, cx| state.select_chat(Some(chat_id), cx));
+        })
+        .detach();
+        self.inbox_pane = Some(pane.clone());
+        Some(pane)
+    }
+
+    fn agents_rail(&mut self, cx: &mut Context<Self>) -> Option<Entity<crate::inbox::AgentsRail>> {
+        if let Some(rail) = &self.agents_rail {
+            return Some(rail.clone());
+        }
+        self.state.read(cx).engine()?;
+        let state = self.state.clone();
+        let rail = cx.new(|cx| crate::inbox::AgentsRail::new(state, cx));
+        cx.subscribe(&rail, |this, _, event: &crate::inbox::SelectChat, cx| {
+            let chat_id = event.0.clone();
+            this.state
+                .update(cx, |state, cx| state.select_chat(Some(chat_id), cx));
+        })
+        .detach();
+        self.agents_rail = Some(rail.clone());
+        Some(rail)
+    }
+
+    /// Is the needs-you list on screen? It follows the queue unless the user
+    /// has said otherwise this session.
+    fn inbox_visible(&self, cx: &App) -> bool {
+        if let Some(forced) = self.inbox_shown {
+            return forced;
+        }
+        self.inbox_pane
+            .as_ref()
+            .is_some_and(|pane| !pane.read(cx).rows().is_empty())
     }
 
     fn tasks_pane(&mut self, cx: &mut Context<Self>) -> Option<Entity<crate::tasks::TasksPane>> {
@@ -4072,12 +4150,25 @@ impl Shell {
             Route::Settings(section) => self.render_settings_nav(section, &theme, cx),
             Route::Chat => {
                 let entries = self.render_rail_entries(&theme, cx);
+                // Decision 15: the agent tree sits above the chat list, so a
+                // spawned agent is visible where its spawner is.
+                let agents = self.agents_rail(cx);
                 let chats = self.render_chat_sidebar(&theme, cx);
                 div()
                     .size_full()
                     .flex()
                     .flex_col()
                     .child(entries)
+                    .when_some(agents, |el, rail| {
+                        el.child(
+                            div()
+                                .flex_none()
+                                .max_h(px(220.0))
+                                .border_b_1()
+                                .border_color(theme.border)
+                                .child(rail),
+                        )
+                    })
                     .child(div().flex_1().min_h_0().child(chats))
                     .into_any_element()
             }
@@ -4107,6 +4198,7 @@ impl Shell {
     /// Agents, Tasks, Files. Home and Files/Tasks act now; Needs you and
     /// Agents wait for the inbox pane (feat/inbox-ui) and render dimmed.
     fn render_rail_entries(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        let inbox_on = self.inbox_visible(cx);
         let active = if self.right_pane_open(cx) {
             Some(self.resolved_right_active(cx))
         } else {
@@ -4157,9 +4249,27 @@ impl Shell {
                     }),
                 ),
             )
-            // TODO(feat/inbox-ui): route to the inbox pane once it is on main.
-            .child(entry("rail-needs-you", icons::BELL, "Needs you", false, false, theme))
-            .child(entry("rail-agents", icons::BOT, "Agents", false, false, theme))
+            .child(
+                entry(
+                    "rail-needs-you",
+                    icons::BELL,
+                    "Needs you",
+                    inbox_on,
+                    true,
+                    theme,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_inbox(cx))),
+            )
+            // The agent tree lives in this same sidebar right below, so this
+            // entry scrolls to it rather than opening a second surface.
+            .child(
+                entry("rail-agents", icons::BOT, "Agents", false, true, theme).on_click(
+                    cx.listener(|this, _, _, cx| {
+                        this.agents_rail(cx);
+                        cx.notify();
+                    }),
+                ),
+            )
             .child(
                 entry(
                     "rail-tasks",
@@ -6156,6 +6266,13 @@ impl Shell {
         };
 
         let status = self.render_status_strip(cx);
+        // Decision 20: what needs you sits at the top of the feed, at full
+        // weight, above the transcript. It is built only when it will be
+        // shown, so a session that never blocks never pays for it.
+        let inbox = self
+            .inbox_visible(cx)
+            .then(|| self.inbox_pane(cx))
+            .flatten();
         // File dropzone over the ENTIRE conversation column (transcript +
         // composer, not just the pill): dragging OS files anywhere across the
         // chat area shows the "Drop images to attach" veil; a drop stages the
@@ -6170,6 +6287,17 @@ impl Shell {
             .h_full()
             .flex()
             .flex_col()
+            .when_some(inbox, |el, pane| {
+                el.child(
+                    div()
+                        .flex_none()
+                        .max_h(px(320.0))
+                        .pt(px(Theme::TITLEBAR_HEIGHT))
+                        .border_b_1()
+                        .border_color(theme.border)
+                        .child(pane),
+                )
+            })
             .child(
                 // Full-height underlay: the transcript viewport spans the
                 // whole column, scrolling UNDER the titlebar above and the
@@ -8062,6 +8190,11 @@ impl Render for Shell {
             .on_action(cx.listener(|this, _: &ToggleTasks, _, cx| {
                 if matches!(this.route, Route::Chat) {
                     this.toggle_space_surface(RightSurface::Tasks, cx)
+                }
+            }))
+            .on_action(cx.listener(|this, _: &ToggleInbox, _, cx| {
+                if matches!(this.route, Route::Chat) {
+                    this.toggle_inbox(cx)
                 }
             }))
             // Chat-scoped like the panel toggles: Settings has no current
