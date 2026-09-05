@@ -5410,9 +5410,9 @@ impl Transcript {
 
 /// A sent message's text with its file-mention chips. The same recipe as the
 /// markdown renderer's inline code (`flat_text_element`): chip ranges shape in
-/// the mono font at the spectrum's `code_text`, [`StyledText`] supplies wrapped glyph
+/// the mono font at the inline-code tone, [`StyledText`] supplies wrapped glyph
 /// geometry through its layout handle, and a canvas paints the rounded
-/// `code_wash` *beneath* the glyphs — so chips wrap, clip, and scroll exactly
+/// inline-code wash *beneath* the glyphs — so chips wrap, clip, and scroll exactly
 /// like the text they decorate.
 ///
 /// Per-frame cost while an assistant message streams below: shaping hits
@@ -5443,7 +5443,11 @@ fn user_bubble_text(
     let chip_run = |len: usize| TextRun {
         len,
         font: gpui::font(theme.font_mono.clone()),
-        color: theme.code_text,
+        // Through the same seam the markdown renderer uses, not the raw
+        // token: this is the user-message @mention chip, and reading
+        // `code_text` directly here is how the accent survived the round-2
+        // T2 fix everywhere else (spotted by surya-a2ui).
+        color: crate::markdown::render::inline_code_text(theme),
         background_color: None,
         underline: None,
         strikethrough: None,
@@ -5462,7 +5466,7 @@ fn user_bubble_text(
     }
     let styled = StyledText::new(text.clone()).with_runs(runs);
     let layout = styled.layout().clone();
-    let wash = theme.code_wash;
+    let wash = crate::markdown::render::inline_code_wash(theme);
     let sel_key: std::sync::Arc<str> = format!("{row_id}:u").into();
     let sel_theme = theme.clone();
     let underlay = canvas(
