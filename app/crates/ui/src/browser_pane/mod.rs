@@ -136,7 +136,8 @@ impl Render for BrowserPane {
         // The field follows the page while nobody is typing into it.
         if !self.url_editing {
             let shown = page.shown_address().to_string();
-            if self.url.read(cx).text() != shown {
+            let stale = self.url.read(cx).text() != shown.as_str();
+            if stale {
                 self.set_url_text(shown, cx);
             }
         }
