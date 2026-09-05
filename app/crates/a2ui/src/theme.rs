@@ -34,6 +34,9 @@ pub struct CardTheme {
     pub danger: Hsla,
     pub font_sans: SharedString,
     pub font_mono: SharedString,
+    /// SVG asset path for the checked-box glyph (comet: `icons::CHECK`);
+    /// `None` draws a filled inner square instead.
+    pub check_icon: Option<SharedString>,
     /// Card corner radius (comet: `PANEL_RADIUS`) and control radius
     /// (`CONTROL_RADIUS`).
     pub radius: f32,
