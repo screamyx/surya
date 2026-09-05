@@ -3,8 +3,16 @@ name: CI
 # Every merge into main so far was reviewed by reading. This is the machine
 # saying main builds and the headless tests pass.
 #
-# The runner is GitHub-hosted on purpose. project-jag's self-hosted runner is
-# the same box the swarm builds on, and it is saturated.
+# The runner is self-hosted on pc-ajim since 2026-09-05 12:49 (decision 24):
+# GitHub-hosted jobs stopped starting at 12:35 with "The job was not started
+# because recent account payments have failed or your spending limit needs to
+# be increased", and the RC ships 2026-09-06 13:00. The runner service is
+# actions.runner.screamyx-surya.pc-ajim-surya at /store/gha-runner-surya,
+# throttled to CPUWeight=20 so the owner's interactive session wins, with a
+# persistent CARGO_TARGET_DIR=/store/surya-ci-target in its .env (that is the
+# cache; no rust-cache action). The system libraries gpui needs are already on
+# the box, so the apt and "free disk space" steps of the hosted era are gone:
+# never `sudo rm -rf` or `apt-get` on a shared machine from CI.
 #
 # `app/` is the comet subtree and holds the cargo workspace, so every job runs
 # there. `app/.github/workflows/` is comet's own release pipeline: GitHub only
@@ -46,7 +54,7 @@ jobs:
   # GUI stack to compile.
   tests:
     name: headless tests
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, surya-ci]
     timeout-minutes: 45
     defaults:
       run:
@@ -54,21 +62,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The hosted image ships tens of GB of toolchains this build never
-      # touches. Reclaiming them buys the linker its working room back.
-      - name: free disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
-            /usr/local/share/boost /usr/local/.ghcup
-          df -h /
 
       - name: rust toolchain (app/rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: app
 
       # Same reason: roughly twenty test binaries linking at once is what
       # exhausted the runner. Two at a time still finishes inside the timeout.
@@ -90,7 +87,7 @@ jobs:
   # check job installs.
   smoke:
     name: smoke
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, surya-ci]
     needs: tests
     timeout-minutes: 45
     defaults:
@@ -99,28 +96,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: free disk space
-        run: |
-          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
-            /usr/local/share/boost /usr/local/.ghcup
 
-      # Copied verbatim from the check job below: two lists that drift leave
-      # nobody able to say which one is authoritative (surya-mcp, 10:03).
-      - name: gpui system deps
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
-            libx11-dev libxcb1-dev libx11-xcb-dev \
-            libfontconfig1-dev libfreetype-dev libasound2-dev \
-            libvulkan-dev pkg-config cmake
 
       - name: rust toolchain (app/rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: app
 
       # a2ui's tests ride this job: every one of them is headless (elements
       # build without a window) and the gpui build is already paid for here.
@@ -138,7 +118,7 @@ jobs:
   # they are ordinary apt packages.
   check:
     name: cargo check (whole workspace)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, surya-ci]
     timeout-minutes: 45
     defaults:
       run:
@@ -146,21 +126,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: gpui system deps
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq \
-            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
-            libx11-dev libxcb1-dev libx11-xcb-dev \
-            libfontconfig1-dev libfreetype-dev libasound2-dev \
-            libvulkan-dev pkg-config cmake
 
       - name: rust toolchain (app/rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
 
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: app
 
       - name: cargo check
         run: cargo check --workspace --all-targets
