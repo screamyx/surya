@@ -21,8 +21,8 @@ The record this builds on is haktui's `docs/spike-scroll-frame-rate-2026-08-28.m
 | --- | --- | --- |
 | `SURYA_PUMP_TIMER=pool` | clock | both pump waits on the old path: gpui's timer for the idle chain, a condvar for CEF's delayed asks (the control) |
 | `SURYA_PUMP_MS=<n>` | 8 | the idle pump's base interval |
-| `SURYA_CEF_FPS=<n>` | display rate, capped at 120 | CEF's `windowless_frame_rate` |
-| `SURYA_COARSE_TIMER=1` | off | skip `timeBeginPeriod(1)` and the coalescing opt-out |
+| `SURYA_CEF_FPS=<n>` | display rate, capped at 120 | CEF's `windowless_frame_rate`; a value over 120 is clamped and the log says so, a non-number is refused and the display decides |
+| `SURYA_COARSE_TIMER=1` | off | skip `timeBeginPeriod(1)`. The 1 ms tick is a declared default on both pump paths (see `clock.rs` `fine_timer`): never released, and Windows returns the process to its default tick while the window is in the background, since PR 3 dropped the power-throttling opt-out that used to prevent that |
 
 ## Run recipe on dtry
 

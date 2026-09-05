@@ -16,9 +16,9 @@
 //! timer and a condvar, kept as the control.
 
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, VecDeque};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use futures::channel::mpsc::UnboundedSender;
@@ -28,6 +28,9 @@ use futures::channel::oneshot;
 enum Done {
     Once(oneshot::Sender<()>),
     Wake(UnboundedSender<()>),
+    /// Panics when fired: the test that proves the clock thread survives one.
+    #[cfg(test)]
+    Panic,
 }
 
 impl Done {
@@ -39,6 +42,8 @@ impl Done {
             Done::Wake(tx) => {
                 let _ = tx.unbounded_send(());
             }
+            #[cfg(test)]
+            Done::Panic => panic!("a deadline that panics when fired"),
         }
     }
 }
@@ -73,7 +78,20 @@ pub(crate) fn counters() -> String {
 /// (the baseline in docs/perf/browser-scroll-2026-09-05.md). Read once.
 pub(crate) fn on_clock() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| !std::env::var("SURYA_PUMP_TIMER").is_ok_and(|v| v.trim() == "pool"))
+    *ON.get_or_init(|| from_env(std::env::var("SURYA_PUMP_TIMER").ok().as_deref()))
+}
+
+/// The flip itself, on the variable's value: only `pool` (whitespace
+/// trimmed) leaves the clock. Unset, empty, or anything else is the clock.
+fn from_env(value: Option<&str>) -> bool {
+    !value.is_some_and(|v| v.trim() == "pool")
+}
+
+/// A poisoned lock is a thread that panicked while holding it; the data is a
+/// heap of deadlines and a map of senders, sound whatever happened, so the
+/// clock keeps serving rather than taking the idle chain down with it.
+fn locked<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// The pump timer's name for a log line: which path both waits are on.
@@ -97,8 +115,8 @@ fn push(d: Duration, done: Done) {
     let clock = CLOCK.get_or_init(start);
     ASKED.fetch_add(1, Ordering::Relaxed);
     let id = clock.seq.fetch_add(1, Ordering::Relaxed);
-    clock.pending.lock().unwrap().insert(id, done);
-    clock.heap.lock().unwrap().push(Reverse((Instant::now() + d, id)));
+    locked(&clock.pending).insert(id, done);
+    locked(&clock.heap).push(Reverse((Instant::now() + d, id)));
     clock.wait.interrupt();
 }
 
@@ -118,72 +136,91 @@ fn start() -> Arc<Clock> {
     clock
 }
 
+static PASS_PANICS: AtomicU64 = AtomicU64::new(0);
+
+/// The clock thread never ends. One pass collects what is due and fires it;
+/// a panic inside a pass is caught and counted, and the next pass runs at
+/// once, firing whatever the panicking pass had collected but not yet fired
+/// (the queue keeps them; nothing is dropped on the way out). The thread is
+/// load-bearing for the pump once the idle chain waits here, so it does not
+/// get to die.
 fn run(clock: Arc<Clock>) {
-    let mut due_now: Vec<Done> = Vec::new();
+    let mut due_now: VecDeque<Done> = VecDeque::new();
     loop {
-        // Collect everything due under the locks, then fire with both
-        // released: a waker that asks for another deadline re-enters push().
-        let next = {
-            let mut heap = clock.heap.lock().unwrap();
-            let now = Instant::now();
-            while let Some(Reverse((due, id))) = heap.peek().copied() {
-                if due > now {
-                    break;
-                }
-                heap.pop();
-                if let Some(done) = clock.pending.lock().unwrap().remove(&id) {
-                    due_now.push(done);
+        let pass = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| one_pass(&clock, &mut due_now)));
+        match pass {
+            Ok(Some(due)) => clock.wait.until(due),
+            Ok(None) => clock.wait.forever(),
+            Err(_) => {
+                let n = PASS_PANICS.fetch_add(1, Ordering::Relaxed) + 1;
+                if n == 1 {
+                    println!("browser: clock pass panicked; the clock keeps running");
                 }
             }
-            heap.peek().map(|Reverse((due, _))| *due)
-        };
-        for done in due_now.drain(..) {
-            FIRED.fetch_add(1, Ordering::Relaxed);
-            done.fire();
-        }
-        match next {
-            Some(due) => clock.wait.until(due),
-            None => clock.wait.forever(),
         }
     }
 }
 
-/// Ask Windows for 1 ms timer resolution for the life of the process, and
-/// opt out of Windows 11's coalescing that ignores the request while the
-/// window is hidden or behind. haktui measured both on 2026-08-28: accepted,
-/// and the 16 ms gpui timer still took 31 ms, so neither is the fix. They
-/// stay because they are cheap and correct for the pool timer control path.
-/// `SURYA_COARSE_TIMER=1` keeps the defaults.
+/// Everything due is collected under the locks, then fired with both
+/// released: a waker that asks for another deadline re-enters push(). Each
+/// deadline leaves the queue only as it fires, so an unwind mid-way leaves
+/// the rest for the next pass. Returns the next deadline, or `None` when
+/// the heap is empty.
+fn one_pass(clock: &Clock, due_now: &mut VecDeque<Done>) -> Option<Instant> {
+    let next = {
+        let mut heap = locked(&clock.heap);
+        let now = Instant::now();
+        while let Some(Reverse((due, id))) = heap.peek().copied() {
+            if due > now {
+                break;
+            }
+            heap.pop();
+            if let Some(done) = locked(&clock.pending).remove(&id) {
+                due_now.push_back(done);
+            }
+        }
+        heap.peek().map(|Reverse((due, _))| *due)
+    };
+    while let Some(done) = due_now.pop_front() {
+        FIRED.fetch_add(1, Ordering::Relaxed);
+        done.fire();
+    }
+    next
+}
+
+/// Passes that panicked and were caught; zero in a healthy session.
+#[cfg(test)]
+fn pass_panics() -> u64 {
+    PASS_PANICS.load(Ordering::Relaxed)
+}
+
+/// Ask Windows for 1 ms timer resolution for the life of the process. This
+/// is a declared default on both pump paths, decided on purpose:
+///
+/// - The clock's own wait is a high-resolution waitable timer and does not
+///   need it. Everything else in the process that sleeps on the tick does:
+///   the pool-timer control path, `Condvar::wait_timeout`, gpui's timers.
+///   The dtry numbers in docs/perf/browser-scroll-2026-09-05.md were taken
+///   with it on, so it stays on rather than moving the measured default.
+/// - It is never released: since Windows 10 2004 the request is per process,
+///   and Windows itself drops the process back to the default tick while its
+///   window is minimised or fully behind another. The earlier build also
+///   opted out of that throttling (`PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION`),
+///   which kept the 1 ms tick alive for a hidden surya; that opt-out is gone,
+///   so a backgrounded session costs what Windows says it should.
+///
+/// haktui measured 2026-08-28 that this is not what fixes the 31 ms timer
+/// (the clock is); it is cheap and correct. `SURYA_COARSE_TIMER=1` skips it.
 #[cfg(windows)]
 fn fine_timer() {
     if std::env::var_os("SURYA_COARSE_TIMER").is_some() {
         println!("browser: timer coarse (SURYA_COARSE_TIMER)");
         return;
     }
-    use windows::Win32::System::Threading::{
-        GetCurrentProcess, ProcessPowerThrottling, SetProcessInformation, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
-        PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION, PROCESS_POWER_THROTTLING_STATE,
-    };
-    let state = PROCESS_POWER_THROTTLING_STATE {
-        Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
-        ControlMask: PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION,
-        // Mask named, state clear: "do not ignore my timer resolution".
-        StateMask: 0,
-    };
-    // SAFETY: the struct is the documented size for this information class
-    // and outlives the call; the handle is the pseudo-handle for this process.
-    let opt_out = unsafe {
-        SetProcessInformation(
-            GetCurrentProcess(),
-            ProcessPowerThrottling,
-            &state as *const _ as *const std::ffi::c_void,
-            std::mem::size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
-        )
-    };
     // SAFETY: a plain Win32 call with a constant argument; timeEndPeriod is
     // never called on purpose, the process wants this until it exits.
     let r = unsafe { windows::Win32::Media::timeBeginPeriod(1) };
-    println!("browser: timer resolution 1ms asked, coalescing opt-out={} timeBeginPeriod={r}", u8::from(opt_out.is_ok()));
+    println!("browser: timer resolution 1ms asked, timeBeginPeriod={r}; the OS default returns while the window is in the background");
 }
 
 #[cfg(not(windows))]
@@ -251,26 +288,26 @@ impl CondvarWait {
     }
 
     fn interrupt(&self) {
-        *self.poked.lock().unwrap() = true;
+        *locked(&self.poked) = true;
         self.cv.notify_one();
     }
 
     fn until(&self, due: Instant) {
-        let mut poked = self.poked.lock().unwrap();
+        let mut poked = locked(&self.poked);
         while !*poked {
             let d = due.saturating_duration_since(Instant::now());
             if d.is_zero() {
                 break;
             }
-            poked = self.cv.wait_timeout(poked, d).unwrap().0;
+            poked = self.cv.wait_timeout(poked, d).unwrap_or_else(|e| e.into_inner()).0;
         }
         *poked = false;
     }
 
     fn forever(&self) {
-        let mut poked = self.poked.lock().unwrap();
+        let mut poked = locked(&self.poked);
         while !*poked {
-            poked = self.cv.wait(poked).unwrap();
+            poked = self.cv.wait(poked).unwrap_or_else(|e| e.into_inner());
         }
         *poked = false;
     }
@@ -340,6 +377,42 @@ impl HiRes {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_pool_leaves_the_clock() {
+        assert!(from_env(None));
+        assert!(from_env(Some("")));
+        assert!(from_env(Some("clock")));
+        assert!(from_env(Some("Pool")), "the value is case-sensitive, like every other switch");
+        assert!(!from_env(Some("pool")));
+        assert!(!from_env(Some("  pool \n")));
+    }
+
+    #[test]
+    fn a_poisoned_lock_is_recovered() {
+        let m = Mutex::new(7);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _g = m.lock().unwrap();
+            panic!("poison it");
+        }));
+        assert!(m.is_poisoned());
+        assert_eq!(*locked(&m), 7);
+    }
+
+    /// A deadline that panics when fired, then one that must still fire:
+    /// the clock thread caught the first and served the second.
+    #[test]
+    fn the_clock_outlives_a_panicking_pass() {
+        let before = pass_panics();
+        // Same deadline as the panic, pushed after it: collected in the same
+        // pass, behind the one that panics. It must still fire.
+        push(Duration::from_millis(3), Done::Panic);
+        let same_pass = after(Duration::from_millis(3));
+        let later = after(Duration::from_millis(30));
+        futures::executor::block_on(same_pass).expect("the deadline behind the panic was dropped");
+        futures::executor::block_on(later).unwrap();
+        assert!(pass_panics() > before, "the panicking pass was not observed");
+    }
 
     #[test]
     fn oneshot_fires_close_to_its_deadline() {

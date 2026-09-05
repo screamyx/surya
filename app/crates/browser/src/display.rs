@@ -7,25 +7,64 @@
 //! cap, so idle cost did not move. Default is the primary display's refresh
 //! rate, capped at 120; `SURYA_CEF_FPS=<n>` overrides.
 
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::OnceLock;
 
 const FALLBACK: i32 = 60;
 const CAP: i32 = 120;
 
-/// The frame rate to hand CEF, read once.
+/// What `SURYA_CEF_FPS` said, once parsed.
+#[derive(Debug, PartialEq)]
+enum Override {
+    /// Not set: the display decides.
+    Unset,
+    /// Set to something that is not a whole number: ignored, and said so.
+    Bad(String),
+    /// A number; `used` is `asked` clamped to `1..=CAP`.
+    Rate { asked: i32, used: i32 },
+}
+
+fn from_override(value: Option<&str>) -> Override {
+    match value {
+        None => Override::Unset,
+        Some(v) => match v.trim().parse::<i32>() {
+            Ok(asked) => Override::Rate { asked, used: asked.clamp(1, CAP) },
+            Err(_) => Override::Bad(v.to_owned()),
+        },
+    }
+}
+
+/// The frame rate to hand CEF. The override is read once; the display is
+/// asked every call, so a pane shown again after a move to another monitor
+/// gets that monitor's rate (`client.rs` calls this from `open()` and
+/// `show()`). Each value is logged the first time it is seen.
 pub(crate) fn frame_rate() -> i32 {
-    static FPS: OnceLock<i32> = OnceLock::new();
-    *FPS.get_or_init(|| {
-        if let Some(n) = std::env::var("SURYA_CEF_FPS").ok().and_then(|v| v.trim().parse::<i32>().ok()) {
-            let n = n.clamp(1, CAP);
-            println!("browser: frame rate {n} (SURYA_CEF_FPS)");
-            return n;
+    static OVERRIDE: OnceLock<Option<i32>> = OnceLock::new();
+    static LAST: AtomicI32 = AtomicI32::new(0);
+    let over = *OVERRIDE.get_or_init(|| match from_override(std::env::var("SURYA_CEF_FPS").ok().as_deref()) {
+        Override::Unset => None,
+        Override::Bad(v) => {
+            println!("browser: SURYA_CEF_FPS={v:?} is not a whole number; using the display's rate");
+            None
         }
-        let hz = refresh_hz();
-        let n = pick(hz);
+        Override::Rate { asked, used } => {
+            if asked == used {
+                println!("browser: frame rate {used} (SURYA_CEF_FPS)");
+            } else {
+                println!("browser: frame rate {used} (SURYA_CEF_FPS={asked} clamped to 1..={CAP})");
+            }
+            Some(used)
+        }
+    });
+    if let Some(n) = over {
+        return n;
+    }
+    let hz = refresh_hz();
+    let n = pick(hz);
+    if LAST.swap(n, Ordering::Relaxed) != n {
         println!("browser: frame rate {n} (display reports {hz} Hz)");
-        n
-    })
+    }
+    n
 }
 
 /// A reported rate to a cap: 119 and 120 both mean the 120 Hz screen; a
@@ -55,6 +94,18 @@ pub(crate) fn refresh_hz() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_override_is_parsed_clamped_and_refused_on_purpose() {
+        assert_eq!(from_override(None), Override::Unset);
+        assert_eq!(from_override(Some("60")), Override::Rate { asked: 60, used: 60 });
+        assert_eq!(from_override(Some(" 90 ")), Override::Rate { asked: 90, used: 90 });
+        assert_eq!(from_override(Some("240")), Override::Rate { asked: 240, used: 120 });
+        assert_eq!(from_override(Some("0")), Override::Rate { asked: 0, used: 1 });
+        assert_eq!(from_override(Some("-5")), Override::Rate { asked: -5, used: 1 });
+        assert_eq!(from_override(Some("fast")), Override::Bad("fast".into()));
+        assert_eq!(from_override(Some("")), Override::Bad("".into()));
+    }
 
     #[test]
     fn rate_follows_the_display_up_to_the_cap() {
