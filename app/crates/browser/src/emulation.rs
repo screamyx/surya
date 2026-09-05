@@ -9,6 +9,11 @@
 //! "fit" are not here (the surface is the lead seat's; the override changes
 //! the layout viewport, which is what the readback proves).
 //!
+//! **The preset is one switch for every tab**, as in haktui: DevTools
+//! emulates per target, so a pick walks every open browser, and a tab
+//! opened later gets the preset on its first load end. A preset that
+//! applied to one tab and not the next would read as a bug in the page.
+//!
 //! `deviceScaleFactor` is left at the window's own (0), as haktui found: a
 //! forced 3x changes the size of the frame CEF paints under offscreen
 //! rendering, and that path cost haktui three sessions. The layout width
@@ -22,6 +27,7 @@
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Mutex;
 
+use cef::ImplBrowser as _;
 use serde_json::{Value, json};
 
 use crate::devtools;
@@ -111,6 +117,9 @@ static CURRENT: AtomicU8 = AtomicU8::new(0);
 /// The browser's own user agent, read once before the first override so
 /// Desktop restores it exactly (CDP has no "clear user agent override").
 static DEFAULT_UA: Mutex<Option<String>> = Mutex::new(None);
+/// Browsers that carry the current preset, by CEF id: one apply and one
+/// reload each per pick, never a loop.
+static APPLIED: Mutex<Vec<i32>> = Mutex::new(Vec::new());
 
 pub fn device() -> Device {
     ALL[(CURRENT.load(Ordering::Acquire) as usize).min(ALL.len() - 1)]
@@ -144,8 +153,8 @@ pub fn cdp_calls(device: Device, default_ua: &str) -> Vec<(&'static str, Value)>
     }
 }
 
-/// Choose a preset for the pane. Applies to the open browser and reloads
-/// it; a browser opened later gets it on its first load end.
+/// Choose a preset for the pane: every open browser gets it and reloads
+/// once; a browser opened later gets it on its first load end.
 pub fn set_device(device: Device) {
     let before = self::device();
     CURRENT.store(device as u8, Ordering::Release);
@@ -153,7 +162,14 @@ pub fn set_device(device: Device) {
     if crate::disabled() {
         return;
     }
-    apply_and_reload();
+    let open = devtools::browsers();
+    if let Ok(mut applied) = APPLIED.lock() {
+        applied.clear();
+        applied.extend(open.iter().copied());
+    }
+    for id in open {
+        apply_and_reload(id);
+    }
 }
 
 pub fn cycle() -> Device {
@@ -162,25 +178,25 @@ pub fn cycle() -> Device {
     next
 }
 
-fn apply_and_reload() {
+/// Put one browser into the current preset and reload it.
+fn apply_and_reload(browser: i32) {
     let device = device();
     let ua = DEFAULT_UA.lock().ok().and_then(|g| g.clone()).unwrap_or_default();
     for (method, params) in cdp_calls(device, &ua) {
-        devtools::fire(method, params);
+        devtools::fire(browser, method, params);
     }
-    crate::reload();
+    if let Some(b) = devtools::browser(browser) {
+        b.reload();
+    }
 }
 
-/// Browsers that already got the current preset on a load end, by CEF id:
-/// one reload each, never a loop.
-static APPLIED: Mutex<Vec<i32>> = Mutex::new(Vec::new());
-
 /// A main frame finished loading in browser `id`. Learns the default user
-/// agent on the first load of the process, and gives a new browser the
-/// current preset once (then reloads it once).
+/// agent on the first load of the process, and gives a browser that does
+/// not carry the current preset yet the preset once (then reloads it once).
 pub(crate) fn on_load_end(id: i32) {
     if DEFAULT_UA.lock().map(|g| g.is_none()).unwrap_or(false) {
         devtools::send(
+            id,
             "Runtime.evaluate",
             json!({ "expression": "navigator.userAgent", "returnByValue": true }),
             Box::new(|r| {
@@ -204,7 +220,7 @@ pub(crate) fn on_load_end(id: i32) {
     applied.push(id);
     drop(applied);
     println!("emulation: browser {id} loaded, applying {} then reloading once", device().key());
-    apply_and_reload();
+    apply_and_reload(id);
 }
 
 /// The browser went away; its id may come back for another one.
@@ -264,5 +280,14 @@ mod tests {
         }
         assert_eq!(Device::from_key(" iPhone15 "), Some(Device::IPhone15));
         assert_eq!(Device::from_key("nokia"), None);
+    }
+
+    #[test]
+    fn a_pick_forgets_who_had_the_old_preset() {
+        APPLIED.lock().unwrap().extend([7, 8]);
+        // No browsers are observed in a test, so the pick marks none.
+        set_device(Device::Pixel8);
+        assert!(APPLIED.lock().unwrap().is_empty(), "a background tab must not keep the old preset");
+        set_device(Device::Desktop);
     }
 }

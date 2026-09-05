@@ -13,6 +13,12 @@
 //! `--remote-allow-origins`, so its protection is being off and being
 //! loopback; nothing in the app depends on it.
 //!
+//! Every call names the browser it is for (CEF's identifier): one tab is one
+//! DevTools target, and a message for a background tab must never reach the
+//! one under the owner. The map of live browsers is kept here from the
+//! lifetime callbacks (`observe` / `on_before_close`) so no CEF lock is held
+//! while CEF is called (#83's rule).
+//!
 //! One call is one `{id, method, params}` JSON message. The reply for that
 //! id resolves the caller's future. Every caller sits on the main thread and
 //! awaits while the pump keeps CEF turning, so a reply is never waited for
@@ -46,13 +52,15 @@ static ASKED: AtomicU64 = AtomicU64::new(0);
 static ANSWERED: AtomicU64 = AtomicU64::new(0);
 static FAILED: AtomicU64 = AtomicU64::new(0);
 static EXPIRED: AtomicU64 = AtomicU64::new(0);
-/// Browser ids whose observer is registered, so a browser is observed once.
-static OBSERVED: Mutex<Vec<i32>> = Mutex::new(Vec::new());
+/// The browsers this module observes, by CEF identifier. Filled in
+/// `observe`, emptied in `on_before_close`; never locked across a CEF call.
+static BROWSERS: Mutex<Option<HashMap<i32, Browser>>> = Mutex::new(None);
 
 thread_local! {
-    /// CEF drops an observer the moment its registration is dropped, so the
-    /// registrations live as long as the process (haktui, pin.rs).
-    static REGISTRATIONS: std::cell::RefCell<Vec<Registration>> = const { std::cell::RefCell::new(Vec::new()) };
+    /// CEF drops an observer the moment its registration is dropped, so a
+    /// registration lives as long as its browser: pushed in `observe`,
+    /// popped in `on_before_close`. Main thread only (CEF's UI thread).
+    static REGISTRATIONS: std::cell::RefCell<Vec<(i32, Registration)>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
 /// Counters as pairs: `asked=4 answered=4 failed=0 expired=0` is a page that
@@ -60,12 +68,36 @@ thread_local! {
 /// was never observed.
 pub fn counters() -> String {
     format!(
-        "devtools asked={} answered={} failed={} expired={}",
+        "devtools asked={} answered={} failed={} expired={} observed={}",
         ASKED.load(Ordering::Relaxed),
         ANSWERED.load(Ordering::Relaxed),
         FAILED.load(Ordering::Relaxed),
         EXPIRED.load(Ordering::Relaxed),
+        browsers().len(),
     )
+}
+
+/// The active tab's browser id, 0 for none.
+pub(crate) fn active() -> i32 {
+    crate::tabs::active_browser()
+}
+
+/// Every observed browser, by id.
+pub(crate) fn browsers() -> Vec<i32> {
+    BROWSERS
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|m| m.keys().copied().collect()))
+        .unwrap_or_default()
+}
+
+/// One observed browser by id (a clone of CEF's handle).
+pub(crate) fn browser(id: i32) -> Option<Browser> {
+    BROWSERS.lock().ok()?.as_ref()?.get(&id).cloned()
+}
+
+fn host_of(id: i32) -> Option<BrowserHost> {
+    browser(id).and_then(|b| b.host())
 }
 
 /// Register the observer on a browser once, keyed by its CEF identifier.
@@ -73,51 +105,78 @@ pub fn counters() -> String {
 /// silently, so this only listens and the first call waits for a load.
 pub(crate) fn observe(browser: &Browser) {
     let id = browser.identifier();
-    let Ok(mut seen) = OBSERVED.lock() else { return };
-    if seen.contains(&id) {
+    // Claim the id under the lock, then let go before any CEF call.
+    let fresh = BROWSERS
+        .lock()
+        .map(|mut g| {
+            let map = g.get_or_insert_with(HashMap::new);
+            if map.contains_key(&id) {
+                false
+            } else {
+                map.insert(id, browser.clone());
+                true
+            }
+        })
+        .unwrap_or(false);
+    if !fresh {
         return;
     }
-    let Some(host) = browser.host() else { return };
+    let Some(host) = browser.host() else {
+        forget_browser(id);
+        return;
+    };
     let mut obs = Observer::new();
-    if let Some(reg) = host.add_dev_tools_message_observer(Some(&mut obs)) {
-        REGISTRATIONS.with(|r| r.borrow_mut().push(reg));
-        seen.push(id);
-        println!("devtools: observing browser id={id}");
-    } else {
-        println!("devtools: could not observe browser id={id}");
+    match host.add_dev_tools_message_observer(Some(&mut obs)) {
+        Some(reg) => {
+            REGISTRATIONS.with(|r| r.borrow_mut().push((id, reg)));
+            println!("devtools: observing browser id={id}");
+        }
+        None => {
+            forget_browser(id);
+            println!("devtools: could not observe browser id={id}");
+        }
     }
 }
 
-/// The browser is closing: forget its id everywhere, so a later browser
-/// with the same id is observed and set up again.
-pub(crate) fn on_before_close(id: i32) {
-    if let Ok(mut seen) = OBSERVED.lock() {
-        seen.retain(|b| *b != id);
+fn forget_browser(id: i32) {
+    if let Ok(mut g) = BROWSERS.lock()
+        && let Some(map) = g.as_mut()
+    {
+        map.remove(&id);
     }
+}
+
+/// The browser is closing: drop its observer registration and forget its
+/// id everywhere, so a later browser with the same id is set up again.
+pub(crate) fn on_before_close(id: i32) {
+    forget_browser(id);
+    REGISTRATIONS.with(|r| r.borrow_mut().retain(|(b, _)| *b != id));
     crate::emulation::forget(id);
     crate::scheme::forget(id);
 }
 
 /// The main frame of browser `id` finished loading: the first moment a
-/// browser takes a DevTools call safely. Wakes `agent::open`, then gives a
-/// new browser the current device preset and colour scheme.
+/// browser takes a DevTools call safely. Wakes `agent::open` for that
+/// browser, then gives a new browser the current colour scheme and device
+/// preset.
 pub(crate) fn on_load_end(id: i32) {
-    crate::agent::on_load_end();
+    crate::agent::on_load_end(id);
     crate::scheme::on_load_end(id);
     crate::emulation::on_load_end(id);
 }
 
-/// Send one method to the current browser and hand its reply to `done`.
-/// Returns the message id, or `None` when there is no browser or CEF
-/// refused the message (then `done` was called with the error already).
+/// Send one method to browser `id` and hand its reply to `done`. Returns
+/// the message id, or `None` when that browser is not open or CEF refused
+/// the message (then `done` was called with the error already).
 pub(crate) fn send(
+    browser: i32,
     method: &'static str,
     params: Value,
     done: Box<dyn FnOnce(Result<Value, String>) + Send>,
 ) -> Option<i32> {
     sweep();
-    let Some(host) = crate::client::host() else {
-        done(Err("no browser is open in the pane".into()));
+    let Some(host) = host_of(browser) else {
+        done(Err(format!("browser {browser} is not open in the pane")));
         return None;
     };
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
@@ -139,10 +198,15 @@ pub(crate) fn send(
     Some(id)
 }
 
-/// Send one method and await its `result` object.
-pub(crate) fn call(method: &'static str, params: Value) -> impl std::future::Future<Output = Result<Value, String>> {
+/// Send one method to browser `id` and await its `result` object.
+pub(crate) fn call(
+    browser: i32,
+    method: &'static str,
+    params: Value,
+) -> impl std::future::Future<Output = Result<Value, String>> {
     let (tx, rx) = oneshot::channel();
     send(
+        browser,
         method,
         params,
         Box::new(move |r| {
@@ -155,14 +219,15 @@ pub(crate) fn call(method: &'static str, params: Value) -> impl std::future::Fut
     }
 }
 
-/// Fire a method and only count its reply (emulation, media).
-pub(crate) fn fire(method: &'static str, params: Value) {
+/// Fire a method at browser `id` and only log a failure (emulation, media).
+pub(crate) fn fire(browser: i32, method: &'static str, params: Value) {
     send(
+        browser,
         method,
         params,
         Box::new(move |r| {
             if let Err(e) = r {
-                println!("devtools: {method} failed: {e}");
+                println!("devtools: browser {browser} {method} failed: {e}");
             }
         }),
     );
@@ -281,5 +346,19 @@ mod tests {
         sweep();
         let err = rx.recv().unwrap().unwrap_err();
         assert!(err.contains("DOM.getDocument") && err.contains("30s"), "{err}");
+    }
+
+    #[test]
+    fn a_message_for_a_browser_nobody_observes_fails_at_once() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let sent = send(
+            424242,
+            "Runtime.evaluate",
+            json!({}),
+            Box::new(move |r| tx.send(r).unwrap()),
+        );
+        assert_eq!(sent, None);
+        let err = rx.recv().unwrap().unwrap_err();
+        assert!(err.contains("424242"), "{err}");
     }
 }

@@ -74,7 +74,11 @@
       if (tag === 'input' || tag === 'textarea') {
         if (el.type && tag === 'input') extra += ' type=' + el.type;
         if (el.name) extra += ' name=' + JSON.stringify(el.name);
+        // A password or a one-time code never leaves the page: the agent
+        // sees that the field exists, not what it holds.
+        const secret = el.type === 'password' || /one-time-code/.test(el.getAttribute('autocomplete') || '');
         if (el.type === 'checkbox' || el.type === 'radio') extra += el.checked ? ' checked' : '';
+        else if (secret) extra += el.value ? ' value=(hidden)' : '';
         else if (el.value) extra += ' value=' + JSON.stringify(String(el.value).slice(0, 80));
       }
       if (tag === 'select') extra += ' value=' + JSON.stringify(el.value);
