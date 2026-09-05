@@ -171,7 +171,8 @@ impl Render for BrowserPane {
                     surya_browser::reload()
                 }
             }))
-            .child(field);
+            .child(field)
+            .child(crate::browser_device::picker(&theme));
         // The load's progress as a hairline under the bar, gone at 1.
         let progress = surya_browser::page();
         let hairline = div()

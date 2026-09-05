@@ -91,6 +91,10 @@ pub fn tool_definitions() -> Value {
         .expect("tool_definitions is an array")
         .extend(crate::tasks::tool_specs());
     tools
+        .as_array_mut()
+        .expect("tool_definitions is an array")
+        .extend(crate::browser::tool_specs());
+    tools
 }
 
 /// A tool result, either content or an error the model can read and retry.
@@ -131,6 +135,12 @@ fn call_tool(config: &Config, params: &Value) -> Value {
             Err(error) => text_result(error, true),
         },
         "list_cards" => text_result(cards::list(config).to_string(), false),
+        name if crate::browser::handles(name) => {
+            match crate::browser::call_blocking(config, name, arguments, cards::tool_use_id(params)) {
+                Ok(result) => result,
+                Err(error) => text_result(error, true),
+            }
+        }
         name if crate::tasks::handles(name) => {
             match crate::tasks::call_blocking(Some(&config.workspace), name, arguments) {
                 Ok(result) => text_result(result.to_string(), false),
@@ -239,7 +249,13 @@ mod tests {
                 "list_cards",
                 "list_tasks",
                 "create_task",
-                "update_task"
+                "update_task",
+                "browser_open",
+                "browser_snapshot",
+                "browser_click",
+                "browser_type",
+                "browser_screenshot",
+                "browser_eval"
             ]
         );
     }

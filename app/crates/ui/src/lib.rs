@@ -17,7 +17,13 @@ pub mod appearance;
 pub mod attachments;
 pub mod badges;
 #[cfg(feature = "browser")]
+pub mod browser_agent;
+#[cfg(feature = "browser")]
+pub mod browser_device;
+#[cfg(feature = "browser")]
 pub mod browser_pane;
+#[cfg(feature = "browser")]
+mod browser_proof;
 pub mod cards;
 #[cfg(test)]
 mod cards_e2e;
@@ -232,6 +238,8 @@ pub fn run_app(config: UiConfig) {
             async {}
         })
         .detach();
+        #[cfg(feature = "browser")]
+        browser_proof::install(cx);
         // `ZERON_QUIT_AFTER=<seconds>`: a clean quit on a timer, for proofs
         // with no keyboard (the helper-count check after exit).
         #[cfg(feature = "browser")]

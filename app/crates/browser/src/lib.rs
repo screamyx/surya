@@ -14,15 +14,21 @@
 //!    page should be drawn.
 //!
 //! Everything else here is the address bar's read side ([`page`]) and the
-//! commands behind its buttons.
+//! commands behind its buttons. Agents reach the page through [`agent`]
+//! (over in-process DevTools, [`devtools`]); the bar's device picker is
+//! [`emulation`]; a theme change mid-session is [`set_color_scheme`].
 
+pub mod agent;
 mod cef_app;
 mod client;
+pub mod devtools;
+pub mod emulation;
 mod events;
 pub mod input;
 mod page;
 mod pump;
 mod render;
+mod scheme;
 mod surface;
 pub mod tabs;
 
@@ -30,6 +36,7 @@ pub use events::counters as input_counters;
 pub use page::{navigate_to, FindState, Page};
 pub use tabs::{active_tab, page, set_zoom, tab_activate, tab_close, tab_open, tabs, zoom, TabId, TabInfo};
 pub use pump::{counters, pump};
+pub use scheme::set_color_scheme;
 pub use surface::{panel, surface, surface_origin};
 
 use std::sync::atomic::{AtomicBool, Ordering};

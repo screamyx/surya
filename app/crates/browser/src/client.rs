@@ -192,6 +192,7 @@ wrap_life_span_handler! {
                 host.was_resized();
                 host.was_hidden(1);
             }
+            crate::devtools::observe(browser);
         }
 
         fn on_before_close(&self, browser: Option<&mut Browser>) {
@@ -206,6 +207,7 @@ wrap_life_span_handler! {
                 crate::render::forget(id);
                 crate::tabs::detach(id);
             }
+            crate::devtools::on_before_close(id);
             println!("browser: closed id={id}");
         }
     }
@@ -240,6 +242,7 @@ wrap_load_handler! {
             let main = frame.map(|f| f.is_main() != 0).unwrap_or(false);
             if main {
                 println!("browser: load_end status={status}");
+                crate::devtools::on_load_end(browser.map(|b| b.identifier()).unwrap_or(0));
             }
             if status == 200 {
                 LOAD_END_OK.fetch_add(1, Ordering::Relaxed);

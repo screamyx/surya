@@ -3,7 +3,10 @@
 //! Three tools (decision 5, "surya abilities reach the agent as MCP servers"):
 //! `show_card` draws an A2UI card in the app, `send_message` posts agent mail,
 //! `list_cards` says which card shapes exist here. `list_tasks`, `create_task`
-//! and `update_task` (`tasks.rs`) read and write the workspace task board. The harness launches this
+//! and `update_task` (`tasks.rs`) read and write the workspace task board.
+//! `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`,
+//! `browser_screenshot` and `browser_eval` (`browser.rs`) drive the app's
+//! browser pane. The harness launches this
 //! binary through Claude Code's own `--mcp-config`, so nothing about Claude
 //! Code is forked or patched.
 //!
@@ -15,6 +18,7 @@
 //! printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | surya-mcp
 //! ```
 
+mod browser;
 mod cards;
 mod config;
 mod mail;

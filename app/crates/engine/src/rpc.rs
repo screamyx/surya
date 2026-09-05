@@ -463,6 +463,8 @@ pub struct EngineRpc {
     local_import: Option<crate::local_import::LocalImporter>,
     /// Agent mail sub-service (Mail.Send / Mail.List / Mail.Ack / WatchMail).
     mail: Option<crate::mail::MailRpc>,
+    /// Browser pane broker (Browser.Call / Browser.Watch / Browser.Reply).
+    browser: crate::browser_rpc::BrowserRpc,
     engine_info: EngineInfo,
 }
 
@@ -502,6 +504,7 @@ impl EngineRpc {
             updater: None,
             local_import: None,
             mail: None,
+            browser: crate::browser_rpc::BrowserRpc::default(),
             engine_info,
         }
     }
@@ -1235,6 +1238,9 @@ impl RpcService for EngineRpc {
             && let Some(mail) = &self.mail
         {
             return mail.handle(method, params).await;
+        }
+        if crate::browser_rpc::BrowserRpc::handles(method) {
+            return self.browser.handle(method, params).await;
         }
         if AuthRpc::handles(method) {
             return AuthRpc::new(self.auth()?.clone())

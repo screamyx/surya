@@ -91,6 +91,11 @@ impl Harness for MockHarness {
         _request: RunRequest,
         controls: RunControls,
     ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        // `ZERON_MOCK_BROWSER=<url>`: drive the browser pane through the
+        // real surya-mcp binary instead of replaying a script (mock_browser.rs).
+        if let Some(url) = crate::mock_browser::wanted() {
+            return Ok(crate::mock_browser::run(url));
+        }
         // Optional pacing knob for demos/manual testing: `ZERON_MOCK_DELAY_MS`
         // spaces the scripted events out so live-run UI states (working
         // indicator, streaming fade, trailing tool-group auto-open) are

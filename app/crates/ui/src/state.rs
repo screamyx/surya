@@ -1565,6 +1565,8 @@ impl AppState {
         self.engine = Some(handle.clone());
         self.reconnect_attempts = 0;
         let mut watch_tasks = Vec::with_capacity(8);
+        #[cfg(feature = "browser")]
+        watch_tasks.push(crate::browser_agent::spawn(cx, handle.clone()));
         if let Some(task) = spawn_deferred_engine_watch(cx, handle.clone()) {
             watch_tasks.push(task);
         }
