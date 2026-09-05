@@ -1,0 +1,83 @@
+[2m2026-09-05T04:33:30.817359Z[0m [32m INFO[0m [2mgpui_linux::linux::x11::client[0m[2m:[0m XInput version: 2.4, gesture support: true
+[2m2026-09-05T04:33:30.817405Z[0m [31mERROR[0m [2mgpui_linux::linux::x11::client[0m[2m:[0m Found no xinput mouse pointers.
+[2m2026-09-05T04:33:30.817492Z[0m [32m INFO[0m [2mgpui_linux::linux::x11::client[0m[2m:[0m x11: compositor present: false, gtk_frame_extents_supported: false
+[2m2026-09-05T04:33:30.818743Z[0m [32m INFO[0m [2mgpui_linux::linux::x11::client[0m[2m:[0m Using default scale factor: 1.0
+[2m2026-09-05T04:33:30.818897Z[0m [32m INFO[0m [2mgpui_linux::linux::platform[0m[2m:[0m Compositor GPU hint: vendor=0x10de, device=0x2c05 (from dev 226:128)
+[2m2026-09-05T04:33:30.819651Z[0m [33m WARN[0m [1m{}[0m[1m{[0m[3mtask_name[0m[2m=[0m"org.freedesktop.portal.Settings proxy caching"[1m}[0m[2m:[0m [2mzbus::proxy[0m[2m:[0m Failed to populate properties cache via GetAll: org.freedesktop.DBus.Error.ServiceUnknown: The name org.freedesktop.portal.Desktop was not provided by any .service files. Property change streams will not produce values.
+browser: cache=/tmp/critic-shots-jt8XOg/cef-light helper=/store/agent-worktrees/surya-tasks-target/debug/zeron-browser-helper
+browser: switches ["no-first-run", "no-default-browser-check", "disable-gpu", "disable-gpu-compositing"]
+[900227:900269:0905/123330.861862:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[900227:900269:0905/123330.862066:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[900227:900269:0905/123330.862778:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[900227:900269:0905/123330.871699:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+browser: created id=1 (#1)
+browser: view_rect #1 -> 800x600
+browser: create asked=1 made=1 url=https://example.com
+[2m2026-09-05T04:33:30.883001Z[0m [33m WARN[0m [2mgpui_linux::linux::x11::window[0m[2m:[0m Unable to find a transparent visual
+[2m2026-09-05T04:33:30.883016Z[0m [32m INFO[0m [2mgpui_linux::linux::x11::window[0m[2m:[0m Using Visual { id: 33, colormap: 32, depth: 24 }
+[2m2026-09-05T04:33:30.883086Z[0m [32m INFO[0m [2mzeron_ui::state[0m[2m:[0m engine daemon detected; connecting [3murl[0m[2m=[0mws://127.0.0.1:38973
+libEGL warning: pci id for fd 135: 10de:2c05, driver (null)
+
+pci id for fd 136: 10de:2c05, driver (null)
+pci id for fd 137: 10de:2c05, driver (null)
+libEGL warning: egl: failed to create dri2 screen
+pci id for fd 136: 10de:2c05, driver (null)
+pci id for fd 137: 10de:2c05, driver (null)
+libEGL warning: egl: failed to create dri2 screen
+[2m2026-09-05T04:33:30.981552Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m GENERAL [../src/amd/vulkan/radv_physical_device.c:2153 (0x0)]
+	Could not open device /dev/dri/renderD129: Permission denied (VK_ERROR_INCOMPATIBLE_DRIVER)
+[2m2026-09-05T04:33:30.981582Z[0m [33m WARN[0m [2mwgpu_hal::vulkan::instance[0m[2m:[0m 	objects: (type: INSTANCE, hndl: 0x6073572466d0, name: ?)
+[2m2026-09-05T04:33:30.982772Z[0m [32m INFO[0m [2mwgpu_hal::vulkan::adapter[0m[2m:[0m Found 6 cooperative matrix configurations supported by wgpu
+[2m2026-09-05T04:33:30.983468Z[0m [32m INFO[0m [2mgpui_wgpu::wgpu_context[0m[2m:[0m Found 3 GPU adapter(s):
+[2m2026-09-05T04:33:30.983475Z[0m [32m INFO[0m [2mgpui_wgpu::wgpu_context[0m[2m:[0m   - NVIDIA GeForce RTX 5070 Ti (vendor=0x10de, device=0x2c05, backend=Vulkan, type=DiscreteGpu)
+[2m2026-09-05T04:33:30.983480Z[0m [32m INFO[0m [2mgpui_wgpu::wgpu_context[0m[2m:[0m   - llvmpipe (LLVM 20.1.2, 256 bits) (vendor=0x10005, device=0x0000, backend=Vulkan, type=Cpu)
+[2m2026-09-05T04:33:30.983491Z[0m [32m INFO[0m [2mgpui_wgpu::wgpu_context[0m[2m:[0m   - llvmpipe (LLVM 20.1.2, 256 bits) (vendor=0x10005, device=0x0000, backend=Gl, type=Cpu)
+[2m2026-09-05T04:33:30.983495Z[0m [32m INFO[0m [2mgpui_wgpu::wgpu_context[0m[2m:[0m Testing adapter: NVIDIA GeForce RTX 5070 Ti (Vulkan)...
+[2m2026-09-05T04:33:31.080058Z[0m [32m INFO[0m [2mgpui_wgpu::wgpu_context[0m[2m:[0m Selected GPU (passed configuration test): NVIDIA GeForce RTX 5070 Ti (Vulkan)
+[2m2026-09-05T04:33:31.080111Z[0m [32m INFO[0m [2mgpui_wgpu::wgpu_context[0m[2m:[0m Selected GPU adapter: "NVIDIA GeForce RTX 5070 Ti" (Vulkan)
+[2m2026-09-05T04:33:31.102722Z[0m [32m INFO[0m [2mgpui_linux::linux::x11::window[0m[2m:[0m x11: no compositor present, falling back to server-side window decorations
+[900227:900227:0905/123331.104103:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[900227:900227:0905/123331.104141:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[900227:900269:0905/123331.104152:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[900227:900269:0905/123331.104159:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[900227:900227:0905/123331.104206:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[900227:900227:0905/123331.105559:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[900227:900227:0905/123331.107505:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[900227:900227:0905/123331.107559:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[900227:900269:0905/123331.107695:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[900227:900227:0905/123331.108526:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[900227:900269:0905/123331.108553:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[900227:900227:0905/123331.109322:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[900227:900269:0905/123331.109348:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Could not parse server address: Unknown address type (examples of valid types are "tcp" and on UNIX "unix")
+[900227:900227:0905/123331.109643:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+browser: visible=0
+[2m2026-09-05T04:33:31.113291Z[0m [32m INFO[0m [2mgpui_linux::linux::platform[0m[2m:[0m activate is not implemented on Linux, ignoring the call
+browser: address https://example.com/
+browser: load_end status=200
+browser: t=5s renders=1 work_did=234 pump_asks=170 timer_armed=0 timer_fired=0 idle_armed=234 idle_ran=233 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=10s renders=1 work_did=291 pump_asks=173 timer_armed=0 timer_fired=0 idle_armed=291 idle_ran=290 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=15s renders=1 work_did=341 pump_asks=173 timer_armed=0 timer_fired=0 idle_armed=341 idle_ran=340 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=20s renders=1 work_did=395 pump_asks=174 timer_armed=0 timer_fired=0 idle_armed=395 idle_ran=394 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=25s renders=1 work_did=445 pump_asks=174 timer_armed=0 timer_fired=0 idle_armed=445 idle_ran=444 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=30s renders=1 work_did=496 pump_asks=175 timer_armed=0 timer_fired=0 idle_armed=496 idle_ran=495 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=35s renders=1 work_did=718 pump_asks=343 timer_armed=0 timer_fired=0 idle_armed=718 idle_ran=717 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=40s renders=1 work_did=768 pump_asks=343 timer_armed=0 timer_fired=0 idle_armed=768 idle_ran=767 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=45s renders=1 work_did=818 pump_asks=343 timer_armed=0 timer_fired=0 idle_armed=818 idle_ran=817 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=50s renders=1 work_did=868 pump_asks=343 timer_armed=0 timer_fired=0 idle_armed=868 idle_ran=867 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=55s renders=1 work_did=918 pump_asks=343 timer_armed=0 timer_fired=0 idle_armed=918 idle_ran=917 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+[2m2026-09-05T04:34:30.805494Z[0m [31mERROR[0m [2mgpui_linux::linux::x11::client[0m[2m:[0m Failed to get screen mode info from xrandr, defaulting to 60hz refresh rate.
+browser: t=60s renders=3 work_did=970 pump_asks=343 timer_armed=0 timer_fired=0 idle_armed=968 idle_ran=967 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: t=65s renders=16 work_did=1063 pump_asks=360 timer_armed=0 timer_fired=0 idle_armed=1048 idle_ran=1047 idle_refresh=0 inputs=0 frames=0 size=0x0 created=1 closed=0 popups_refused=0 visible=0 copy_ms n=0 last=0.00 avg=0.00 max=0.00 upload_ms n=0 last=0.00 avg=0.00 max=0.00
+browser: view_rect #2 -> 800x600
+browser: view_rect #3 -> 800x600
+browser: visible=1
+browser: view -> 518x806 scale=1 resizes=1
+browser: on_paint #1: 518x806, 1670032 bytes, copy 0.25ms
+browser: on_paint #2: 518x806, 1670032 bytes, copy 0.25ms
+browser: t=70s renders=29 work_did=1147 pump_asks=374 timer_armed=0 timer_fired=0 idle_armed=1119 idle_ran=1118 idle_refresh=2 inputs=0 frames=2 size=518x806 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=2 last=0.25 avg=0.25 max=0.25 upload_ms n=1 last=0.31 avg=0.31 max=0.31
+browser: t=75s renders=29 work_did=1197 pump_asks=374 timer_armed=0 timer_fired=0 idle_armed=1169 idle_ran=1168 idle_refresh=2 inputs=0 frames=2 size=518x806 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=2 last=0.25 avg=0.25 max=0.25 upload_ms n=1 last=0.31 avg=0.31 max=0.31
+browser: t=80s renders=29 work_did=1247 pump_asks=374 timer_armed=0 timer_fired=0 idle_armed=1219 idle_ran=1218 idle_refresh=2 inputs=0 frames=2 size=518x806 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=2 last=0.25 avg=0.25 max=0.25 upload_ms n=1 last=0.31 avg=0.31 max=0.31
+browser: t=85s renders=30 work_did=1298 pump_asks=374 timer_armed=0 timer_fired=0 idle_armed=1269 idle_ran=1268 idle_refresh=2 inputs=0 frames=2 size=518x806 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=2 last=0.25 avg=0.25 max=0.25 upload_ms n=1 last=0.31 avg=0.31 max=0.31
+browser: t=90s renders=30 work_did=1348 pump_asks=374 timer_armed=0 timer_fired=0 idle_armed=1319 idle_ran=1318 idle_refresh=2 inputs=0 frames=2 size=518x806 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=2 last=0.25 avg=0.25 max=0.25 upload_ms n=1 last=0.31 avg=0.31 max=0.31
+browser: t=95s renders=30 work_did=1398 pump_asks=374 timer_armed=0 timer_fired=0 idle_armed=1369 idle_ran=1368 idle_refresh=2 inputs=0 frames=2 size=518x806 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=2 last=0.25 avg=0.25 max=0.25 upload_ms n=1 last=0.31 avg=0.31 max=0.31
+browser: t=100s renders=31 work_did=1449 pump_asks=374 timer_armed=0 timer_fired=0 idle_armed=1419 idle_ran=1418 idle_refresh=2 inputs=0 frames=2 size=518x806 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=2 last=0.25 avg=0.25 max=0.25 upload_ms n=1 last=0.31 avg=0.31 max=0.31
