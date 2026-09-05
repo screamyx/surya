@@ -6576,18 +6576,27 @@ impl Shell {
                         cx.notify();
                     })),
             )
-            .children(self.render_engine_skew_banner(theme, cx))
+            .children(self.render_engine_skew_banner(top_h, theme, cx))
             .into_any_element()
     }
 
     /// The version-skew strip: shown while the attached engine was built from
-    /// a different commit than this app. It floats just under the titlebar so
-    /// it never shifts the transcript; nothing is refused, a send that then
-    /// misbehaves has its reason on screen. The outer row has no id and no
-    /// handlers, so clicks beside the card fall through to the transcript; the
-    /// card itself occludes. Dismiss hides that message for this app session.
+    /// a different commit than this app. It floats over the transcript so it
+    /// never shifts it; nothing is refused, a send that then misbehaves has
+    /// its reason on screen. The outer row has no id and no handlers, so
+    /// clicks beside the card fall through to the transcript; the card itself
+    /// occludes. Dismiss hides that message for this app session.
+    ///
+    /// `top` is where the transcript starts: the chrome above it, title row
+    /// and all. The banner used to sit at a fixed `TITLEBAR_HEIGHT + 8`, which
+    /// was the transcript's top back when nothing came between them. The page
+    /// title now starts at `TITLEBAR_HEIGHT + 10`, so the fixed offset put the
+    /// banner squarely on the session title (surya-cef3, on the owner's dtry
+    /// build). Following `top` puts it back on the transcript, which is the
+    /// surface it was always meant to cover.
     fn render_engine_skew_banner(
         &self,
+        top: f32,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
@@ -6600,7 +6609,7 @@ impl Shell {
         Some(
             div()
                 .absolute()
-                .top(px(Theme::TITLEBAR_HEIGHT + 8.0))
+                .top(px(top.max(Theme::TITLEBAR_HEIGHT) + 8.0))
                 .left_0()
                 .right_0()
                 .flex()
