@@ -237,6 +237,7 @@ async fn collect_text(
         }),
         steering: steer_rx,
         interrupt: CancellationToken::new(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     let mut stream = harness.run(request, controls).await?;
     let mut text = String::new();

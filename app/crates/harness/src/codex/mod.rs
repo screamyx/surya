@@ -756,6 +756,10 @@ async fn run_session(session: Session) {
         request_input,
         mut steering,
         interrupt,
+        // The permission gate is wired for the claude driver only: this
+        // agent's own wire carries its approvals, so routing them through
+        // surya's inbox needs that protocol's own work, not a rename here.
+        permission: _,
     } = controls;
     let request_input = Arc::new(request_input);
 

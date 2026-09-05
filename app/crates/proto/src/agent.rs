@@ -427,6 +427,34 @@ pub enum AgentEvent {
     InputResolved {
         request_id: String,
     },
+    /// A tool is blocked waiting for the user to allow or deny it. surya
+    /// decision 20: the permission card is one of the three things that can
+    /// put an agent in the needs-you queue. Comet auto-approved these and
+    /// never emitted them, so an old consumer simply never sees the variant.
+    #[serde(rename_all = "camelCase")]
+    PermissionRequested {
+        request_id: String,
+        tool_name: String,
+        /// The command / path the tool would act on, already rendered.
+        #[serde(default)]
+        command: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        input: Option<serde_json::Value>,
+    },
+    /// The permission above was answered. `rule` names the always-allow rule
+    /// that answered it, when a rule did rather than a person.
+    #[serde(rename_all = "camelCase")]
+    PermissionResolved {
+        request_id: String,
+        decision: crate::PermissionDecision,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rule: Option<String>,
+        /// Why, for a `Deny`. The transcript says this out loud: a tool that
+        /// did not run leaves no other trace, and "nothing happened" is not
+        /// something the user should have to infer.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
     #[serde(rename_all = "camelCase")]
     Steered {
         assistant_message_id: Option<String>,
@@ -458,6 +486,10 @@ pub enum AgentEvent {
     /// store), `surface_id` the A2UI surface, `tool_use_id` the call that
     /// drew it — the doc part keys on the latter so a retry refreshes in
     /// place.
+    ///
+    /// Emitted on the call's tool_result, not on the call itself, so the
+    /// harness can read the sidecar's own record for it; the card takes the
+    /// place of the tool chip that would otherwise sit above it.
     #[serde(rename_all = "camelCase")]
     Card {
         card_id: String,

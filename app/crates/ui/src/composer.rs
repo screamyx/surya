@@ -5613,11 +5613,13 @@ impl Composer {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 this.on_wizard_key(event, window, cx)
             }))
-            .rounded(px(26.0))
+            .rounded(px(crate::surya::COMPOSER_RADIUS))
             .border_1()
             .border_color(theme.border)
             .bg(theme.input_glass_bg())
-            .when(!theme.is_frost(), |el| el.shadow_lg())
+            .when(!theme.is_frost(), |el| {
+                el.shadow(crate::surya::shadow(crate::surya::ELEVATION_FLOAT, &theme))
+            })
             .flex()
             .flex_col()
             .child(
@@ -6140,11 +6142,16 @@ impl Render for Composer {
         // shows through as an inner glow (theme.rs's card_selected_shadows
         // lesson; user report).
         let pill = div()
-            .rounded(px(26.0))
+            .rounded(px(crate::surya::COMPOSER_RADIUS))
             .bg(pill_bg)
             .border_1()
             .border_color(theme.border)
-            .when(!theme.is_frost(), |el| el.shadow_lg());
+            // Opaque surfaces get the surya float shadow, not `shadow_lg`:
+            // gpui's large preset is tuned for a dark field and reads as a
+            // grey rim on the light canvas.
+            .when(!theme.is_frost(), |el| {
+                el.shadow(crate::surya::shadow(crate::surya::ELEVATION_FLOAT, &theme))
+            });
         // The pill's bottom edge is stationary on screen (the composer sits at
         // the bottom of the shell column; growth moves the TOP edge), so the
         // controls pin to the bottom and only the text glides with the reveal

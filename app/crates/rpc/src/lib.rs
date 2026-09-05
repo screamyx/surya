@@ -67,6 +67,17 @@ pub mod methods {
     /// current value first, then every change — the connection pill /
     /// composer-honesty / queued-badge feed. No params; IPC-only.
     pub const WATCH_CONNECTIVITY: &str = "WatchConnectivity";
+    // Agent mail (decision 19). Addresses are an agent id or `#workspace`;
+    // every accepted send returns one delivery id per resolved recipient.
+    /// `{from, to, body, toDevice?}` → `{ids, recipients}`. IPC-only.
+    pub const MAIL_SEND: &str = "Mail.Send";
+    /// `{agent?}` → `{messages}`. Without `agent`, the recent feed.
+    pub const MAIL_LIST: &str = "Mail.List";
+    /// `{id}` → `{acked}` — the manual "seen"; turn completion acks on its own.
+    pub const MAIL_ACK: &str = "Mail.Ack";
+    /// `{messages}` now, then a fresh list on every mail change — the
+    /// Messages pane's feed. No params; IPC-only.
+    pub const WATCH_MAIL: &str = "WatchMail";
     /// In-flight queued-attachment transfers (`zeron_proto::TransferProgress`
     /// list): current set first, then a fresh snapshot per landed chunk —
     /// the sending thumbnail's percent-ring feed. No params; IPC-only.
@@ -74,6 +85,29 @@ pub mod methods {
     pub const WATCH_CHATS: &str = "WatchChats";
     pub const WATCH_DEVICES: &str = "WatchDevices";
     pub const WATCH_SESSIONS: &str = "WatchSessions";
+    /// Derived agent rows (`AgentStateRow[]`): the five states, the spawned
+    /// agent tree and the needs-you roll-up (surya decisions 15, 17, 20).
+    /// Current snapshot first, then every change. No params.
+    pub const WATCH_AGENT_STATES: &str = "WatchAgentStates";
+    /// The needs-you inbox (`NeedsYouItem[]`) across every chat, newest
+    /// first: pending permissions with their tool command, pending questions
+    /// with their options, and failed or stopped runs with their reason.
+    /// Current snapshot first, then every change. No params.
+    pub const WATCH_NEEDS_YOU: &str = "WatchNeedsYou";
+    /// Answer one parked permission. Params `{requestId, decision,
+    /// remember?: {scope, pattern, name?}}`; `remember` turns the answer into
+    /// an always-allow rule in the same breath.
+    pub const RESPOND_PERMISSION: &str = "RespondPermission";
+    /// The device's always-allow rules (`AllowRule[]`). No params.
+    pub const LIST_ALLOW_RULES: &str = "ListAllowRules";
+    /// Add one always-allow rule from Settings. Params `{name?, scope,
+    /// workspacePath?, toolName, pattern}`.
+    pub const ADD_ALLOW_RULE: &str = "AddAllowRule";
+    /// Delete one always-allow rule. Params `{ruleId}`.
+    pub const DELETE_ALLOW_RULE: &str = "DeleteAllowRule";
+    /// Clear an agent's unread badge so a finished run stops reading Done.
+    /// Params `{agentId}`.
+    pub const MARK_AGENT_SEEN: &str = "MarkAgentSeen";
     /// Spaces registry (device+folder pairs) from the workspace doc.
     pub const WATCH_SPACES: &str = "WatchSpaces";
     /// Task board rows for one space (`{spaceId}`) or every space (no

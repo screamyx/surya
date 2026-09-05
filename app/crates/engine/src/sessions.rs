@@ -28,12 +28,14 @@ use zeron_doc::{
     DocError, MessagePart, MessageRole, MessageStatus, STREAM_COMMIT_MS, SegmentWriter, SessionDoc,
     SessionMessageEntry, fold_event_into_parts, sanitize_tool_call,
 };
+use zeron_harness::permission::PermissionGate;
 use zeron_harness::{CancellationToken, Harness, RunControls, SteerMessage};
 use zeron_proto::{
-    AgentEvent, DoneStatus, HarnessId, RunRequest, Session, SessionStatus, UserInputAnswer,
-    UserInputQuestion,
+    AgentEvent, DoneStatus, HarnessId, PermissionDecision, PermissionRequest, RememberRule,
+    RunRequest, Session, SessionStatus, UserInputAnswer, UserInputQuestion,
 };
 
+use crate::agent_states::{AgentStates, PermissionOpen};
 use crate::doc_host::{ChatDocHandle, DocHost};
 use crate::registry::HarnessRegistry;
 use crate::run_journal::RunJournal;
@@ -154,6 +156,10 @@ struct Inner {
     harness_sessions: Mutex<HashMap<String, HarnessSessionRef>>,
     /// Auto-titler for untitled chats (wired at engine assembly; absent in bare tests).
     titles: OnceLock<crate::titles::TitleGenerator>,
+    /// Derived agent state, the needs-you inbox and the always-allow rules
+    /// (surya decisions 15, 17 and 20). Every status transition and every
+    /// parked control request lands here as well as on `sessions_tx`.
+    states: AgentStates,
     /// Fired with `(chat_id, cwd)` when a user prompt starts a turn (fresh
     /// dispatch or accepted steer) — the diff sync snapshots the checkout tree
     /// for the Changes pane's "Latest turn" scope. Absent in bare tests.
@@ -177,6 +183,7 @@ impl SessionsEngine {
         device_id: String,
         journal: Arc<RunJournal>,
         registry: Arc<HarnessRegistry>,
+        states: AgentStates,
     ) -> Self {
         let (sessions_tx, _) = watch::channel(Vec::new());
         Self {
@@ -191,6 +198,7 @@ impl SessionsEngine {
                 sessions_tx,
                 last_requests: Mutex::new(HashMap::new()),
                 harness_sessions: Mutex::new(HashMap::new()),
+                states,
                 titles: OnceLock::new(),
                 turn_listener: OnceLock::new(),
             }),
@@ -242,6 +250,62 @@ impl SessionsEngine {
     /// Status watch: the full session list, re-sent on every transition.
     pub fn watch_sessions(&self) -> watch::Receiver<Vec<Session>> {
         self.inner.sessions_tx.subscribe()
+    }
+
+    /// The derived agent tree, the needs-you inbox and the rules table.
+    pub fn agent_states(&self) -> &AgentStates {
+        &self.inner.states
+    }
+
+    /// Answer a parked permission. `remember` turns the answer into an
+    /// always-allow rule (surya decision 20). Fails when nothing is parked
+    /// under `request_id` — a stale card must not silently succeed.
+    pub fn respond_permission(
+        &self,
+        request_id: &str,
+        decision: PermissionDecision,
+        remember: Option<&RememberRule>,
+    ) -> Result<(), EngineError> {
+        let resolved = self
+            .inner
+            .states
+            .resolve_permission(request_id, decision, remember)?;
+        // Surface the answer on the chat's own stream so a second client
+        // watching the same chat drops the card too.
+        let engine_tx = lock(&self.inner.runs)
+            .get(&resolved.chat_id)
+            .map(|h| h.engine_tx.clone());
+        if let Some(engine_tx) = engine_tx {
+            let _ = engine_tx.send(AgentEvent::PermissionResolved {
+                request_id: request_id.to_string(),
+                decision,
+                rule: resolved.created_rule.as_ref().map(|r| r.name.clone()),
+                reason: (decision == PermissionDecision::Deny)
+                    .then(|| "you denied it".to_string()),
+            });
+        }
+        Ok(())
+    }
+
+    /// A chat is gone: forget its agent rows and refuse anything still parked
+    /// on it. Without this a deleted chat leaves a live responder — the run
+    /// blocks until the gate's grace path answers, and a card for a chat that
+    /// no longer exists sits in the inbox forever.
+    pub fn drop_chat(&self, chat_id: &str) {
+        let engine_tx = lock(&self.inner.runs)
+            .get(chat_id)
+            .map(|h| h.engine_tx.clone());
+        for request_id in self.inner.states.drop_chat(chat_id) {
+            let Some(engine_tx) = engine_tx.as_ref() else {
+                continue;
+            };
+            let _ = engine_tx.send(AgentEvent::PermissionResolved {
+                request_id,
+                decision: PermissionDecision::Deny,
+                rule: None,
+                reason: Some("the chat was closed before anyone answered".to_string()),
+            });
+        }
     }
 
     pub fn session_status(&self, chat_id: &str) -> Option<Session> {
@@ -440,11 +504,44 @@ impl SessionsEngine {
                 rx
             })
         };
+        // Permission gate: an always-allow rule answers before anyone is
+        // woken, otherwise the request parks in the needs-you inbox until a
+        // `RespondPermission` arrives (surya decision 20). Comet auto-allowed
+        // every request here and emitted nothing.
+        let permission = {
+            let states = self.inner.states.clone();
+            let engine_tx = engine_tx.clone();
+            let chat = chat_id.to_string();
+            let cwd = request.cwd.clone();
+            PermissionGate::new(move |request: PermissionRequest| {
+                let (tx, rx) = oneshot::channel();
+                match states.open_permission(&chat, &chat, &cwd, request.clone(), tx) {
+                    PermissionOpen::AutoAllowed(rule) => {
+                        let _ = engine_tx.send(AgentEvent::PermissionResolved {
+                            request_id: request.request_id,
+                            decision: PermissionDecision::Allow,
+                            rule: Some(rule.name),
+                            reason: None,
+                        });
+                    }
+                    PermissionOpen::Parked => {
+                        let _ = engine_tx.send(AgentEvent::PermissionRequested {
+                            request_id: request.request_id,
+                            tool_name: request.tool_name,
+                            command: request.command,
+                            input: request.input,
+                        });
+                    }
+                }
+                rx
+            })
+        };
         let interrupt_token = CancellationToken::new();
         let controls = RunControls {
             request_input,
             steering: steer_rx,
             interrupt: interrupt_token.clone(),
+            permission,
         };
 
         lock(&self.inner.runs).insert(
@@ -766,6 +863,13 @@ impl SessionsEngine {
         }
     }
 
+    /// Is `run_id` still the chat's live run? Mail's ack keys on this: a row
+    /// carried by a run that is no longer live was either finished or lost,
+    /// and the session status says which.
+    pub fn run_is_live(&self, chat_id: &str, run_id: &str) -> bool {
+        self.is_live(chat_id, run_id)
+    }
+
     fn is_live(&self, chat_id: &str, run_id: &str) -> bool {
         lock(&self.inner.runs)
             .get(chat_id)
@@ -869,6 +973,7 @@ impl Inner {
             self.sessions_tx.send_replace(list);
             session
         };
+        self.states.note_session(chat_id, status);
         // Mirror the transition into the workspace doc's session-status row so
         // remote devices' sidebars show this run (staleness-checked client-side).
         if let Some(ws) = self.workspace() {
@@ -1578,6 +1683,11 @@ async fn drive_run(
         } = &event
         {
             inner.publish(&chat_id, &event);
+            // Decision 15: the child gets a row under its spawner, and its
+            // own needs-you rolls up every ancestor.
+            inner
+                .states
+                .note_subagent_event(&chat_id, parent_tool_use_id, sub_event);
             let is_steer = matches!(sub_event.as_ref(), AgentEvent::UserMessage { .. });
             if is_steer {
                 settled_subagents.remove(parent_tool_use_id);
@@ -1974,15 +2084,31 @@ async fn drive_run(
             } => {
                 inner.remember_harness_session(&chat_id, session_id, &run_cwd);
             }
-            AgentEvent::InputRequested { .. } => {
+            AgentEvent::InputRequested {
+                request_id,
+                questions,
+            } => {
                 // Known-id guaranteed: the unknown-id twin was dropped above,
                 // before the parked gate.
                 inner.set_status(&chat_id, SessionStatus::AwaitingInput, false);
+                inner
+                    .states
+                    .open_questions(&chat_id, &chat_id, request_id, questions.clone());
             }
-            AgentEvent::InputResolved { .. } => {
+            AgentEvent::InputResolved { request_id } => {
+                // Clear the inbox card BEFORE the status flips: Working would
+                // otherwise be published with the answered question still in
+                // the queue, and the rail would blink needs-you.
+                inner.states.close_questions(request_id);
                 inner.set_status(&chat_id, SessionStatus::Working, false);
             }
             _ => {}
+        }
+
+        if let AgentEvent::Done { status, error, .. } = &event {
+            inner
+                .states
+                .note_run_end(&chat_id, *status, error.as_deref().unwrap_or_default());
         }
 
         inner.publish(&chat_id, &event);

@@ -77,7 +77,12 @@ impl TasksPane {
         cx.spawn(async move |this, cx| {
             let result = client.call(methods::MUTATE, params).await;
             let _ = this.update(cx, |pane, cx| {
-                pane.error = result.err().map(|e| SharedString::from(e.to_string()));
+                if let Err(err) = result {
+                    pane.error = Some(SharedString::from(err.to_string()));
+                    pane.model.clear_pending();
+                } else {
+                    pane.error = None;
+                }
                 cx.notify();
             });
         })
@@ -133,6 +138,9 @@ impl TasksPane {
         let Some(plan) = self.model.plan_drop(&task_id, &target) else {
             return;
         };
+        // Move the card now; the watch frames reconcile (model.rs).
+        self.model
+            .apply_optimistic(plan.clone(), std::time::Instant::now());
         if let Some(status) = plan.status {
             self.mutate(
                 serde_json::json!({ "op": "updateTask", "taskId": plan.task_id, "status": status }),
@@ -246,6 +254,10 @@ impl TasksPane {
                 .child(
                     div()
                         .flex_1()
+                        // The input reports a wide minimum; without this the
+                        // row overflows and pushes the button out of the column.
+                        .min_w(px(0.0))
+                        .overflow_hidden()
                         .px(px(10.0))
                         .py(px(6.0))
                         .rounded(px(8.0))
@@ -258,6 +270,7 @@ impl TasksPane {
                 .child(
                     div()
                         .id("task-quick-add-go")
+                        .flex_none()
                         .w(px(28.0))
                         .h(px(28.0))
                         .rounded(px(8.0))

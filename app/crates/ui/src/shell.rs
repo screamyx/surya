@@ -3945,16 +3945,21 @@ impl Shell {
             Route::Chat => self.render_chat_sidebar(&theme, cx),
         };
         let target = self.sidebar_target();
-        // Transparent — the sidebar sits directly on the frost shell; the main
-        // card's own border provides the separation. The content row spans the
-        // full window height (the titlebar overlays it), so the column pads
-        // itself below the chrome.
+        // The rail is a floating card on the canvas (surya look, decision 22),
+        // not a transparent column on the frost. Its width is pinned to the
+        // WIDER tween endpoint so a collapse slides the card out behind the
+        // container's clip instead of squashing its rows as it goes.
+        let stable = stable_panel_content_width(target, self.active_tween_endpoints(self.sidebar_tween));
         self.pane_container(
             self.sidebar_tween,
             target,
-            div()
+            crate::surya::panel(&theme, crate::surya::ELEVATION_PANEL)
                 .h_full()
-                .pt(px(Theme::TITLEBAR_HEIGHT))
+                .w(px(stable))
+                .flex_none()
+                // The titlebar floats over the whole content row, so the
+                // card's own chrome starts below it.
+                .pt(px(Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET))
                 .child(inner)
                 .into_any_element(),
         )
@@ -5815,10 +5820,14 @@ impl Shell {
                                 .text_color(theme.text.opacity(0.09)),
                         )
                         .child(
+                            // The one display moment in the app: an empty
+                            // window with a single thing to do. 16px medium
+                            // read as a slightly bold row, not as a headline.
                             div()
                                 .mt(px(24.0))
-                                .text_size(crate::typography::ui_rems(16.0))
-                                .font_weight(gpui::FontWeight::MEDIUM)
+                                .text_size(crate::surya::DISPLAY.rems())
+                                .line_height(crate::surya::DISPLAY.line_height())
+                                .font_weight(crate::surya::DISPLAY.weight)
                                 .text_color(theme.text)
                                 .child(SharedString::from("Add a project to get started")),
                         )
@@ -6314,21 +6323,15 @@ impl Shell {
         } else {
             bg
         };
-        let panel = div()
+        let panel = crate::surya::panel(&theme, crate::surya::ELEVATION_PANEL)
             .size_full()
             .flex()
             .flex_col()
-            // In takeover the panel's left edge IS the sidebar seam, which
-            // already carries the sidebar tone's right hairline — a second
-            // border there doubled up (user report).
-            .when(!self.right_pane_expanded, |el| {
-                el.border_l_1().border_color(theme.border)
-            })
             .bg(panel_bg)
-            .overflow_hidden()
-            // The titlebar is a glass overlay over the full-height content
-            // row; the panel's own chrome starts below it.
-            .pt(px(Theme::TITLEBAR_HEIGHT))
+            // The titlebar is an overlay over the full-height content row;
+            // the panel's own chrome starts below it, less the canvas inset
+            // the card already sits down by.
+            .pt(px(Theme::TITLEBAR_HEIGHT - crate::surya::CANVAS_INSET))
             .child(content);
         let target = self.right_target(cx);
         self.right_pane_container(
@@ -7690,7 +7693,7 @@ impl Render for Shell {
             .bg(frost)
             .text_color(text)
             .font_family(font)
-            .text_size(crate::typography::ui_rems(14.0))
+            .text_size(crate::surya::BODY.rems())
             .on_drag_move(cx.listener(Self::on_sidebar_drag))
             .on_drag_move(cx.listener(Self::on_right_pane_drag))
             .on_drag_move(cx.listener(Self::on_terminal_drag))
@@ -7860,10 +7863,10 @@ impl Render for Shell {
                 let overlays = self.render_overlays(window.viewport_size(), window, cx);
                 // Copied out (not held) — `render_title_bar` needs `cx` mutable.
                 let border_color = Theme::of(cx).border;
-                // No inset cards (user request): the conversation column sits
-                // flush and unbordered, the transcript directly on the frost
-                // glass; the changes pane is a flush left-bordered glass panel
-                // (built inside `render_right_pane`).
+                // Floating panels on a soft canvas (decision 22, from the
+                // owner's three sketches). The conversation column is a card
+                // like the rail and the right pane, and the canvas shows
+                // between them.
                 let main = if main_transition.is_some() {
                     div()
                         .h_full()
@@ -7875,12 +7878,31 @@ impl Render for Shell {
                 } else {
                     main
                 };
-                let card: AnyElement = div()
+                // The seam between two cards is a margin on the CENTRE card,
+                // not a flex gap: the resize seams are zero-width flex
+                // children, so a gap on the row would count twice between the
+                // rail and the conversation and once against nothing when a
+                // pane is closed.
+                let sidebar_now_px = self.eval_tween(self.sidebar_tween, self.sidebar_target());
+                let right_now_px = if on_chat {
+                    self.eval_tween(self.right_tween, self.right_target(cx))
+                } else {
+                    0.0
+                };
+                let card: AnyElement = crate::surya::panel(
+                    &Theme::of(cx).clone(),
+                    crate::surya::ELEVATION_PANEL,
+                )
                     .flex_1()
                     .min_w_0()
                     .flex()
                     .flex_row()
-                    .overflow_hidden()
+                    .when(sidebar_now_px > 0.5, |el| {
+                        el.ml(px(crate::surya::PANEL_GAP))
+                    })
+                    .when(right_now_px > 0.5, |el| {
+                        el.mr(px(crate::surya::PANEL_GAP))
+                    })
                     .child(main)
                     .into_any_element();
                 // The whole app page is one keyed `animate-in` entrance (zeron
@@ -7912,23 +7934,11 @@ impl Render for Shell {
                     Empty.into_any_element()
                 };
                 let title_bar = self.render_title_bar(cx);
-                // Sidebar tone: a slightly lighter column behind the sidebar,
-                // spanning the FULL window height (under the traffic lights,
-                // through the titlebar, down to the bottom edge). Its width
-                // rides the same tween as the sidebar, so the tone melts away
-                // with the collapse instead of vanishing in a frame.
-                let sidebar_now = self.eval_tween(self.sidebar_tween, self.sidebar_target());
-                // Hairline on its right edge — full height like the tone,
-                // so the sidebar column reads as its own surface.
-                let sidebar_tone = div()
-                    .absolute()
-                    .top_0()
-                    .bottom_0()
-                    .left_0()
-                    .w(px(sidebar_now))
-                    .bg(crate::theme::wash(0.05))
-                    .border_r_1()
-                    .border_color(border_color);
+                // The full-height sidebar tone is gone: the rail is a card
+                // now and carries its own fill and hairline, so a second
+                // column painted under the titlebar would show as a tail
+                // above and below it.
+                let _ = border_color;
                 // The content row spans the FULL window height — the titlebar
                 // overlays it (glass, no fill), so the transcript can scroll
                 // under the header and fade out at its edge. Columns that
@@ -7942,6 +7952,7 @@ impl Render for Shell {
                             .size_full()
                             .flex()
                             .flex_row()
+                            .p(px(crate::surya::CANVAS_INSET))
                             .child(sidebar)
                             .child(sidebar_seam)
                             .child(card)
@@ -7951,8 +7962,7 @@ impl Render for Shell {
                     .child(div().absolute().top_0().left_0().right_0().child(title_bar))
                     .child(self.render_titlebar_cluster(cx))
                     .children(overlays);
-                root.child(sidebar_tone)
-                    .child(motion::fade_in("phase-app", page))
+                root.child(motion::fade_in("phase-app", page))
             }
             GatePhase::Loading => root, // splash overlay covers boot
             GatePhase::OrgGate => {

@@ -80,8 +80,11 @@ fn is_envelope(card: &Value) -> bool {
     ENVELOPE_KEYS.iter().any(|key| card.get(key).is_some())
 }
 
-/// Handle one `show_card` call.
-pub fn show(config: &Config, arguments: &Value) -> Result<Card, String> {
+/// Handle one `show_card` call. `tool_use_id` is the client's own id for this
+/// call (Claude Code sends it as `_meta."claudecode/toolUseId"`); it is
+/// recorded so the host can match the card to the tool call in the transcript
+/// without parsing the tool result.
+pub fn show(config: &Config, arguments: &Value, tool_use_id: &str) -> Result<Card, String> {
     let card = arguments
         .get("card")
         .ok_or("show_card needs a \"card\" argument")?;
@@ -96,6 +99,7 @@ pub fn show(config: &Config, arguments: &Value) -> Result<Card, String> {
     let record = json!({
         "card_id": card_id,
         "surface_id": surface_id,
+        "tool_use_id": tool_use_id,
         "agent_id": config.agent_id,
         "workspace": config.workspace,
         "at": chrono::Utc::now().to_rfc3339(),
@@ -108,6 +112,16 @@ pub fn show(config: &Config, arguments: &Value) -> Result<Card, String> {
         surface_id,
         messages,
     })
+}
+
+/// The client's id for a `tools/call`, out of the request's `_meta`. Claude
+/// Code sends `claudecode/toolUseId`; other clients may send none.
+pub fn tool_use_id(params: &Value) -> &str {
+    params
+        .get("_meta")
+        .and_then(|meta| meta.get("claudecode/toolUseId"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
 }
 
 /// A card this workspace brings with it (decision 14: data, never code).
@@ -216,8 +230,12 @@ mod tests {
         let config = config(dir.path().to_path_buf(), store.clone());
         let asked = 2;
         for _ in 0..asked {
-            show(&config, &json!({"card": {"shape": "table", "columns": ["A"], "rows": [["1"]]}}))
-                .unwrap();
+            show(
+                &config,
+                &json!({"card": {"shape": "table", "columns": ["A"], "rows": [["1"]]}}),
+                "toolu_test",
+            )
+            .unwrap();
         }
         let written = std::fs::read_to_string(&store).unwrap().lines().count();
         assert_eq!((asked, written), (2, 2), "asked={asked} written={written}");
@@ -228,7 +246,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = dir.path().join("cards.jsonl");
         let config = config(dir.path().to_path_buf(), store.clone());
-        let error = show(&config, &json!({"card": {"title": "no shape"}})).unwrap_err();
+        let error = show(&config, &json!({"card": {"title": "no shape"}}), "").unwrap_err();
         assert!(error.contains("shape"), "{error}");
         assert!(!store.exists(), "a rejected card writes nothing");
     }

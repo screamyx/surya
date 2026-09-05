@@ -31,6 +31,7 @@ async fn main() {
         }),
         steering,
         interrupt: CancellationToken::new(),
+        permission: zeron_harness::permission::PermissionGate::auto_allow(),
     };
     let request = RunRequest {
         surya: None,
