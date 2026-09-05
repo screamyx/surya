@@ -86,6 +86,11 @@ pub(crate) fn card_tool_use(name: &str, id: &str, input: &Value) -> Option<Agent
         .and_then(Value::as_str)
         .unwrap_or(id)
         .to_owned();
+    if !crate::cards::lifts_to_a_drawable_card(input) {
+        // A short-form card carries no A2UI in its input. Better the tool
+        // chip than a blank card.
+        return None;
+    }
     let (surface_id, a2ui) = crate::cards::envelope_list(input, &card_id);
     Some(AgentEvent::Card {
         card_id,
@@ -214,6 +219,9 @@ fn is_synthetic_user_text(text: &str) -> bool {
 /// A `show_card` call waiting on its result.
 struct HeldCard {
     tool_use_id: String,
+    /// The spawning tool_use id when this call belongs to a subagent, so the
+    /// card and the failure path stay on that subagent's transcript.
+    parent: Option<String>,
     /// The tool chip this call would have shown, kept for the failure path.
     chip: AgentEvent,
     /// The card read out of the call's own input, used when the store is
@@ -288,13 +296,77 @@ impl Normalizer {
         Some(self.open_card_tools.remove(at))
     }
 
+    /// The events one tool_result produces: a Card in place of the chip when
+    /// the card can be read back, otherwise the chip and its result so the
+    /// attempt stays visible.
+    fn resolve_tool_result(&mut self, tool_use_id: &str, is_error: bool) -> Vec<AgentEvent> {
+        let mut out = Vec::new();
+        if let Some(held) = self.take_card_call(tool_use_id) {
+            // With a store CONFIGURED, its record is the only truth: falling
+            // back to the call's input turns a short-form card (whose input
+            // holds no A2UI) into a zero-component card, so the user reads
+            // "no components" instead of seeing the tool fail. The input lift
+            // is for runs that have no store at all.
+            let card = (!is_error)
+                .then(|| match self.card_store.is_some() {
+                    true => self.card_for(tool_use_id),
+                    false => held.from_input,
+                })
+                .flatten();
+            if let Some(card) = card {
+                out.push(card);
+                return out;
+            }
+            out.push(held.chip);
+        }
+        out.push(AgentEvent::ToolResult {
+            id: tool_use_id.to_owned(),
+            is_error,
+            output: None,
+            diff: None,
+        });
+        out
+    }
+
+    /// Hold a `show_card` call back, or hand its chip straight over. `parent`
+    /// is the spawning tool_use id for a subagent's call.
+    fn hold_or_emit_card_call(
+        &mut self,
+        name: &str,
+        id: &str,
+        input: &Value,
+        parent: Option<&str>,
+    ) -> Option<AgentEvent> {
+        let chip = AgentEvent::ToolCall {
+            id: id.to_owned(),
+            call: decode_tool_use(name, input),
+        };
+        // Hold on the TOOL, not on whether the input happened to carry a
+        // drawable card: a short-form call lifts to nothing, and its real
+        // card comes from the store on the result.
+        if !crate::cards::is_card_tool(name) {
+            return Some(chip);
+        }
+        let from_input = card_tool_use(name, id, input);
+        self.open_card_tools.push(HeldCard {
+            tool_use_id: id.to_owned(),
+            parent: parent.map(str::to_owned),
+            chip,
+            from_input,
+        });
+        None
+    }
+
     /// Every `show_card` call still waiting on a result. A turn that ends
     /// mid-card (an interrupt, a crash) flushes their chips so the transcript
     /// still shows what the agent tried to do.
-    fn flush_card_calls(&mut self) -> Vec<AgentEvent> {
+    pub(crate) fn flush_card_calls(&mut self) -> Vec<AgentEvent> {
         std::mem::take(&mut self.open_card_tools)
             .into_iter()
-            .map(|held| held.chip)
+            .map(|held| match &held.parent {
+                Some(parent) => tag(parent, held.chip),
+                None => held.chip,
+            })
             .collect()
     }
 
@@ -447,15 +519,12 @@ impl Normalizer {
                                     text: format!("{}\n\n", b.text.trim_end()),
                                 },
                             )),
-                            "tool_use" => Some(tag(
-                                parent,
-                                card_tool_use(&b.name, &b.id, &b.input).unwrap_or_else(|| {
-                                    AgentEvent::ToolCall {
-                                        id: b.id.clone(),
-                                        call: decode_tool_use(&b.name, &b.input),
-                                    }
-                                }),
-                            )),
+                            // A subagent's show_card is held back exactly like
+                            // the parent's: lifting it from the input here
+                            // draws an empty card for every short-form call.
+                            "tool_use" => self
+                                .hold_or_emit_card_call(&b.name, &b.id, &b.input, Some(parent))
+                                .map(|call| tag(parent, call)),
                             _ => None,
                         })
                         .collect();
@@ -481,23 +550,9 @@ impl Normalizer {
                     .blocks()
                     .filter(|b: &ContentBlock| b.kind == "tool_use")
                     .flat_map(|b| {
-                        let chip = AgentEvent::ToolCall {
-                            id: b.id.clone(),
-                            call: decode_tool_use(&b.name, &b.input),
-                        };
                         // A show_card call is held back: the card it draws
                         // replaces its chip, unless the call fails.
-                        let from_input = card_tool_use(&b.name, &b.id, &b.input);
-                        let call = if from_input.is_some() {
-                            self.open_card_tools.push(HeldCard {
-                                tool_use_id: b.id.clone(),
-                                chip,
-                                from_input,
-                            });
-                            None
-                        } else {
-                            Some(chip)
-                        };
+                        let call = self.hold_or_emit_card_call(&b.name, &b.id, &b.input, None);
                         // A spawn's `prompt` is the subagent's opening user
                         // message — the wire never echoes it on the child
                         // feed (child user frames carry tool results and
@@ -561,21 +616,18 @@ impl Normalizer {
                 if let Some(parent) = &f.parent_tool_use_id {
                     // A subagent's tool results echo on the main channel too;
                     // they belong to its transcript, attributed like its calls.
-                    let mut out: Vec<AgentEvent> = f
+                    let results: Vec<ContentBlock> = f
                         .message
                         .blocks()
                         .filter(|b: &ContentBlock| b.kind == "tool_result")
-                        .map(|b| {
-                            tag(
-                                parent,
-                                AgentEvent::ToolResult {
-                                    id: b.tool_use_id.clone(),
-                                    is_error: b.is_error.unwrap_or(false),
-                                    output: None,
-                                    diff: None,
-                                },
-                            )
+                        .collect();
+                    let mut out: Vec<AgentEvent> = results
+                        .into_iter()
+                        .flat_map(|b| {
+                            let is_error = b.is_error.unwrap_or(false);
+                            self.resolve_tool_result(&b.tool_use_id, is_error)
                         })
+                        .map(|event| tag(parent, event))
                         .collect();
                     // A tagged user frame's TEXT blocks are the parent
                     // steering its subagent (SendMessage-style follow-ups —
@@ -602,31 +654,7 @@ impl Normalizer {
                 let mut out = Vec::with_capacity(results.len());
                 for b in results {
                     let is_error = b.is_error.unwrap_or(false);
-                    let held = self.take_card_call(&b.tool_use_id);
-                    if let Some(held) = held {
-                        // The sidecar's own record wins: it carries the
-                        // normalized envelope list and the surface id the
-                        // sidecar actually used. The call's input is the
-                        // fallback when there is no store to read.
-                        let card = (!is_error)
-                            .then(|| self.card_for(&b.tool_use_id).or(held.from_input))
-                            .flatten();
-                        if let Some(card) = card {
-                            // The card IS the answer: neither the call nor its
-                            // result appears, so no chip sits above it.
-                            out.push(card);
-                            continue;
-                        }
-                        // The call failed, or nothing could be read back at
-                        // all. Show the pair so the attempt is not invisible.
-                        out.push(held.chip);
-                    }
-                    out.push(AgentEvent::ToolResult {
-                        id: b.tool_use_id.clone(),
-                        is_error,
-                        output: None,
-                        diff: None,
-                    });
+                    out.extend(self.resolve_tool_result(&b.tool_use_id, is_error));
                 }
                 out
             }
