@@ -57,6 +57,31 @@ pub fn badge_for(kind: NeedsYouKind) -> &'static str {
 /// plainly that it has no name.
 pub const UNTITLED_CHAT: &str = "Untitled chat";
 
+/// Is this row's own answer surface already on screen?
+///
+/// A question for the chat the user is reading is offered twice: once as a
+/// card in this list, and again as the question sheet in that chat's
+/// transcript, with the same options on both (round 4, I2). The sheet is the
+/// real one - it is where the answer is typed - so the card collapses to one
+/// line that only says the queue still holds it.
+///
+/// Questions only. A permission and a stopped run have no second surface, so
+/// collapsing them would leave the user with nothing to press.
+pub fn answered_in_the_open_chat(row: &InboxRow, open_chat: Option<&str>) -> bool {
+    row.kind == NeedsYouKind::Question && open_chat == Some(row.chat_id.as_str())
+}
+
+/// Does the bold title say anything the badge above it does not?
+///
+/// A question's title is the model's own header, and a model that writes
+/// "Question" leaves the card reading "Question" twice, once in the badge and
+/// once in bold under it (round 4, I3).
+
+pub fn title_adds_to_badge(row: &InboxRow) -> bool {
+    let title = row.title.trim();
+    !title.is_empty() && !title.eq_ignore_ascii_case(row.badge.trim())
+}
+
 /// Build the list the needs-you view draws. `items` arrives newest-first from
 /// `WatchNeedsYou` and that order is kept: the engine already sorted it, and
 /// re-sorting here would be a second opinion that can disagree.

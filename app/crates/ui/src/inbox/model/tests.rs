@@ -323,3 +323,63 @@ fn an_orphan_child_is_dropped_rather_than_drawn_at_the_root() {
         "no parent means no tree to hang it under; the next frame carries both"
     );
 }
+
+/// Round 4, I2: the open chat's question is already answerable in its sheet,
+/// so the card must not offer the same options a second time. Every other row
+/// keeps its full card - there is nowhere else to answer those.
+#[test]
+fn only_the_open_chat_s_question_is_the_one_drawn_twice() {
+    let items = [
+        item("q-open", "chat-1", NeedsYouKind::Question),
+        item("q-other", "chat-2", NeedsYouKind::Question),
+        item("p-open", "chat-1", NeedsYouKind::Permission),
+        item("f-open", "chat-1", NeedsYouKind::Failed),
+    ];
+    let rows = inbox_rows(&items, &[]);
+    let collapsed: Vec<&str> = rows
+        .iter()
+        .filter(|row| answered_in_the_open_chat(row, Some("chat-1")))
+        .map(|row| row.id.as_str())
+        .collect();
+    assert_eq!(
+        collapsed,
+        vec!["q-open"],
+        "only the question whose sheet is on screen collapses"
+    );
+    for row in &rows {
+        assert!(
+            !answered_in_the_open_chat(row, None),
+            "with no chat open nothing is duplicated: {}",
+            row.id
+        );
+    }
+}
+
+/// Round 4, I3: the engine fills a question's title from the model's own
+/// header, and a model that answers "Question" leaves the card saying it
+/// twice - once in the badge, once in bold under it.
+#[test]
+fn a_title_that_only_repeats_the_badge_is_not_worth_drawing() {
+    let mut items = [item("q-1", "chat-1", NeedsYouKind::Question)];
+    items[0].title = "Question".into();
+    let rows = inbox_rows(&items, &[]);
+    assert!(!title_adds_to_badge(&rows[0]));
+
+    items[0].title = "  question  ".into();
+    let rows = inbox_rows(&items, &[]);
+    assert!(
+        !title_adds_to_badge(&rows[0]),
+        "spacing and case are not meaning"
+    );
+
+    items[0].title = String::new();
+    let rows = inbox_rows(&items, &[]);
+    assert!(!title_adds_to_badge(&rows[0]), "an empty title says nothing");
+
+    items[0].title = "Which sync strategy?".into();
+    let rows = inbox_rows(&items, &[]);
+    assert!(
+        title_adds_to_badge(&rows[0]),
+        "a real header still gets its line"
+    );
+}

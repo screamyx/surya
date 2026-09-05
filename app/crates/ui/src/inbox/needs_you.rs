@@ -17,8 +17,8 @@ use crate::inbox::chrome::{
     row_card, setting_chip,
 };
 use crate::inbox::model::{
-    AlwaysAllowScope, InboxRow, inbox_rows, remember_for, respond_input_params,
-    respond_permission_params, split_question_id,
+    AlwaysAllowScope, InboxRow, answered_in_the_open_chat, inbox_rows, remember_for,
+    respond_input_params, respond_permission_params, split_question_id, title_adds_to_badge,
 };
 use crate::state::AppState;
 use crate::theme::Theme;
@@ -271,10 +271,18 @@ impl NeedsYouPane {
         .detach();
     }
 
-    fn render_row(&self, row: &InboxRow, cx: &mut Context<Self>) -> gpui::AnyElement {
+    fn render_row(
+        &self,
+        row: &InboxRow,
+        open_chat: Option<&str>,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
         let theme = Theme::of(cx);
         let tone = kind_color(row.kind, theme);
         let busy = self.answering.contains(&row.id);
+        if answered_in_the_open_chat(row, open_chat) {
+            return self.render_collapsed_row(row, tone, busy, cx);
+        }
         let header = div()
             .flex()
             .flex_row()
@@ -301,7 +309,7 @@ impl NeedsYouPane {
             .id(SharedString::from(format!("needs-you-{}", row.id)))
             .when(busy, |el| el.opacity(0.55))
             .child(header)
-            .child(title)
+            .when(title_adds_to_badge(row), |el| el.child(title))
             .when(
                 !row.prompt.is_empty() && row.kind != NeedsYouKind::Permission,
                 |el| el.child(body_text(theme, row.prompt.clone())),
@@ -310,6 +318,43 @@ impl NeedsYouPane {
                 el.child(command_text(theme, command))
             })
             .child(self.render_actions(row, busy, cx))
+            .into_any_element()
+    }
+
+    /// The one-line form for a question whose sheet is open in the chat
+    /// below. It keeps the row visible - the queue has not lost it - without
+    /// offering a second set of buttons for the same answer.
+    fn render_collapsed_row(
+        &self,
+        row: &InboxRow,
+        tone: gpui::Hsla,
+        busy: bool,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let theme = Theme::of(cx);
+        let text = if row.prompt.trim().is_empty() {
+            row.title.clone()
+        } else {
+            row.prompt.clone()
+        };
+        row_card(theme)
+            .id(SharedString::from(format!("needs-you-{}", row.id)))
+            .when(busy, |el| el.opacity(0.55))
+            .flex_row()
+            .items_center()
+            .gap(px(8.0))
+            .child(badge(theme, row.badge, tone))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .whitespace_nowrap()
+                    .text_size(ui_rems(13.0))
+                    .text_color(theme.text)
+                    .child(SharedString::from(text)),
+            )
+            .child(hint_chip(theme, "answer below"))
             .into_any_element()
     }
 
@@ -453,10 +498,17 @@ impl NeedsYouPane {
 impl Render for NeedsYouPane {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rows = self.rows();
+        // Which chat is on screen decides whether a question is drawn twice.
+        let open_chat = self
+            .state
+            .as_ref()
+            .and_then(|state| state.read(cx).selected_chat.clone());
         // Rows first: their listeners need `&mut cx`, which cannot be live
         // alongside the shared borrow `Theme::of(cx)` holds.
-        let cards: Vec<gpui::AnyElement> =
-            rows.iter().map(|row| self.render_row(row, cx)).collect();
+        let cards: Vec<gpui::AnyElement> = rows
+            .iter()
+            .map(|row| self.render_row(row, open_chat.as_deref(), cx))
+            .collect();
         let empty = cards.is_empty();
         let theme = Theme::of(cx);
         div()
