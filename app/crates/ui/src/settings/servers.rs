@@ -27,6 +27,31 @@ pub enum ServersEvent {
 /// Build a server row from the dialog's raw text. Pure so the parsing rules
 /// are testable: `host` may carry `ws://` and `:port`; the port field wins
 /// when both are given; an empty name falls back to the host.
+/// Which Servers row carries the Active badge, taken from what the app
+/// actually dialed rather than from the saved `active_server` id: a
+/// `--engine` / `ZERON_ENGINE` target has no saved entry, and the badge used
+/// to land on "This computer" for it (RC1 finding, 2026-09-05).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActiveRow {
+    /// The embedded engine or the loopback daemon.
+    Local,
+    /// The saved entry whose url matches the dialed one.
+    Saved(String),
+    /// A dialed url no saved entry knows: the command line or the environment.
+    CommandLine(String),
+}
+
+pub fn active_row(remote_url: Option<&str>, servers: &[ServerEntry]) -> ActiveRow {
+    let Some(url) = remote_url else {
+        return ActiveRow::Local;
+    };
+    let url = url.trim_end_matches('/');
+    match servers.iter().find(|s| s.url() == url) {
+        Some(s) => ActiveRow::Saved(s.id.clone()),
+        None => ActiveRow::CommandLine(url.to_string()),
+    }
+}
+
 pub fn parse_server(name: &str, host: &str, port: &str, token: &str) -> Result<ServerEntry, String> {
     let mut host = host.trim();
     for prefix in ["ws://", "wss://", "http://", "https://"] {
@@ -200,13 +225,18 @@ impl ServersPage {
             (ConnectionStatus::Connecting, _) => ("Connecting…".into(), false),
             (ConnectionStatus::Failed(message), _) => (format!("Not connected: {message}").into(), true),
             (ConnectionStatus::Ready, Some(EngineMode::Remote { url })) => {
-                let name = self
-                    .active
-                    .as_deref()
-                    .and_then(|id| self.servers.iter().find(|s| s.id == id))
-                    .map(|s| s.name.clone())
-                    .unwrap_or_else(|| url.clone());
-                (format!("Connected to {name} ({url})").into(), false)
+                match active_row(Some(&url), &self.servers) {
+                    ActiveRow::Saved(id) => {
+                        let name = self
+                            .servers
+                            .iter()
+                            .find(|s| s.id == id)
+                            .map(|s| s.name.clone())
+                            .unwrap_or_else(|| url.clone());
+                        (format!("Connected to {name} ({url})").into(), false)
+                    }
+                    _ => (format!("Connected to {url} (from --engine)").into(), false),
+                }
             }
             (ConnectionStatus::Ready, _) => ("Using the engine on this computer".into(), false),
         }
@@ -275,11 +305,11 @@ impl ServersPage {
         meta: Vec<String>,
         icon_path: &'static str,
         id: Option<String>,
+        is_active: bool,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         use crate::settings::widgets;
-        let is_active = self.active == id;
         let meta: Vec<AnyElement> = meta
             .into_iter()
             .map(|text| div().child(SharedString::from(text)).into_any_element())
@@ -341,6 +371,14 @@ impl Render for ServersPage {
         let (status, status_is_error) = self.status_line(cx);
         let dialog = self.render_add_dialog(window.viewport_size(), cx);
         let count = self.servers.len();
+        let remote_url = {
+            let state = self.state.read(cx);
+            state.engine().and_then(|engine| match engine.mode() {
+                EngineMode::Remote { url } => Some(url),
+                _ => None,
+            })
+        };
+        let active = active_row(remote_url.as_deref(), &self.servers);
 
         let mut rows: Vec<AnyElement> = vec![self.render_row(
             0,
@@ -348,6 +386,7 @@ impl Render for ServersPage {
             vec!["Engine started by this app, or a daemon on the local port".into()],
             crate::icons::MONITOR,
             None,
+            active == ActiveRow::Local,
             &theme,
             cx,
         )];
@@ -360,12 +399,28 @@ impl Render for ServersPage {
                     "no token".to_string()
                 },
             ];
+            let is_active = active == ActiveRow::Saved(server.id.clone());
             rows.push(self.render_row(
                 ix + 1,
                 server.name.clone(),
                 meta,
                 crate::icons::GLOBAL,
                 Some(server.id.clone()),
+                is_active,
+                &theme,
+                cx,
+            ));
+        }
+        // A `--engine` / `ZERON_ENGINE` target is dialed but never saved: give
+        // it its own row so the badge does not fall on "This computer".
+        if let ActiveRow::CommandLine(url) = &active {
+            rows.push(self.render_row(
+                rows.len(),
+                "Command line".into(),
+                vec![url.clone(), "from --engine or ZERON_ENGINE, not saved".into()],
+                crate::icons::GLOBAL,
+                None,
+                true,
                 &theme,
                 cx,
             ));
@@ -415,6 +470,27 @@ impl Render for ServersPage {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn active_row_follows_the_dialed_url_not_the_saved_id() {
+        use super::{ActiveRow, active_row, parse_server};
+        let saved = parse_server("build box", "pc-ajim", "27700", "").unwrap();
+        let servers = vec![saved.clone()];
+        assert_eq!(active_row(None, &servers), super::ActiveRow::Local);
+        assert_eq!(
+            active_row(Some("ws://pc-ajim:27700"), &servers),
+            ActiveRow::Saved(saved.id.clone())
+        );
+        assert_eq!(
+            active_row(Some("ws://pc-ajim:27700/"), &servers),
+            ActiveRow::Saved(saved.id.clone())
+        );
+        assert_eq!(
+            active_row(Some("ws://100.83.77.3:27700"), &servers),
+            ActiveRow::CommandLine("ws://100.83.77.3:27700".into())
+        );
+        assert_eq!(active_row(Some("ws://x:1"), &[]), ActiveRow::CommandLine("ws://x:1".into()));
+    }
+
     use super::parse_server;
 
     #[test]
