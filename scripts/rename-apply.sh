@@ -58,7 +58,9 @@ unmask() {
       -e 's/\x01THEMENAMED\x01/"Zeron Dark"/g' \
       -e 's/\x01THEMENAMEL\x01/"Zeron Light"/g' \
       -e 's/\x01THEMEFAMID\x01/family_id: "zeron"/g' \
-      -e 's/\x01THEMEFAM\x01/family("zeron", "Zeron"/g'
+      -e 's/\x01THEMEFAM\x01/family("zeron", "Zeron"/g' \
+      -e 's/\x01DATADIR\x01/.surya/g' \
+      -e 's/\x01DATADIRPREV\x01/.zeron/g'
 }
 
 # Comet's two builtin themes keep their user-visible identity above, but their
@@ -66,6 +68,16 @@ unmask() {
 # already defines those (builtins.rs), and the rename would redefine them -
 # E0428, caught by running this script rather than by reading it. Named for
 # what they are, comet's originals.
+# The data dir migration moves along by one: the call that adopts
+# `.comet-native` into `.zeron` becomes the one that adopts `.zeron` into
+# `.surya`. The global substitution alone gets this WRONG - it rewrites the
+# first argument and leaves the second, producing `(".surya", ".comet-native")`
+# and silently dropping the whole zeron -> surya adoption, which is the one
+# this release needs. Masked here so both names land right.
+advance_data_dir_migration() {
+  sed -e 's/adopt_and_report(&home, "\.zeron", "\.comet-native")/adopt_and_report(\&home, "\x01DATADIR\x01", "\x01DATADIRPREV\x01")/g'
+}
+
 rename_legacy_theme_fns() {
   sed -e 's/\bzeron_dark\b/comet_dark/g' -e 's/\bzeron_light\b/comet_light/g'
 }
@@ -73,7 +85,7 @@ rename_legacy_theme_fns() {
 # Categories 1, 2, 3, 4, 17, 18, 19: every spelling of the name, and the env
 # prefix. One pass, because splitting them leaves the tree uncompilable.
 rewrite() {
-  rename_legacy_theme_fns | mask | sed -e 's/ZERON_/SURYA_/g' \
+  advance_data_dir_migration | rename_legacy_theme_fns | mask | sed -e 's/ZERON_/SURYA_/g' \
                                        -e 's/zeron_/surya_/g' \
                                        -e 's/zeron-/surya-/g' \
                                        -e 's/Zeron/Surya/g' \
