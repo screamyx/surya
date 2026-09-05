@@ -89,9 +89,10 @@ async fn two_clients_one_creates_the_other_sees_it_and_the_tool_updates_it() {
         .expect("ephemeral port");
     let port = listener.local_addr().unwrap().port();
     tokio::spawn(zeron_rpc::serve_ws_listener(listener, core.rpc_service()));
-    let tools = mcp_tasks::TaskTools::connect_to(&format!("ws://127.0.0.1:{port}"))
-        .await
-        .expect("tool dials the engine");
+    let tools =
+        mcp_tasks::TaskTools::connect_to_with_token(&format!("ws://127.0.0.1:{port}"), None)
+            .await
+            .expect("tool dials the engine");
 
     let listed = tools
         .call(
@@ -234,4 +235,58 @@ async fn reorder_keeps_board_order_across_a_restart() {
     let snapshot = next_board(&mut null_params).await;
     println!("null_params_asked=1 boards_seen={}", snapshot.len());
     assert_eq!(snapshot.len(), 3, "null params = every board");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn task_tools_present_the_ipc_token_to_a_protected_engine() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let core = assemble(&tmp.path().join("data"));
+    let client = zeron_rpc::memory_client(core.rpc_service());
+    create_space(&client, &core.device_id).await;
+
+    // A token-protected loopback engine (`ZERON_IPC_TOKEN` set, PR #3).
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("ephemeral port");
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(zeron_rpc::serve_ws_listener_with_auth(
+        listener,
+        core.rpc_service(),
+        Some(Arc::from("secret-token")),
+    ));
+    let url = format!("ws://127.0.0.1:{port}");
+
+    let rejected = mcp_tasks::TaskTools::connect_to_with_token(&url, None)
+        .await
+        .is_err() as usize;
+    let accepted =
+        match mcp_tasks::TaskTools::connect_to_with_token(&url, Some("secret-token")).await {
+            Ok(tools) => {
+                let listed = tools
+                    .call(
+                        mcp_tasks::LIST_TASKS,
+                        serde_json::json!({ "workspace": "space-1" }),
+                    )
+                    .await
+                    .expect("list_tasks through the token gate");
+                usize::from(listed["tasks"].is_array())
+            }
+            Err(err) => panic!("right token refused: {err}"),
+        };
+    println!("asked=2 rejected={rejected} accepted={accepted}");
+    assert_eq!((rejected, accepted), (1, 1));
+
+    // The env-derived target carries the token the same way.
+    let target = mcp_tasks::resolve_target(
+        |key| match key {
+            "ZERON_IPC_TOKEN" => Some("secret-token".to_string()),
+            "ZERON_IPC_PORT" => Some(port.to_string()),
+            _ => None,
+        },
+        |_| None,
+    );
+    assert_eq!(target.url, url);
+    mcp_tasks::TaskTools::connect_to_with_token(&target.url, target.token.as_deref())
+        .await
+        .expect("target from env connects");
 }
