@@ -959,6 +959,10 @@ pub enum RowKind {
         command: SharedString,
         resolved: bool,
         allowed: bool,
+        /// The user chose "Always allow", so a rule was written. The engine
+        /// returns the rule it created on `PermissionResolved`, which is what
+        /// tells this apart from a one-off allow.
+        always: bool,
     },
     ErrorChip {
         message: SharedString,
@@ -1385,21 +1389,25 @@ pub fn rows_for_entry(
                         command,
                         resolved,
                         decision,
+                        rule,
                         ..
                     } => {
                         let allowed =
                             matches!(decision, Some(zeron_proto::PermissionDecision::Allow));
+                        let always = rule.is_some();
                         rows.push(Row {
                             id: format!("{}#{}", entry.id, part_id).into(),
-                            version: (command.len() as u64) << 2
-                                | (*resolved as u64) << 1
-                                | allowed as u64,
+                            version: (command.len() as u64) << 3
+                                | (*resolved as u64) << 2
+                                | (allowed as u64) << 1
+                                | always as u64,
                             turn_start: false,
                             kind: RowKind::PermissionChip {
                                 tool_name: tool_name.clone().into(),
                                 command: single_line(command).into(),
                                 resolved: *resolved,
                                 allowed,
+                                always,
                             },
                             entry_id: entry_id.clone(),
                             timestamp: None,
@@ -4501,11 +4509,13 @@ impl Transcript {
                 command,
                 resolved,
                 allowed,
+                always,
             } => permission_chip(
                 tool_name.clone(),
                 command.clone(),
                 *resolved,
                 *allowed,
+                *always,
                 &theme,
             ),
             RowKind::ErrorChip { message } => error_chip(message.clone(), &theme),
@@ -5683,14 +5693,16 @@ fn permission_chip(
     command: SharedString,
     resolved: bool,
     allowed: bool,
+    always: bool,
     theme: &Theme,
 ) -> AnyElement {
-    let value: SharedString = if !resolved {
-        "Awaiting your answer…".into()
-    } else if allowed {
-        command
-    } else {
-        format!("Denied - {command}").into()
+    // The answer is said in a word, not implied by the command being there:
+    // "the tool ran" and "the tool was refused" look identical otherwise.
+    let value: SharedString = match (resolved, allowed, always) {
+        (false, _, _) => "Awaiting your answer…".into(),
+        (true, true, true) => format!("Always allowed - {command}").into(),
+        (true, true, false) => format!("Allowed - {command}").into(),
+        (true, false, _) => format!("Denied - {command}").into(),
     };
     div()
         .py(px(4.0))

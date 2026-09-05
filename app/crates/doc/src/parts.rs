@@ -220,6 +220,12 @@ pub enum MessagePart {
         /// Why, for a deny.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
+        /// The always-allow rule that answered it, when one did. Set when the
+        /// user chose "Always allow", which is what tells that apart from a
+        /// one-off Allow without a second `PermissionDecision` variant -
+        /// `resolve_permission` already returns the rule it created.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rule: Option<String>,
     },
     Error {
         id: String,
@@ -457,6 +463,7 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                     resolved: false,
                     decision: None,
                     reason: None,
+                    rule: None,
                 });
             }
         }
@@ -581,6 +588,7 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                     resolved,
                     decision: answered,
                     reason: why,
+                    rule: by_rule,
                     ..
                 } = p
                     && rid == request_id
@@ -589,6 +597,7 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                     *resolved = true;
                     *answered = Some(*decision);
                     *why = reason.clone();
+                    *by_rule = rule.clone();
                 }
             }
             // The chip above states the outcome, so a second line about the

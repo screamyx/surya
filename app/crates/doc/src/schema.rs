@@ -130,6 +130,8 @@ struct DocPartJson {
     decision: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    rule: Option<String>,
 }
 
 /// App parts → doc part json (mirror of `toDocParts`).
@@ -214,6 +216,7 @@ fn to_doc_part(part: &MessagePart) -> Result<DocPartJson, DocError> {
             resolved,
             decision,
             reason,
+            rule,
         } => DocPartJson {
             id: request_id.clone(),
             kind: "permission".into(),
@@ -236,6 +239,7 @@ fn to_doc_part(part: &MessagePart) -> Result<DocPartJson, DocError> {
                 .to_owned()
             }),
             reason: reason.clone(),
+            rule: rule.clone(),
             ..Default::default()
         },
         MessagePart::Error { id, message } => DocPartJson {
@@ -314,6 +318,7 @@ fn from_doc_part(p: DocPartJson) -> MessagePart {
                 _ => None,
             },
             reason: p.reason,
+            rule: p.rule,
         },
         "error" => MessagePart::Error {
             id: p.id,
@@ -797,6 +802,9 @@ fn push_part(parts: &LoroList, part: &MessagePart) -> Result<(), DocError> {
     if let Some(reason) = &doc_part.reason {
         map.insert("reason", reason.as_str())?;
     }
+    if let Some(rule) = &doc_part.rule {
+        map.insert("rule", rule.as_str())?;
+    }
     if let Some(output) = &doc_part.output {
         map.insert("output", output.as_str())?;
     }
@@ -1224,6 +1232,9 @@ fn update_part_fields(map: &LoroMap, part: &MessagePart) -> Result<(), DocError>
     if let Some(reason) = &doc_part.reason {
         map.insert("reason", reason.as_str())?;
     }
+    if let Some(rule) = &doc_part.rule {
+        map.insert("rule", rule.as_str())?;
+    }
     if let Some(output) = &doc_part.output {
         map.insert("output", output.as_str())?;
     }
@@ -1376,6 +1387,7 @@ mod tests {
             resolved: true,
             decision: Some(zeron_proto::PermissionDecision::Deny),
             reason: Some("you denied it".into()),
+            rule: None,
         };
         let doc = SessionDoc::init("chat-perm").unwrap();
         let mut entry = user_entry("m1", "run it");
@@ -1404,6 +1416,44 @@ mod tests {
         assert!(resolved);
         assert_eq!(*decision, Some(zeron_proto::PermissionDecision::Deny));
         assert_eq!(reason.as_deref(), Some("you denied it"));
+    }
+
+    /// The live path: a permission resolved mid-stream goes through
+    /// `SegmentWriter::sync` -> `update_part_fields`, which is a SECOND set of
+    /// inserts. Deleting them passes every other test in this file, and a
+    /// restored allow then renders "Denied - <cmd>", because the decision
+    /// never reached the doc.
+    #[test]
+    fn a_permission_resolved_mid_stream_carries_its_answer() {
+        let doc = SessionDoc::init("chat-perm-live").unwrap();
+        let asked = MessagePart::Permission {
+            id: "perm-live-1".into(),
+            request_id: "live-1".into(),
+            tool_name: "Bash".into(),
+            command: "gh-axi pr view 266".into(),
+            resolved: false,
+            decision: None,
+            reason: None,
+            rule: None,
+        };
+        let mut w = SegmentWriter::begin(&doc, "e1", "dev", 1).unwrap();
+        w.sync(&[asked.clone()]).unwrap();
+
+        let answered = MessagePart::Permission {
+            id: "perm-live-1".into(),
+            request_id: "live-1".into(),
+            tool_name: "Bash".into(),
+            command: "gh-axi pr view 266".into(),
+            resolved: true,
+            decision: Some(zeron_proto::PermissionDecision::Allow),
+            reason: None,
+            rule: Some("Bash gh-axi* in surya".into()),
+        };
+        w.sync(&[answered.clone()]).unwrap();
+
+        let entries = doc.read_entries().unwrap();
+        let live = entries.iter().find(|e| e.id == "e1").expect("streamed entry");
+        assert_eq!(live.parts[0], answered, "the answer reached the doc");
     }
 
     /// A card part survives the doc: written as kind "card" with its JSON,

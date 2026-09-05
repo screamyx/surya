@@ -5665,13 +5665,30 @@ impl Composer {
         }
     }
 
+    /// Keys for the permission panel, the wizard's rules for the same shape:
+    /// 1/2/3 pick a row, Escape denies. Escape is a DENY and not a dismiss on
+    /// purpose - the tool is blocked either way, and a prompt that vanishes
+    /// without answering is how the user ends up staring at a run that looks
+    /// hung (the 13:06 case this whole change is for).
+    fn on_permission_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        let Some((request_id, _, _)) = self.pending_permission(cx) else {
+            return;
+        };
+        let key = event.keystroke.key.as_str();
+        let answer = match key {
+            "1" => Some((zeron_proto::PermissionDecision::Allow, false)),
+            "2" => Some((zeron_proto::PermissionDecision::Allow, true)),
+            "3" | "escape" => Some((zeron_proto::PermissionDecision::Deny, false)),
+            _ => None,
+        };
+        if let Some((decision, remember)) = answer {
+            self.answer_permission(request_id, decision, remember, cx);
+            cx.stop_propagation();
+        }
+    }
+
     // ---- render pieces ----
 
-    /// The agent-asked-a-question panel (zeron question-panel.tsx), rendered in
-    /// place of the composer: the same floating-pill chrome (`rounded-[26px]
-    /// border-white/[0.08] bg-white/[0.03] shadow-xl`), uppercase header +
-    /// "1/3" counter chip, option rows with number kbd chips, a free-text
-    /// override over a hairline, and Back / Next-Submit footer.
     /// The permission ask, in comet's question-panel shape.
     ///
     /// Deliberately the same container, header and option rows as
@@ -5725,7 +5742,8 @@ impl Composer {
                         div()
                             .flex_1()
                             .min_w_0()
-                            .text_size(crate::typography::ui_rems(14.0))
+                            .text_size(crate::typography::ui_rems(13.5))
+                            .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(theme.text)
                             .child(label),
                     )
@@ -5735,11 +5753,19 @@ impl Composer {
 
         div()
             .id("permission-panel")
-            .rounded(px(26.0))
+            .track_focus(&self.wizard_focus)
+            .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+                this.on_permission_key(event, cx)
+            }))
+            // The same tokens the question panel uses, not a second set of
+            // literals that says the same thing today and drifts tomorrow.
+            .rounded(px(crate::surya::COMPOSER_RADIUS))
             .border_1()
             .border_color(theme.border)
             .bg(theme.input_glass_bg())
-            .when(!theme.is_frost(), |el| el.shadow_lg())
+            .when(!theme.is_frost(), |el| {
+                el.shadow(crate::surya::shadow(crate::surya::ELEVATION_FLOAT, &theme))
+            })
             .flex()
             .flex_col()
             .child(
@@ -5753,8 +5779,10 @@ impl Composer {
                         div()
                             .text_size(crate::typography::ui_rems(10.5))
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(theme.text_faint)
-                            .child("PERMISSION"),
+                            .text_color(theme.text_muted.opacity(0.6))
+                            .child(SharedString::from(crate::popover::tracked_upper(
+                                "Permission",
+                            ))),
                     )
                     .child(
                         div()
@@ -5792,6 +5820,11 @@ impl Composer {
             .into_any_element()
     }
 
+    /// The agent-asked-a-question panel (zeron question-panel.tsx), rendered in
+    /// place of the composer: the same floating-pill chrome (`rounded-[26px]
+    /// border-white/[0.08] bg-white/[0.03] shadow-xl`), uppercase header +
+    /// "1/3" counter chip, option rows with number kbd chips, a free-text
+    /// override over a hairline, and Back / Next-Submit footer.
     fn render_wizard(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = Theme::of(cx).clone();
         let Some(wizard) = self.wizard.clone() else {
