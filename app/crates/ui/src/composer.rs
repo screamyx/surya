@@ -3500,6 +3500,23 @@ pub struct Composer {
 
 impl EventEmitter<ComposerEvent> for Composer {}
 
+/// What `add_paths` says after a batch, or None when it says nothing.
+///
+/// A read failure is the more specific complaint and keeps the notice, so the
+/// skip only speaks when nothing else did. A mixed pick still gets it: the
+/// images stage AND the user is told why the rest did not arrive, which is the
+/// whole point - the old silence was indistinguishable from a picker that had
+/// not registered the click at all.
+fn skipped_notice(skipped: usize, failed: bool) -> Option<String> {
+    if skipped == 0 || failed {
+        return None;
+    }
+    Some(format!(
+        "Only images can be attached ({})",
+        attachments::supported_extensions()
+    ))
+}
+
 impl Composer {
     /// The question sheet is on screen (the wizard is mounted). The shell
     /// gates the page title on this, not on a proxy of it.
@@ -3785,23 +3802,39 @@ impl Composer {
         cx.notify();
     }
 
-    /// Stage image files (picker / drop / pasted paths). Non-images are
-    /// skipped silently (matching the original's `image/*` filter); read
-    /// failures and oversize files surface in the failure notice.
+    /// Stage image files (picker / drop / pasted paths). A non-image is
+    /// skipped and SAID SO; read failures and oversize files surface in the
+    /// same failure notice.
+    ///
+    /// The skip used to be silent, matching comet's web original where the
+    /// file input carried `accept="image/*"` and a non-image could not be
+    /// picked in the first place. The native picker has no such filter
+    /// (`PathPromptOptions` cannot express one), so picking a .txt closed the
+    /// dialog and changed nothing on screen: the file was neither attached nor
+    /// refused (e2e E2E-CHAT-01).
     pub(crate) fn add_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
         let mut staged = Vec::new();
+        let mut skipped = 0usize;
+        let mut failed = false;
         for path in &paths {
             if attachments::format_by_extension(path).is_none() {
+                skipped += 1;
                 continue;
             }
             match attachments::stage_file(path) {
                 Ok(att) => staged.push(att),
                 Err(message) => {
+                    failed = true;
                     self.failure = Some(message.into());
                     self.failure_key = Some(self.current_key.clone());
                     cx.notify();
                 }
             }
+        }
+        if let Some(notice) = skipped_notice(skipped, failed) {
+            self.failure = Some(notice.into());
+            self.failure_key = Some(self.current_key.clone());
+            cx.notify();
         }
         self.add_staged(staged, cx);
     }
@@ -6741,6 +6774,30 @@ impl Render for Composer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A non-image used to vanish without a word: the picker closed, nothing
+    /// staged, no notice, which reads exactly like a click that never landed
+    /// (e2e E2E-CHAT-01). asked=5 passed=5.
+    #[test]
+    fn a_skipped_non_image_is_said_out_loud_unless_something_louder_failed() {
+        // (skipped, failed) -> is there a notice
+        assert!(skipped_notice(0, false).is_none(), "nothing skipped");
+        assert!(skipped_notice(1, false).is_some(), "one .txt picked");
+        // The mixed pick: the png stages, and the notice still explains the
+        // rest. Silence here was the actual bug.
+        assert!(skipped_notice(1, false).is_some(), "png + txt together");
+        // A read failure is more specific, so it keeps the notice rather than
+        // being overwritten by the generic rule.
+        assert!(skipped_notice(1, true).is_none(), "a read failure speaks");
+        assert!(skipped_notice(0, true).is_none(), "only a read failure");
+
+        // The message names what IS allowed, derived from the one table the
+        // staging check reads, so it cannot drift from what the code takes.
+        let notice = skipped_notice(1, false).unwrap();
+        for ext in ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tif", "tiff"] {
+            assert!(notice.contains(ext), "{notice:?} does not name {ext}");
+        }
+    }
 
     /// The press intent is judged by eye everywhere except here: that a
     /// multi-click leaves the drag disarmed is invisible until a selection
