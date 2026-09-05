@@ -463,6 +463,7 @@ pub(crate) fn open(url: &str, tab: crate::tabs::TabId) -> Option<i32> {
         );
         if asked == 0 {
             let _ = PENDING_CREATES.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1));
+            crate::cef_thread::notify_closed();
         }
         return None;
     }

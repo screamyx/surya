@@ -313,6 +313,13 @@ pub fn shutdown() {
     }
     tabs::close_all();
     let closed = cef_thread::wait_until_closed(std::time::Duration::from_secs(3));
+    if cef_thread::threaded() && !closed {
+        // CEF requires every browser to finish closing before Shutdown.
+        // This runs during process quit; let process teardown finish a
+        // stalled threaded browser rather than tear CEF out from under it.
+        eprintln!("browser: shutdown timed out, cef_shutdown skipped");
+        return;
+    }
     // A few more turns so CEF finishes its own teardown before shutdown
     // (inline mode only: threaded mode's loop is CEF's own).
     if !cef_thread::threaded() {
