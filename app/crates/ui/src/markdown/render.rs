@@ -335,11 +335,15 @@ pub fn render_block(
             highlight,
         ),
         Block::BlockQuote { children } => div()
-            // Accent-tinted quote: indigo rail + a whisper of the same hue
-            // behind it (the inline-code treatment, dialed down).
-            .border_l_2()
-            .border_color(theme.accent.opacity(0.6))
-            .bg(theme.accent.opacity(0.05))
+            // A hairline and quieter text, no coloured strip and no wash.
+            //
+            // It was a 2px accent rail over an accent wash. That is the
+            // tinted `border-left` the taste doctrine bans by name as a
+            // generated-UI tell, and it spent the one loud colour on a
+            // container (design critic round 2, T2's spirit; owner ruling
+            // 10:20). The indentation and `text_muted` already say "quoted".
+            .border_l_1()
+            .border_color(theme.border_strong)
             .rounded_tr(px(6.0))
             .rounded_br(px(6.0))
             .pl(px(12.0))
@@ -369,9 +373,11 @@ pub fn render_block(
             .flex_col()
             .gap(px(4.0))
             .children(items.iter().enumerate().map(|(item_ix, item)| {
-                // Accent markers (the inline-code hue): ordered numbers as
-                // tinted text, unordered as a REAL 5px disc — the glyph "•"
-                // reads too small at 14px.
+                // Quiet markers: ordered numbers and the unordered disc both
+                // in `text_muted`. They used to take the accent, which spent
+                // the one loud colour on numbering (design critic round 2,
+                // T2). The disc stays a REAL 5px circle — the glyph "•" reads
+                // too small at 14px.
                 let marker: gpui::AnyElement = match ordered_start {
                     Some(start) => div()
                         .flex_none()
@@ -399,7 +405,7 @@ pub fn render_block(
                                 .w(px(5.0))
                                 .h(px(5.0))
                                 .rounded_full()
-                                .bg(theme.accent),
+                                .bg(theme.text_muted),
                         )
                         .into_any_element(),
                 };
@@ -632,7 +638,10 @@ pub fn inline_code_text(theme: &Theme) -> Hsla {
     theme.text
 }
 pub fn inline_code_wash(theme: &Theme) -> Hsla {
-    crate::theme::wash(match theme.appearance {
+    // `theme.wash`, not the free `wash()`: the free one reads the process-wide
+    // current appearance, so its tone could disagree with the alpha this theme
+    // picked.
+    theme.wash(match theme.appearance {
         crate::theme::Appearance::Dark => 0.08,
         crate::theme::Appearance::Light => 0.05,
     })
@@ -1557,6 +1566,29 @@ pub fn runs_for_syntax_line_with_plain(
 mod tests {
     use super::*;
     use crate::markdown::parser::{InlineStyle, parse_full};
+
+    /// The one accent is for actions and the running state, not for
+    /// punctuation and containers. This pins the seam the renderer reads
+    /// through; the list markers and the blockquote rail read `text_muted`
+    /// and `border_strong` directly at their call sites.
+    #[test]
+    fn inline_code_does_not_spend_the_accent() {
+        for theme in [Theme::light(), Theme::dark()] {
+            assert_eq!(
+                inline_code_text(&theme),
+                theme.text,
+                "inline code should read as text, not as the accent"
+            );
+            assert_ne!(inline_code_text(&theme), theme.accent);
+            let wash = inline_code_wash(&theme);
+            assert_ne!(wash, theme.accent_wash);
+            assert!(
+                wash.a <= 0.1,
+                "inline-code wash {:.3} is a tint, not a fill",
+                wash.a
+            );
+        }
+    }
 
     #[test]
     fn code_block_indices_include_nested_quotes_and_lists() {
