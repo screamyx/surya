@@ -179,9 +179,10 @@ pub fn run_app(config: UiConfig) {
             ui_settings.surface,
             cx,
         );
-        composer::init(cx);
-        files::init(cx);
-        terminal::panel::init(cx);
+        // Keys (composer, files editor, terminal toggle, shortcuts) are bound
+        // inside shell::apply_keymap, which clears and rebuilds the whole keymap
+        // when the shell mounts; a boot-time bind_keys here would only be
+        // discarded. app_menus::init registers actions, not keys.
         app_menus::init(cx);
         // CEF before the window: one browser per process, pumped from the
         // shell's render and an idle chain (surya-browser). After
