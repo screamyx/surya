@@ -9,9 +9,7 @@ Decision 22, from the owner's three sketches: "inspiration: raycast, craft, clea
 ![dark](surya-spec-dark.png)
 
 Those two images are the palette and the geometry rendered from the real token
-values, not a screenshot of the app.
-The app could not be photographed on this machine.
-See "What is not proven" at the bottom.
+values. Real frames of the running app are under "Proof" at the bottom.
 
 ## The layout
 
@@ -109,13 +107,54 @@ Settings now carries a **Motion** row with three states.
 Windows has no reader yet and falls back to full motion.
 This closes the gap `docs/PARITY.md` 1.12 records.
 
-## What is not proven
+## Proof
 
-No screenshot of the running app.
-gpui paints to a Vulkan swapchain that never presents into an Xvfb drawable on this machine.
-Forcing the software renderer with `VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.json` selects llvmpipe and still grabs black,
-so the GPU was never the cause.
+Four frames of the running app on the headless Xorg, `screens=4 looked=4`.
 
-What the images above do prove: the palette and the geometry, drawn to the same numbers the Rust code reads.
-What they do not prove: that the shell code lays out the way this mock does.
-That needs a real frame from a real window.
+| | |
+|---|---|
+| ![light 1440](shots/light-1440x900.png) | ![dark 1440](shots/dark-1440x900.png) |
+| ![light 1100](shots/light-1100x700.png) | ![dark 1100](shots/dark-1100x700.png) |
+
+The geometry is measured off the dark 1100x700 frame, not eyeballed.
+A scanline through the middle of the window reads:
+
+```
+x=0..15    canvas    16px   window margin
+x=16       hairline   1px   rail card border
+x=17..270  panel    254px   rail card
+x=271      hairline   1px
+x=272..279 canvas     8px   panel seam
+x=280      hairline   1px
+x=281..    panel            conversation card
+```
+
+Vertically the top margin is 16px and the bottom margin is 16px.
+Outer 16, inner 8, exactly as designed.
+
+The dominant colours are the tokens themselves: `#fdfcfa` panel over `#eae5dc` canvas in light, `#232019` over `#0b0a08` in dark.
+
+Capture recipe, for anyone repeating it:
+
+```
+DISPLAY=:7 ZERON_WINDOW_SIZE=1100x700 ZERON_DATA_DIR=<dir> zeron &
+sleep 12; DISPLAY=:7 xrefresh; sleep 4
+DISPLAY=:7 ffmpeg -f x11grab -video_size 1100x700 -i :7+<x>,<y> -frames:v 1 out.png
+```
+
+`:7` is shared and other windows linger on it, so crop to your own window
+rather than grabbing the root. Find it with `xwininfo -root -tree`.
+
+`ZERON_WINDOW_SIZE` is a capture knob added for this: the window was hard
+coded to 1320x880, and a floating-panel layout fails at the small end where
+the margins and the seam eat the content.
+
+## What these frames do not show
+
+An empty app. There is no project, so no transcript, no composer pill and no
+right pane in any of them.
+What they prove is the palette, the card geometry, the radii, the hairlines,
+the display type step, and that both themes load and the manual override
+works.
+What they do not prove is the composer pill or the file browser card in place,
+which need a live session.

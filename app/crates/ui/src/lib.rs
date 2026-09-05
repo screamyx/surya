@@ -227,7 +227,21 @@ pub fn run_app(config: UiConfig) {
 /// clicked after ⌘W closed the window.
 fn open_main_window(state: gpui::Entity<state::AppState>, boot: EngineBootConfig, cx: &mut App) {
     // zeron window geometry: 1320×880, min 900×600 (feature-inventory §1.1).
-    let bounds = Bounds::centered(None, size(px(1320.), px(880.)), cx);
+    //
+    // `ZERON_WINDOW_SIZE=1100x700` overrides it. A capture knob, in the same
+    // family as `ZERON_OPEN_DIALOG` and `ZERON_MOTION_SCALE`: a floating-panel
+    // layout fails at the SMALL end, where the margins and seams eat the
+    // content, and there is no other way to photograph that. Ignored unless it
+    // parses; never read outside boot.
+    let (w, h) = std::env::var("ZERON_WINDOW_SIZE")
+        .ok()
+        .and_then(|value| {
+            let (w, h) = value.split_once(['x', 'X'])?;
+            Some((w.trim().parse::<f32>().ok()?, h.trim().parse::<f32>().ok()?))
+        })
+        .filter(|(w, h)| w.is_finite() && h.is_finite() && *w >= 400.0 && *h >= 300.0)
+        .unwrap_or((1320.0, 880.0));
+    let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
     cx.open_window(
         WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
