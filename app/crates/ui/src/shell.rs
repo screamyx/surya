@@ -2413,8 +2413,19 @@ impl Shell {
             // The globe makes a new one on the last address.
             #[cfg(feature = "browser")]
             RightSurface::Browser => surya_browser::close(),
-            // The pane entities stay cached; closing the tab only hides them.
-            RightSurface::Files | RightSurface::Tasks => {}
+            // The pane entity (and its FilesWatch / WatchTasks stream) is
+            // dropped once no panel key shows the tab any more; a tab still
+            // open in another chat of the space keeps the cached pane.
+            RightSurface::Files | RightSurface::Tasks => {
+                let still_shown = self.right_tabs.values().any(|tabs| tabs.contains(&surface));
+                if !still_shown {
+                    match surface {
+                        RightSurface::Files => self.files_pane = None,
+                        RightSurface::Tasks => self.tasks_pane = None,
+                        _ => {}
+                    }
+                }
+            }
             RightSurface::Picker => {}
         }
         self.panels.update(&key, |p| {
