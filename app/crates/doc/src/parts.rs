@@ -193,6 +193,34 @@ pub enum MessagePart {
         #[serde(default)]
         resolved: bool,
     },
+    /// A tool blocked on the user's permission.
+    ///
+    /// The twin of [`MessagePart::Input`], and deliberately so: a permission
+    /// is a question the agent is asking, and the user should not have to
+    /// learn two shapes for "something is waiting on you". It appears when
+    /// the ask arrives and flips to resolved when it is answered, which
+    /// leaves the answer in the transcript - a tool that did not run
+    /// otherwise leaves no trace at all.
+    ///
+    /// Comet auto-approved every tool and never emitted the event, so a doc
+    /// written by an older build simply has no part of this kind, and an
+    /// older reader falls through its `default` arm.
+    Permission {
+        id: String,
+        request_id: String,
+        tool_name: String,
+        /// The command or path the tool would act on, already rendered.
+        #[serde(default)]
+        command: String,
+        #[serde(default)]
+        resolved: bool,
+        /// How it was answered, once it was.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        decision: Option<zeron_proto::PermissionDecision>,
+        /// Why, for a deny.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
     Error {
         id: String,
         message: String,
@@ -234,6 +262,7 @@ impl MessagePart {
             | MessagePart::Reasoning { id, .. }
             | MessagePart::Tool { id, .. }
             | MessagePart::Input { id, .. }
+            | MessagePart::Permission { id, .. }
             | MessagePart::Notice { id, .. }
             | MessagePart::Error { id, .. }
             | MessagePart::Card { id, .. } => id,
@@ -264,6 +293,12 @@ impl MessagePart {
             MessagePart::Input { questions, .. } => {
                 serde_json::to_vec(questions).map_or(0, |v| v.len())
             }
+            MessagePart::Permission {
+                tool_name,
+                command,
+                reason,
+                ..
+            } => tool_name.len() + command.len() + reason.as_ref().map_or(0, String::len),
             MessagePart::Error { message, .. } => message.len(),
             MessagePart::Card { a2ui, .. } => a2ui
                 .as_ref()
@@ -403,6 +438,50 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                     && rid == request_id
                 {
                     *resolved = true;
+                }
+            }
+        }
+        AgentEvent::PermissionRequested {
+            request_id,
+            tool_name,
+            command,
+            ..
+        } => {
+            let id = format!("perm-{request_id}");
+            if !out.iter().any(|p| p.id() == id) {
+                out.push(MessagePart::Permission {
+                    id,
+                    request_id: request_id.clone(),
+                    tool_name: tool_name.clone(),
+                    command: command.clone(),
+                    resolved: false,
+                    decision: None,
+                    reason: None,
+                });
+            }
+        }
+        AgentEvent::PermissionResolved {
+            request_id,
+            decision,
+            reason,
+            ..
+        } => {
+            // An auto-allowed tool resolves without ever having been asked,
+            // so there is no part to mark - and no prompt should appear for
+            // a rule the user already wrote.
+            for p in out.iter_mut() {
+                if let MessagePart::Permission {
+                    request_id: rid,
+                    resolved,
+                    decision: answered,
+                    reason: why,
+                    ..
+                } = p
+                    && rid == request_id
+                {
+                    *resolved = true;
+                    *answered = Some(*decision);
+                    *why = reason.clone();
                 }
             }
         }

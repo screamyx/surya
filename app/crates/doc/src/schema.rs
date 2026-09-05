@@ -119,6 +119,17 @@ struct DocPartJson {
     a2ui_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     a2ui_bytes: Option<u64>,
+    /// `kind == "permission"`: which tool asked, what it would run, and how
+    /// it was answered. The sentence also rides `text`, so a build that does
+    /// not know this kind still shows what was asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tool_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    decision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
 }
 
 /// App parts → doc part json (mirror of `toDocParts`).
@@ -195,6 +206,38 @@ fn to_doc_part(part: &MessagePart) -> Result<DocPartJson, DocError> {
             resolved: Some(*resolved),
             ..Default::default()
         },
+        MessagePart::Permission {
+            id: _,
+            request_id,
+            tool_name,
+            command,
+            resolved,
+            decision,
+            reason,
+        } => DocPartJson {
+            id: request_id.clone(),
+            kind: "permission".into(),
+            // Same trick as `notice`: the sentence rides `text`, so an older
+            // build falls through to the text renderer and the user still
+            // reads what was asked instead of seeing a blank.
+            text: Some(if command.is_empty() {
+                format!("Allow {tool_name}?")
+            } else {
+                format!("Allow {tool_name}? {command}")
+            }),
+            tool_name: Some(tool_name.clone()),
+            command: Some(command.clone()),
+            resolved: Some(*resolved),
+            decision: decision.map(|d| {
+                match d {
+                    zeron_proto::PermissionDecision::Allow => "allow",
+                    zeron_proto::PermissionDecision::Deny => "deny",
+                }
+                .to_owned()
+            }),
+            reason: reason.clone(),
+            ..Default::default()
+        },
         MessagePart::Error { id, message } => DocPartJson {
             id: id.clone(),
             kind: "error".into(),
@@ -258,6 +301,19 @@ fn from_doc_part(p: DocPartJson) -> MessagePart {
                 .and_then(|q| serde_json::from_value(q).ok())
                 .unwrap_or_default(),
             resolved: p.resolved.unwrap_or(false),
+        },
+        "permission" => MessagePart::Permission {
+            id: format!("perm-{}", p.id),
+            request_id: p.id,
+            tool_name: p.tool_name.unwrap_or_default(),
+            command: p.command.unwrap_or_default(),
+            resolved: p.resolved.unwrap_or(false),
+            decision: match p.decision.as_deref() {
+                Some("allow") => Some(zeron_proto::PermissionDecision::Allow),
+                Some("deny") => Some(zeron_proto::PermissionDecision::Deny),
+                _ => None,
+            },
+            reason: p.reason,
         },
         "error" => MessagePart::Error {
             id: p.id,
