@@ -201,22 +201,39 @@ fn decide_linux(candidates: &[std::path::PathBuf]) -> Decision {
     ))
 }
 
-// Windows: CEF's sandbox is a link-time decision, not a runtime one. The exe
-// must link `cef_sandbox.lib` (the `cef` crate's `sandbox` cargo feature ->
-// `cef-dll-sys/sandbox` -> cmake `USE_SANDBOX`) and pass the resulting
-// `sandbox_info` pointer to both `cef_execute_process` and `cef_initialize`;
-// `preflight` and `start` pass a null pointer today, and with a null pointer
-// and `no_sandbox: 0` Chromium's child processes have no broker to talk to.
-// Turning it on is therefore a build change plus two call-site changes that
-// only compile on Windows, and it has to be proven on a Windows machine
-// before it ships. Until that run happens the flag stays off HERE, on
-// Windows only, and the blocker is this comment.
+// Windows: the sandbox is off, and it is further away than a flag. What the
+// `cef` crate at 151.8.1 actually offers, read in the vendored source rather
+// than assumed:
+//
+//   - `cef/Cargo.toml:65`: `sandbox = ["cef-dll-sys/sandbox"]`, and in
+//     `cef-dll-sys/build.rs` that feature does one thing, pass
+//     `USE_SANDBOX=ON` to the cmake build of `libcef_dll_wrapper`. The string
+//     `cef_sandbox` appears nowhere in that build script, so no
+//     `cef_sandbox.lib` is linked into the exe by turning the feature on.
+//   - `cef/src/sandbox.rs` does have a `Sandbox` type, but it `dlopen`s
+//     `../../../Chromium Embedded Framework.framework/Libraries/
+//     libcef_sandbox.dylib` from a hardcoded relative path. That is macOS.
+//     There is no Windows equivalent in the crate.
+//
+// And `preflight` and `start` pass a null `sandbox_info` to
+// `cef_execute_process` and `cef_initialize`, which is what Chromium's broker
+// would need. So Windows needs the `cef_sandbox` static library linked and
+// that pointer produced, neither of which the crate does for us today. It is
+// real work on a Windows machine, not a flag, and until someone has run it
+// there this says off rather than guessing.
+//
+// One known hazard for whoever takes it: `cef_sandbox.lib` is built against
+// the static CRT. `cef-dll-sys/build.rs` already sets
+// `CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded` for the wrapper, so the two may
+// agree, but that has not been tested.
 #[cfg(windows)]
 fn platform_decision() -> Decision {
     Decision::off(
-        "windows: the exe does not link cef_sandbox (cef crate feature \
-         \"sandbox\") and initialize/execute_process are passed a null \
-         sandbox_info, so the child processes would have no broker",
+        "windows: web pages are NOT sandboxed. The exe does not link \
+         cef_sandbox (the cef crate has no Windows binding for it; its \
+         `sandbox` feature only sets cmake USE_SANDBOX on the dll wrapper) \
+         and initialize/execute_process are passed a null sandbox_info, so \
+         the child processes would have no broker to talk to",
     )
 }
 
