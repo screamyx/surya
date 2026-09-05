@@ -160,14 +160,9 @@ impl Mail {
                 return Err(err);
             }
         };
-        // Test hook: widen the window between `dispatch` returning and the run
-        // id being recorded, so the race this settle pass exists for can be
-        // reproduced deterministically instead of waited for.
         #[cfg(debug_assertions)]
-        if let Ok(ms) = std::env::var("ZERON_MAIL_SET_RUN_DELAY_MS")
-            && let Ok(ms) = ms.parse::<u64>()
-        {
-            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+        if let Some(delay) = set_run_delay() {
+            tokio::time::sleep(delay).await;
         }
         let named = ids.clone();
         let run = run_id.clone();
@@ -279,6 +274,21 @@ impl Mail {
             .last_request(agent)
             .or_else(|| self.inner.doc_host.request_from_chat_row(agent, prompt))
     }
+}
+
+/// Test hook: widen the window between `dispatch` returning and the run id
+/// being recorded, so the race the settle pass above exists for is
+/// reproducible instead of lucky. Read once - the value cannot change inside a
+/// process, and re-reading it per delivery would be a syscall on the hot path.
+#[cfg(debug_assertions)]
+fn set_run_delay() -> Option<std::time::Duration> {
+    static DELAY: std::sync::OnceLock<Option<std::time::Duration>> = std::sync::OnceLock::new();
+    *DELAY.get_or_init(|| {
+        std::env::var("ZERON_MAIL_SET_RUN_DELAY_MS")
+            .ok()
+            .and_then(|ms| ms.parse::<u64>().ok())
+            .map(std::time::Duration::from_millis)
+    })
 }
 
 fn is_active(status: SessionStatus) -> bool {
