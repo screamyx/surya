@@ -4,13 +4,20 @@ Build the surya Windows app and pack it as a folder plus a zip.
   powershell -ExecutionPolicy Bypass -File deploy\windows\build.ps1
   ... -NoBuild            reuse target\release\zeron.exe
   ... -Sha abc1234        version tag when the checkout has no .git
+  ... -Browser            build with the CEF browser pane (cargo feature
+                          `browser`) and ship Chromium's runtime files and
+                          zeron-browser-helper.exe next to the exe
 
 Needs: Rust (MSVC toolchain), Visual Studio Build Tools with the C++ workload.
+With -Browser also: CMake, Ninja (`python -m pip install ninja`), and
+CEF_PATH pointing at a directory the cef crate may download into (about
+250 MB once; app\crates\browser\README.md).
 Output: dist\surya-windows\ (zeron.exe, surya.cmd, VERSION.txt) and
         dist\surya-windows-<sha>.zip
 #>
 param(
     [switch]$NoBuild,
+    [switch]$Browser,
     [string]$Sha = "",
     [string]$CommitTime = "",
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
@@ -29,7 +36,11 @@ if (-not $NoBuild) {
     Push-Location $app
     try {
         cargo --version
-        cargo build --release -p zeron
+        if ($Browser) {
+            cargo build --release -p zeron --features browser
+        } else {
+            cargo build --release -p zeron
+        }
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit $LASTEXITCODE" }
     } finally { Pop-Location }
 }
@@ -53,11 +64,29 @@ Copy-Item $exe (Join-Path $dist "zeron.exe")
 Get-ChildItem (Join-Path $target "release") -Filter *.dll -ErrorAction SilentlyContinue |
     ForEach-Object { Copy-Item $_.FullName $dist }
 Copy-Item (Join-Path $PSScriptRoot "surya.cmd") (Join-Path $dist "surya.cmd")
+if ($Browser) {
+    # The cef crate's build script copied Chromium's runtime files (libcef.dll,
+    # chrome_elf.dll, *.pak, icudtl.dat, *.bin, locales\) next to the exe in
+    # target\release; CEF loads them from the exe's own folder, so the zip
+    # carries the same set. The helper is CEF's subprocess (renderer, GPU).
+    $release = Join-Path $target "release"
+    $helper = Join-Path $release "zeron-browser-helper.exe"
+    if (-not (Test-Path $helper)) { throw "no $helper (build with -Browser, not -NoBuild from a plain build)" }
+    if (-not (Test-Path (Join-Path $release "libcef.dll"))) { throw "no libcef.dll in $release (the cef build script did not run)" }
+    Copy-Item $helper $dist
+    $cefFiles = @("*.dll", "*.pak", "*.dat", "*.bin", "*.json")
+    Get-ChildItem (Join-Path $release "*") -File -Include $cefFiles |
+        ForEach-Object { Copy-Item $_.FullName $dist -Force }
+    Copy-Item (Join-Path $release "locales") (Join-Path $dist "locales") -Recurse -Force
+    $shipped = @(Get-ChildItem $dist -File).Count
+    Write-Host "== browser: shipped $shipped files (helper + CEF runtime) and locales\"
+}
 @(
     "surya windows app",
     "commit: $Sha",
     "built: $(Get-Date -Format o) on $env:COMPUTERNAME",
-    "run: surya.cmd (see docs\quickstart.md)"
+    "run: surya.cmd (see docs\quickstart.md)",
+    "browser pane: $(if ($Browser) { 'yes (CEF)' } else { 'no' })"
 ) | Out-File -Encoding utf8 (Join-Path $dist "VERSION.txt")
 
 $zip = Join-Path $Root "dist\surya-windows-$Sha.zip"

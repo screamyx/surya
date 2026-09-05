@@ -31,6 +31,13 @@ those paths are not ported here.
   works because `preflight()` is the first line of `main`.
 - The binary carries an `$ORIGIN` rpath (apps/zeron/build.rs) so `libcef.so`
   loads without `LD_LIBRARY_PATH`.
+- Windows: the same layout with `libcef.dll`, `chrome_elf.dll` and the other
+  DLLs, `*.pak`, `icudtl.dat`, `*.bin`, `locales\` and
+  `zeron-browser-helper.exe` next to `zeron.exe`; Windows loads DLLs from the
+  exe's own folder, so no rpath is needed. `deploy\windows\build.ps1 -Browser`
+  builds with the feature and ships that set in the zip. The cef crate needs
+  CMake and Ninja on the build box and downloads the CEF binary (about 250 MB)
+  into `CEF_PATH` on the first build.
 
 ## Environment
 
