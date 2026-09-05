@@ -273,7 +273,11 @@ wrap_render_handler! {
                 }
                 // The texture is the visible part of the paint, not its coded size.
                 let (width, height) = texture.size();
-                let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
+                // The count still matters; the number does not. `store` mints
+                // the seq now, and this path logs on its own ACCEL counter in
+                // `zero_copy`, so binding `n` here would be a dead variable
+                // no Linux build ever compiles.
+                PAINTS.fetch_add(1, Ordering::Relaxed);
                 crate::perf::on_paint();
                 store(id, FrameSource::Shared(texture), active);
                 LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
