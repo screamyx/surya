@@ -346,6 +346,19 @@ mod tests {
     }
 
     #[test]
+    fn published_sequences_do_not_repeat_when_switching_between_browsers() {
+        forget_all();
+        publish(101, img(), 0);
+        let first = frame_of(101).unwrap().0;
+        publish(102, img(), 0);
+        let second = frame_of(102).unwrap().0;
+        publish(101, img(), 0);
+        let third = frame_of(101).unwrap().0;
+        assert!(first < second && second < third);
+        forget_all();
+    }
+
+    #[test]
     fn frames_are_kept_per_browser_and_bounded_without_dropping_the_active_one() {
         forget_all();
         let active = 1;
