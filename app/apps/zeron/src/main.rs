@@ -24,6 +24,13 @@ struct Cli {
     /// `zeron status` on the engine's machine.
     #[arg(long, value_name = "TOKEN")]
     engine_token: Option<String>,
+    /// surya: open only the Tasks pane against the local engine (`zeron
+    /// headless` on the IPC port). `SURYA_DEMO_EXIT_SECS` quits by itself.
+    #[arg(long)]
+    tasks_demo: bool,
+    /// Board (space id) for `--tasks-demo`; default = the first space.
+    #[arg(long, value_name = "SPACE_ID", requires = "tasks_demo")]
+    tasks_space: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -214,6 +221,23 @@ fn main() -> anyhow::Result<()> {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(27655);
             zeron_ui::files::run_demo(checkout, data_dir, ipc_port, edge_url_from_env());
+            Ok(())
+        }
+        None if cli.tasks_demo => {
+            zeron_ui::tasks::demo::run(zeron_ui::tasks::demo::DemoConfig {
+                data_dir: std::env::var_os("ZERON_DATA_DIR")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(dirs_data_dir),
+                ipc_port: std::env::var("ZERON_IPC_PORT")
+                    .ok()
+                    .and_then(|p| p.parse().ok())
+                    .unwrap_or(27654),
+                space: cli.tasks_space,
+                exit_after: std::env::var("SURYA_DEMO_EXIT_SECS")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .map(std::time::Duration::from_secs),
+            });
             Ok(())
         }
         None => {
