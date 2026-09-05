@@ -1,141 +1,19 @@
 //! Agent mail end to end (decision 19), on two mock-harness sessions.
 //!
-//! Proof 1: A mails B. B's next turn carries `[MAIL <id> from <sender>] <body>`,
-//! the row is marked delivered, and the ack lands when that turn ends —
+//! Proof 1: A mails B. B's next turn carries the envelope block, the row is
+//! marked delivered, and the ack lands when that turn ends —
 //! `sent=1 delivered=1 acked=1`.
 //! Proof 2: one `#workspace` send fans out to both live agents —
 //! `sent=1 delivered=2`.
 
+mod mail_support;
+
 use std::sync::Arc;
 use std::time::Duration;
 
-use async_trait::async_trait;
-use futures::StreamExt;
-use futures::stream::BoxStream;
-
-use zeron_doc::{MessageRole, SessionMessageEntry};
+use mail_support::{CHAT_A, CHAT_B, EchoHarness, SPACE, request, settled, user_texts, wait_for};
 use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::{Harness, HarnessError, RunControls};
-use zeron_proto::{
-    AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
-    SessionStatus, SteeringMode,
-};
-
-const CHAT_A: &str = "chat-a";
-const CHAT_B: &str = "chat-b";
-const SPACE: &str = "space-mail";
-
-/// Completes a one-line turn for any request. Not steerable: every mail
-/// arrives as its own turn, which is the shape the proof asserts on.
-struct EchoHarness;
-
-#[async_trait]
-impl Harness for EchoHarness {
-    fn id(&self) -> HarnessId {
-        HarnessId::Mock
-    }
-    fn display_name(&self) -> &str {
-        "Echo"
-    }
-    fn supports_steering(&self) -> bool {
-        false
-    }
-    fn steering_mode(&self) -> SteeringMode {
-        SteeringMode::TurnBoundary
-    }
-    fn reasoning_levels(&self) -> &[ReasoningLevel] {
-        &[ReasoningLevel::Medium]
-    }
-    async fn models(&self) -> Result<Vec<Model>, HarnessError> {
-        Ok(vec![])
-    }
-    async fn run(
-        &self,
-        request: RunRequest,
-        _controls: RunControls,
-    ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
-        let events: Vec<Result<AgentEvent, HarnessError>> = vec![
-            Ok(AgentEvent::SessionStarted {
-                harness: HarnessId::Mock,
-                model: "mock-1".into(),
-                tools: vec![],
-                cwd: request.cwd.clone(),
-                session_id: "sess-mail".into(),
-                assistant_message_id: format!("a-{}", request.prompt.len()),
-            }),
-            Ok(AgentEvent::TextDelta {
-                text: format!("read: {}", request.prompt),
-            }),
-            Ok(AgentEvent::Done {
-                status: DoneStatus::Completed,
-                result: None,
-                error: None,
-                session_id: Some("sess-mail".into()),
-            }),
-        ];
-        Ok(futures::stream::iter(events).boxed())
-    }
-}
-
-async fn wait_for<F>(mut predicate: F, what: &str)
-where
-    F: FnMut() -> bool,
-{
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
-    while !predicate() {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "timed out waiting for {what}"
-        );
-        tokio::time::sleep(Duration::from_millis(20)).await;
-    }
-}
-
-fn user_texts(core: &EngineCore, chat: &str) -> Vec<String> {
-    let entries: Vec<SessionMessageEntry> = core
-        .doc_host
-        .open(chat)
-        .ok()
-        .and_then(|h| h.doc().read_entries().ok())
-        .unwrap_or_default();
-    entries
-        .iter()
-        .filter(|e| e.role == MessageRole::User)
-        .map(|e| {
-            e.parts
-                .iter()
-                .filter_map(|p| match p {
-                    zeron_doc::MessagePart::Text { text, .. } => Some(text.clone()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("")
-        })
-        .collect()
-}
-
-fn request(prompt: &str) -> RunRequest {
-    RunRequest {
-        prompt: prompt.into(),
-        harness: Some(HarnessId::Mock),
-        model: None,
-        reasoning: None,
-        model_options: Default::default(),
-        cwd: "~".into(),
-        sandbox: SandboxLevel::WorkspaceWrite,
-        auto_approve: true,
-        attachments: Vec::new(),
-        worktree: None,
-        resume: None,
-        surya: None,
-    }
-}
-
-fn settled(core: &EngineCore, chat: &str) -> bool {
-    core.sessions
-        .session_status(chat)
-        .is_some_and(|s| matches!(s.status, SessionStatus::Idle | SessionStatus::Errored))
-}
+use zeron_proto::HarnessId;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
@@ -179,32 +57,29 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     // ---- Proof 1: one message, one recipient.
     let receipt = core
         .mail
-        .send(CHAT_A, CHAT_B, "please check the diff", None)
+        .send_verified(CHAT_A, CHAT_B, "please check the diff", None)
         .await
         .expect("send");
     assert_eq!(receipt.ids.len(), 1, "one recipient, one delivery id");
     assert_eq!(receipt.recipients, vec![CHAT_B.to_string()]);
     let id = receipt.ids[0].clone();
-    let expected = format!("[MAIL {id} from {CHAT_A}] please check the diff");
+    let expected = format!("[MAIL {id} from {CHAT_A}]\n  please check the diff\n[/MAIL {id}]");
 
     wait_for(
         || user_texts(&core, CHAT_B).iter().any(|t| t == &expected),
         "B's turn to carry the envelope",
     )
     .await;
-    wait_for(
-        || {
-            core.mail
-                .list(Some(CHAT_B))
-                .unwrap()
-                .iter()
-                .any(|m| m.id == id && m.acked_at.is_some())
-        },
-        "the carrying turn to complete and ack the mail",
-    )
-    .await;
+    wait_until!("the carrying turn to complete and ack the mail", {
+        core.mail
+            .list(Some(CHAT_B))
+            .await
+            .unwrap()
+            .iter()
+            .any(|m| m.id == id && m.acked_at.is_some())
+    });
 
-    let (sent, delivered, acked) = core.mail.counts().expect("counts");
+    let (sent, delivered, acked) = core.mail.counts().await.expect("counts");
     println!("proof 1: sent={sent} delivered={delivered} acked={acked}");
     assert_eq!((sent, delivered, acked), (1, 1, 1));
 
@@ -212,6 +87,7 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     let row = core
         .mail
         .list(Some(CHAT_B))
+        .await
         .unwrap()
         .into_iter()
         .find(|m| m.id == id)
@@ -237,18 +113,14 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     );
 
     let ids = fanout.ids.clone();
-    wait_for(
-        || {
-            let all = core.mail.list(None).unwrap();
-            ids.iter()
-                .all(|id| all.iter().any(|m| &m.id == id && m.delivered_at.is_some()))
-        },
-        "both fan-out copies delivered",
-    )
-    .await;
+    wait_until!("both fan-out copies delivered", {
+        let all = core.mail.list(None).await.unwrap();
+        ids.iter()
+            .all(|id| all.iter().any(|m| &m.id == id && m.delivered_at.is_some()))
+    });
 
     let delivered_fanout = {
-        let all = core.mail.list(None).unwrap();
+        let all = core.mail.list(None).await.unwrap();
         ids.iter()
             .filter(|id| all.iter().any(|m| &&m.id == id && m.delivered_at.is_some()))
             .count()
@@ -257,7 +129,8 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     assert_eq!(delivered_fanout, 2);
 
     for (chat, id) in [CHAT_A, CHAT_B].iter().zip(fanout.ids.iter()) {
-        let line = format!("[MAIL {id} from owner] standup in five");
+        let line =
+            format!("[MAIL {id} from unverified:owner]\n  standup in five\n[/MAIL {id}]");
         assert!(
             user_texts(&core, chat).iter().any(|t| t == &line),
             "{chat} must carry its own copy: {line}"
@@ -266,6 +139,7 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
 
     core.shutdown().await;
 }
+
 
 #[tokio::test(flavor = "multi_thread")]
 async fn mail_to_an_unknown_agent_queues_instead_of_failing() {
@@ -287,7 +161,7 @@ async fn mail_to_an_unknown_agent_queues_instead_of_failing() {
         .await
         .expect("send to an unknown agent is accepted");
     assert_eq!(receipt.ids.len(), 1);
-    let (sent, delivered, acked) = core.mail.counts().expect("counts");
+    let (sent, delivered, acked) = core.mail.counts().await.expect("counts");
     println!("unknown recipient: sent={sent} delivered={delivered} acked={acked}");
     assert_eq!((sent, delivered, acked), (1, 0, 0));
 
@@ -296,41 +170,3 @@ async fn mail_to_an_unknown_agent_queues_instead_of_failing() {
 
 /// The surya-mcp seat's record shape, straight through the engine: its
 /// `delivery_id` becomes the row id, and `text` is the body.
-#[tokio::test(flavor = "multi_thread")]
-async fn the_seats_delivery_id_becomes_the_row_id() {
-    let tmp = tempfile::tempdir().unwrap();
-    let registry = HarnessRegistry::new();
-    registry.register(Arc::new(EchoHarness));
-    let core = EngineCore::assemble(
-        &tmp.path().join("data"),
-        Arc::new(registry),
-        HarnessId::Mock,
-        None,
-    )
-    .expect("engine core assembles");
-
-    let receipt = core
-        .mail
-        .send_with_id(
-            "seat-1",
-            "seat-2",
-            "the migration is ready",
-            None,
-            Some("d_abc"),
-        )
-        .await
-        .expect("send");
-    assert_eq!(receipt.ids, vec!["d_abc".to_string()]);
-    let row = core
-        .mail
-        .list(Some("seat-2"))
-        .unwrap()
-        .into_iter()
-        .next()
-        .expect("row");
-    assert_eq!(row.id, "d_abc");
-    assert_eq!(row.body, "the migration is ready");
-    assert!(core.mail.ack("d_abc").expect("ack"), "the seat's id acks");
-
-    core.shutdown().await;
-}

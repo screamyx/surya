@@ -220,14 +220,14 @@ fn main() -> anyhow::Result<()> {
         }
         Some(Command::Mail { command }) => {
             let runtime = tokio::runtime::Runtime::new()?;
-            let port = engine_config_from_env().ipc_port;
+            let ipc = engine_config_from_env(None).ipc();
             runtime.block_on(async move {
                 match command {
                     MailCommand::Send { to, body, from } => {
-                        mail_cli::send(port, &from, &to, &body).await
+                        mail_cli::send(ipc, &from, &to, &body).await
                     }
-                    MailCommand::Drain { agent } => mail_cli::drain(port, agent.as_deref()).await,
-                    MailCommand::Ack { id } => mail_cli::ack(port, &id).await,
+                    MailCommand::Drain { agent } => mail_cli::drain(ipc, agent.as_deref()).await,
+                    MailCommand::Ack { id } => mail_cli::ack(ipc, &id).await,
                 }
             })
         }

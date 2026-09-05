@@ -4,19 +4,23 @@
 //! existing skill"). Output is deliberately agb-shaped so a skill can alias
 //! one command to the other.
 
+use zeron_engine::ipc::IpcConfig;
 use zeron_rpc::methods;
 
-async fn client(ipc_port: u16) -> anyhow::Result<zeron_rpc::RpcClient> {
-    zeron_rpc::connect_ws(&format!("ws://127.0.0.1:{ipc_port}"))
-        .await
-        .map_err(|e| {
-            anyhow::anyhow!("no engine listening on 127.0.0.1:{ipc_port} ({e}) — is zeron running?")
-        })
+/// Same dial as `zeron sync`: the engine's IPC config carries the bind and the
+/// token, so an off-loopback engine authenticates instead of refusing.
+async fn client(ipc: &IpcConfig) -> anyhow::Result<zeron_rpc::RpcClient> {
+    ipc.connect().await.map_err(|e| {
+        anyhow::anyhow!(
+            "no engine listening on {} ({e}) — is zeron running?",
+            ipc.dial_addr()
+        )
+    })
 }
 
 /// `zeron mail send <to> <body>` → one line per delivery id.
-pub async fn send(ipc_port: u16, from: &str, to: &str, body: &str) -> anyhow::Result<()> {
-    let client = client(ipc_port).await?;
+pub async fn send(ipc: IpcConfig, from: &str, to: &str, body: &str) -> anyhow::Result<()> {
+    let client = client(&ipc).await?;
     let reply = client
         .call(
             methods::MAIL_SEND,
@@ -46,8 +50,8 @@ pub async fn send(ipc_port: u16, from: &str, to: &str, body: &str) -> anyhow::Re
 }
 
 /// `zeron mail drain [--agent X]` — what is waiting, and what is in flight.
-pub async fn drain(ipc_port: u16, agent: Option<&str>) -> anyhow::Result<()> {
-    let client = client(ipc_port).await?;
+pub async fn drain(ipc: IpcConfig, agent: Option<&str>) -> anyhow::Result<()> {
+    let client = client(&ipc).await?;
     let mut params = serde_json::Map::new();
     if let Some(agent) = agent {
         params.insert("agent".into(), serde_json::json!(agent));
@@ -93,8 +97,8 @@ pub async fn drain(ipc_port: u16, agent: Option<&str>) -> anyhow::Result<()> {
 }
 
 /// `zeron mail ack <id>` — the manual "seen"; turn completion acks on its own.
-pub async fn ack(ipc_port: u16, id: &str) -> anyhow::Result<()> {
-    let client = client(ipc_port).await?;
+pub async fn ack(ipc: IpcConfig, id: &str) -> anyhow::Result<()> {
+    let client = client(&ipc).await?;
     let reply = client
         .call(methods::MAIL_ACK, serde_json::json!({ "id": id }))
         .await

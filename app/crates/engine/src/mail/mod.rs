@@ -49,14 +49,15 @@ pub struct Mail {
 }
 
 pub(crate) struct Inner {
-    store: MailStore,
+    store: Arc<MailStore>,
     device_id: String,
     sessions: SessionsEngine,
     doc_host: DocHost,
     feed_tx: watch::Sender<Vec<MailMessage>>,
-    /// Set while the delivery pump is walking one agent, so the pump and a
-    /// fresh send never dispatch the same queued rows twice.
-    delivering: tokio::sync::Mutex<()>,
+    /// One lock per agent, so the pump and a fresh send never dispatch the
+    /// same queued rows twice — and delivering to a slow agent never blocks
+    /// delivery to every other one.
+    delivering: std::sync::Mutex<std::collections::HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
     pump_started: AtomicBool,
 }
 
@@ -75,7 +76,7 @@ impl Mail {
         sessions: SessionsEngine,
         doc_host: DocHost,
     ) -> Result<Self, MailStoreError> {
-        let store = MailStore::open(store_root)?;
+        let store = Arc::new(MailStore::open(store_root)?);
         let (feed_tx, _) = watch::channel(Vec::new());
         let mail = Self {
             inner: Arc::new(Inner {
@@ -84,7 +85,7 @@ impl Mail {
                 sessions,
                 doc_host,
                 feed_tx,
-                delivering: tokio::sync::Mutex::new(()),
+                delivering: std::sync::Mutex::new(std::collections::HashMap::new()),
                 pump_started: AtomicBool::new(false),
             }),
         };
@@ -96,8 +97,31 @@ impl Mail {
         &self.inner.device_id
     }
 
-    pub(crate) fn store(&self) -> &MailStore {
-        &self.inner.store
+    /// Run one store call off the async runtime. SQLite is a blocking API; a
+    /// busy WAL writer must not park a reactor thread.
+    pub(crate) async fn with_store<T, F>(&self, work: F) -> Result<T, crate::EngineError>
+    where
+        F: FnOnce(&MailStore) -> Result<T, MailStoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let store = self.inner.store.clone();
+        tokio::task::spawn_blocking(move || work(&store))
+            .await
+            .map_err(|e| crate::EngineError::Other(format!("mail store task: {e}")))?
+            .map_err(Into::into)
+    }
+
+    /// The delivery lock for one agent.
+    pub(crate) fn agent_lock(&self, agent: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut locks = self
+            .inner
+            .delivering
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        locks
+            .entry(agent.to_string())
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(())))
+            .clone()
     }
 
     /// Accept one send. The address resolves now; every resolved recipient gets
@@ -111,7 +135,21 @@ impl Mail {
         body: &str,
         to_device: Option<&str>,
     ) -> Result<MailReceipt, crate::EngineError> {
-        self.send_with_id(from, to, body, to_device, None).await
+        self.send_with_id(from, to, body, to_device, None, false)
+            .await
+    }
+
+    /// A send the engine can attribute: `from` is the sending session's own
+    /// chat id, so it rides the envelope as written.
+    pub async fn send_verified(
+        &self,
+        from_chat: &str,
+        to: &str,
+        body: &str,
+        to_device: Option<&str>,
+    ) -> Result<MailReceipt, crate::EngineError> {
+        self.send_with_id(from_chat, to, body, to_device, None, true)
+            .await
     }
 
     /// [`Self::send`] carrying a delivery id the caller already minted. The
@@ -126,9 +164,19 @@ impl Mail {
         body: &str,
         to_device: Option<&str>,
         delivery_id: Option<&str>,
+        verified: bool,
     ) -> Result<MailReceipt, crate::EngineError> {
         let address = MailAddress::parse(to).map_err(crate::EngineError::Other)?;
         let recipients = self.resolve(&address);
+        if recipients.is_empty() {
+            // Only a `#workspace` address can resolve to nothing (an unknown
+            // agent id resolves to itself). Saying so beats an empty receipt
+            // the sender reads as success.
+            return Err(crate::EngineError::Other(format!(
+                "no agents in {to}: the workspace is unknown or has no chats"
+            )));
+        }
+        let from = envelope::attribute(from, verified);
         let to_device = to_device.unwrap_or(&self.inner.device_id).to_string();
         let now = chrono::Utc::now().timestamp_millis();
         let mut ids = Vec::with_capacity(recipients.len());
@@ -139,7 +187,7 @@ impl Mail {
                     (Some(id), n) => format!("{id}-{}", n + 1),
                     (None, _) => new_mail_id(),
                 },
-                from: from.to_string(),
+                from: from.clone(),
                 to: to.to_string(),
                 to_agent: agent.clone(),
                 body: body.to_string(),
@@ -150,8 +198,14 @@ impl Mail {
                 to_device: to_device.clone(),
                 run_id: None,
             };
-            ids.push(message.id.clone());
-            self.inner.store.insert(&message)?;
+            let id = message.id.clone();
+            let fresh = self.with_store(move |s| s.insert(&message)).await?;
+            if !fresh {
+                // A replayed delivery id. The row already in the table owns
+                // its state; re-inserting would reset it and deliver twice.
+                tracing::debug!(id = %id, "mail id already known, send is a no-op");
+            }
+            ids.push(id);
         }
         self.publish_feed();
         // Try immediately: a live recipient reads the mail inside its running
@@ -168,19 +222,21 @@ impl Mail {
     }
 
     /// Mail for one agent, oldest first. With no agent, the recent feed.
-    pub fn list(&self, agent: Option<&str>) -> Result<Vec<MailMessage>, crate::EngineError> {
+    pub async fn list(&self, agent: Option<&str>) -> Result<Vec<MailMessage>, crate::EngineError> {
         match agent {
-            Some(agent) => Ok(self.inner.store.for_agent(agent)?),
+            Some(agent) => {
+                let agent = agent.to_string();
+                self.with_store(move |s| s.for_agent(&agent)).await
+            }
             None => Ok(self.inner.feed_tx.borrow().clone()),
         }
     }
 
     /// Manual "seen". Returns false when the row is unknown or already acked.
-    pub fn ack(&self, id: &str) -> Result<bool, crate::EngineError> {
-        let acked = self
-            .inner
-            .store
-            .mark_acked(id, chrono::Utc::now().timestamp_millis())?;
+    pub async fn ack(&self, id: &str) -> Result<bool, crate::EngineError> {
+        let id = id.to_string();
+        let now = chrono::Utc::now().timestamp_millis();
+        let acked = self.with_store(move |s| s.mark_acked(&id, now)).await?;
         if acked {
             self.publish_feed();
         }
@@ -192,8 +248,8 @@ impl Mail {
     }
 
     /// `sent=N delivered=N acked=N` — the counter triple, always as a set.
-    pub fn counts(&self) -> Result<(i64, i64, i64), crate::EngineError> {
-        Ok(self.inner.store.counts()?)
+    pub async fn counts(&self) -> Result<(i64, i64, i64), crate::EngineError> {
+        self.with_store(|s| s.counts()).await
     }
 
     /// Resolve an address to the agents that receive it.

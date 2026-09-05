@@ -17,8 +17,14 @@ pub struct MailRpc {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SendParams {
-    /// Sender address. The app fills the composing agent's id.
-    from: String,
+    /// The sending agent's own chat id. When present the engine treats the
+    /// sender as proven and writes it to the envelope as given.
+    #[serde(default)]
+    from_chat: Option<String>,
+    /// A sender the caller merely claims — the CLI, a script. It reaches the
+    /// recipient marked `unverified:`.
+    #[serde(default)]
+    from: Option<String>,
     /// `agent-id`, a human alias, or `#workspace`.
     to: String,
     body: String,
@@ -61,21 +67,36 @@ impl RpcService for MailRpc {
         match method {
             methods::MAIL_SEND => {
                 let p: SendParams = parse_params(params)?;
-                let receipt = self
-                    .mail
-                    .send(&p.from, &p.to, &p.body, p.to_device.as_deref())
-                    .await
-                    .map_err(failed)?;
+                // `fromChat` is the agent's own session id, so the engine can
+                // vouch for it. Anything else is a claim, and the envelope
+                // says so.
+                let receipt = match &p.from_chat {
+                    Some(chat) => self
+                        .mail
+                        .send_verified(chat, &p.to, &p.body, p.to_device.as_deref())
+                        .await,
+                    None => {
+                        self.mail
+                            .send(
+                                p.from.as_deref().unwrap_or("unknown"),
+                                &p.to,
+                                &p.body,
+                                p.to_device.as_deref(),
+                            )
+                            .await
+                    }
+                }
+                .map_err(failed)?;
                 RpcReply::value(&receipt)
             }
             methods::MAIL_LIST => {
                 let p: ListParams = parse_params(params).unwrap_or(ListParams { agent: None });
-                let messages = self.mail.list(p.agent.as_deref()).map_err(failed)?;
+                let messages = self.mail.list(p.agent.as_deref()).await.map_err(failed)?;
                 RpcReply::value(&serde_json::json!({ "messages": messages }))
             }
             methods::MAIL_ACK => {
                 let p: AckParams = parse_params(params)?;
-                let acked = self.mail.ack(&p.id).map_err(failed)?;
+                let acked = self.mail.ack(&p.id).await.map_err(failed)?;
                 RpcReply::value(&serde_json::json!({ "acked": acked }))
             }
             methods::WATCH_MAIL => {

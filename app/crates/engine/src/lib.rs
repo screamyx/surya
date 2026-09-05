@@ -168,6 +168,10 @@ pub struct EngineCore {
     updater: std::sync::Mutex<Option<zeron_update::Updater>>,
     /// The updater's token-change wake forwarder — owned so shutdown can end it.
     updater_wake: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// Mail ingress listeners (socket + jsonl), started by
+    /// [`EngineCore::start_mail_ingress`]. Held here so they live as long as
+    /// the engine and stop with it.
+    mail_ingress: std::sync::Mutex<Option<MailIngress>>,
     /// Exclusive data-dir lock — held for the engine's lifetime (single-instance).
     _instance_lock: InstanceLock,
 }
@@ -336,6 +340,7 @@ impl EngineCore {
             device_id,
             local_import,
             workspace_scope: profile.scope(),
+            mail_ingress: std::sync::Mutex::new(None),
             auth: std::sync::Mutex::new(None),
             links: std::sync::Mutex::new(None),
             updater: std::sync::Mutex::new(None),
@@ -448,6 +453,20 @@ impl EngineCore {
             }
         });
         zeron_rpc::HostRelay::spawn(config, self.rpc_service(), on_nudge)
+    }
+
+    /// Open the mail channel the surya-mcp seat writes to: a unix socket at
+    /// `$XDG_RUNTIME_DIR/surya/mail.sock` and an appended `~/.surya/mail.jsonl`.
+    ///
+    /// Started by the runtime, never by [`EngineCore::assemble`]: the socket
+    /// path is per-user, not per-engine, so a test assembling its own core in a
+    /// temp dir must not race the real one for it.
+    pub fn start_mail_ingress(&self, paths: MailIngressPaths) {
+        let ingress = MailIngress::start(self.mail.clone(), paths);
+        *self
+            .mail_ingress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(ingress);
     }
 
     pub fn rpc_service(&self) -> Arc<EngineRpc> {
@@ -781,6 +800,9 @@ impl Engine {
             )?,
         };
         core.set_auth(auth.clone());
+        // Mail from the surya-mcp seat. Paths come from the environment, so a
+        // second engine on the same machine is the one that owns the socket.
+        core.start_mail_ingress(MailIngressPaths::detect());
         if edge_enabled {
             // Release checker: polls {edge}/releases on a 6h cadence; headless
             // installs with ZERON_AUTO_UPDATE=1 apply + restart themselves — gated

@@ -1,15 +1,25 @@
 //! Delivery and ack.
 //!
-//! One rule, two hooks. The rule: pending mail for an agent becomes a turn
-//! carrying `[MAIL <id> from <sender>] <body>`, one line per message, in send
-//! order. The hooks: a send tries immediately, and the session-status watch
-//! retries whenever an agent settles. `dispatch` is the single call for both
+//! The rule: pending mail for an agent becomes a turn carrying one envelope
+//! block per message, in send order. `dispatch` is the single call for both
 //! shapes of recipient — it folds the prompt into a live steerable run's
 //! mailbox at its next step boundary, and starts a fresh run otherwise — and
-//! it hands back the run id the ack is keyed on.
+//! it hands back the run id.
 //!
-//! Ack: an agent whose status is settled has no turn in flight, so every
-//! delivered-but-unacked row it holds was carried by a turn that has ended.
+//! The ack is keyed on that run, not on the agent's status alone:
+//!
+//! ```text
+//! queued ──claim──▶ delivering ──run id──▶ delivered ──run ends Idle──▶ acked
+//!    ▲                   │                     │
+//!    └───dispatch failed─┘                     └──run ends Errored / vanishes──┐
+//!    ▲                                                                         │
+//!    └─────────────────────────── requeued ◀───────────────────────────────────┘
+//! ```
+//!
+//! A row is claimed before its turn is dispatched, so no second pass picks it
+//! up, and its run id lands only after `dispatch` returns — until then it
+//! cannot be acked, which is what stops a status tick during dispatch from
+//! acking a turn the agent never saw.
 
 use std::sync::atomic::Ordering;
 
@@ -38,8 +48,8 @@ impl Mail {
                     .map(|s| s.chat_id.clone())
                     .collect();
                 for agent in &settled {
-                    if let Err(err) = mail.ack_settled(agent) {
-                        tracing::warn!(agent = %agent, error = %err, "mail auto-ack failed");
+                    if let Err(err) = mail.settle_agent(agent).await {
+                        tracing::warn!(agent = %agent, error = %err, "mail settle failed");
                     }
                 }
                 if let Err(err) = mail.deliver_pending().await {
@@ -51,7 +61,10 @@ impl Mail {
 
     /// One delivery pass over every agent holding queued mail for this device.
     pub async fn deliver_pending(&self) -> Result<usize, EngineError> {
-        let agents = self.store().agents_with_queued(self.device_id())?;
+        let device = self.device_id().to_string();
+        let agents = self
+            .with_store(move |s| s.agents_with_queued(&device))
+            .await?;
         let mut delivered = 0;
         for agent in agents {
             delivered += self.deliver_agent(&agent).await?;
@@ -63,26 +76,30 @@ impl Mail {
     /// number of messages that went out; 0 means they stay queued (no chat row
     /// yet, or the row names another device).
     pub(crate) async fn deliver_agent(&self, agent: &str) -> Result<usize, EngineError> {
-        // One delivery at a time: a send and the pump must not dispatch the
-        // same queued rows as two turns.
-        let _guard = self.inner.delivering.lock().await;
+        // Per-agent: two passes must not dispatch the same rows, and a slow
+        // agent must not hold up delivery to any other.
+        let lock = self.agent_lock(agent);
+        let _guard = lock.lock().await;
+
+        let device = self.device_id().to_string();
+        let key = agent.to_string();
         let queued: Vec<_> = self
-            .store()
-            .queued_for_agent(agent)?
+            .with_store(move |s| s.queued_for_agent(&key))
+            .await?
             .into_iter()
-            .filter(|m| m.to_device == self.device_id())
+            .filter(|m| m.to_device == device)
             .collect();
         if queued.is_empty() {
             return Ok(0);
         }
         let prompt = queued
             .iter()
-            .map(|m| m.envelope_line())
+            .map(|m| m.envelope_block())
             .collect::<Vec<_>>()
             .join("\n");
         let Some(mut request) = self.run_request_for(agent, &prompt) else {
             // No chat row and no prior run: the agent is not on this engine
-            // yet. Mail waits — that is the whole point of reserve-on-spawn.
+            // yet. Mail waits — that is what reserve-on-spawn means.
             tracing::debug!(agent = %agent, queued = queued.len(), "mail held: agent not runnable here");
             return Ok(0);
         };
@@ -93,7 +110,21 @@ impl Mail {
         request.attachments = Vec::new();
         let harness = self.inner.doc_host.harness_for_request(agent, &request);
         let message_id = format!("mailmsg-{}", queued[0].id);
-        let run_id = self
+
+        // Claim first: from here no other pass sees these rows, and no ack
+        // pass can touch them either — their run id is still unset.
+        let ids: Vec<String> = queued.iter().map(|m| m.id.clone()).collect();
+        let now = chrono::Utc::now().timestamp_millis();
+        let claim = ids.clone();
+        self.with_store(move |s| {
+            for id in &claim {
+                s.mark_delivering(id, now)?;
+            }
+            Ok(())
+        })
+        .await?;
+
+        let dispatched = self
             .inner
             .doc_host
             .dispatch_with_source_context(
@@ -103,48 +134,105 @@ impl Mail {
                 request,
                 Some(message_id),
             )
-            .await?;
-        let now = chrono::Utc::now().timestamp_millis();
-        for message in &queued {
-            self.store()
-                .mark_delivered(&message.id, now, Some(&run_id))?;
-        }
+            .await;
+        let run_id = match dispatched {
+            Ok(run_id) => run_id,
+            Err(err) => {
+                // Nobody read it. Back in the queue.
+                let undo = ids.clone();
+                self.with_store(move |s| {
+                    for id in &undo {
+                        s.requeue(id)?;
+                    }
+                    Ok(())
+                })
+                .await?;
+                self.publish_feed();
+                return Err(err);
+            }
+        };
+        let named = ids.clone();
+        let run = run_id.clone();
+        self.with_store(move |s| {
+            for id in &named {
+                s.set_run(id, &run)?;
+            }
+            Ok(())
+        })
+        .await?;
         self.publish_feed();
         tracing::info!(
             agent = %agent,
             run = %run_id,
-            delivered = queued.len(),
+            delivered = ids.len(),
             "mail delivered into a turn"
         );
-        Ok(queued.len())
+        Ok(ids.len())
     }
 
-    /// Ack every delivered-but-unacked row for an agent that is not running.
-    pub(crate) fn ack_settled(&self, agent: &str) -> Result<usize, EngineError> {
-        if self
-            .inner
-            .sessions
-            .session_status(agent)
-            .is_some_and(|s| is_active(s.status))
-        {
-            return Ok(0);
+    /// The agent's turn ended. Ack what that run carried, or put it back.
+    ///
+    /// Ack only rows whose carrying run is no longer live: a chat can settle
+    /// between two of its own turns, and a row belonging to the turn still to
+    /// come is not read yet. An errored run, or one that vanished without
+    /// reaching Idle, requeues its rows — nobody can say the agent read them.
+    pub(crate) async fn settle_agent(&self, agent: &str) -> Result<(usize, usize), EngineError> {
+        let Some(session) = self.inner.sessions.session_status(agent) else {
+            return Ok((0, 0));
+        };
+        if is_active(session.status) {
+            return Ok((0, 0));
         }
-        let pending = self.store().unacked_for_agent(agent)?;
+        let key = agent.to_string();
+        let pending = self.with_store(move |s| s.unacked_for_agent(&key)).await?;
         if pending.is_empty() {
-            return Ok(0);
+            return Ok((0, 0));
         }
-        let now = chrono::Utc::now().timestamp_millis();
-        let mut acked = 0;
-        for message in &pending {
-            if self.store().mark_acked(&message.id, now)? {
-                acked += 1;
+        let mut to_ack = Vec::new();
+        let mut to_requeue = Vec::new();
+        for message in pending {
+            let Some(run_id) = message.run_id.clone() else {
+                continue; // claimed, dispatch still in flight
+            };
+            if self.inner.sessions.run_is_live(agent, &run_id) {
+                continue; // its turn has not ended
+            }
+            match session.status {
+                SessionStatus::Idle => to_ack.push(message.id),
+                _ => to_requeue.push(message.id),
             }
         }
-        if acked > 0 {
-            self.publish_feed();
-            tracing::info!(agent = %agent, acked, "mail acked on turn completion");
+        if to_ack.is_empty() && to_requeue.is_empty() {
+            return Ok((0, 0));
         }
-        Ok(acked)
+        let now = chrono::Utc::now().timestamp_millis();
+        let acking = to_ack.clone();
+        let requeuing = to_requeue.clone();
+        let acked = self
+            .with_store(move |s| {
+                let mut acked = 0;
+                for id in &acking {
+                    if s.mark_acked(id, now)? {
+                        acked += 1;
+                    }
+                }
+                for id in &requeuing {
+                    s.requeue(id)?;
+                }
+                Ok(acked)
+            })
+            .await?;
+        self.publish_feed();
+        if acked > 0 || !to_requeue.is_empty() {
+            tracing::info!(
+                agent = %agent,
+                acked,
+                requeued = to_requeue.len(),
+                status = ?session.status,
+                "mail settled on turn end"
+            );
+        }
+        Ok((acked, to_requeue.len()))
     }
 
     /// The run configuration a mail turn borrows: the agent's last run if it

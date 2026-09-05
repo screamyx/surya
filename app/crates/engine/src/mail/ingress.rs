@@ -215,6 +215,9 @@ async fn accept(mail: &Mail, line: &str) -> Result<Option<super::MailReceipt>, c
             &body,
             record.to_device.as_deref(),
             record.delivery_id.as_deref(),
+            // The channel is a file and a socket: anyone who can write to
+            // either can claim any sender, so the envelope marks it.
+            false,
         )
         .await?;
     Ok(Some(receipt))
