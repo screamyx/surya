@@ -235,14 +235,17 @@ fn show_active() {
     crate::client::activate(active_browser());
 }
 
+/// Every tab in strip order, as the strip draws them.
 pub fn tabs() -> Vec<TabInfo> {
     with(|t| t.infos())
 }
 
+/// The tab on screen, if any tab exists.
 pub fn active_tab() -> Option<TabId> {
     with(|t| t.active().map(|t| t.id))
 }
 
+/// How many tabs exist.
 pub fn count() -> usize {
     with(|t| t.tabs.len())
 }
@@ -452,6 +455,59 @@ mod tests {
         let infos = t.infos();
         assert_eq!((infos[0].id, infos[0].title.as_str()), (a, "A"));
         assert_eq!((infos[1].id, infos[1].url.as_str()), (b, "https://b/"));
+    }
+
+    /// Through the statics, the way the strip and the CEF callbacks use
+    /// them, with no CEF in the process (`has_cef()` is false in a test):
+    /// open, close, detach and close_all in one sequence, since the tests
+    /// above only drive a private `Tabs`. Serialised by one lock so the
+    /// other `#[test]`s never see it mid-way.
+    #[test]
+    fn the_public_api_orders_open_close_detach_and_close_all() {
+        static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+        let _guard = ONE_AT_A_TIME.lock().unwrap_or_else(|e| e.into_inner());
+        close_all();
+        assert_eq!(count(), 0);
+        assert_eq!(active_tab(), None);
+        let a = tab_open("example.com");
+        let b = tab_open("");
+        assert_eq!(count(), 2);
+        assert_eq!(active_tab(), Some(b));
+        assert_eq!(page().shown_address(), "about:blank");
+        assert_eq!(tabs()[0].url, "https://example.com");
+        tab_activate(a);
+        assert_eq!(active_tab(), Some(a));
+        // A CEF callback for a browser no tab owns changes nothing.
+        update_by_browser(0, |p| p.title = "never".into());
+        update_by_browser(42, |p| p.title = "never".into());
+        assert!(tabs().iter().all(|t| t.title.is_empty()));
+        // Give tab b a browser id, then let "CEF" close it: detach takes
+        // the tab, and a second detach for the same id is a no-op.
+        with(|t| t.tabs[1].browser = 42);
+        update_by_browser(42, |p| p.title = "B".into());
+        assert_eq!(tabs()[1].title, "B");
+        detach(42);
+        assert_eq!(count(), 1);
+        assert_eq!(active_tab(), Some(a));
+        detach(42);
+        detach(0);
+        assert_eq!(count(), 1);
+        // Closing the last tab keeps its address for reopen.
+        update_active(|p| p.committed("https://example.com/last".into()));
+        tab_close(a);
+        assert_eq!(count(), 0);
+        assert_eq!(active_tab(), None);
+        assert_eq!(last_url(), "https://example.com/last");
+        // close_all on two tabs empties the strip and remembers the active one.
+        let c = tab_open("https://c.example");
+        let _d = tab_open("https://d.example");
+        tab_activate(c);
+        update_active(|p| p.committed("https://c.example/".into()));
+        close_all();
+        assert_eq!(count(), 0);
+        assert_eq!(last_url(), "https://c.example/");
+        // tab_close of an unknown id is a no-op, not a panic.
+        tab_close(9999);
     }
 
     #[test]

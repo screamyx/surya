@@ -42,6 +42,10 @@ const KEPT_FRAMES: usize = 8;
 /// Paints by browsers that were not on screen (parked, or created and not
 /// yet activated). They store a frame and count here, nothing else.
 static BACKGROUND_PAINTS: AtomicU64 = AtomicU64::new(0);
+/// One sequence for every stored frame, active or parked, so a `seq` never
+/// repeats across a tab switch (the element drops the previous texture on a
+/// change of `seq`) and "oldest" in the bound means oldest.
+static SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// Frames the active browser delivered so far. The pump's idle detection
 /// reads this, so a parked tab's paint must not move it.
@@ -66,9 +70,10 @@ fn frame_of(browser: i32) -> Option<(u64, Arc<RenderImage>)> {
 }
 
 /// Keep `browser`'s latest frame, dropping the oldest other one past the
-/// bound. `active` is never the one dropped.
-fn store(browser: i32, seq: u64, img: Arc<RenderImage>, active: i32) {
-    let Ok(mut guard) = FRAMES.lock() else { return };
+/// bound. `active` is never the one dropped. Returns the frame's `seq`.
+fn store(browser: i32, img: Arc<RenderImage>, active: i32) -> u64 {
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed) + 1;
+    let Ok(mut guard) = FRAMES.lock() else { return seq };
     let map = guard.get_or_insert_with(HashMap::new);
     map.insert(browser, FrameBuf { seq, img });
     while map.len() > KEPT_FRAMES {
@@ -84,6 +89,7 @@ fn store(browser: i32, seq: u64, img: Arc<RenderImage>, active: i32) {
             None => break,
         }
     }
+    seq
 }
 
 /// The browser is gone; so is its frame.
@@ -201,12 +207,12 @@ wrap_render_handler! {
             if id != active {
                 // Parked, or created and not activated yet: keep the frame
                 // for when it is shown, count it apart, move nothing else.
-                let seq = BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-                store(id, seq, img, active);
+                BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed);
+                store(id, img, active);
                 return;
             }
             let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-            store(id, n, img, active);
+            store(id, img, active);
             LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
             let us = t0.elapsed().as_micros() as u64;
             COPY_N.fetch_add(1, Ordering::Relaxed);
@@ -261,8 +267,11 @@ mod tests {
     fn frames_are_kept_per_browser_and_bounded_without_dropping_the_active_one() {
         forget_all();
         let active = 1;
+        let mut last = 0;
         for id in 1..=(KEPT_FRAMES as i32 + 3) {
-            store(id, id as u64, img(), active);
+            let seq = store(id, img(), active);
+            assert!(seq > last, "seq is monotonic across browsers");
+            last = seq;
         }
         assert_eq!(kept_frames(), KEPT_FRAMES);
         assert!(frame_of(active).is_some(), "the active frame is never the one dropped");
