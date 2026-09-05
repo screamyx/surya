@@ -151,7 +151,9 @@ pub(crate) fn browser_of(id: i32) -> Option<Browser> {
     BROWSERS.lock().ok()?.as_ref()?.get(&id).cloned()
 }
 
-/// Whether `id` names a live browser, without touching its refcount.
+/// Whether `id` names a live browser, without touching its refcount. For
+/// the threaded paint handoff (astra), which drops frames of dead browsers.
+#[allow(dead_code)]
 pub(crate) fn has_browser(id: i32) -> bool {
     id != 0 && BROWSERS.lock().ok().and_then(|g| g.as_ref().map(|m| m.contains_key(&id))).unwrap_or(false)
 }
@@ -165,8 +167,12 @@ fn id_of(browser: Option<&mut Browser>) -> i32 {
     browser.map(|b| b.identifier()).unwrap_or(0)
 }
 
+// `tab`: the tab this client's browser belongs to (tabs.rs), so the browser
+// binds to it whenever and in whatever order it lands.
 wrap_life_span_handler! {
-    struct LifeSpan;
+    struct LifeSpan {
+        tab: crate::tabs::TabId,
+    }
     impl LifeSpanHandler {
         fn on_before_popup(
             &self,
@@ -220,9 +226,18 @@ wrap_life_span_handler! {
                 guard.get_or_insert_with(HashMap::new).insert(id, browser.clone());
             }
             let _ = PENDING_CREATES.fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1));
-            crate::tabs::attach_pending(id);
             let n = CREATED.fetch_add(1, Ordering::Relaxed) + 1;
-            println!("browser: created id={id} (#{n})");
+            if !crate::tabs::attach_created(self.tab, id) {
+                // The tab closed before its browser existed: nobody will
+                // ever show this one. It stays in the map until CEF answers
+                // the close, so shutdown still waits for it.
+                println!("browser: created id={id} (#{n}) for closed tab {}, closing", self.tab);
+                if let Some(host) = browser.host() {
+                    host.close_browser(1);
+                }
+                return;
+            }
+            println!("browser: created id={id} (#{n}) tab={}", self.tab);
             // Being created is not damage: a brand new browser has nothing to
             // repaint until it is told its size and shown (haktui, 2026-08-26).
             // It starts parked; if its tab is the active one it comes on
@@ -387,7 +402,9 @@ pub(crate) fn stop_find(clear_selection: bool) {
 }
 
 wrap_client! {
-    struct BrowserClient;
+    struct BrowserClient {
+        tab: crate::tabs::TabId,
+    }
     impl Client {
         fn render_handler(&self) -> Option<RenderHandler> {
             Some(crate::render::render_handler())
@@ -399,7 +416,7 @@ wrap_client! {
             Some(Display::new())
         }
         fn life_span_handler(&self) -> Option<LifeSpanHandler> {
-            Some(LifeSpan::new())
+            Some(LifeSpan::new(self.tab))
         }
         fn load_handler(&self) -> Option<LoadHandler> {
             Some(Load::new())
@@ -423,22 +440,17 @@ fn no_parent() -> cef::sys::cef_window_handle_t {
     }
 }
 
-/// Make an offscreen browser on `url`, parked until `activate`. Main
-/// thread, after `initialize`. Inline mode creates it synchronously and
-/// returns CEF's identifier; threaded mode posts the create and returns
-/// `None`, and `on_after_created` binds the browser to its tab.
-pub(crate) fn open(url: &str) -> Option<i32> {
+/// Make an offscreen browser for this tab. Async creation carries the tab
+/// identity through its own client, so callbacks can arrive in any order.
+pub(crate) fn open(url: &str, tab: crate::tabs::TabId) -> Option<i32> {
     let mut window_info = WindowInfo::default().set_as_windowless(no_parent());
-    // Windows, `SURYA_BROWSER_ZERO_COPY=1` and the D3D11 device could be
-    // made: CEF paints into a shared texture and calls `on_accelerated_paint`
-    // instead of `on_paint`; see `zero_copy`. Otherwise the CPU path.
     window_info.shared_texture_enabled = i32::from(crate::zero_copy::ready());
     let browser_settings = BrowserSettings {
         windowless_frame_rate: 60,
         background_color: crate::OPAQUE_WHITE,
         ..Default::default()
     };
-    let mut client = BrowserClient::new();
+    let mut client = BrowserClient::new(tab);
     if crate::cef_thread::threaded() {
         PENDING_CREATES.fetch_add(1, Ordering::AcqRel);
         let asked = browser_host_create_browser(
