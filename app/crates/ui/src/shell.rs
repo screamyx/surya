@@ -3811,7 +3811,7 @@ impl Shell {
                         cx.listener(|this, _, _, cx| {
                             #[cfg(feature = "browser")]
                             this.toggle_browser_pane(cx);
-                            let _ = cx;
+                            let _ = (this, cx);
                         }),
                     )),
                 )
@@ -6699,7 +6699,7 @@ impl Shell {
                             cx.listener(|this, _, _, cx| {
                                 #[cfg(feature = "browser")]
                                 this.add_browser_surface(cx);
-                                let _ = cx;
+                                let _ = (this, cx);
                             }),
                         ))
                     })
