@@ -21,14 +21,35 @@ CHECK=0
 
 RG=(rg --no-messages -g '!target' -g '!node_modules' -g '!.git' -g '!Cargo.lock')
 
-# Everything in scope. apps/ios, edge/, apps/landing and apps/www-redirect are
-# out of scope per the plan (rows 13, 14, 15) and never appear here.
+# Everything in scope. apps/ios, edge/, apps/landing, apps/www-redirect and
+# app/.github (comet's own release pipeline, which GitHub never fires from a
+# subdirectory) are out of scope per the plan (rows 13, 14, 15) and never
+# appear here.
+#
+# `deploy/` was missed until 2026-09-05: it builds `-p zeron`, installs
+# `target/release/zeron`, and its unit runs `~/.local/bin/zeron`. The rename
+# left all three pointing at a crate and a binary that no longer exist. The
+# guard at the end now catches the next directory to arrive the same way.
+#
+# `ZERON_` is its own pattern because `[Zz]eron` does not match it: a file
+# whose only hits are the all-caps env prefix (`crates/proto/build.rs`,
+# `crates/proto/src/build.rs`) was never selected.
+#
+# Two files are excluded outright: every hit in them is the old name on
+# purpose, so a mask would be one mask per line. env_compat.rs is GENERATED
+# here - rewriting it made its fallback read `var_os("SURYA_")`, the alias
+# reading the new name twice, the compat dead and the tree still compiling.
+# data_dir.rs adopts the OLD dir - rewriting its test fixtures made the dir
+# adopted and the dir adopted INTO the same name: three tests red, and a doc
+# reading "moves the data dir from ~/.surya to ~/.surya".
+EXCLUDE='app/crates/(proto/src/env_compat|engine/src/data_dir)\.rs'
 in_scope_files() {
-  "${RG[@]}" -l -e '[Zz]eron' \
+  "${RG[@]}" -l -e '[Zz]eron' -e 'ZERON_' \
     app/crates app/apps/zeron app/apps/surya app/Cargo.toml app/scripts \
     app/dist app/ARCHITECTURE.md app/CONTEXT.md app/README.md \
     app/README.zh-CN.md app/THIRD_PARTY_NOTICES.md app/docs \
-    .github docs 2>/dev/null | sort -u
+    .github deploy docs 2>/dev/null \
+    | grep -vE "^$EXCLUDE\$" | sort -u
 }
 
 # --------------------------------------------------------------------------
@@ -136,11 +157,11 @@ rewrite() {
 
 count() { # count <label> <pattern>
   local files hits
-  files=$({ "${RG[@]}" -l "$2" app docs .github 2>/dev/null || true; } | wc -l | tr -d ' ')
-  hits=$({ "${RG[@]}" -o "$2" app docs .github 2>/dev/null || true; } | wc -l | tr -d ' ')
+  files=$({ "${RG[@]}" -l "$2" app deploy docs .github 2>/dev/null || true; } | wc -l | tr -d ' ')
+  hits=$({ "${RG[@]}" -o "$2" app deploy docs .github 2>/dev/null || true; } | wc -l | tr -d ' ')
   printf '%-34s files=%-5s hits=%s\n' "$1" "$files" "$hits"
 }
-hits_of() { { "${RG[@]}" -o "$1" app docs .github 2>/dev/null || true; } | wc -l | tr -d ' '; }
+hits_of() { { "${RG[@]}" -o "$1" app deploy docs .github 2>/dev/null || true; } | wc -l | tr -d ' '; }
 
 echo "# rename-apply, $(date +%F' '%T), $(git rev-parse --short HEAD)"
 echo
@@ -441,6 +462,29 @@ count "  of which zeron.sh (kept)" 'zeron\.sh'
 count "ZERON_* env vars" 'ZERON_[A-Z0-9_]+'
 echo
 echo "zeron_hits_before=$BEFORE after=$(hits_of '[Zz]eron') files_changed=$CHANGED paths_moved=$MOVED"
+
+# --------------------------------------------------------------------------
+# 5. Scope drift. The counters cannot see a directory the script was never
+# told about, so `deploy/` sat outside them and outside the rename. This
+# reads the WHOLE repo, subtracts the out-of-scope trees and every hit the
+# masks keep on purpose, and fails on what is left.
+# --------------------------------------------------------------------------
+echo
+MISSED=$(grep -rnI --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules \
+    -e '[Zz]eron' . 2>/dev/null | sed 's|^\./||' \
+  | grep -vE '^(app/apps/ios|app/edge|app/apps/landing|app/apps/www-redirect|app/\.github|scripts/rename-(apply|dry-run)\.sh|docs/)' \
+  | grep -vE "^$EXCLUDE:" \
+  | sed -E 's/zeronsh//g; s/zeron\.sh//g; s/"?[Zz]eron[- ](Dark|dark|Light|light)"?//g;
+            s/family_id: "zeron"//g; s/family\("zeron", "Zeron"//g; s/zeron\.service//g;
+            s|zeron://||g; s/register_url_scheme\("zeron"\)//g; s/\.zeron//g; s/ZERON_//g' \
+  | grep -E '[Zz]eron' || true)
+if [ -n "$MISSED" ]; then
+  echo "MISSED=$(printf '%s\n' "$MISSED" | wc -l | tr -d ' ') - files with the old name that no rule covers:"
+  printf '%s\n' "$MISSED" | sed 's/^/  /'
+  echo "Add the directory to in_scope_files, or the pattern to the masks, and re-run."
+  exit 1
+fi
+echo "missed=0 (every remaining hit is masked on purpose or out of scope)"
 
 cat <<'TODO'
 

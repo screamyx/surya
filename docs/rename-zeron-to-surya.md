@@ -62,3 +62,9 @@ Test-only knobs (`ZERON_MOCK_*`, `ZERON_E2E_*`, `ZERON_DEMO_*`) rename without a
 - Row 5: COPY the data dir on first start, never rename (decision 23 wins).
 - Row 19: comet's built-in theme ids become `comet_light` / `comet_dark`, display names kept; `surya_*` already exist.
 - The generated `env_compat.rs` must be wired at every user-set `ZERON_*` read site; the script lists systemd unit, URL scheme, bundle ids and `cargo update -w` as human steps.
+
+## Amendments 2026-09-05 11:40 (from the full dry run on main `77048b0`)
+- **Row 20, new: `deploy/`.** files=4 hits=17. In scope, and missed until now. `install-engine.sh` builds `-p zeron` and installs `target/release/zeron`, `surya-engine.service` runs `ExecStart=%h/.local/bin/zeron headless`, `windows/build.ps1` builds `-p zeron` and copies `release\zeron.exe`. Risk if missed: the installer and the Windows packager both fail on a crate and a binary that no longer exist.
+- **Row 4 amended.** The selector must match all-caps `ZERON_` as well as `[Zz]eron`, or a file whose only hits are the env prefix is never seen.
+- **Two files are excluded from the substitution, not masked:** the generated `crates/proto/src/env_compat.rs` and `crates/engine/src/data_dir.rs`. Every hit in them is the old name on purpose, and rewriting either one is silent - the alias reads the new name twice, and the adoption copies `.surya` into `.surya`.
+- **Out of scope, and wrong if revived:** `app/.github/workflows/release.yml` line 134 asserts `ls dist/ | grep -q "zeron-$ver-"`, while the renamed `package-linux.sh` writes `surya-$ver-linux-$arch`. That workflow is comet's own and GitHub never fires it from a subdirectory, so it stays dead. Fix the assertion if anyone ever revives it.

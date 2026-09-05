@@ -6,6 +6,9 @@ any main, and it was tested by running it - not by reading it.
 
 ## Measured on a throwaway clone of main `e0855e8`
 
+Historic. The current numbers, on main `77048b0` with the fixes below,
+are in `docs/rename-runbook.md`.
+
 ```
 zeron_hits_before=2640  after=297  files_changed=274  paths_moved=6
 ```
@@ -119,11 +122,59 @@ toolchain.
 
 ## How to run it
 
-```
-scripts/rename-apply.sh --check    # list the files it would touch
-scripts/rename-apply.sh            # apply, then print the counters
-cd app && cargo update -w          # regenerate the lock
-```
+`docs/rename-runbook.md` is the operator's copy: the exact commands, the
+counter to expect on every line, and what to do when one of them is wrong.
+Read that on the day. This file stays the record of how the script was built
+and what running it found.
 
-Apply it on the final main, after the last feature PR: it touches 274 files
-and nothing rebases across it.
+## What the full dry run found, 2026-09-05, main 77048b0
+
+The dry run was run on a throwaway clone, end to end, for the first time since
+`deploy/` and the tasks-demo scripts landed. It found three breaks.
+
+**`deploy/` was never in scope.** `install-engine.sh` builds
+`cargo build --release -p zeron` and installs `target/release/zeron`;
+`surya-engine.service` runs `ExecStart=%h/.local/bin/zeron headless`;
+`windows/build.ps1` builds `-p zeron` and copies `release\zeron.exe`. After
+the rename none of that exists. The installer and the Windows packager both
+fail. 17 lines across four files, now in scope.
+
+**The selector missed all-caps.** `[Zz]eron` does not match `ZERON_`, so
+`crates/proto/build.rs` and `crates/proto/src/build.rs` were never selected
+and kept `ZERON_BUILD_SHA`. Both sides agreed, so nothing broke - but only by
+luck. The selector now matches `ZERON_` too.
+
+**Fixing that broke two files that must keep the old name.** With `ZERON_` in
+the pattern, the GENERATED `env_compat.rs` went in scope on the SECOND run and
+its fallback became `var_os("SURYA_{name}")` - the alias reading the new name
+twice, the compat dead, the tree still compiling. And
+`crates/engine/src/data_dir.rs` had its test fixtures rewritten to `.surya`,
+so it adopted `.surya` into `.surya`: three tests red, and a module doc
+reading "moves the data dir from `~/.surya` to `~/.surya`". Both files are now
+excluded outright rather than masked line by line.
+
+Only the second apply catches the middle one, which is why the runbook makes
+that run mandatory.
+
+**A guard, so the next directory does not sit outside the counters.** After
+the substitution the script now reads the whole repo, subtracts the
+out-of-scope trees and every hit the masks keep on purpose, and exits non-zero
+on what is left. Proved with a positive, not an absence: a planted
+`packaging/build.sh` containing `-p zeron` printed `MISSED=1` and exited 1.
+
+**Measured on the unpatched script**, so the comparison is honest:
+`cargo check --workspace --all-targets` gives 0 errors and 21 warnings on the
+renamed tree, and the *same* 21 warnings and 0 errors on unrenamed main. The
+rename introduces nothing. The headless set was `177 passed, 3 failed` - the
+three `data_dir` tests above, and no others.
+
+**On the patched script** the same headless set is `723 passed, 0 failed, 10
+ignored`, and all five `data_dir` tests are green.
+
+## Not fixable here: comet's release workflow
+
+`app/.github/workflows/release.yml` line 134 asserts
+`ls dist/ | grep -q "zeron-$ver-"`, while the renamed `package-linux.sh`
+writes `surya-$ver-linux-$arch`. That workflow is comet's own and GitHub never
+fires it from a subdirectory, so it is dead in this repo - but it is wrong the
+moment anyone revives it. Owner call, not a script rule.
