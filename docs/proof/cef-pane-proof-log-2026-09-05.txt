@@ -1,0 +1,11 @@
+browser: switches ["no-first-run", "no-default-browser-check", "disable-gpu", "disable-gpu-compositing"]
+browser: created id=1 (#1)
+browser: view_rect #1 -> 800x600
+browser: create asked=1 made=1 url=https://example.com
+browser: on_paint #1: 800x600, 1920000 bytes, copy 0.41ms
+browser: address https://example.com/
+browser: load_end status=200
+browser: on_paint #2: 800x600, 1920000 bytes, copy 0.07ms
+browser: on_paint #3: 800x600, 1920000 bytes, copy 0.38ms
+browser: view -> 519x804 scale=1 resizes=1
+browser: t=25s renders=16 work_did=547 pump_asks=252 timer_armed=0 timer_fired=0 idle_armed=532 idle_ran=531 idle_refresh=5 inputs=0 frames=5 size=519x804 copy_ms n=5 last=0.21 avg=0.22 max=0.41 upload_ms n=2 last=0.05 avg=0.31 max=0.56
