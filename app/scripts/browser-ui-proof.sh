@@ -44,6 +44,7 @@ DATA="$OUT/data"; mkdir -p "$DATA"
 printf '{"appearance":"%s"}\n' "$APPEARANCE" > "$DATA/ui-settings.json"
 LOG="$OUT/zeron.log"
 SHOT="$OUT/browser-$APPEARANCE.png"
+REFUSED_SHOT="$OUT/browser-$APPEARANCE-refused.png"
 
 if [ -z "${ZERON_IPC_PORT:-}" ]; then
   for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -90,8 +91,51 @@ sleep 14
 drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "example.com" enter
 sleep 16; command -v xrefresh >/dev/null && xrefresh; sleep 2
 
-# Find a word the page actually shows, then zoom two steps to 125%.
-drive "$HERE/x7-click.py" "$DISPLAY" $(( W - 200 )) $(( H / 2 ))
+# Coordinates in the 1440x900 window, read off an earlier frame: the tab row
+# sits at y=55, the first tab's close X at x=1013, the second tab at x=1090,
+# and the address field at x=250 (its left end, clear of the buttons).
+TAB1_X=1013; TAB2=1090; ROW_Y=55; BAR_X=250; BAR_Y=88
+PAGE_X=$(( W - 200 )); PAGE_Y=$(( H / 2 ))
+
+# ctrl-tab and shift-ctrl-tab. comet binds both context-less for its own
+# session strip, so these are the chords that prove the pane takes them in
+# the capture phase; if the keymap rule ever wins again they switch sessions
+# and `browser-ui: switch tab` never appears.
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+tab
+sleep 3
+drive "$HERE/x7-keys.py" "$DISPLAY" shift+ctrl+tab
+sleep 3
+
+# A third tab, closed again by chord: ctrl-w must close a TAB, not the window.
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+t
+sleep 3
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+w
+sleep 3
+
+# Middle click on a tab closes it, as it does in every strip.
+drive "$HERE/x7-click.py" "$DISPLAY" "$TAB2" "$ROW_Y" 2
+sleep 3
+# The strip's own X on the LAST tab: a blank tab opens in its place rather
+# than leaving the pane on an empty strip over a white page.
+drive "$HERE/x7-click.py" "$DISPLAY" "$TAB1_X" "$ROW_Y"
+sleep 3
+
+# The blank tab takes the keyboard, so this types straight into the bar.
+drive "$HERE/x7-keys.py" "$DISPLAY" "example.com" enter
+sleep 14
+# A refused scheme has to say so on screen, not only on stdout.
+drive "$HERE/x7-click.py" "$DISPLAY" "$BAR_X" "$BAR_Y"
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "file:///etc/passwd" enter
+sleep 3; command -v xrefresh >/dev/null && xrefresh; sleep 2
+ffmpeg -loglevel error -y -f x11grab -video_size "${W}x${H}" -i "$DISPLAY" -frames:v 1 "$REFUSED_SHOT"
+# Escape puts the page's own address back and clears the refusal.
+drive "$HERE/x7-keys.py" "$DISPLAY" escape
+sleep 2
+
+# Back to two tabs for the frame, then find and zoom.
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+t "example.com" enter
+sleep 14
+drive "$HERE/x7-click.py" "$DISPLAY" "$PAGE_X" "$PAGE_Y"
 drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+f "Domain"
 sleep 5
 drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+equal ctrl+equal
@@ -106,3 +150,4 @@ echo "--- tabs, and what loaded:"
 grep -E "browser: (created|address|load_end)" "$LOG" | tail -8
 grep -E "^browser: t=" "$LOG" | tail -1 | sed -n 's/.*\(tabs=[0-9]* opened=[0-9]* active=[0-9]*\).*/\1/p'
 echo "proof: appearance=$APPEARANCE shot=$SHOT ($(stat -c %s "$SHOT" 2>/dev/null || echo 0) bytes)"
+echo "proof: refused-scheme frame=$REFUSED_SHOT ($(stat -c %s "$REFUSED_SHOT" 2>/dev/null || echo 0) bytes)"

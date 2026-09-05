@@ -154,20 +154,35 @@ impl BrowserPane {
         super::backend::tab_open("");
         super::keys::tab_opened();
         self.url_editing = true;
+        self.refused = None;
         self.set_url_text(String::new(), cx);
         self.focus_url(window, cx);
         super::keys::report("new tab");
         cx.notify();
     }
 
+    /// Close a tab. Closing the LAST one opens a blank tab rather than
+    /// leaving the pane on an empty strip over a white page with a close
+    /// that no longer does anything. The pane is a surface in a column, not
+    /// a window, so there is nothing for it to close itself into; Chrome
+    /// closes the window here, and this is the nearest honest equivalent.
     pub(super) fn close(&mut self, id: TabId, cx: &mut Context<Self>) {
+        let last = super::backend::tabs().len() <= 1;
         super::backend::tab_close(id);
         super::keys::tab_closed();
         self.url_editing = false;
         // The next tab may be another host, so its zoom is picked up on the
         // next frame rather than kept from the one that just closed.
         self.zoom_url.clear();
-        super::keys::report("close tab");
+        self.refused = None;
+        if last {
+            super::backend::tab_open("");
+            super::keys::tab_opened();
+            self.set_url_text(String::new(), cx);
+            super::keys::report("close tab, opened a blank one in its place");
+        } else {
+            super::keys::report("close tab");
+        }
         cx.notify();
     }
 
@@ -179,16 +194,17 @@ impl BrowserPane {
     }
 
     /// ctrl-tab and shift-ctrl-tab. The strip wraps, as a tab strip does.
-    pub(super) fn step_tab(&mut self, delta: isize, cx: &mut Context<Self>) {
-        super::keys::key_seen();
+    /// Returns whether there was another tab to go to.
+    pub(super) fn step_tab(&mut self, delta: isize, cx: &mut Context<Self>) -> bool {
         let ids: Vec<TabId> = super::backend::tabs().into_iter().map(|t| t.id).collect();
-        let Some(active) = super::backend::active_tab() else { return };
-        let Some(at) = ids.iter().position(|id| *id == active) else { return };
         if ids.len() < 2 {
-            return;
+            return false;
         }
+        let Some(active) = super::backend::active_tab() else { return false };
+        let Some(at) = ids.iter().position(|id| *id == active) else { return false };
         let next = (at as isize + delta).rem_euclid(ids.len() as isize) as usize;
-        super::keys::key_handled();
         self.activate(ids[next], cx);
+        super::keys::report("switch tab");
+        true
     }
 }

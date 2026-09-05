@@ -41,7 +41,7 @@ use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::theme::Theme;
 use state::ZoomMemory;
 
-pub use keys::{counters, init};
+pub use keys::counters;
 
 pub const TAB_STRIP_HEIGHT: f32 = 32.0;
 pub const BAR_HEIGHT: f32 = 36.0;
@@ -67,6 +67,10 @@ pub struct BrowserPane {
     pub(super) find_focus_pending: bool,
     /// What the last find asked for, so Enter can step through the same run.
     pub(super) find_query: String,
+    /// Why the last typed address went nowhere. The crate refuses anything
+    /// that is not http or https, and a refusal that only reached stdout
+    /// looked to the person like a bar that had stopped working.
+    pub(super) refused: Option<String>,
     /// Per-host zoom, mirrored from `ui-settings.json`.
     pub(super) zoom: ZoomMemory,
     /// The active tab's zoom, in percent.
@@ -110,6 +114,7 @@ impl BrowserPane {
             find_open: false,
             find_focus_pending: false,
             find_query: String::new(),
+            refused: None,
             zoom: ZoomMemory::from_settings(&saved),
             zoom_percent: state::ZOOM_DEFAULT,
             zoom_url: String::new(),
@@ -185,13 +190,15 @@ impl Render for BrowserPane {
                 .w(gpui::relative(if page.loading { page.progress.max(0.05) } else { 0.0 }))
                 .bg(theme.text_muted),
         );
-        let error = page.error.clone().map(|e| {
+        // A refusal is the pane's own answer and outlives no navigation, so
+        // it wins over the page's last load error while it is showing.
+        let error = self.refused.clone().or_else(|| page.error.clone()).map(|e| {
             div()
                 .flex_none()
                 .px(px(10.0))
                 .py(px(6.0))
                 .text_size(crate::typography::ui_rems(12.0))
-                .text_color(theme.text_muted)
+                .text_color(theme.danger)
                 .child(SharedString::from(e))
         });
 

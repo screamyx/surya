@@ -984,13 +984,21 @@ mod tests {
             legacy_accent_color: None,
             servers: Vec::new(),
             active_server: None,
-            browser_zoom: std::collections::HashMap::new(),
+            // A populated map: `skip_serializing_if` means an empty one is
+            // never written, so an empty map tests nothing.
+            browser_zoom: std::collections::HashMap::from([
+                ("example.com".to_string(), 125_u32),
+                ("docs.rs".to_string(), 90_u32),
+            ]),
         };
         settings.save(dir.path()).unwrap();
         let json = std::fs::read_to_string(UiSettings::path(dir.path())).unwrap();
         assert!(json.contains(r#""diffWrap": true"#));
         assert!(json.contains(r#""codeFencesFitContent": true"#));
+        assert!(json.contains(r#""browserZoom""#), "a populated zoom map is written");
+        assert!(json.contains("125"), "the zoom percentage survives the write");
         assert_eq!(UiSettings::load(dir.path()), settings);
+        assert_eq!(UiSettings::load(dir.path()).browser_zoom.get("example.com"), Some(&125));
     }
 
     /// A settings file written while surya was the default must come back

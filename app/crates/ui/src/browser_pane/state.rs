@@ -83,6 +83,24 @@ impl ZoomMemory {
     }
 }
 
+/// Why a typed address went nowhere, in words the person can act on. The
+/// crate takes `http` and `https` as written and refuses every other scheme:
+/// `file://` would read the disk into a pane an agent can drive, and
+/// `chrome://` is Chrome's own settings.
+pub fn refusal(typed: &str) -> String {
+    let scheme = typed
+        .trim()
+        .split_once("://")
+        .map(|(s, _)| s)
+        .or_else(|| typed.trim().split_once(':').map(|(s, _)| s))
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if scheme.is_empty() {
+        return "That address went nowhere. Type a web address or a search.".to_string();
+    }
+    format!("{scheme}: addresses do not open here. Only http and https do.")
+}
+
 /// What the find field reports: "3 of 12", or nothing before the first
 /// result arrives.
 pub fn find_label(current: i32, total: i32) -> Option<String> {
@@ -154,6 +172,25 @@ mod tests {
         assert_eq!(zoom_host("example.com").as_deref(), Some("example.com"));
         assert_eq!(zoom_host(""), None);
         assert_eq!(zoom_host("https://"), None);
+    }
+
+    #[test]
+    fn a_refusal_names_the_scheme_and_what_does_work() {
+        assert_eq!(
+            refusal("file:///etc/passwd"),
+            "file: addresses do not open here. Only http and https do."
+        );
+        assert_eq!(
+            refusal("CHROME://settings"),
+            "chrome: addresses do not open here. Only http and https do."
+        );
+        assert_eq!(
+            refusal("javascript:alert(1)"),
+            "javascript: addresses do not open here. Only http and https do."
+        );
+        // No scheme at all: the crate refused it for another reason, so the
+        // message cannot blame one.
+        assert!(refusal("...").starts_with("That address went nowhere"));
     }
 
     #[test]

@@ -1,49 +1,64 @@
 //! The chords the pane owns, and the counters that prove they ran.
 //!
-//! gpui dispatches matched key bindings **before** raw key listeners
-//! (`window.rs` `dispatch_key_event`), so a binding here wins over both the
-//! page's own key path in `surya_browser::panel` and the input's editing
-//! keys. That is why ctrl-t works while the keyboard is in the address
-//! field, and why ctrl-f is not swallowed by the page.
+//! These are a **capture-phase key listener**, not a keymap binding, and the
+//! reason is a rule in gpui's keymap. `Keymap::binding_enabled`
+//! (`keymap.rs`) gives a binding with no context predicate
+//! `Some(contexts.len())`, the deepest depth there is, while a binding with
+//! a predicate gets the depth at which its context matched.
+//! `bindings_for_input` sorts on depth first and only breaks ties by
+//! insertion order. So a context-less `ctrl-tab` bound anywhere in the app
+//! beats a `BrowserPane` binding whenever the pane's context is not the last
+//! one on the stack - which is exactly the case when the keyboard sits in
+//! the address field, where the stack ends with the input's own context.
+//! comet binds `ctrl-tab` to NextSession and `cmd-w` to CloseWindow without
+//! a context (`shell.rs`, `app_menus.rs`), so a bound pane would have cycled
+//! sessions instead of tabs and no amount of ordering would fix it.
+//!
+//! `Window::dispatch_key_event` runs capture-phase key listeners **before**
+//! it resolves any binding, so a capture listener on the pane's root wins
+//! whenever the keyboard is inside the pane, and touches nothing when it is
+//! not. One mechanism for every chord, and no dependence on what the rest of
+//! the app binds.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use gpui::{actions, prelude::*, App, Context, Focusable as _, KeyBinding, KeyDownEvent, Window};
+use gpui::{prelude::*, Context, Focusable as _, KeyDownEvent, Window};
 
-use super::{backend, BrowserPane};
+use super::{backend, state, BrowserPane};
 
-/// The key context the chords are bound in. It sits on the pane's root, so
-/// a chord fires whether the keyboard is in the page, the address field or
-/// the find field.
-const KEY_CONTEXT: &str = "BrowserPane";
+/// What a chord means to the pane. `ctrl` on Windows and Linux, `cmd` on
+/// macOS: the owner uses both machines, and a browser that ignores cmd-t on
+/// a Mac is not a browser (haktui's `input/commands.rs` takes the same view).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Chord {
+    NewTab,
+    CloseTab,
+    NextTab,
+    PreviousTab,
+    FindInPage,
+    ZoomIn,
+    ZoomOut,
+    ZoomReset,
+}
 
-actions!(
-    browser_pane,
-    [NewTab, CloseTab, NextTab, PreviousTab, FindInPage, ZoomIn, ZoomOut, ZoomReset]
-);
-
-/// Bind the pane's keymap. Called once at app boot, beside `composer::init`.
-pub fn init(cx: &mut App) {
-    let ctx = Some(KEY_CONTEXT);
-    let mut bindings = Vec::new();
-    // ctrl on Windows and Linux, cmd on macOS. Both are bound: the owner
-    // uses both machines, and a browser that ignores cmd-t on a Mac is not
-    // a browser (haktui `input/commands.rs` takes the same view).
-    for prefix in ["cmd", "ctrl"] {
-        bindings.push(KeyBinding::new(&format!("{prefix}-t"), NewTab, ctx));
-        bindings.push(KeyBinding::new(&format!("{prefix}-w"), CloseTab, ctx));
-        bindings.push(KeyBinding::new(&format!("{prefix}-f"), FindInPage, ctx));
-        bindings.push(KeyBinding::new(&format!("{prefix}-tab"), NextTab, ctx));
-        bindings.push(KeyBinding::new(&format!("shift-{prefix}-tab"), PreviousTab, ctx));
-        // gpui resolves ctrl-shift-= to "+" and clears shift, so both
-        // spellings of zoom-in arrive and both are Chrome's.
-        bindings.push(KeyBinding::new(&format!("{prefix}-="), ZoomIn, ctx));
-        bindings.push(KeyBinding::new(&format!("{prefix}-+"), ZoomIn, ctx));
-        bindings.push(KeyBinding::new(&format!("{prefix}--"), ZoomOut, ctx));
-        bindings.push(KeyBinding::new(&format!("{prefix}-0"), ZoomReset, ctx));
+fn chord(event: &KeyDownEvent) -> Option<Chord> {
+    let ks = &event.keystroke;
+    if !(ks.modifiers.control || ks.modifiers.platform) || ks.modifiers.alt {
+        return None;
     }
-    println!("browser-ui: keymap asked={n} bound={n}", n = bindings.len());
-    cx.bind_keys(bindings);
+    Some(match ks.key.as_str() {
+        "t" => Chord::NewTab,
+        "w" => Chord::CloseTab,
+        "f" => Chord::FindInPage,
+        "tab" if ks.modifiers.shift => Chord::PreviousTab,
+        "tab" => Chord::NextTab,
+        // gpui resolves ctrl-shift-= to "+" and clears shift, so both
+        // spellings of zoom-in arrive here and both are Chrome's.
+        "=" | "+" => Chord::ZoomIn,
+        "-" | "_" => Chord::ZoomOut,
+        "0" => Chord::ZoomReset,
+        _ => return None,
+    })
 }
 
 /// `SURYA_TRACE_BROWSER_UI=1` prints every key the pane's root is handed,
@@ -53,18 +68,10 @@ fn tracing() -> bool {
     std::env::var_os("SURYA_TRACE_BROWSER_UI").is_some()
 }
 
-/// The pane's root: its key context, its action handlers, and the enter and
-/// escape the two fields deliberately leave unbound.
+/// The pane's root: the chords in the capture phase, and the enter and
+/// escape the two fields deliberately leave unbound, in the bubble phase.
 pub fn bind(root: gpui::Div, cx: &mut Context<BrowserPane>) -> gpui::Div {
-    root.key_context(KEY_CONTEXT)
-        .on_action(cx.listener(BrowserPane::new_tab))
-        .on_action(cx.listener(BrowserPane::close_tab))
-        .on_action(cx.listener(BrowserPane::next_tab))
-        .on_action(cx.listener(BrowserPane::previous_tab))
-        .on_action(cx.listener(BrowserPane::find_in_page))
-        .on_action(cx.listener(BrowserPane::zoom_in))
-        .on_action(cx.listener(BrowserPane::zoom_out))
-        .on_action(cx.listener(BrowserPane::zoom_reset))
+    root.capture_key_down(cx.listener(BrowserPane::on_chord))
         .on_key_down(cx.listener(BrowserPane::on_key))
 }
 
@@ -133,58 +140,45 @@ pub(super) fn report(what: &str) {
 }
 
 impl BrowserPane {
-    fn new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
+    /// Capture phase: the pane's own chords, before any keymap binding and
+    /// before the page's key path in `surya_browser::panel`.
+    fn on_chord(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(chord) = chord(event) else { return };
         key_seen();
+        if tracing() {
+            println!("browser-ui: chord {chord:?}");
+        }
+        match chord {
+            Chord::NewTab => self.open_tab(window, cx),
+            Chord::CloseTab => {
+                let Some(active) = backend::active_tab() else { return };
+                self.close(active, cx);
+            }
+            Chord::NextTab => {
+                if !self.step_tab(1, cx) {
+                    return;
+                }
+            }
+            Chord::PreviousTab => {
+                if !self.step_tab(-1, cx) {
+                    return;
+                }
+            }
+            Chord::FindInPage => self.open_find(window, cx),
+            Chord::ZoomIn => self.step_zoom(state::zoom_in(self.zoom_percent), cx),
+            Chord::ZoomOut => self.step_zoom(state::zoom_out(self.zoom_percent), cx),
+            Chord::ZoomReset => self.step_zoom(state::ZOOM_DEFAULT, cx),
+        }
         key_handled();
-        self.open_tab(window, cx);
-    }
-
-    fn close_tab(&mut self, _: &CloseTab, _: &mut Window, cx: &mut Context<Self>) {
-        key_seen();
-        let Some(active) = backend::active_tab() else { return };
-        key_handled();
-        self.close(active, cx);
-    }
-
-    fn next_tab(&mut self, _: &NextTab, _: &mut Window, cx: &mut Context<Self>) {
-        self.step_tab(1, cx);
-    }
-
-    fn previous_tab(&mut self, _: &PreviousTab, _: &mut Window, cx: &mut Context<Self>) {
-        self.step_tab(-1, cx);
-    }
-
-    fn find_in_page(&mut self, _: &FindInPage, window: &mut Window, cx: &mut Context<Self>) {
-        key_seen();
-        key_handled();
-        self.open_find(window, cx);
-    }
-
-    fn zoom_in(&mut self, _: &ZoomIn, _: &mut Window, cx: &mut Context<Self>) {
-        key_seen();
-        key_handled();
-        self.step_zoom(super::state::zoom_in(self.zoom_percent), cx);
-    }
-
-    fn zoom_out(&mut self, _: &ZoomOut, _: &mut Window, cx: &mut Context<Self>) {
-        key_seen();
-        key_handled();
-        self.step_zoom(super::state::zoom_out(self.zoom_percent), cx);
-    }
-
-    pub(super) fn zoom_reset(&mut self, _: &ZoomReset, _: &mut Window, cx: &mut Context<Self>) {
-        key_seen();
-        key_handled();
-        self.step_zoom(super::state::ZOOM_DEFAULT, cx);
+        // The chord was the pane's, so nothing else sees it: not the page,
+        // and not comet's own context-less bindings for ctrl-tab and cmd-w.
+        cx.stop_propagation();
     }
 
     /// Enter, shift-enter and escape are unbound in the "PaletteSearch"
     /// context the two fields use, so they bubble to here.
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let key = event.keystroke.key.as_str();
-        if tracing() {
-            println!("browser-ui: key {:?} mods={:?}", key, event.keystroke.modifiers);
-        }
         if !matches!(key, "enter" | "escape") {
             return;
         }

@@ -113,8 +113,8 @@ fn zoom_reading(
             .text_color(theme.text_muted)
             .hover(|s| s.bg(theme.element_active))
             .child(label)
-            .on_click(cx.listener(|this, _, window: &mut Window, cx| {
-                this.zoom_reset(&super::keys::ZoomReset, window, cx)
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.step_zoom(state::ZOOM_DEFAULT, cx)
             })),
     )
 }
@@ -171,10 +171,14 @@ impl BrowserPane {
         let resolved = super::backend::resolve(&typed);
         if resolved.is_empty() {
             // A scheme the pane refuses. The field keeps what was typed so
-            // it can be corrected rather than retyped.
+            // it can be corrected rather than retyped, and the reason is on
+            // screen: a bar that silently did nothing reads as broken.
+            self.refused = Some(state::refusal(&typed));
             super::keys::report(&format!("refused {typed:?}"));
+            cx.notify();
             return;
         }
+        self.refused = None;
         super::backend::navigate(&typed);
         super::keys::navigated();
         self.url_editing = false;
@@ -185,6 +189,7 @@ impl BrowserPane {
     /// Escape in the address field: the page's own address comes back.
     pub(super) fn restore_url(&mut self, cx: &mut Context<Self>) {
         self.url_editing = false;
+        self.refused = None;
         let shown = super::backend::page().shown_address().to_string();
         self.set_url_text(shown, cx);
         cx.notify();
