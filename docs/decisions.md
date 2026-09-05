@@ -386,6 +386,14 @@ Owner ruling, 2026-09-06 00:52, verbatim: "scrape the deadline. take as many tim
 - "Ship un-renamed if the rename is late" is withdrawn: the rename lands before the RC.
 - The not-in-RC list below is the owner's to pull from; anything he names moves into RC scope.
 
+## 31. The windows-dtry MCP is open for any seat, no per-call approval
+
+Owner, 03:23 on 2026-09-06, verbatim: "use windows mcp however you want".
+
+- The earlier standing rule (stop and ask the owner before every windows-dtry call; prefer local scripts) is withdrawn.
+- Any seat may drive dtry through the windows-dtry MCP for proofs, shots and input, subject only to the GUI arbiter (decision 28: one GUI session at a time, surya-cef3 grants the slot).
+- The schtasks /it + conhost --headless route for shots still works and stays valid; seats pick whichever is faster. Input via the MCP injection remains the reliable path (SendKeys never reaches the gpui window).
+
 ## Open
 
 None at day zero.
