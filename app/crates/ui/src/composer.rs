@@ -474,6 +474,32 @@ pub fn pending_input_request(
         })
 }
 
+/// The permission this transcript is blocked on, if any.
+///
+/// The twin of [`pending_input_request`], and read the same way: the last
+/// unresolved permission part wins, so a second ask supersedes a first the
+/// user never got to.
+pub fn pending_permission_request(
+    transcript: &[SessionMessageEntry],
+) -> Option<(String, String, String)> {
+    transcript.iter().rev().find_map(|entry| {
+        entry.parts.iter().rev().find_map(|part| match part {
+            MessagePart::Permission {
+                request_id,
+                tool_name,
+                command,
+                resolved: false,
+                ..
+            } => Some((
+                request_id.clone(),
+                tool_name.clone(),
+                command.clone(),
+            )),
+            _ => None,
+        })
+    })
+}
+
 /// Whether the transcript shows `request_id` explicitly resolved (here or on
 /// another device) — the wizard latch's release condition.
 pub fn input_request_resolved(transcript: &[SessionMessageEntry], request_id: &str) -> bool {
@@ -3471,6 +3497,71 @@ impl Composer {
         self.wizard.is_some()
     }
 
+    /// A tool is blocked on the user and this composer is showing the ask.
+    /// Same gate as [`Self::question_sheet_visible`]: the shell stands the
+    /// page title down for either.
+    pub fn permission_sheet_visible(&self, cx: &App) -> bool {
+        self.pending_permission(cx).is_some()
+    }
+
+    /// The ask this composer should be showing, if any. `None` the moment it
+    /// is answered here, before the doc says so - the same rule the question
+    /// sheet follows.
+    fn pending_permission(&self, cx: &App) -> Option<(String, String, String)> {
+        let state = self.state.read(cx);
+        pending_permission_request(&state.transcript)
+            .filter(|(request_id, _, _)| !state.answered_requests.contains(request_id))
+    }
+
+    /// Answer the blocked tool. `remember` writes an always-allow rule for
+    /// this workspace, which is what "Always allow" means everywhere else in
+    /// the app.
+    fn answer_permission(
+        &mut self,
+        request_id: String,
+        decision: zeron_proto::PermissionDecision,
+        remember: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let rule = remember.then(|| zeron_proto::RememberRule {
+            scope: zeron_proto::RuleScope::Workspace,
+            pattern: String::new(),
+            name: None,
+        });
+        let params =
+            crate::inbox::model::respond_permission_params(&request_id, decision, rule.as_ref());
+        // Hide the panel now, on the same set the question sheet uses. The
+        // doc frame that resolves the part is what finally retires it.
+        self.state.update(cx, |state, _| {
+            state.answered_requests.insert(request_id.clone());
+        });
+        let Some(engine) = self.state.read(cx).engine().cloned() else {
+            self.failure = Some("Not connected to an engine.".into());
+            cx.notify();
+            return;
+        };
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let result = engine
+                .client()
+                .call(zeron_rpc::methods::RESPOND_PERMISSION, params)
+                .await;
+            this.update(cx, |composer, cx| {
+                if let Err(err) = result {
+                    // It never left the device: put the ask back rather than
+                    // leave a tool blocked behind a panel that is gone.
+                    composer.state.update(cx, |state, _| {
+                        state.answered_requests.remove(&request_id);
+                    });
+                    composer.failure = Some(format!("Answer failed: {err}").into());
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     /// The picker entity, for the shell's canvas target selectors.
     pub fn pickers(&self) -> &Entity<Pickers> {
         &self.pickers
@@ -5581,6 +5672,126 @@ impl Composer {
     /// border-white/[0.08] bg-white/[0.03] shadow-xl`), uppercase header +
     /// "1/3" counter chip, option rows with number kbd chips, a free-text
     /// override over a hairline, and Back / Next-Submit footer.
+    /// The permission ask, in comet's question-panel shape.
+    ///
+    /// Deliberately the same container, header and option rows as
+    /// [`Self::render_wizard`]: a permission IS a question, and the user
+    /// should not have to learn a second shape for "something is waiting on
+    /// you".
+    fn render_permission(
+        &mut self,
+        request_id: String,
+        tool_name: String,
+        command: String,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        let theme = Theme::of(cx).clone();
+        let options: Vec<(&'static str, zeron_proto::PermissionDecision, bool)> = vec![
+            ("Allow", zeron_proto::PermissionDecision::Allow, false),
+            (
+                "Always allow in this project",
+                zeron_proto::PermissionDecision::Allow,
+                true,
+            ),
+            ("Deny", zeron_proto::PermissionDecision::Deny, false),
+        ];
+        let rows = options
+            .into_iter()
+            .enumerate()
+            .map(|(ix, (label, decision, remember))| {
+                let request_id = request_id.clone();
+                div()
+                    .id(("permission-option", ix))
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .gap(px(12.0))
+                    .px(px(14.0))
+                    .py(px(10.0))
+                    .rounded(px(12.0))
+                    .border_1()
+                    .border_color(gpui::transparent_black())
+                    .bg(motion::hover_blend(
+                        &format!("permission-option-{ix}"),
+                        crate::theme::ink(0.025),
+                        crate::theme::ink(0.06),
+                    ))
+                    .on_hover(motion::hover_listener(format!("permission-option-{ix}")))
+                    .cursor_pointer()
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.answer_permission(request_id.clone(), decision, remember, cx);
+                    }))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(crate::typography::ui_rems(14.0))
+                            .text_color(theme.text)
+                            .child(label),
+                    )
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+
+        div()
+            .id("permission-panel")
+            .rounded(px(26.0))
+            .border_1()
+            .border_color(theme.border)
+            .bg(theme.input_glass_bg())
+            .when(!theme.is_frost(), |el| el.shadow_lg())
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .px(px(16.0))
+                    .pt(px(16.0))
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .text_size(crate::typography::ui_rems(10.5))
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(theme.text_faint)
+                            .child("PERMISSION"),
+                    )
+                    .child(
+                        div()
+                            .text_size(crate::typography::ui_rems(15.0))
+                            .text_color(theme.text)
+                            .child(SharedString::from(format!("Allow {tool_name}?"))),
+                    )
+                    // The command is the thing being approved, in mono and
+                    // wrapped: a command whose tail is cut off is a command
+                    // the user was not shown.
+                    .when(!command.trim().is_empty(), |el| {
+                        el.child(
+                            div()
+                                .min_w_0()
+                                .px(px(8.0))
+                                .py(px(6.0))
+                                .rounded(px(8.0))
+                                .bg(crate::theme::ink(0.05))
+                                .font_family(theme.font_mono.clone())
+                                .text_size(crate::typography::ui_rems(12.0))
+                                .text_color(theme.text)
+                                .child(SharedString::from(command.clone())),
+                        )
+                    }),
+            )
+            .child(
+                div()
+                    .px(px(10.0))
+                    .py(px(10.0))
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.0))
+                    .children(rows),
+            )
+            .into_any_element()
+    }
+
     fn render_wizard(&mut self, cx: &mut Context<Self>) -> gpui::AnyElement {
         let theme = Theme::of(cx).clone();
         let Some(wizard) = self.wizard.clone() else {
@@ -6116,6 +6327,17 @@ impl Render for Composer {
         if wizard_active {
             let wizard = self.render_wizard(cx);
             return container.child(motion::fade_quick("composer-wizard", div().child(wizard)));
+        }
+
+        // A blocked tool takes the composer's place the same way a question
+        // does. It is the one thing the user can act on, so it is the one
+        // thing the composer offers.
+        if let Some((request_id, tool_name, command)) = self.pending_permission(cx) {
+            let panel = self.render_permission(request_id, tool_name, command, cx);
+            return container.child(motion::fade_quick(
+                "composer-permission",
+                div().child(panel),
+            ));
         }
 
         // New chats always use the expanded layout: the repo/branch pickers

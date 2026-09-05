@@ -781,6 +781,22 @@ fn push_part(parts: &LoroList, part: &MessagePart) -> Result<(), DocError> {
     if let Some(message) = &doc_part.message {
         map.insert("message", message.as_str())?;
     }
+    // A permission's own fields. The map is written key by key, so a field
+    // that is not inserted here never reaches the doc, however faithfully
+    // `to_doc_part` filled it in (the panel read "Allow ?" with no tool for
+    // exactly this reason, 22:44 shot).
+    if let Some(tool_name) = &doc_part.tool_name {
+        map.insert("toolName", tool_name.as_str())?;
+    }
+    if let Some(command) = &doc_part.command {
+        map.insert("command", command.as_str())?;
+    }
+    if let Some(decision) = &doc_part.decision {
+        map.insert("decision", decision.as_str())?;
+    }
+    if let Some(reason) = &doc_part.reason {
+        map.insert("reason", reason.as_str())?;
+    }
     if let Some(output) = &doc_part.output {
         map.insert("output", output.as_str())?;
     }
@@ -1192,6 +1208,22 @@ fn update_part_fields(map: &LoroMap, part: &MessagePart) -> Result<(), DocError>
     if let Some(message) = &doc_part.message {
         map.insert("message", message.as_str())?;
     }
+    // A permission's own fields. The map is written key by key, so a field
+    // that is not inserted here never reaches the doc, however faithfully
+    // `to_doc_part` filled it in (the panel read "Allow ?" with no tool for
+    // exactly this reason, 22:44 shot).
+    if let Some(tool_name) = &doc_part.tool_name {
+        map.insert("toolName", tool_name.as_str())?;
+    }
+    if let Some(command) = &doc_part.command {
+        map.insert("command", command.as_str())?;
+    }
+    if let Some(decision) = &doc_part.decision {
+        map.insert("decision", decision.as_str())?;
+    }
+    if let Some(reason) = &doc_part.reason {
+        map.insert("reason", reason.as_str())?;
+    }
     if let Some(output) = &doc_part.output {
         map.insert("output", output.as_str())?;
     }
@@ -1326,6 +1358,52 @@ mod tests {
             }]
         );
         assert_eq!(doc.chat_id().as_deref(), Some("chat-1"));
+    }
+
+    /// A permission part survives the doc with the fields the panel reads.
+    ///
+    /// The map is written key by key, so `to_doc_part` filling a field is not
+    /// enough - it has to be inserted too. It was not, and the panel rendered
+    /// "Allow ?" with no tool name and no command (22:44 shot). Nothing in
+    /// the fold tests could catch that, because the fold was correct.
+    #[test]
+    fn a_permission_part_keeps_its_tool_and_command_through_the_doc() {
+        let part = MessagePart::Permission {
+            id: "perm-mock-1".into(),
+            request_id: "mock-1".into(),
+            tool_name: "Bash".into(),
+            command: "gh-axi pr view 266 --repo screamyx/surya".into(),
+            resolved: true,
+            decision: Some(zeron_proto::PermissionDecision::Deny),
+            reason: Some("you denied it".into()),
+        };
+        let doc = SessionDoc::init("chat-perm").unwrap();
+        let mut entry = user_entry("m1", "run it");
+        entry.role = MessageRole::Assistant;
+        entry.parts.push(part.clone());
+        doc.push_message(&entry).unwrap();
+
+        let read = doc.read_entries().unwrap();
+        let MessagePart::Permission {
+            tool_name,
+            command,
+            resolved,
+            decision,
+            reason,
+            ..
+        } = read[0]
+            .parts
+            .iter()
+            .find(|p| matches!(p, MessagePart::Permission { .. }))
+            .expect("the permission part came back")
+        else {
+            unreachable!()
+        };
+        assert_eq!(tool_name, "Bash");
+        assert_eq!(command, "gh-axi pr view 266 --repo screamyx/surya");
+        assert!(resolved);
+        assert_eq!(*decision, Some(zeron_proto::PermissionDecision::Deny));
+        assert_eq!(reason.as_deref(), Some("you denied it"));
     }
 
     /// A card part survives the doc: written as kind "card" with its JSON,

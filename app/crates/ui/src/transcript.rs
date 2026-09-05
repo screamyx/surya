@@ -951,6 +951,15 @@ pub enum RowKind {
         header: SharedString,
         resolved: bool,
     },
+    /// A tool waiting on the user, or the answer it got. The twin of
+    /// [`RowKind::InputChip`]: a permission is a question the agent asked,
+    /// and it reads the same way in the feed.
+    PermissionChip {
+        tool_name: SharedString,
+        command: SharedString,
+        resolved: bool,
+        allowed: bool,
+    },
     ErrorChip {
         message: SharedString,
     },
@@ -1364,6 +1373,33 @@ pub fn rows_for_entry(
                             kind: RowKind::InputChip {
                                 header,
                                 resolved: *resolved,
+                            },
+                            entry_id: entry_id.clone(),
+                            timestamp: None,
+                            copy_text: None,
+                        });
+                    }
+                    MessagePart::Permission {
+                        id: part_id,
+                        tool_name,
+                        command,
+                        resolved,
+                        decision,
+                        ..
+                    } => {
+                        let allowed =
+                            matches!(decision, Some(zeron_proto::PermissionDecision::Allow));
+                        rows.push(Row {
+                            id: format!("{}#{}", entry.id, part_id).into(),
+                            version: (command.len() as u64) << 2
+                                | (*resolved as u64) << 1
+                                | allowed as u64,
+                            turn_start: false,
+                            kind: RowKind::PermissionChip {
+                                tool_name: tool_name.clone().into(),
+                                command: single_line(command).into(),
+                                resolved: *resolved,
+                                allowed,
                             },
                             entry_id: entry_id.clone(),
                             timestamp: None,
@@ -4460,6 +4496,18 @@ impl Transcript {
             RowKind::InputChip { header, resolved } => {
                 input_chip(header.clone(), *resolved, &theme)
             }
+            RowKind::PermissionChip {
+                tool_name,
+                command,
+                resolved,
+                allowed,
+            } => permission_chip(
+                tool_name.clone(),
+                command.clone(),
+                *resolved,
+                *allowed,
+                &theme,
+            ),
             RowKind::ErrorChip { message } => error_chip(message.clone(), &theme),
             RowKind::Card { card, .. } => {
                 let card = card.clone();
@@ -5610,6 +5658,78 @@ fn input_chip(header: SharedString, resolved: bool, theme: &Theme) -> AnyElement
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(theme.text_muted)
                         .child(SharedString::from("Question")),
+                )
+                .child(
+                    div()
+                        .min_w_0()
+                        .flex_1()
+                        .truncate()
+                        .text_color(theme.text.opacity(0.9))
+                        .child(value),
+                ),
+        )
+        .into_any_element()
+}
+
+/// The permission twin of [`input_chip`].
+///
+/// Unresolved it says what a question says - something is waiting on you -
+/// and the panel in the composer's place is where it is answered. Resolved
+/// it states the answer, because a tool that did not run leaves no other
+/// trace, and "nothing happened" is not something the user should have to
+/// infer.
+fn permission_chip(
+    tool_name: SharedString,
+    command: SharedString,
+    resolved: bool,
+    allowed: bool,
+    theme: &Theme,
+) -> AnyElement {
+    let value: SharedString = if !resolved {
+        "Awaiting your answer…".into()
+    } else if allowed {
+        command
+    } else {
+        format!("Denied - {command}").into()
+    };
+    div()
+        .py(px(4.0))
+        .w_full()
+        .child(
+            div()
+                .h(px(34.0))
+                .w_full()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .overflow_hidden()
+                .rounded(px(10.0))
+                .border_1()
+                .border_color(crate::theme::hairline(0.08))
+                .bg(crate::theme::ink(0.045))
+                .px(px(8.0))
+                .text_size(px(12.0))
+                .child(
+                    div()
+                        .flex_none()
+                        .size(px(20.0))
+                        .rounded(px(6.0))
+                        .bg(crate::theme::ink(0.09))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .child(
+                            crate::icons::icon(crate::icons::KEY_MINIMALISTIC)
+                                .size(px(12.0))
+                                .text_color(theme.text_muted),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(theme.text_muted)
+                        .child(tool_name),
                 )
                 .child(
                     div()

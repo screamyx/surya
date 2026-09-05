@@ -195,6 +195,21 @@ impl Harness for MockHarness {
         let error_event = mock_error.then(|| AgentEvent::Error {
             message: "Claude usage limit reached — try again after the limit resets.".into(),
         });
+        // Dev/testing knob: `ZERON_MOCK_PERMISSION=1` scripts a blocked tool
+        // before the terminal Done. A scripted `PermissionRequested` is the
+        // mock ASKING (see the gate below), so this is the only data-side way
+        // to put the permission chip and its panel on screen without a real
+        // CLI. The run auto-approves unless the request asked not to, so a
+        // rig using this must send `autoApprove: false`.
+        let mock_permission = std::env::var("ZERON_MOCK_PERMISSION")
+            .ok()
+            .is_some_and(|v| !v.is_empty() && v != "0");
+        let permission_event = mock_permission.then(|| AgentEvent::PermissionRequested {
+            request_id: "mock-perm-1".into(),
+            tool_name: "Bash".into(),
+            command: "gh-axi pr view 266 --repo screamyx/surya".into(),
+            input: None,
+        });
         // Dev/testing knob: `ZERON_MOCK_CODE=1` appends rust + ts code blocks
         // (keywords, strings, numbers, comments) plus inline code — for
         // syntax-palette and inline-code styling checks against the reference.
@@ -515,6 +530,7 @@ impl Harness for MockHarness {
             .chain(table_event)
             .chain(mend_event)
             .chain(card_events.clone())
+            .chain(permission_event)
             .chain(error_event)
             .chain(tail.iter().cloned())
             .map(Ok)

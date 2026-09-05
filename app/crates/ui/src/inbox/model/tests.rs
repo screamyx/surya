@@ -447,6 +447,35 @@ fn the_row_only_collapses_when_the_transcript_really_carries_its_sheet() {
     ));
 }
 
+/// A permission is answered in the composer's place now, exactly like a
+/// question, so its row collapses on the same rule - and only when the panel
+/// on screen is asking about THAT request.
+#[test]
+fn a_permission_collapses_when_its_own_panel_is_up() {
+    let mut permission = item("perm-1", "chat-1", NeedsYouKind::Permission);
+    permission.agent_id = "chat-1".into();
+    let rows = inbox_rows(&[permission], &[]);
+
+    assert!(answered_in_the_open_chat(&rows[0], Some("chat-1"), Some("perm-1")));
+    assert!(
+        !answered_in_the_open_chat(&rows[0], Some("chat-1"), Some("perm-9")),
+        "the panel on screen is asking about something else"
+    );
+    assert!(
+        !answered_in_the_open_chat(&rows[0], Some("chat-1"), None),
+        "no panel up yet, so the row keeps its buttons"
+    );
+    assert!(
+        !answered_in_the_open_chat(&rows[0], Some("chat-2"), Some("perm-1")),
+        "another chat's panel is not this row's"
+    );
+
+    // A stopped run has no second surface at all.
+    let failed = item("perm-1", "chat-1", NeedsYouKind::Failed);
+    let rows = inbox_rows(&[failed], &[]);
+    assert!(!answered_in_the_open_chat(&rows[0], Some("chat-1"), Some("perm-1")));
+}
+
 /// Round 4, I3: the engine fills a question's title from the model's own
 /// header, and a model that answers "Question" leaves the card saying it
 /// twice - once in the badge, once in bold under it.
