@@ -61,6 +61,9 @@ enum Command {
         #[arg(value_name = "CHECKOUT")]
         checkout: std::path::PathBuf,
     },
+    /// Open the needs-you inbox, the agent tree and the rules page against
+    /// fixtures. No engine and no ports.
+    InboxDemo,
 }
 
 #[derive(Subcommand)]
@@ -214,6 +217,15 @@ fn main() -> anyhow::Result<()> {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(27655);
             zeron_ui::files::run_demo(checkout, data_dir, ipc_port, edge_url_from_env());
+            Ok(())
+        }
+        Some(Command::InboxDemo) => {
+            // Fixtures only, so this needs no engine, no port, and no
+            // workspace — it never touches the real app's data.
+            let data_dir = std::env::var_os("ZERON_DATA_DIR")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| dirs_data_dir().join("inbox-demo"));
+            zeron_ui::inbox::demo_run::run_demo(data_dir);
             Ok(())
         }
         None => {

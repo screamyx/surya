@@ -195,8 +195,9 @@ fn a_question_row_id_carries_both_halves_of_the_answer() {
     )
     .expect("serializes");
     assert_eq!(params["chatId"], "chat-b");
-    // The same RespondInput doc command the composer's question panel sends.
-    assert_eq!(params["command"]["type"], "respondInput");
+    // The same RespondInput doc command the composer's question panel
+    // sends: tagged `kind`, as SessionCommandPayload spells it.
+    assert_eq!(params["command"]["kind"], "respondInput");
     assert_eq!(params["command"]["requestId"], "input-1");
     assert_eq!(params["command"]["answers"][0]["labels"][0], "Event-driven");
 }
