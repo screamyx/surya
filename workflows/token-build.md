@@ -36,7 +36,7 @@ tokens/*.json  (DTCG $type/$value — source of truth)
 ## Output targets
 
 - **Web CSS:** `:root { --color-action-primary: #2563EB; … }` + `[data-theme="dark"]` overrides (matches `frameworks/adapters/vanilla-css.md`).
-- **Tailwind v4:** `@theme { --color-action-primary: …; }` so utilities map to tokens (CLAUDE.md React+Tailwind).
+- **Tailwind v4:** `@theme { --color-action-primary: …; }` so utilities map to tokens (ux-ui-expert/SKILL.md React+Tailwind).
 - **JS/TS:** typed object/`as const` for CSS-in-JS and native (`frameworks/adapters/css-in-js.md`).
 - **iOS:** Asset Catalog color sets + `Color.DS`/`Font.DS`/`Spacing` extensions (`frameworks/swiftui.md`).
 - **Android:** `colors.xml`/`dimens.xml` or a Compose `Theme` object (`frameworks/adapters/jetpack-compose.md`).

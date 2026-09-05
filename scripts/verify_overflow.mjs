@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * CONTENT-OVERFLOW gate — enforces the handoff rule in CLAUDE.md that nothing
+ * CONTENT-OVERFLOW gate — enforces the handoff rule in ux-ui-expert/SKILL.md that nothing
  * else enforced: "Edge cases addressed (long text, empty, overflow, single item,
  * many items)."
  *

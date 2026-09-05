@@ -26,10 +26,10 @@ pub(super) fn spawn(cx: &mut gpui::App, after: u64) {
         let sent_ms = t0.elapsed().as_millis();
         // Let the last frames land.
         super::sleep(cx, Duration::from_millis(500)).await;
-        let (cef, app, p2d) = super::delta(before);
+        let (frames, p2d) = super::delta(before);
         println!(
             "selftest: SCROLL loaded={} wheel asked={WHEEL_EVENTS} sent={sent} over {sent_ms}ms \
-             cef_frames={cef} app_frames={app} pump_timer={} pump_ms={} {p2d}",
+             {frames} pump_timer={} pump_ms={} {p2d}",
             u8::from(loaded),
             super::pump_timer(),
             crate::pump::base_ms(),

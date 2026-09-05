@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * TOKEN-BY-INTENT gate — enforces the CLAUDE.md rule that a token must be
+ * TOKEN-BY-INTENT gate — enforces the ux-ui-expert/SKILL.md rule that a token must be
  * chosen by MEANING, not by whatever resolves:
  *
  *   "Destructive actions (Delete, Remove, Revoke) -> action.destructive.

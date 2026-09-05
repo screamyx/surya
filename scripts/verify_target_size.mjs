@@ -3,7 +3,7 @@
  * TARGET SIZE gate — WCAG 2.2 SC 2.5.8 Target Size (Minimum), Level AA.
  *
  * Every pointer target must be at least 24x24 CSS px, measured on the REAL
- * rendered page (not asserted from source). CLAUDE.md mandates this ("Target
+ * rendered page (not asserted from source). ux-ui-expert/SKILL.md mandates this ("Target
  * size: >= 24x24px minimum, 44x44px recommended") but nothing enforced it.
  *
  * The three exceptions the success criterion actually allows are implemented,

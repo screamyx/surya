@@ -43,10 +43,10 @@ pub(crate) fn is_open() -> bool {
     BROWSERS.lock().map(|b| b.as_ref().is_some_and(|m| !m.is_empty())).unwrap_or(false)
 }
 
-/// Show a browser: paint at 60, tell it the size it may have missed, and
+/// Show a browser: paint at the display's rate, tell it the size it may have missed, and
 /// give it the keyboard.
 fn show(host: &BrowserHost) {
-    host.set_windowless_frame_rate(60);
+    host.set_windowless_frame_rate(crate::display::frame_rate());
     host.was_hidden(0);
     // A resize may have happened while hidden; CEF only paints damage.
     host.was_resized();
@@ -385,7 +385,7 @@ pub(crate) fn open(url: &str) -> Option<i32> {
     // instead of `on_paint`; see `zero_copy`. Otherwise the CPU path.
     window_info.shared_texture_enabled = i32::from(crate::zero_copy::ready());
     let browser_settings = BrowserSettings {
-        windowless_frame_rate: 60,
+        windowless_frame_rate: crate::display::frame_rate(),
         background_color: crate::OPAQUE_WHITE,
         ..Default::default()
     };

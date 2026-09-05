@@ -15,9 +15,9 @@ pub(super) fn spawn(cx: &mut gpui::App, after: u64) {
         super::sleep(cx, Duration::from_millis(3000)).await;
         let before = super::counts();
         super::sleep(cx, Duration::from_millis(WINDOW_MS)).await;
-        let (cef, app, p2d) = super::delta(before);
+        let (frames, p2d) = super::delta(before);
         println!(
-            "selftest: ANIM loaded={} over {WINDOW_MS}ms cef_frames={cef} app_frames={app} pump_timer={} pump_ms={} {p2d}",
+            "selftest: ANIM loaded={} over {WINDOW_MS}ms {frames} pump_timer={} pump_ms={} {p2d}",
             u8::from(loaded),
             super::pump_timer(),
             crate::pump::base_ms(),

@@ -24,6 +24,7 @@ mod client;
 pub mod devtools;
 pub mod emulation;
 mod clock;
+mod display;
 mod events;
 pub mod input;
 mod page;

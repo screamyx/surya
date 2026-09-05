@@ -50,9 +50,9 @@ comet's shell keeps `right_tabs: HashMap<String, Vec<RightSurface>>` per panel k
 ## Init calls (`lib.rs::run_app`, in this order)
 
 ```
-composer::init(cx);
-files::init(cx);      // FilesEditor key context, after composer
-terminal::panel::init(cx);
+// Keys: composer::init, files::init and the terminal toggle are bound INSIDE
+// shell::apply_keymap (it clears and rebuilds the keymap when the shell mounts;
+// a boot-time bind_keys is discarded). Nothing key-related in run_app.
 tasks::init(cx);      // only if feat/tasks-ui ships one
 inbox::init(cx);      // only if feat/inbox-ui ships one
 app_menus::init(cx);

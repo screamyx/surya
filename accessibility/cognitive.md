@@ -8,7 +8,7 @@ Designing for memory, attention, language processing, and executive function. Co
 
 1. **Reduce load, don't add it.** Every field, choice, and step has a cost. Remove before you explain.
 2. **Don't make people remember.** Recognition over recall — show options, keep entered data visible, persist context across steps.
-3. **One primary action per view.** Progressive disclosure (CLAUDE.md) hides secondary/advanced paths until needed.
+3. **One primary action per view.** Progressive disclosure (ux-ui-expert/SKILL.md) hides secondary/advanced paths until needed.
 4. **Be predictable.** Consistent navigation/identification (WCAG 3.2.3/3.2.4); no context changes on focus or input (3.2.1/3.2.2).
 5. **Forgive errors.** Confirm destructive actions, allow undo, autosave, and let users review before submit (3.3.4 / 3.3.6).
 
@@ -35,7 +35,7 @@ Designing for memory, attention, language processing, and executive function. Co
 
 ## Dyslexia & reading
 
-- Body text ≥ 16px; generous line height (1.5) and paragraph spacing; line length 45–75ch (CLAUDE.md typography).
+- Body text ≥ 16px; generous line height (1.5) and paragraph spacing; line length 45–75ch (ux-ui-expert/SKILL.md typography).
 - Left-align body text — **never justify** (uneven "rivers" of space hurt tracking). Avoid all-caps for running text.
 - Use a clean sans (Inter/system-ui) or an OpenDyslexic option; never convey meaning by italics alone.
 - Strong heading hierarchy and whitespace so structure is scannable.

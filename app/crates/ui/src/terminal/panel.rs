@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use base64::Engine as _;
 use gpui::{
-    App, Context, Entity, FocusHandle, IntoElement, KeyBinding, KeyDownEvent, MouseButton,
+    App, Context, Entity, FocusHandle, IntoElement, KeyDownEvent, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Render, ScrollDelta, SharedString,
     Subscription, Task, Window, actions, div, prelude::*, px,
 };
@@ -49,15 +49,8 @@ const SCROLLBAR_MIN_THUMB: f32 = 24.0;
 
 actions!(terminal, [ToggleTerminal]);
 
-/// Bind the terminal keymap (global): Cmd+J on macOS, Ctrl+J elsewhere.
-pub fn init(cx: &mut App) {
-    let toggle = if cfg!(target_os = "macos") {
-        "cmd-j"
-    } else {
-        "ctrl-j"
-    };
-    cx.bind_keys([KeyBinding::new(toggle, ToggleTerminal, None)]);
-}
+// The terminal toggle key is bound by `shell::apply_keymap` from the user's
+// KeymapConfig; a boot-time binding here would be wiped by its clear.
 
 // ---------------------------------------------------------------------------
 // Pure logic (unit-tested)

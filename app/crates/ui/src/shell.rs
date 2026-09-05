@@ -142,6 +142,20 @@ const COMMAND_LINE_ENGINE_HINT: &str = if cfg!(windows) {
     "This server was set by --engine or ZERON_ENGINE. Start zeron without it to use this computer."
 };
 
+/// Is the Needs you page on screen?
+///
+/// Two conditions, and the second is not an afterthought. `inbox_pane` returns
+/// None until an engine exists, so `render_main` cannot put the page up in an
+/// engine-less window; without asking that here, the rail would un-light Home
+/// and light Needs you for a page nobody can see.
+///
+/// The page opens only when the user asks for it. It used to open itself
+/// whenever anything was waiting, which is how the queue came to be drawn over
+/// the conversation (owner, 2026-09-05 19:26: "the box/modal, remove them").
+fn needs_you_page_up(shown: Option<bool>, pane_built: bool) -> bool {
+    shown == Some(true) && pane_built
+}
+
 fn stable_panel_content_width(target: f32, transition: Option<(f32, f32)>) -> f32 {
     transition.map(|(from, to)| from.max(to)).unwrap_or(target)
 }
@@ -265,21 +279,66 @@ fn title_row_seed(cx: &App) -> f32 {
     Theme::TITLEBAR_HEIGHT + 10.0 + text + 2.0 + 6.0
 }
 
+/// Measured, not assumed: after the clear, one line per key context says
+/// whether its probe key is bound to the expected action IN that context
+/// (`asked=1 bound=N`, RUST_LOG=info). `all_bindings_for_input` ignores the
+/// context predicate, so it is checked here: a binding in the wrong context
+/// counts as not bound. A boot-time `bind_keys` outside `apply_keymap` is
+/// discarded by the clear, which is how the files editor lost Enter (PR #91).
+fn log_keymap_proof(cx: &App, toggle_terminal: &str, toggle_files: &str) {
+    let probe = |context: Option<&str>, combo: &str, action: &str| {
+        let Ok(keystroke) = Keystroke::parse(combo) else {
+            tracing::warn!(target: "surya_keys", ?context, combo, "probe combo does not parse");
+            return;
+        };
+        let bound = cx
+            .all_bindings_for_input(&[keystroke])
+            .iter()
+            .filter(|b| b.action().name().ends_with(action))
+            .filter(|b| match (context, b.predicate()) {
+                (Some(ctx), Some(pred)) => format!("{pred:?}").contains(ctx),
+                (None, None) => true,
+                _ => false,
+            })
+            .count();
+        let context = context.unwrap_or("global");
+        tracing::info!(target: "surya_keys", context, combo, action, asked = 1, bound, "keymap applied");
+    };
+    probe(Some("Composer"), "enter", "Submit");
+    probe(Some("FilesEditor"), "enter", "Newline");
+    probe(None, toggle_terminal, "ToggleTerminal");
+    probe(None, toggle_files, "ToggleFiles");
+    // The browser pane's chords are bound with no context and must come out
+    // of this function ahead of NextSession, which shares ctrl-tab. Bound
+    // anywhere but last, they lose; this says so in the log rather than at a
+    // proof run three hours later.
+    #[cfg(feature = "browser")]
+    probe(None, "ctrl-tab", "NextTab");
+}
+
 /// (Re-)apply the whole app keymap: clears every binding, restores the composer
 /// map, then binds the customizable shortcuts from `keymap` (feature-inventory
 /// §1.4). Invalid persisted combos fall back to that shortcut's default.
-pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
-    fn valid_or_default(combo: &str, fallback: &str) -> String {
-        let candidate = platform_combo(combo);
-        if Keystroke::parse(&candidate).is_ok() {
-            candidate
-        } else {
-            tracing::warn!(%combo, "unparseable shortcut combo; using default");
-            platform_combo(fallback)
-        }
+/// A persisted combo if gpui can parse it, else that shortcut's default.
+fn valid_or_default(combo: &str, fallback: &str) -> String {
+    let candidate = platform_combo(combo);
+    if Keystroke::parse(&candidate).is_ok() {
+        candidate
+    } else {
+        tracing::warn!(%combo, "unparseable shortcut combo; using default");
+        platform_combo(fallback)
     }
+}
+
+pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
+    // Resolved once so the binder and the proof below probe the same value.
+    let toggle_files = valid_or_default(&keymap.toggle_files, "mod-shift-f");
+    let toggle_terminal = valid_or_default(&keymap.toggle_terminal, "mod-j");
     cx.clear_key_bindings();
     crate::composer::init(cx);
+    // The files editor's context rides on the composer's actions and has to
+    // be re-bound here too: a boot-time bind_keys is wiped by the clear above.
+    crate::files::init(cx);
     // Fixed app-level shortcuts (Settings on every platform; ⌘Q quit, ⌘W
     // close, ⌘M minimize, ⌘H hide on macOS) — these back the native menu
     // key equivalents and must survive keymap re-application.
@@ -296,7 +355,7 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ),
         KeyBinding::new(
-            &valid_or_default(&keymap.toggle_files, "mod-shift-f"),
+            &toggle_files,
             ToggleFiles,
             None,
         ),
@@ -311,7 +370,7 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ),
         KeyBinding::new(
-            &valid_or_default(&keymap.toggle_terminal, "mod-j"),
+            &toggle_terminal,
             ToggleTerminal,
             None,
         ),
@@ -360,13 +419,15 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ))
     }));
-    // LAST, and it has to be: the browser pane binds ctrl-tab and cmd-w with
-    // no context, as the bindings above do, and gpui breaks a same-depth tie
-    // by insertion order. Bound earlier, the pane's tab switch would lose to
-    // NextSession. The pane's handlers only exist while it is focused, so
-    // these fall through to the bindings above whenever it is not.
+    // LAST of the binds, and it has to be: the browser pane binds ctrl-tab
+    // and cmd-w with no context, as the bindings above do, and gpui breaks a
+    // same-depth tie by insertion order. Bound earlier, the pane's tab switch
+    // would lose to NextSession. The pane's handlers only exist while it is
+    // focused, so these fall through to the bindings above whenever it is not.
     #[cfg(feature = "browser")]
     crate::browser_pane::init(cx);
+    // After every bind, so the probe reads the map that shipped.
+    log_keymap_proof(cx, &toggle_terminal, &toggle_files);
 }
 
 /// The settings sections (feature-inventory §1.5 routes).
@@ -2042,7 +2103,7 @@ impl Shell {
     /// asks for it, from the rail entry or its shortcut; the badge on that
     /// entry is what says something is waiting.
     fn inbox_visible(&self, _cx: &App) -> bool {
-        self.inbox_shown == Some(true)
+        needs_you_page_up(self.inbox_shown, self.inbox_pane.is_some())
     }
 
     /// How many things are waiting, 0 before the pane exists.
@@ -4384,8 +4445,27 @@ impl Shell {
             .border_b_1()
             .border_color(theme.border)
             .child(
-                entry("rail-home", icons::HOME, "Home", active.is_none(), true, theme).on_click(
+                // Home is lit when no right-pane surface is open AND the Needs
+                // you page is not up. Without the second half the rail lies:
+                // the page fills the main area while Home keeps its plate, so
+                // two entries read as current and neither is where you are.
+                entry(
+                    "rail-home",
+                    icons::HOME,
+                    "Home",
+                    active.is_none() && !inbox_on,
+                    true,
+                    theme,
+                )
+                .on_click(
                     cx.listener(|this, _, _, cx| {
+                        // Home has to be able to get you home. Un-lighting it
+                        // while the Needs you page is up made it look like the
+                        // way back; closing the right pane is not, because
+                        // with the page up there may be no right pane at all.
+                        if this.inbox_visible(cx) {
+                            this.inbox_shown = Some(false);
+                        }
                         if this.right_pane_open(cx) {
                             this.toggle_right_pane(cx);
                         }
@@ -8913,6 +8993,33 @@ mod tests {
         // Files and Tasks: a space, whatever the sync state.
         assert!(!pane_knob_ready("files", true, false));
         assert!(pane_knob_ready("tasks", false, true));
+    }
+
+    /// The rail highlight had no test and shipped a bug twice: Home stayed lit
+    /// beside a lit Needs you, and an engine-less window lit Needs you for a
+    /// page that cannot exist. Both are this predicate. asked=6 passed=6.
+    #[test]
+    fn the_needs_you_page_is_up_only_when_asked_for_and_buildable() {
+        // (shown, pane_built) -> up
+        let cases = [
+            ((None, true), false, "never opened"),
+            ((Some(false), true), false, "closed by the user"),
+            ((Some(true), true), true, "opened by the user"),
+            // No engine, so inbox_pane() gave None and render_main has no page
+            // to mount. The rail must agree with the main area.
+            ((Some(true), false), false, "asked for, but no engine to build it"),
+            ((Some(false), false), false, "closed, no engine"),
+            ((None, false), false, "never opened, no engine"),
+        ];
+        let mut asked = 0;
+        let mut passed = 0;
+        for ((shown, built), want, why) in cases {
+            asked += 1;
+            let got = needs_you_page_up(shown, built);
+            assert_eq!(got, want, "{why}: shown={shown:?} built={built}");
+            passed += 1;
+        }
+        assert_eq!((asked, passed), (6, 6), "asked={asked} passed={passed}");
     }
 
     #[test]
