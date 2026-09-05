@@ -142,6 +142,23 @@ const COMMAND_LINE_ENGINE_HINT: &str = if cfg!(windows) {
     "This server was set by --engine or ZERON_ENGINE. Start zeron without it to use this computer."
 };
 
+/// What a press of the Needs you entry (or its shortcut) leaves behind.
+///
+/// A close always takes. An OPEN only latches when the pane could be built:
+/// `inbox_pane` returns None until an engine exists, and storing the request
+/// anyway meant the page opened by itself the moment an engine connected,
+/// minutes later and unasked - the auto-open the owner objected to, arriving by
+/// another door.
+fn next_inbox_shown(showing: bool, current: Option<bool>, pane_built: bool) -> Option<bool> {
+    if showing {
+        Some(false)
+    } else if pane_built {
+        Some(true)
+    } else {
+        current
+    }
+}
+
 /// Is the Needs you page on screen?
 ///
 /// Two conditions, and the second is not an afterthought. `inbox_pane` returns
@@ -266,9 +283,12 @@ pub fn cluster_clearance(
         .max(0.0)
 }
 
-/// Gap between the engine-skew banner and the chrome above it, and between the
-/// banner and whatever starts below it. One constant so the offset the banner
-/// is drawn at and the height it reports can never drift apart.
+/// Gap between the engine-skew banner and the chrome ABOVE it.
+///
+/// It is not the gap below: what follows the banner sets its own spacing, and
+/// on the Needs you route that is the pane heading's own `pt(24)`. The constant
+/// exists because this one number is used twice - once where the banner is
+/// drawn, once in the height it reports - and those two must never drift.
 const SKEW_BANNER_GAP: f32 = 8.0;
 
 /// First-frame estimate of the skew banner: one line of 13px text at the
@@ -2073,7 +2093,15 @@ impl Shell {
         if !showing {
             self.inbox_pane(cx);
         }
-        self.inbox_shown = Some(!showing);
+        // Only latch an OPEN that can actually be honoured. `inbox_pane`
+        // returns None until an engine exists, and setting Some(true) anyway
+        // left the request stored: the page then opened by itself the moment
+        // an engine connected, minutes later and unasked. That is the
+        // auto-open the owner objected to (2026-09-05 19:26), arriving by
+        // another door. A press with no engine now does nothing, which is what
+        // it looked like it did anyway.
+        self.inbox_shown =
+            next_inbox_shown(showing, self.inbox_shown, self.inbox_pane.is_some());
         cx.notify();
     }
 
@@ -6471,8 +6499,10 @@ impl Shell {
                 || self.composer.read(cx).permission_sheet_visible(cx));
         // The Needs you page. The rail entry and its shortcut open it and it
         // takes the main area, the way Settings does - it never stacks over
-        // the conversation. `inbox_on` is `inbox_shown == Some(true)`, so it
-        // only ever appears because the user asked for it.
+        // the conversation. `inbox_on` is `needs_you_page_up`: the user asked
+        // for it AND the pane could be built, so it only ever appears on
+        // request and the rail can never light it for a page that is not
+        // there.
         let inbox_page = inbox_on.then(|| self.inbox_pane(cx)).flatten();
         let inbox_page_up = inbox_page.is_some();
         let outlet: AnyElement = if let Some(pane) = inbox_page {
@@ -9091,6 +9121,33 @@ mod tests {
             passed += 1;
         }
         assert_eq!((asked, passed), (6, 6), "asked={asked} passed={passed}");
+    }
+
+    /// A press with no engine must leave nothing behind. It used to store
+    /// Some(true), so the page opened on its own when an engine connected.
+    /// asked=5 passed=5.
+    #[test]
+    fn an_open_only_latches_when_the_page_can_be_built() {
+        // (showing, current, pane_built) -> next
+        let cases = [
+            ((false, None, true), Some(true), "first press, engine present"),
+            ((true, Some(true), true), Some(false), "press again to close"),
+            ((false, Some(false), true), Some(true), "reopen after closing"),
+            ((false, None, false), None, "press with no engine leaves nothing"),
+            (
+                (false, Some(false), false),
+                Some(false),
+                "press with no engine does not resurrect a close",
+            ),
+        ];
+        let mut asked = 0;
+        let mut passed = 0;
+        for ((showing, current, built), want, why) in cases {
+            asked += 1;
+            assert_eq!(next_inbox_shown(showing, current, built), want, "{why}");
+            passed += 1;
+        }
+        assert_eq!((asked, passed), (5, 5), "asked={asked} passed={passed}");
     }
 
     #[test]
