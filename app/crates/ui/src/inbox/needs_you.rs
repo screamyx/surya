@@ -282,15 +282,21 @@ impl Render for NeedsYouPane {
         let (open_chat, open_sheet) = match self.state.as_ref() {
             Some(state) => {
                 let state = state.read(cx);
-                (
-                    state.selected_chat.clone(),
-                    crate::composer::pending_input_request(&state.transcript)
-                        .map(|(request_id, _)| request_id)
-                        // Answered on this device: the sheet is already gone,
-                        // even though the doc still carries the request until
-                        // `resolved` syncs back. Nothing to point at.
-                        .filter(|request_id| !state.answered_requests.contains(request_id)),
-                )
+                // Either kind of ask can be the one the composer is showing:
+                // a question sheet or a permission panel. Whichever it is,
+                // its row here collapses rather than offering a second set
+                // of buttons for the same answer.
+                let showing = crate::composer::pending_input_request(&state.transcript)
+                    .map(|(request_id, _)| request_id)
+                    .or_else(|| {
+                        crate::composer::pending_permission_request(&state.transcript)
+                            .map(|(request_id, _, _)| request_id)
+                    })
+                    // Answered on this device: the panel is already gone,
+                    // even though the doc still carries the request until
+                    // `resolved` syncs back. Nothing to point at.
+                    .filter(|request_id| !state.answered_requests.contains(request_id));
+                (state.selected_chat.clone(), showing)
             }
             None => (None, None),
         };
@@ -298,29 +304,79 @@ impl Render for NeedsYouPane {
         // alongside the shared borrow `Theme::of(cx)` holds.
         let cards: Vec<gpui::AnyElement> = rows
             .iter()
-            .map(|row| self.render_row(row, open_chat.as_deref(), open_sheet.as_deref(), cx))
+            .enumerate()
+            .map(|(ix, row)| {
+                self.render_row(row, ix == 0, open_chat.as_deref(), open_sheet.as_deref(), cx)
+            })
             .collect();
+        let waiting = self.count();
         let empty = cards.is_empty();
         let theme = Theme::of(cx);
+        // A page, not a strip: it fills the main column and scrolls on its
+        // own, and it carries its own heading because no chat title sits
+        // above it here. Same 46rem measure and gutters as the transcript,
+        // so the queue reads as part of the app rather than a panel bolted
+        // to the side of it.
         div()
             .id("needs-you-pane")
             .size_full()
             .overflow_y_scroll()
             .flex()
             .flex_col()
-            .gap(px(8.0))
-            .p(px(12.0))
-            .when_some(self.failure.clone(), |el, failure| {
-                el.child(
-                    div()
-                        .text_size(ui_rems(12.0))
-                        .text_color(theme.danger)
-                        .child(failure),
-                )
-            })
-            .when(empty, |el| {
-                el.child(empty_state(theme, "Nothing needs you."))
-            })
-            .children(cards)
+            .items_center()
+            .px(px(48.0))
+            .pb(px(32.0))
+            .child(
+                div()
+                    .w_full()
+                    .max_w(px(crate::transcript::MAX_CONTENT_WIDTH))
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_baseline()
+                            .gap(px(8.0))
+                            .pt(px(24.0))
+                            .pb(px(12.0))
+                            .child(
+                                div()
+                                    .text_size(ui_rems(20.0))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.text)
+                                    .child("Needs you"),
+                            )
+                            // The count is said in words: a bare number next
+                            // to a heading reads as a badge to dismiss, and
+                            // this is a page, not a notification.
+                            .when(!empty, |el| {
+                                el.child(
+                                    div()
+                                        .text_size(ui_rems(13.0))
+                                        .text_color(theme.text_faint)
+                                        .child(SharedString::from(if waiting == 1 {
+                                            "1 waiting".to_string()
+                                        } else {
+                                            format!("{waiting} waiting")
+                                        })),
+                                )
+                            }),
+                    )
+                    .when_some(self.failure.clone(), |el, failure| {
+                        el.child(
+                            div()
+                                .pb(px(8.0))
+                                .text_size(ui_rems(12.0))
+                                .text_color(theme.danger)
+                                .child(failure),
+                        )
+                    })
+                    .when(empty, |el| {
+                        el.child(empty_state(theme, "Nothing needs you."))
+                    })
+                    .children(cards),
+            )
     }
 }
