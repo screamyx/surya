@@ -107,17 +107,21 @@ impl NeedsYouPane {
             .child(hint_chip(theme, "answer below"))
             // Tapping the row hands the user to the sheet it points at, so
             // the line is a way there and not just a label.
+            //
+            // It used to focus the composer directly. That worked while this
+            // list was a strip above the feed; the list is the whole main area
+            // now, and the shell suppresses the composer while it is up, so
+            // the click focused something that was not on screen. Emitting
+            // OpenChat instead lets the shell close the page and select the
+            // chat, which is what puts the sheet in front of the user.
             .cursor_pointer()
             .hover(|s| s.bg(theme.element_hover))
-            .on_click(cx.listener(|pane, _, window, cx| {
-                if let Some(focus) = pane
-                    .state
-                    .as_ref()
-                    .and_then(|state| state.read(cx).composer_focus.clone())
-                {
-                    window.focus(&focus, cx);
-                }
-            }))
+            .on_click({
+                let chat_id = row.chat_id.clone();
+                cx.listener(move |_, _, _, cx| {
+                    cx.emit(OpenChat(chat_id.clone()));
+                })
+            })
             .into_any_element()
     }
 

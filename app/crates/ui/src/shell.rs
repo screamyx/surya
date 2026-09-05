@@ -1054,13 +1054,9 @@ pub struct Shell {
     /// the transcript's bottom clearance, and the jump pill's anchor (the
     /// same one-frame lag every fade here rides).
     bottom_stack: std::rc::Rc<std::cell::Cell<f32>>,
-    /// How tall the needs-you list is right now, 0 when it is not shown.
-    /// The transcript is an absolute underlay spanning the whole column, so
-    /// without this it would run up behind the list (measured at paint, used
-    /// next frame, same as `bottom_stack`).
-    inbox_stack: std::rc::Rc<std::cell::Cell<f32>>,
-    /// Paint-time height of the page-title row above the feed (same trick as
-    /// `inbox_stack`): the transcript underlay starts below it.
+    /// Paint-time height of the page-title row above the feed: measured at
+    /// paint and used next frame, the same trick as `bottom_stack`. The
+    /// transcript underlay starts below it.
     title_stack: std::rc::Rc<std::cell::Cell<f32>>,
     /// The sidebar's archived accordion (t3code Sidebar): OPEN by default
     /// (user request), session-transient. `archived_shown` pages the
@@ -1411,7 +1407,6 @@ impl Shell {
             // Seed with the compact composer stack's rough height so the
             // first frame's clearance isn't zero (the measure corrects it).
             bottom_stack: std::rc::Rc::new(std::cell::Cell::new(120.0)),
-            inbox_stack: std::rc::Rc::new(std::cell::Cell::new(0.0)),
             // Seeded with the title row's resting height for the same reason:
             // frame one must not paint the transcript over the title.
             title_stack: std::rc::Rc::new(std::cell::Cell::new(title_row_seed(cx))),
@@ -2000,6 +1995,11 @@ impl Shell {
         // decides what that means (it owns routing, the pane does not).
         cx.subscribe(&pane, |this, _, event: &crate::inbox::OpenChat, cx| {
             let chat_id = event.0.clone();
+            // Close the page on the way out. The pane IS the main area now,
+            // so selecting a chat behind it would look like the click did
+            // nothing: the conversation, and the sheet the row points at,
+            // are both underneath the queue until this line runs.
+            this.inbox_shown = Some(false);
             this.state
                 .update(cx, |state, cx| state.select_chat(Some(chat_id), cx));
         })
@@ -6416,7 +6416,6 @@ impl Shell {
         // The mount stays wired rather than deleted: the measure, the padding
         // and the underlay offset below all still work, so putting the list
         // back over the feed is this one binding.
-        let inbox: Option<Entity<crate::inbox::NeedsYouPane>> = None;
         // Page-title tier (critique round 2, L3; ordering per round 4, I1):
         // the title row is the FIRST thing under the titlebar, the needs-you
         // list sits under it, the transcript under both.
@@ -6426,26 +6425,16 @@ impl Shell {
             .then(|| self.render_page_title(theme, cx));
         let has_title = title_row.is_some();
         let title_h = if has_title { self.title_stack.get() } else { 0.0 };
-        // The list is a real flex child, the transcript below it is an
-        // absolute underlay over the WHOLE column. Its top has to be pushed
-        // down by the list's measured height or the two paint over each other
-        // (the chat title came out through the first card, 11:11 shot).
-        let inbox_h = if inbox.is_some() {
-            self.inbox_stack.get()
-        } else {
-            0.0
-        };
-        // The list's own titlebar clearance is decided THIS frame (it flips
-        // with the title row), so it is added here rather than measured. The
-        // Needs you page takes the same clearance: without it the first row
-        // starts underneath the floating titlebar.
-        let inbox_pad = if (inbox.is_some() || inbox_page_up) && !has_title {
+        // The Needs you page's titlebar clearance: without it the first row
+        // starts underneath the floating titlebar. Decided THIS frame (it
+        // flips with the title row) rather than measured.
+        let inbox_pad = if inbox_page_up && !has_title {
             Theme::TITLEBAR_HEIGHT
         } else {
             0.0
         };
-        // Everything the transcript underlay must start below.
-        let top_h = title_h + inbox_pad + inbox_h;
+        // Everything the main-area underlay must start below.
+        let top_h = title_h + inbox_pad;
         // File dropzone over the ENTIRE conversation column (transcript +
         // composer, not just the pill): dragging OS files anywhere across the
         // chat area shows the "Drop images to attach" veil; a drop stages the
@@ -6475,32 +6464,6 @@ impl Shell {
                             .inset_0(),
                         )
                         .child(row),
-                )
-            })
-            .when_some(inbox, |el, pane| {
-                let measured = self.inbox_stack.clone();
-                el.child(
-                    div()
-                        .flex_none()
-                        // The title row above already cleared the titlebar;
-                        // this padding sits OUTSIDE the measured content.
-                        .pt(px(inbox_pad))
-                        .child(
-                    div()
-                        .relative()
-                        .max_h(px(320.0))
-                        .border_b_1()
-                        .border_color(theme.border)
-                        .child(
-                            gpui::canvas(
-                                move |bounds, _, _| measured.set(f32::from(bounds.size.height)),
-                                |_, _, _, _| {},
-                            )
-                            .absolute()
-                            .inset_0(),
-                        )
-                        .child(pane),
-                        ),
                 )
             })
             .child(
