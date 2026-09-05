@@ -1426,6 +1426,14 @@ impl AppState {
         gate_phase(&self.connection, self.workspace_scope, self.auth.as_ref())
     }
 
+    /// The server this app was asked to reach (`--engine`, `ZERON_ENGINE`, or
+    /// the saved active server), set when the dial starts so Settings ->
+    /// Servers can badge the row while Connecting or Failed. `None` for the
+    /// embedded engine and for the loopback daemon.
+    pub fn dialed_server(&self) -> Option<&RemoteEngineTarget> {
+        self.boot_config.as_ref()?.remote.as_ref()
+    }
+
     pub fn engine(&self) -> Option<&EngineHandle> {
         self.engine.as_ref()
     }
