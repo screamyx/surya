@@ -1,0 +1,21 @@
+<!doctype html>
+<!-- Proof page for browser-agent-proof.sh: one heading, one paragraph, one
+     link. The mock agent snapshots this page, clicks the first link, and the
+     screenshot it takes afterwards must show the second page's text. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>surya agent probe</title>
+<style>
+  body { margin: 0; padding: 48px; font: 20px sans-serif; background: #fff; color: #111; }
+  h1 { font-size: 40px; margin: 0 0 16px; }
+  a { color: #0645ad; font-size: 28px; }
+</style>
+</head>
+<body>
+<h1>Agent probe, page one</h1>
+<p>An agent should read this page, then follow the link below.</p>
+<p><a id="go" href="two.html">Go to page two</a></p>
+</body>
+</html>

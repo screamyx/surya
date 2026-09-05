@@ -925,8 +925,14 @@ async fn devin_models_refresh_between_calls_and_coalesce_overlapping_probes() {
 #[cfg(unix)]
 #[tokio::test]
 async fn devin_discovery_errors_and_timeouts_retry_without_stale_success() {
+    // Devin's probe runs `devin models list` as a fresh child on every call,
+    // and the bound covers the whole child: python startup, the fixture's own
+    // 0.1 s sleep, and the read. Only one of the four calls below is about the
+    // bound firing, so only that one gets a tight bound. The other three get a
+    // generous one - on a loaded box a tight bound expires during the spawn
+    // and fails a call that was never meant to time out.
     let (dir, harness) = devin_fixture();
-    let harness = harness.with_model_discovery_timeout(Duration::from_millis(500));
+    let harness = harness.with_model_discovery_timeout(Duration::from_secs(30));
     assert_eq!(harness.models().await.unwrap()[0].id, "gpt-old");
     std::fs::write(dir.path().join("state"), "error").unwrap();
     assert!(
@@ -937,7 +943,11 @@ async fn devin_discovery_errors_and_timeouts_retry_without_stale_success() {
             .to_string()
             .contains("account unavailable")
     );
+
+    // The one assertion about the bound. The fixture sleeps 60 s here, so any
+    // bound shorter than that proves the same thing; 500 ms keeps it quick.
     std::fs::write(dir.path().join("state"), "hang").unwrap();
+    let harness = harness.with_model_discovery_timeout(Duration::from_millis(500));
     assert!(
         harness
             .models()
@@ -946,6 +956,9 @@ async fn devin_discovery_errors_and_timeouts_retry_without_stale_success() {
             .to_string()
             .contains("timed out")
     );
+
+    // Back to a generous bound: this call has to succeed.
+    let harness = harness.with_model_discovery_timeout(Duration::from_secs(30));
     std::fs::write(dir.path().join("state"), "gpt-new").unwrap();
     assert_eq!(harness.models().await.unwrap()[0].id, "gpt-new");
 }

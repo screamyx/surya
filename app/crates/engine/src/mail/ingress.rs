@@ -3,11 +3,15 @@
 //! The MCP server's `send_message` tool writes one JSON record per message.
 //! Two ways in, both live at once:
 //!
-//! - a unix socket, default `$XDG_RUNTIME_DIR/surya/mail.sock` — one JSON
-//!   object per line, the reply is `{"ids":[...],"recipients":[...]}`;
-//! - an append-only file, default `~/.surya/mail.jsonl` — the fallback when
-//!   there is no runtime dir, tailed from its end so a restart does not
-//!   redeliver history.
+//! - a unix socket, `$SURYA_MAIL_SOCKET` else `$XDG_RUNTIME_DIR/surya/mail.sock`
+//!   — one JSON object per line, the reply is
+//!   `{"ids":[...],"recipients":[...]}`. Unix only;
+//! - an append-only file, `$SURYA_MAIL_LOG` else `~/.surya/mail.jsonl`, tailed
+//!   from its end so a restart does not redeliver history. Always on, and the
+//!   only way in on Windows.
+//!
+//! Both paths resolve exactly as the sidecar resolves them; see
+//! [`MailIngressPaths::detect`].
 //!
 //! Record, as `surya-mcp`'s `send_message` writes it (`crates/mcp/src/mail.rs`):
 //! `{"delivery_id":"d_…","from":"…","to":"…","workspace":"…","text":"…"}`.
@@ -30,18 +34,67 @@ pub struct MailIngressPaths {
 }
 
 impl MailIngressPaths {
-    /// Runtime socket first, home file always. On Windows there is no socket:
-    /// `socket` is `None` and every message arrives over the jsonl file, which
-    /// is why the file half is not an optional fallback.
+    /// The same paths the surya-mcp sidecar writes to, resolved the same way.
+    ///
+    /// This mirrors `crates/mcp/src/config.rs` deliberately and exactly. The
+    /// two sides used to diverge: the sidecar honours `SURYA_MAIL_SOCKET` and
+    /// `SURYA_MAIL_LOG` and falls back to `/tmp/surya-<uid>` when there is no
+    /// runtime dir, and this side read only `XDG_RUNTIME_DIR` and `HOME`. An
+    /// operator setting either override, or a service launch with no runtime
+    /// dir, put the writer and the reader on different files - and nothing
+    /// failed. Mail simply stopped arriving, with no error on either side.
+    ///
+    /// If the sidecar's resolution changes, this has to change with it. There
+    /// is a test below that fails when they disagree about an override.
+    ///
+    /// On Windows there is no socket: `socket` is `None` and every message
+    /// arrives over the jsonl file, which is why the file half is not an
+    /// optional fallback.
     pub fn detect() -> Self {
-        let socket = if cfg!(unix) {
-            std::env::var_os("XDG_RUNTIME_DIR")
-                .map(|dir| PathBuf::from(dir).join("surya").join("mail.sock"))
-        } else {
-            None
-        };
-        let jsonl = Some(crate::repos::home_dir().join(".surya").join("mail.jsonl"));
+        let socket = cfg!(unix).then(|| {
+            env_path("SURYA_MAIL_SOCKET").unwrap_or_else(|| runtime_dir().join("mail.sock"))
+        });
+        let jsonl =
+            Some(env_path("SURYA_MAIL_LOG").unwrap_or_else(|| surya_home_dir().join("mail.jsonl")));
         Self { socket, jsonl }
+    }
+}
+
+/// An environment path, treating empty as unset — the sidecar's rule.
+fn env_path(key: &str) -> Option<PathBuf> {
+    std::env::var_os(key)
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+}
+
+/// `$XDG_RUNTIME_DIR/surya`, else a temp dir suffixed with our uid.
+///
+/// The uid comes from `getuid(2)` and not from `$UID`: that is a shell builtin
+/// and is absent from a process the shell did not export it to, which would
+/// leave every user on the box sharing one `/tmp/surya`.
+fn runtime_dir() -> PathBuf {
+    if let Some(dir) = env_path("XDG_RUNTIME_DIR") {
+        return dir.join("surya");
+    }
+    std::env::temp_dir().join(format!("surya-{}", current_uid()))
+}
+
+#[cfg(unix)]
+fn current_uid() -> String {
+    // SAFETY: getuid(2) reads a process attribute and cannot fail.
+    unsafe { libc::getuid() }.to_string()
+}
+
+#[cfg(not(unix))]
+fn current_uid() -> String {
+    std::env::var("USERNAME").unwrap_or_else(|_| "user".into())
+}
+
+/// `~/.surya`, falling back to the runtime dir when HOME is unset.
+fn surya_home_dir() -> PathBuf {
+    match env_path("HOME") {
+        Some(home) => home.join(".surya"),
+        None => runtime_dir(),
     }
 }
 

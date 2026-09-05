@@ -78,7 +78,9 @@ fn the_recorded_claude_code_handshake_works_against_the_real_binary() {
     assert_eq!(responses.len(), 5, "asked=6 answered={}", responses.len());
     assert_eq!(responses[0]["result"]["protocolVersion"], "2025-11-25");
     assert_eq!(responses[0]["result"]["serverInfo"]["name"], "surya");
-    assert_eq!(responses[1]["result"]["tools"].as_array().unwrap().len(), 6);
+    // show_card, send_message, list_cards, the three task tools, and the six
+    // browser tools (browser.rs).
+    assert_eq!(responses[1]["result"]["tools"].as_array().unwrap().len(), 12);
 
     let card: Value =
         serde_json::from_str(responses[2]["result"]["content"][0]["text"].as_str().unwrap())

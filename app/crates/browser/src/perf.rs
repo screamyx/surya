@@ -108,8 +108,13 @@ pub(crate) fn counters() -> String {
 mod tests {
     use super::*;
 
+    /// The ring is one static; the two tests that fill it take turns, or
+    /// one reads the other's samples (n=40 where it pushed 10).
+    static RING_TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn summary_reads_median_p90_max() {
+        let _turn = RING_TURN.lock().unwrap_or_else(|e| e.into_inner());
         let since = mark();
         for v in [1000u64, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000] {
             push(v);
@@ -129,6 +134,7 @@ mod tests {
 
     #[test]
     fn the_ring_keeps_only_the_last_samples() {
+        let _turn = RING_TURN.lock().unwrap_or_else(|e| e.into_inner());
         let since = mark();
         for v in 0..(RING as u64 + 10) {
             push(v);

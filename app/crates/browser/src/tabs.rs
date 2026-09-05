@@ -258,6 +258,12 @@ pub(crate) fn active_browser() -> i32 {
     with(|t| t.active().map(|t| t.browser).unwrap_or(0))
 }
 
+/// Whether `browser`'s main frame is loading right now (CEF's loading
+/// state, `on_loading_state_change`). False for a browser no tab owns.
+pub(crate) fn loading(browser: i32) -> bool {
+    with(|t| t.by_browser_mut(browser).map(|t| t.page.loading).unwrap_or(false))
+}
+
 pub(crate) fn update_active(f: impl FnOnce(&mut Page)) {
     with(|t| {
         if let Some(tab) = t.active_mut() {

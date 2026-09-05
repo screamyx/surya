@@ -15,6 +15,7 @@ description = "haktui's offscreen Chromium (CEF) pane, ported onto comet's gpui"
 [dependencies]
 gpui = { git = "https://github.com/screamyx/gpui-surya", rev = "3640743b70a6e4647d90249fc6ccc5398322648a" }
 futures = "0.3"
+serde_json = "1"
 image = { version = "0.25", default-features = false, features = ["png"] }
 # Offscreen Chromium. The build script downloads the CEF binary for the
 # target into CEF_PATH (or OUT_DIR) and copies the runtime files next to the

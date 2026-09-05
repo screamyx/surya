@@ -255,6 +255,15 @@ pub fn apply(cx: &mut App) {
         tracing::debug!(?wanted, %variant_id, "appearance: installing palette");
         Theme::install_selection(wanted, &variant_id, accent, surface, cx);
         cx.refresh_windows();
+        // The browser pane's page follows: its `prefers-color-scheme` is
+        // start-up state in Chromium, so a mid-session change goes over
+        // DevTools (surya-browser `scheme.rs`).
+        #[cfg(feature = "browser")]
+        surya_browser::set_color_scheme(if wanted.is_dark() {
+            surya_browser::ColorScheme::Dark
+        } else {
+            surya_browser::ColorScheme::Light
+        });
     }
     // Unconditional, even when the palette did not move: this is the only thing
     // that keeps macOS vibrancy alive. gpui's macOS backend removes the

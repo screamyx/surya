@@ -260,6 +260,9 @@ pub(crate) struct Normalizer {
     /// because a card that could not be drawn must not vanish silently.
     /// Insertion order is kept so a flush reads in call order.
     open_card_tools: Vec<HeldCard>,
+    /// `browser_screenshot` calls waiting on a result: their picture is a
+    /// card in the store, shown after the chip rather than in its place.
+    open_shot_tools: Vec<String>,
 }
 
 impl Normalizer {
@@ -272,6 +275,7 @@ impl Normalizer {
             session_id: None,
             card_store: None,
             open_card_tools: Vec::new(),
+            open_shot_tools: Vec::new(),
         }
     }
 
@@ -325,6 +329,22 @@ impl Normalizer {
             output: None,
             diff: None,
         });
+        if let Some(at) = self.open_shot_tools.iter().position(|id| id == tool_use_id) {
+            self.open_shot_tools.remove(at);
+            // The chip stays (it is a real tool call); the picture follows it
+            // as its own card row. A part id can only be one kind in the doc,
+            // so the card gets its own id.
+            if !is_error
+                && let Some(AgentEvent::Card { card_id, surface_id, a2ui, .. }) = self.card_for(tool_use_id)
+            {
+                out.push(AgentEvent::Card {
+                    card_id,
+                    surface_id,
+                    tool_use_id: format!("{tool_use_id}:shot"),
+                    a2ui,
+                });
+            }
+        }
         out
     }
 
@@ -344,6 +364,9 @@ impl Normalizer {
         // Hold on the TOOL, not on whether the input happened to carry a
         // drawable card: a short-form call lifts to nothing, and its real
         // card comes from the store on the result.
+        if crate::cards::is_screenshot_tool(name) {
+            self.open_shot_tools.push(id.to_owned());
+        }
         if !crate::cards::is_card_tool(name) {
             return Some(chip);
         }
@@ -845,6 +868,48 @@ mod tests {
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t3","name":"mcp__surya__open_file","input":{}}]}}"#,
         );
         assert!(matches!(&other[0], AgentEvent::ToolCall { call: ToolCall::Mcp { .. }, .. }));
+    }
+
+    /// A `browser_screenshot` call keeps its chip, and the picture the
+    /// sidecar recorded follows as its own card row under `<id>:shot`.
+    #[test]
+    fn browser_screenshot_keeps_its_chip_and_adds_a_card_row() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("cards.jsonl");
+        std::fs::write(
+            &store,
+            r#"{"card_id":"card_shot","surface_id":"shot_1","tool_use_id":"toolu_shot","a2ui":[{"createSurface":{"surfaceId":"shot_1","catalogId":"c"}}]}
+"#,
+        )
+        .unwrap();
+        let mut norm = Normalizer::new().with_card_store(Some(store));
+        let ev: Vec<AgentEvent> = [
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_shot","name":"mcp__surya__browser_screenshot","input":{}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_shot","is_error":false}]}}"#,
+        ]
+        .iter()
+        .flat_map(|raw| {
+            let frame = crate::claude::wire::parse_frame(raw).expect("frame parses");
+            norm.normalize(frame, false)
+        })
+        .collect();
+        assert!(ev.iter().any(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_shot")), "{ev:?}");
+        assert!(ev.iter().any(|e| matches!(e, AgentEvent::ToolResult { id, .. } if id == "toolu_shot")), "{ev:?}");
+        assert!(
+            ev.iter().any(|e| matches!(e, AgentEvent::Card { card_id, tool_use_id, .. }
+                if card_id == "card_shot" && tool_use_id == "toolu_shot:shot")),
+            "{ev:?}"
+        );
+        // A failed screenshot records no card.
+        let mut norm = Normalizer::new().with_card_store(None);
+        let failed: Vec<AgentEvent> = [
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_shot","name":"mcp__surya__browser_screenshot","input":{}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_shot","is_error":true}]}}"#,
+        ]
+        .iter()
+        .flat_map(|raw| norm.normalize(crate::claude::wire::parse_frame(raw).unwrap(), false))
+        .collect();
+        assert!(!failed.iter().any(|e| matches!(e, AgentEvent::Card { .. })), "{failed:?}");
     }
 
     /// Feed several frames through ONE normalizer: a card spans two frames

@@ -3,14 +3,19 @@ name: CI
 # Every merge into main so far was reviewed by reading. This is the machine
 # saying main builds and the headless tests pass.
 #
-# The runner is self-hosted on pc-ajim since 2026-09-05 12:49 (decision 24):
+# The runners are self-hosted on pc-ajim since 2026-09-05 12:49 (decision 24):
 # GitHub-hosted jobs stopped starting at 12:35 with "The job was not started
 # because recent account payments have failed or your spending limit needs to
-# be increased", and the RC ships 2026-09-06 13:00. The runner service is
-# actions.runner.screamyx-surya.pc-ajim-surya at /store/gha-runner-surya,
-# throttled to CPUWeight=20 so the owner's interactive session wins, with a
-# persistent CARGO_TARGET_DIR=/store/surya-ci-target in its .env (that is the
-# cache; no rust-cache action). The system libraries gpui needs are already on
+# be increased". Two runner services since 2026-09-06 03:10 (owner: "CI
+# improvement takes priorities from all other work"):
+# actions.runner.screamyx-surya.pc-ajim-surya at /store/gha-runner-surya with
+# CARGO_TARGET_DIR=/store/surya-ci-target, and pc-ajim-surya-2 at
+# /store/gha-runner-surya-2 with /store/surya-ci-target-2 (a copy of the
+# first). Each target dir is that runner's cache; no rust-cache action. Each
+# runner takes one job at a time, so the workflow is ONE job: three jobs on
+# one runner ran serially anyway and paid three checkouts and two extra link
+# passes per PR (about 30 min); one job with the same steps is about half
+# that, and two runners take two PRs at once. The system libraries gpui needs are already on
 # the box, so the apt and "free disk space" steps of the hosted era are gone:
 # never `sudo rm -rf` or `apt-get` on a shared machine from CI.
 #
@@ -49,29 +54,29 @@ env:
   CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
-  # The useful signal, first and on its own: none of these six crates depends
-  # on gpui, so this job needs no system libraries and does not wait for the
-  # GUI stack to compile.
-  tests:
-    name: headless tests
+  # One job, four steps, in the order that fails fastest. The six headless
+  # crates first (no gpui, the useful signal), then the whole-workspace check,
+  # then a2ui's tests (headless, but they pay the gpui build), then the smoke
+  # (one engine over the real websocket, driven by the binaries a user runs).
+  ci:
+    name: ci
     runs-on: [self-hosted, surya-ci]
-    timeout-minutes: 45
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: app
     steps:
       - uses: actions/checkout@v4
 
-
       - name: rust toolchain (app/rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
 
-
-      # Same reason: roughly twenty test binaries linking at once is what
-      # exhausted the runner. Two at a time still finishes inside the timeout.
-      - name: cargo test
+      # --jobs 2 was set when roughly twenty test binaries linking at once
+      # exhausted the runner with debug info on. Debug info is off (env above)
+      # and MemoryHigh is set on the service, so six at a time is safe.
+      - name: headless tests
         run: |
-          cargo test --jobs 2 \
+          cargo test --jobs 6 \
             -p zeron-proto \
             -p zeron-doc \
             -p zeron-rpc \
@@ -79,57 +84,13 @@ jobs:
             -p zeron-harness \
             -p surya-mcp
 
-  # One engine, driven over the real websocket by the binaries a user runs.
-  # Runs after `headless tests`: if a crate's own tests are red, the smoke's
-  # failure would only repeat that, and this job costs a `zeron` link.
-  #
-  # `-p zeron` pulls gpui, so this job needs the same system libraries the
-  # check job installs.
-  smoke:
-    name: smoke
-    runs-on: [self-hosted, surya-ci]
-    needs: tests
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: app
-    steps:
-      - uses: actions/checkout@v4
+      - name: cargo check (whole workspace)
+        run: cargo check --workspace --all-targets
 
-
-
-      - name: rust toolchain (app/rust-toolchain.toml)
-        run: rustup show active-toolchain || rustup toolchain install
-
-
-      # a2ui's tests ride this job: every one of them is headless (elements
-      # build without a window) and the gpui build is already paid for here.
       - name: cargo test -p surya-a2ui
-        run: cargo test --jobs 2 -p surya-a2ui
+        run: cargo test --jobs 6 -p surya-a2ui
 
       - name: smoke
         env:
           SURYA_SMOKE_CARGO: cargo
         run: scripts/smoke.sh
-
-  # Everything else, including the gpui/ui crates. The system libraries are
-  # the ones comet's own release workflow installs
-  # (app/.github/workflows/release.yml), so they are known to be enough and
-  # they are ordinary apt packages.
-  check:
-    name: cargo check (whole workspace)
-    runs-on: [self-hosted, surya-ci]
-    timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: app
-    steps:
-      - uses: actions/checkout@v4
-
-
-      - name: rust toolchain (app/rust-toolchain.toml)
-        run: rustup show active-toolchain || rustup toolchain install
-
-
-      - name: cargo check
-        run: cargo check --workspace --all-targets

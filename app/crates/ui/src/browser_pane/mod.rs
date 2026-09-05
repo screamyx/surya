@@ -58,9 +58,14 @@ pub struct BrowserPane {
     /// True while the person is typing an address the page has not loaded.
     /// The field follows the page's address whenever it is false.
     pub(super) url_editing: bool,
-    /// Set while the pane writes the field itself, so the resulting `Edited`
-    /// is not read back as typing.
-    pub(super) syncing: bool,
+    /// The last address the pane itself wrote into the field.
+    ///
+    /// `Edited` arrives late: `Context::emit` pushes onto `pending_effects`
+    /// and subscribers run when those flush, so a flag set around `set_text`
+    /// is already false by the time the event lands and the pane's own write
+    /// looked exactly like a person typing. Comparing the text has no such
+    /// race: if the field still holds what the pane put there, nobody typed.
+    pub(super) last_written: String,
     /// The find field, made once and shown from ctrl-f.
     pub(super) find_input: Entity<ComposerInput>,
     pub(super) find_open: bool,
@@ -92,11 +97,16 @@ impl BrowserPane {
         let find_input =
             cx.new(|cx| ComposerInput::with_context("Find in page", "PaletteSearch", cx));
         let subs = vec![
-            cx.subscribe(&url, |this: &mut Self, _, event, cx| {
-                if matches!(event, ComposerInputEvent::Edited) && !this.syncing {
-                    this.url_editing = true;
-                    cx.notify();
+            cx.subscribe(&url, |this: &mut Self, input, event, cx| {
+                if !matches!(event, ComposerInputEvent::Edited) {
+                    return;
                 }
+                // The pane's own write, arriving late. Not typing.
+                if !state::is_user_edit(input.read(cx).text(), &this.last_written) {
+                    return;
+                }
+                this.url_editing = true;
+                cx.notify();
             }),
             cx.subscribe(&find_input, |this: &mut Self, _, event, cx| {
                 if matches!(event, ComposerInputEvent::Edited) {
@@ -109,7 +119,7 @@ impl BrowserPane {
             page_focus: cx.focus_handle(),
             url,
             url_editing: false,
-            syncing: false,
+            last_written: String::new(),
             find_input,
             find_open: false,
             find_focus_pending: false,
