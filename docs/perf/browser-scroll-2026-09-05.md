@@ -36,6 +36,22 @@ $env:SURYA_PUMP_TIMER='pool'; $env:SURYA_SELFTEST_SCROLL=8; .\zeron.exe > scroll
 
 Then `Select-String 'selftest:' *.log`.
 
+## Rehearsal of the scripts, 21:49 to 21:52 (not the baseline)
+
+Build: the PR 2 tree (e68ee56, clock default, without #85), release, dtry, session 1, one run at a time.
+The screen reports 175 Hz (`browser: frame rate 120 (display reports 175 Hz)`), so CEF is capped at 120.
+Lines from `docs/perf/dtry/lines.py runs/*.out.log`:
+
+| run | switch | line |
+| --- | --- | --- |
+| timer | default | `TIMER asked=16ms x30 gpui median=30.9ms min=15.9ms max=31.6ms \| ours median=16.4ms min=16.1ms max=16.8ms pump_timer=clock` |
+| scroll | default (clock) | `SCROLL loaded=1 wheel asked=60 sent=60 over 1652ms cef_frames=210 app_frames=210 pump_timer=clock pump_ms=8 p2d n=209 median=2.8ms p90=5.1ms max=5.6ms` |
+| scroll | `SURYA_PUMP_TIMER=pool` | `SCROLL loaded=1 wheel asked=60 sent=60 over 1721ms cef_frames=223 app_frames=219 pump_timer=pool pump_ms=8 p2d n=219 median=2.9ms p90=4.9ms max=8.2ms` |
+
+Two things to read with the numbers.
+`app_frames` counts renders of the root view, which is what haktui's `renders` counted too; on surya every CEF frame got a render on both paths, so the timer did not decide frames here the way it did in haktui.
+The self-test spaces its sixty wheel events with gpui's 16 ms timer, so on Windows they go out at about 36 a second (`over 1652ms`), the same as haktui's instrument; the two tables compare, and the real cadence is what the line says.
+
 ## Baseline, main with #85 (zero-copy) in, PR #86 instruments
 
 Not measured yet.
