@@ -20,11 +20,12 @@
 //! turns the sandbox on when the answer is "one of them"; it only reports
 //! `Off` when it has a concrete reason, and prints that reason.
 //!
-//! The two are not independent, and this cost a CI run to learn. Chromium
-//! picks the SUID path whenever a `chrome-sandbox` file exists beside the
-//! binary, *before* it looks at whether that file is usable, and if it is
-//! not it stops there rather than trying namespaces. Measured on the CI
-//! runner, 2026-09-05, with the sandbox on and namespaces available:
+//! The two are not independent, and this cost two runs to learn.
+//!
+//! First: Chromium picks the SUID path whenever a `chrome-sandbox` file
+//! exists beside the binary, *before* it looks at whether that file is
+//! usable, and if it is not it stops there rather than trying namespaces.
+//! Measured on the CI runner, 2026-09-05, with namespaces available:
 //!
 //! ```text
 //! browser: sandbox on=true (unprivileged user namespaces)
@@ -37,18 +38,53 @@
 //! The cef crate's build script copies `chrome-sandbox` next to the binary
 //! at mode 0755, so this is the *default* state of a developer build, not an
 //! edge case. `--disable-setuid-sandbox` is what tells Chromium to ignore
-//! that file and use the namespace sandbox it can actually build; the
-//! sandbox stays on. That switch is the reason this module has a
-//! [`switches`] side.
+//! that file, and it is only ever set on the namespace path.
 //!
-//! The measurement for (1) is a real `fork` + `unshare(CLONE_NEWUSER)` in
-//! the child, not a read of `/proc/sys`. Three separate settings can deny
-//! user namespaces (`kernel.unprivileged_userns_clone`,
-//! `user.max_user_namespaces`, and on Ubuntu 24.04 the AppArmor restriction
-//! `kernel.apparmor_restrict_unprivileged_userns`, which is per-profile and
-//! does not show up in a sysctl read at all). The syscall answers all three
-//! at once. The child only calls `unshare` and `_exit`, both plain syscalls,
-//! which is what makes the fork safe in this already-threaded process.
+//! Second, and the reason the namespace path is not the default: with that
+//! switch in, Chromium on this machine refuses the namespace sandbox too.
+//!
+//! ```text
+//! [FATAL:content/browser/zygote_host/zygote_host_impl_linux.cc:128] No
+//! usable sandbox! If you are running on Ubuntu 23.10+ or another Linux
+//! distro that has disabled unprivileged user namespaces with AppArmor,
+//! see .../apparmor-userns-restrictions.md ...
+//! ```
+//!
+//! The message blames AppArmor, and the machine does have
+//! `kernel.apparmor_restrict_unprivileged_userns=1`, but that is not the
+//! mechanism here and three explanations were tested and refuted:
+//!
+//! - AppArmor strips capabilities inside the new namespace. No: a forked
+//!   child reads `CapEff: 000001ffffffffff`, the full set, after
+//!   `unshare(CLONE_NEWUSER)`.
+//! - The restriction is per-binary and an unprofiled binary gets EPERM.
+//!   No: an unprofiled throwaway binary in /tmp, `unshare -U`, and a
+//!   `ctypes` call from python3 all create the namespace successfully.
+//! - The kernel denies nested namespaces. No: `NEWUSER`, `NEWUSER|NEWPID`,
+//!   `NEWUSER|NEWNET` and all three together each return 0.
+//!
+//! So Chromium's own `CanCreateProcessInNewUserNS` refuses for a reason
+//! none of us has shown, and this module does not pretend to know it.
+//!
+//! What follows from that is the policy below. A Chromium that cannot build
+//! its sandbox does not fall back, it aborts, and an aborted Chromium is a
+//! dead pane. A dead pane is worse for the person using this than a working
+//! one that says out loud it is unsandboxed. So:
+//!
+//! | Found | Sandbox | Why |
+//! |---|---|---|
+//! | SUID `chrome-sandbox` | on | proven to work; what `install.sh` sets up |
+//! | nothing | off, loudly | the namespace path cannot be verified in advance |
+//!
+//! `SURYA_SANDBOX=namespace` forces the namespace attempt anyway, for
+//! whoever picks this up next. `SURYA_NO_SANDBOX=1` is the plain off switch.
+//!
+//! One trap for anyone doing this in a *build* directory rather than an
+//! installed one: once `target/debug/chrome-sandbox` is owned by root, the
+//! cef crate's build script can no longer overwrite it and the next build
+//! fails with a bare `Error: Permission denied (os error 13)`. Chown it back
+//! to yourself before rebuilding. The packaged layout has no such problem,
+//! because nothing writes into an installed directory.
 
 /// What the process decided about the sandbox, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,25 +162,35 @@ fn decide() -> Decision {
 
 #[cfg(target_os = "linux")]
 fn platform_decision() -> Decision {
-    match suid_helper() {
-        Some(path) => {
-            let shown = path.display().to_string();
-            Decision::on(format!("SUID helper {shown}"), Some(path))
-        }
-        None => match user_namespaces_available() {
-            // `--disable-setuid-sandbox` is not a weakening. Without it
-            // Chromium sees the mode-0755 chrome-sandbox the cef build
-            // script drops beside the binary, commits to the SUID path, and
-            // aborts; with it, it builds the namespace sandbox instead.
-            true => Decision::on("unprivileged user namespaces", None)
-                .with_switch("disable-setuid-sandbox"),
-            false => Decision::off(
-                "no user namespaces (unshare(CLONE_NEWUSER) refused) and no SUID \
-                 chrome-sandbox beside the binary; run the packaged install.sh, \
-                 which chowns chrome-sandbox to root and sets mode 4755",
-            ),
-        },
+    if let Some(path) = suid_helper() {
+        let shown = path.display().to_string();
+        return Decision::on(format!("SUID helper {shown}"), Some(path));
     }
+    // Opt-in only: see the header for why an unverified namespace sandbox is
+    // not the default.
+    if std::env::var_os("SURYA_SANDBOX").is_some_and(|v| v == "namespace") {
+        return Decision::on("unprivileged user namespaces (SURYA_SANDBOX=namespace)", None)
+            .with_switch("disable-setuid-sandbox");
+    }
+    // This line is what a person reads when their pages are unsandboxed, so
+    // it names the file that was missing and the two commands that fix it.
+    // The kernel's own answer goes in too: it says yes on the machine where
+    // Chromium says no, and that is worth seeing rather than guessing at.
+    let expected = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|d| d.join("chrome-sandbox")))
+        .unwrap_or_else(|| std::path::PathBuf::from("chrome-sandbox"));
+    let shown = expected.display();
+    let kernel_allows_ns = user_namespaces_available();
+    Decision::off(format!(
+        "web pages are NOT sandboxed. {shown} is missing or is not owned by \
+         root with mode 4755. Fix it with: sudo chown root:root {shown} && \
+         sudo chmod 4755 {shown} (the packaged install.sh does this for \
+         you), or give the binary an AppArmor profile with a `userns` rule. \
+         This kernel does allow user namespaces: {kernel_allows_ns}; \
+         Chromium can still refuse them, and SURYA_SANDBOX=namespace makes \
+         it try"
+    ))
 }
 
 // Windows: CEF's sandbox is a link-time decision, not a runtime one. The exe

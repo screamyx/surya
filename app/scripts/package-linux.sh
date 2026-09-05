@@ -105,10 +105,10 @@ if [[ "$BROWSER" == 1 ]]; then
   for name in "${CEF_REQUIRED[@]}"; do
     cp -a "$BUILT/$name" "$STAGE/$name"
   done
-  # chrome-sandbox is Chromium's SUID helper. It ships mode 0755; install.sh
-  # offers to make it root-owned 4755, which is what lets the renderer
-  # sandbox come up on a box where unprivileged user namespaces are denied
-  # (app/crates/browser/src/sandbox.rs).
+  # chrome-sandbox is Chromium's SUID helper. It ships mode 0755, and
+  # install.sh makes it root-owned 4755. That step is what turns the page
+  # sandbox on: without it the app runs each page unsandboxed and says so at
+  # start-up (app/crates/browser/src/sandbox.rs).
   chmod 755 "$STAGE/chrome-sandbox"
   mkdir -p "$STAGE/locales"
   cp -a "$BUILT/locales/." "$STAGE/locales/"
@@ -129,6 +129,7 @@ fi
   echo "run: ./zeron (or ./install.sh, then zeron)"
   if [[ "$BROWSER" == 1 ]]; then
     echo "browser pane: yes, $CEF_VERSION, BSD-3-Clause (CEF-LICENSE.txt, CREDITS.html)"
+    echo "page sandbox: needs the root-owned chrome-sandbox that install.sh sets up"
   else
     echo "browser pane: no"
   fi
@@ -145,17 +146,23 @@ install -Dm644 "$HERE/zeron.png" "$HOME/.local/share/icons/hicolor/1024x1024/app
 command -v update-desktop-database >/dev/null 2>&1 \
   && update-desktop-database "$HOME/.local/share/applications" || true
 
-# The browser pane runs each web page in a sandboxed process. On most systems
-# that needs nothing: Chromium builds the sandbox itself out of user
-# namespaces. Where those are switched off, Chromium instead needs this small
-# helper to be owned by root, which is the one step that asks for a password.
-# Skipping it is safe: the app checks at start-up and says which it used.
+# The browser pane runs each web page in a separate, locked-down process, so
+# that a bad page cannot reach the rest of your machine. Chromium needs this
+# small helper to be owned by root before it can do that, and setting the
+# owner is the one step here that asks for your password.
+#
+# You can skip it. The app still runs, and it prints at start-up that pages
+# are not sandboxed. To do it later, run this script again.
 if [ -f "$HERE/chrome-sandbox" ] && [ "${ZERON_SKIP_SANDBOX_SETUP:-}" != "1" ]; then
   if command -v sudo >/dev/null 2>&1; then
-    echo "Setting up the browser sandbox helper (asks for your password)."
-    sudo chown root:root "$HERE/chrome-sandbox" && sudo chmod 4755 "$HERE/chrome-sandbox" \
-      && echo "Sandbox helper ready." \
-      || echo "Skipped. The app will use user namespaces instead, or tell you if it cannot."
+    echo "Setting up the browser page sandbox (asks for your password)."
+    if sudo chown root:root "$HERE/chrome-sandbox" && sudo chmod 4755 "$HERE/chrome-sandbox"; then
+      echo "Page sandbox ready."
+    else
+      echo "Skipped. Web pages will run unsandboxed; the app will say so when it starts."
+    fi
+  else
+    echo "No sudo here, so the page sandbox is not set up. Web pages will run unsandboxed."
   fi
 fi
 echo "Installed. Make sure ~/.local/bin is on your PATH."
@@ -165,5 +172,8 @@ chmod 755 "$STAGE/install.sh"
 tar -czf "$TARBALL" -C "$OUT_DIR" "$(basename "$STAGE")"
 rm -rf "$STAGE"
 echo "packaged: $TARBALL"
-tar -tzf "$TARBALL" | head -40
 echo "entries: $(tar -tzf "$TARBALL" | wc -l)"
+# `sed -n 1,40p` rather than `head -40`: head closes the pipe, tar dies of
+# SIGPIPE, and under `pipefail` that makes this script exit 141 after having
+# succeeded. sed reads the stream to the end.
+tar -tzf "$TARBALL" | sed -n '1,40p'
