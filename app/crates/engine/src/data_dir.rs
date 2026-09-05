@@ -11,6 +11,12 @@
 //!
 //! Both names are parameters so the rename script only has to flip two
 //! strings, and so this module says nothing about which release it serves.
+//!
+//! STOP THE OLD ENGINE FIRST. A file-by-file copy of a live SQLite database
+//! and its `-wal` is not crash-consistent: the pages can be read at different
+//! moments, and the copy can land unreadable while the original stays fine.
+//! This runs at start, before this engine opens anything, but nothing here can
+//! stop a PREVIOUS engine still writing the old dir.
 
 use std::path::{Path, PathBuf};
 
@@ -83,6 +89,11 @@ pub fn adopt_and_report(home: &Path, current: &str, previous: &str) -> bool {
 /// loop forever.
 fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
+    // `create_dir_all` applies the umask, so a 0700 source dir would come out
+    // 0755 and publish a token or a session file to everyone on the box.
+    // `fs::copy` already carries a file's mode; directories need this.
+    #[cfg(unix)]
+    std::fs::set_permissions(to, from.metadata()?.permissions())?;
     for entry in std::fs::read_dir(from)? {
         let entry = entry?;
         let kind = entry.file_type()?;
@@ -156,6 +167,28 @@ mod tests {
             std::fs::read_to_string(home.join(".surya/ui-settings.json")).unwrap(),
             "mine"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_private_directory_stays_private_through_the_copy() {
+        use std::os::unix::fs::PermissionsExt;
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        write(&home.join(".zeron/secrets/ipc-token"), "t0ken");
+        std::fs::set_permissions(
+            home.join(".zeron/secrets"),
+            std::fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+
+        assert!(adopt_and_report(home, ".surya", ".zeron"));
+        let mode = std::fs::metadata(home.join(".surya/secrets"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o700, "got {mode:o}: the umask must not widen it");
     }
 
     /// The staging dir is the point: a half-copy must not look adopted.
