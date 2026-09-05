@@ -284,7 +284,7 @@ fn surya_light() -> ThemeVariant {
         // Warm off-black, never #000000.
         text: "#26221e",
         muted: "#6a6157",
-        faint: "#8b8176",
+        faint: "#7a7063",
         accent: "#b4552d",
         danger: "#b4342a",
         warning: "#8a5a12",
@@ -326,7 +326,7 @@ fn surya_dark() -> ThemeVariant {
         card: "#2e2922",
         text: "#ece6dc",
         muted: "#a49a8c",
-        faint: "#867d70",
+        faint: "#9a9082",
         accent: "#e08a5a",
         danger: "#e8836b",
         warning: "#e0b062",

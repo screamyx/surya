@@ -675,9 +675,13 @@ impl MotionMode {
     }
 
     /// Resolve against what the OS reports.
-    pub fn resolve(self, system_reduced: bool) -> bool {
+    ///
+    /// Takes a closure, not a bool: on Linux the probe shells out to
+    /// `gsettings`, and an eagerly evaluated argument would pay for that on
+    /// every call including the two that ignore the answer.
+    pub fn resolve(self, system_reduced: impl FnOnce() -> bool) -> bool {
         match self {
-            Self::System => system_reduced,
+            Self::System => system_reduced(),
             Self::Full => false,
             Self::Reduced => true,
         }
@@ -714,15 +718,33 @@ fn probe_system_reduced_motion() -> bool {
 /// portal reports as `prefers-reduced-motion` to browsers and Electron apps.
 /// Absent gsettings (a bare WM, a container) we assume full motion, which is
 /// the same thing every other toolkit does there.
+///
+/// Bounded at two seconds. This runs on the path to the first window, and
+/// `gsettings` talks to dconf over the session bus: with no bus, a wedged
+/// dconf service, or a container missing the socket, an unbounded `output()`
+/// hangs the app before it has drawn anything. Two seconds late is a
+/// preference read wrong; never drawing is the app being broken.
 #[cfg(target_os = "linux")]
 fn probe_system_reduced_motion() -> bool {
-    let Ok(output) = std::process::Command::new("gsettings")
-        .args(["get", "org.gnome.desktop.interface", "enable-animations"])
-        .output()
-    else {
-        return false;
-    };
-    String::from_utf8_lossy(&output.stdout).trim() == "false"
+    let (tx, rx) = std::sync::mpsc::channel();
+    // Detached on purpose: if the probe is still blocked when the deadline
+    // passes we abandon the thread rather than join it, and the send on a
+    // dropped receiver is a harmless error.
+    std::thread::spawn(move || {
+        let reduced = std::process::Command::new("gsettings")
+            .args(["get", "org.gnome.desktop.interface", "enable-animations"])
+            .output()
+            .map(|out| String::from_utf8_lossy(&out.stdout).trim() == "false")
+            .unwrap_or(false);
+        let _ = tx.send(reduced);
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+        Ok(reduced) => reduced,
+        Err(_) => {
+            tracing::warn!("motion: gsettings probe timed out, assuming full motion");
+            false
+        }
+    }
 }
 
 /// Windows: `SPI_GETCLIENTAREAANIMATION` is the documented client-area
@@ -737,7 +759,7 @@ fn probe_system_reduced_motion() -> bool {
 /// Install the resolved preference into gpui. Call at boot and after any
 /// change to the setting.
 pub fn apply_motion_mode(mode: MotionMode, cx: &mut App) {
-    let reduced = mode.resolve(system_reduced_motion());
+    let reduced = mode.resolve(system_reduced_motion);
     tracing::debug!(?mode, reduced, "motion: applying preference");
     set_reduced_motion(cx, reduced);
 }
@@ -770,11 +792,27 @@ mod tests {
     #[test]
     fn motion_mode_resolves_against_the_os() {
         for system in [false, true] {
-            assert_eq!(MotionMode::Full.resolve(system), false);
-            assert_eq!(MotionMode::Reduced.resolve(system), true);
-            assert_eq!(MotionMode::System.resolve(system), system);
+            assert_eq!(MotionMode::Full.resolve(|| system), false);
+            assert_eq!(MotionMode::Reduced.resolve(|| system), true);
+            assert_eq!(MotionMode::System.resolve(|| system), system);
         }
         assert_eq!(MotionMode::default(), MotionMode::System);
+
+        // Only `System` may pay for the probe. On Linux it is a subprocess.
+        for mode in [MotionMode::Full, MotionMode::Reduced] {
+            let mut asked = 0;
+            mode.resolve(|| {
+                asked += 1;
+                true
+            });
+            assert_eq!(asked, 0, "{mode:?} consulted the OS it was told to ignore");
+        }
+        let mut asked = 0;
+        MotionMode::System.resolve(|| {
+            asked += 1;
+            true
+        });
+        assert_eq!(asked, 1, "System must consult the OS exactly once");
     }
 
     #[test]

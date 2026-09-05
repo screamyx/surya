@@ -559,7 +559,7 @@ impl ThemeRegistry {
                     "surya-light"
                 })
             })
-            .expect("the built-in registry always contains both Zeron variants")
+            .expect("the built-in registry always contains both Surya variants")
     }
 
     pub fn validate(&self) -> Vec<ValidationIssue> {
@@ -844,6 +844,38 @@ mod tests {
             assert!(muted >= 4.5, "{id}: muted text {muted:.2}:1 under AA");
             let accent = variant.accent.primary.contrast(colors.background);
             assert!(accent >= 3.0, "{id}: accent {accent:.2}:1 under 3:1");
+
+            // The floating layout paints text on more than one plane, and
+            // only the panel was ever checked. Both planes that carry text
+            // must hold every text role.
+            //
+            // This caught a real hole: `text_faint` was 3.72:1 on the light
+            // panel and 3.56:1 on the dark card, against comet's own stated
+            // intent for the token ("~4.5:1 - AA for body copy").
+            for (plane, surface) in [("panel", colors.background), ("card", colors.card)] {
+                let body = colors.text.contrast(surface);
+                assert!(body >= 12.0, "{id}: text on {plane} {body:.2}:1 under 12:1");
+                let muted = colors.text_muted.contrast(surface);
+                assert!(muted >= 4.5, "{id}: muted on {plane} {muted:.2}:1 under AA");
+                let faint = colors.text_faint.contrast(surface);
+                assert!(faint >= 4.5, "{id}: faint on {plane} {faint:.2}:1 under AA");
+            }
+
+            // The canvas carries no text in this layout - it is the bare
+            // margin between the panels. It is still held to the two roles a
+            // stray label would most likely use, but not to `text_faint`:
+            // forcing AA on a plane nothing writes on would collapse the step
+            // between faint and muted everywhere else for nothing.
+            let body_on_canvas = colors.text.contrast(colors.shell);
+            assert!(
+                body_on_canvas >= 12.0,
+                "{id}: text on canvas {body_on_canvas:.2}:1 under 12:1"
+            );
+            let muted_on_canvas = colors.text_muted.contrast(colors.shell);
+            assert!(
+                muted_on_canvas >= 4.5,
+                "{id}: muted on canvas {muted_on_canvas:.2}:1 under AA"
+            );
 
             // The canvas and the panel must be visibly different planes: the
             // floating layout has nothing else to separate a card from the

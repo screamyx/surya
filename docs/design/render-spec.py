@@ -1,5 +1,10 @@
 import re, json, pathlib
-src = pathlib.Path('/store/agent-worktrees/surya-theme/app/crates/theme/src/builtins.rs').read_text()
+
+# The repo root, two levels up from docs/design/. Keeps the script runnable
+# from any checkout and any working directory.
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+OUT = pathlib.Path('/tmp')
+src = (ROOT / 'app/crates/theme/src/builtins.rs').read_text()
 
 def seeds(fn):
     body = src.split(f'fn {fn}() -> ThemeVariant {{')[1].split('\n}')[0]
@@ -11,7 +16,7 @@ def seeds(fn):
 
 light, dark = seeds('surya_light'), seeds('surya_dark')
 
-surya = pathlib.Path('/store/agent-worktrees/surya-theme/app/crates/ui/src/surya.rs').read_text()
+surya = (ROOT / 'app/crates/ui/src/surya.rs').read_text()
 def const(name):
     m = re.search(rf'pub const {name}: f32 = ([0-9.]+)', surya)
     return float(m.group(1))
@@ -100,5 +105,5 @@ body {{ font-family: Inter, "DejaVu Sans", system-ui, sans-serif; -webkit-font-s
 
 for name, t, d in [('light', light, False), ('dark', dark, True)]:
     html = f'<!doctype html><meta charset=utf-8><style>{css}</style>{scene(t, d)}'
-    pathlib.Path(f'/tmp/surya-spec-{name}.html').write_text(html)
+    (OUT / f'surya-spec-{name}.html').write_text(html)
 print(json.dumps({'light':light,'dark':dark,'geom':G}, indent=1))
