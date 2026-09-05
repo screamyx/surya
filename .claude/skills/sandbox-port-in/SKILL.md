@@ -1,5 +1,6 @@
 ---
 name: sandbox-port-in
+invocation: model
 description: Bring a named native GPUI screen into the surya browser sandbox with its Rust component and helper boundaries intact. Use for requests to bring or port a screen into the sandbox.
 ---
 

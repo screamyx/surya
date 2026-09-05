@@ -1,5 +1,6 @@
 ---
 name: sandbox-port-back
+invocation: model
 description: Carry an accepted surya sandbox screen diff and CHANGES.md back into the existing Rust GPUI render. Use when asked to apply a browser design change to the native app.
 ---
 
@@ -8,6 +9,22 @@ description: Carry an accepted surya sandbox screen diff and CHANGES.md back int
 ## Worked example: carry the same side-padding change back
 
 The accepted React change is `px-0.5` to `px-1` in the question-row render helper.
+
+Before: the existing native helper shared by both specimens.
+
+```rust
+pub fn row_line(theme: &Theme, first: bool) -> Div {
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.0))
+        .px(px(2.0))
+        .py(px(10.0))
+        .when(!first, |el| {
+            el.border_t_1().border_color(theme.border)
+        })
+}
+```
 
 Wrong: [patch specimen](../../../sandbox/examples/port-back/wrong.mjs), `after`.
 

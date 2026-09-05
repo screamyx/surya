@@ -112,13 +112,15 @@ export function lintTree(directory = root) {
     for (const item of readdirSync(path)) {
       if (path === directory && ['node_modules', 'dist', '.git'].includes(item)) continue;
       const absolute = resolve(path, item), rel = relative(directory, absolute).replaceAll('\\', '/');
+      if (rel === 'annotate/.state') continue; // Local review history, never source.
+      const tooling = rel.startsWith('annotate/');
       const stat = lstatSync(absolute);
       if (stat.isSymbolicLink()) { errors.push(`${rel}: symlinks bypass source checks`); continue; }
       if (stat.isDirectory()) { walk(absolute); continue; }
-      if (/\.(css|scss|sass|less)$/i.test(item) && rel !== 'src/tailwind.css') errors.push(`${rel}: extra stylesheet`);
+      if (/\.(css|scss|sass|less)$/i.test(item) && rel !== 'src/tailwind.css' && !tooling) errors.push(`${rel}: extra stylesheet`);
       if (rel.startsWith('src/') && /\.[cm]?[jt]sx?$/.test(item)) errors.push(...lintSource(readFileSync(absolute, 'utf8'), rel));
       if (rel.startsWith('src/') && !['.tsx', '.ts', '.css'].includes(extname(item))) errors.push(`${rel}: unsupported source file`);
-      if (/\.(tsx?|mjs|json|md|css|html)$/.test(item)) {
+      if (/\.(tsx?|m?js|json|md|css|html)$/.test(item)) {
         const content = readFileSync(absolute, 'utf8');
         if (content.split('\n').length - 1 > 500) errors.push(`${rel}: over 500 lines`);
         if (/\p{Extended_Pictographic}|\uFE0F|\u20E3/u.test(content)) errors.push(`${rel}: emoji forbidden`);

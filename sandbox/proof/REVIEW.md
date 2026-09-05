@@ -95,3 +95,51 @@ rounds. The proof rerun used the newer installed Chromium (1243 cache instead of
 1228); heading bounds were 101px wide versus 100.640625px in the original capture,
 with x/y, height and row bounds unchanged. The original comparison artifacts remain
 as the baseline; fresh four-state comparisons are at `/tmp/surya-sandbox-round2-proof`.
+
+## Round three: annotation proxy and final skill nits
+
+The bespoke lavish-live fork fronts Vite directly, stamps host elements with
+`sandbox/src/...:line:column`, and uses native semantic colors for its shadow-root
+review chrome. No session stack, registry, backend rewriting, Vue lookup,
+service-worker handling or agent messaging command was carried over.
+
+Author gates: `npm run lint`, all 26 tests, and `npm run build` pass. Annotation
+browser proof passes with real Vite and Chromium: light/dark question-row pins,
+390px portrait touch on the rail, draft persistence across reload, CLI polling,
+reply then done, pin reopening, refresh, theme/fixture isolation, and a clean
+unproxied Vite page. A real temporary source-line shift updates through HMR on
+the proxy's own origin; the original source is restored. The screen still has
+its existing desktop layout on a phone (405px layout viewport at a 390px device).
+
+Capture review found and fixed the copied touch handler's synthetic click
+retargeting to the newly opened backdrop. The regression is exercised by the
+phone proof. Pin controls use 44px targets and open on tap; no action needs hover.
+The screenshots are [dark](annotate-dark.png), [light](annotate-light.png), and
+[portrait touch](annotate-dark-touch.png). Exact received JSON lines are in
+[annotate-pins.jsonl](annotate-pins.jsonl); both question-row pins resolve to
+`sandbox/src/screens/needs_you/rows.tsx:7:5`. Proof comments are test data, so they
+do not become accepted design edits in CHANGES.md.
+
+The whitelist exemption covers annotation tooling only. Screen imports still
+cannot reach it; all tooling remains subject to the 500-line and no-emoji gates.
+Tailwind explicitly scans only screen source to keep tooling out of the bundle.
+Both retained proxy tests and new lifecycle, invalid-input and tooling-boundary
+tests pass. All three skills now use the repo's `invocation: model` frontmatter;
+the port-back example quotes its tested native before fragment above the pair.
+
+Repository gates report `SKILL.md: 304/320 lines, 11 always-on rules checked,
+7 rule file(s), 7 routed.` and `Scanned 222 file(s). OK: no emoji in UI output or
+taste files.` The 304/320 figure is a line budget, not failing checks. No extra
+router rows were added in round three.
+
+Tailnet status has no private HTTPS mapping for the local annotator at :5178.
+The tool prints `tailscale serve --bg --https=8515 http://127.0.0.1:5178`; this
+command was not run. Remote reachability therefore remains unverified. Loopback
+HTTP and the forwarded HMR path are proven; this is browser tooling proof, not
+Windows RC proof. Native screen and contrast gaps above remain recorded.
+
+The original four-frame screen proof was rerun successfully after this change,
+including all 16 frame actions. Fresh baseline captures and measurements are at
+`/tmp/surya-sandbox-round3-proof`; the existing comparison images remain unchanged
+because no screen render code changed. Start, stop and status were also exercised
+against the real local annotator.

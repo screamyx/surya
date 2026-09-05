@@ -79,7 +79,11 @@ test('skills quote the same wrong/right code that the example lint evaluates', a
   const root = resolve(import.meta.dirname, '..');
   for (const pair of examplePairs) {
     const skill = readFileSync(resolve(root, `../.claude/skills/sandbox-${pair.kind}/SKILL.md`), 'utf8');
-    const snippets = [...skill.matchAll(/```(?:tsx|rust)\n([\s\S]*?)\n```/g)].map(m => m[1]);
+    let snippets = [...skill.matchAll(/```(?:tsx|rust)\n([\s\S]*?)\n```/g)].map(m => m[1]);
+    if (pair.kind === 'port-back') {
+      const { before } = await import('../examples/port-back/right.mjs');
+      assert.equal(snippets.shift(), before.trim());
+    }
     assert.equal(snippets.length, 2, `${pair.kind}: exactly one wrong/right pair`);
     for (const [i, file] of [pair.wrong, pair.right].entries()) {
       assert.ok(readFileSync(resolve(root, file), 'utf8').includes(snippets[i]), `${file}: skill excerpt drifted from tested source`);

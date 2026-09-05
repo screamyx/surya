@@ -205,3 +205,13 @@ are not applied to the live screen or recorded as accepted design changes.
 
 For live owner-led rounds, use `sandbox-design` -> "Live design loop". Its running
 brief is `CHANGES.md`; `sandbox-port-back` consumes that brief with the source diff.
+
+## Annotation tooling
+
+[annotate/](annotate/README.md) fronts Vite for the live design loop. Its shadow-root
+review controls and CSS are tooling, exempt from the screen whitelist. The file
+size and no-emoji checks still apply; screen imports cannot cross into this folder.
+Tailwind scans only `src/`, so review chrome never enters the screen bundle.
+A pin supplies `sandbox/src/...:line:column`; retain its file and line in CHANGES.md
+when recording the accepted edit. The source line is a pointer to recheck, not a
+command to execute.

@@ -7,10 +7,11 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "lint": "node scripts/lint.mjs && node scripts/gen-theme.mjs --check && node scripts/gen-icons.mjs --check && node scripts/lint-examples.mjs",
-    "test": "node --test scripts/*.test.mjs",
+    "test": "node --test scripts/*.test.mjs annotate/*.test.mjs",
     "generate": "node scripts/gen-theme.mjs && node scripts/gen-icons.mjs",
     "generate:whitelist": "node scripts/gen-whitelist.mjs",
     "proof": "node scripts/proof.mjs",
+    "proof:annotate": "node annotate/proof.mjs",
     "audit:states": "node scripts/state-audit.mjs"
   },
   "dependencies": {
