@@ -64,6 +64,7 @@ Copy-Item $exe (Join-Path $dist "zeron.exe")
 Get-ChildItem (Join-Path $target "release") -Filter *.dll -ErrorAction SilentlyContinue |
     ForEach-Object { Copy-Item $_.FullName $dist }
 Copy-Item (Join-Path $PSScriptRoot "surya.cmd") (Join-Path $dist "surya.cmd")
+$cefVersion = $null
 if ($Browser) {
     # The cef crate's build script copied Chromium's runtime files (libcef.dll,
     # chrome_elf.dll, *.pak, icudtl.dat, *.bin, locales\) next to the exe in
@@ -78,15 +79,27 @@ if ($Browser) {
     Get-ChildItem (Join-Path $release "*") -File -Include $cefFiles |
         ForEach-Object { Copy-Item $_.FullName $dist -Force }
     Copy-Item (Join-Path $release "locales") (Join-Path $dist "locales") -Recurse -Force
+    # Licence and version: CEF is BSD-3-Clause, Chromium's third-party
+    # notices are CREDITS.html from the CEF binary; archive.json names the
+    # exact CEF + Chromium build that was downloaded.
+    Copy-Item (Join-Path $PSScriptRoot "CEF-LICENSE.txt") $dist
+    $credits = Join-Path $release "CREDITS.html"
+    if (Test-Path $credits) { Copy-Item $credits $dist }
+    $archive = Join-Path $release "archive.json"
+    if (Test-Path $archive) {
+        $m = [regex]::Match((Get-Content $archive -Raw), 'cef_binary_([^+]+)\+g[0-9a-f]+\+chromium-([0-9.]+)')
+        if ($m.Success) { $cefVersion = "CEF $($m.Groups[1].Value), Chromium $($m.Groups[2].Value)" }
+    }
+    if (-not $cefVersion) { $cefVersion = "CEF (version unknown: no archive.json beside the exe)" }
     $shipped = @(Get-ChildItem $dist -File).Count
-    Write-Host "== browser: shipped $shipped files (helper + CEF runtime) and locales\"
+    Write-Host "== browser: $cefVersion; shipped $shipped files (helper + CEF runtime) and locales\"
 }
 @(
     "surya windows app",
     "commit: $Sha",
     "built: $(Get-Date -Format o) on $env:COMPUTERNAME",
     "run: surya.cmd (see docs\quickstart.md)",
-    "browser pane: $(if ($Browser) { 'yes (CEF)' } else { 'no' })"
+    "browser pane: $(if ($Browser) { "yes, $cefVersion, BSD-3-Clause (CEF-LICENSE.txt, CREDITS.html)" } else { 'no' })"
 ) | Out-File -Encoding utf8 (Join-Path $dist "VERSION.txt")
 
 $zip = Join-Path $Root "dist\surya-windows-$Sha.zip"
