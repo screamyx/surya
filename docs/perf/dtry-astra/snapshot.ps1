@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][ValidateSet('threaded', 'latency', 'present')][string]$Name)
+param([Parameter(Mandatory=$true)][ValidateSet('threaded', 'latency', 'present', 'combined', 'instrumented')][string]$Name)
 $ErrorActionPreference = 'Stop'
 $source = 'E:\surya-astra-target\release'
 $destination = "E:\surya-astra-bin-$Name"

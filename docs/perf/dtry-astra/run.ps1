@@ -11,7 +11,7 @@ $env:SURYA_BROWSER_URL = 'https://example.com'
 $env:SURYA_CEF_CACHE = "$data\cef"
 $env:SURYA_CEF_GPU = '1'
 $env:RUST_LOG = 'info'
-foreach ($key in 'ZERON_ENGINE', 'ZERON_ENGINE_TOKEN', 'SURYA_CEF_THREADED', 'SURYA_BROWSER_ZERO_COPY', 'SURYA_BROWSER_ZERO_COPY_PROBE', 'SURYA_SELFTEST_SCROLL', 'SURYA_SELFTEST_ANIM', 'SURYA_SELFTEST_TIMER', 'SURYA_PUMP_TIMER', 'SURYA_FRAME_LATENCY', 'SURYA_CEF_FPS', 'SURYA_PRESENT_WAITABLE', 'SURYA_ASTRA_BUILD') {
+foreach ($key in 'ZERON_ENGINE', 'ZERON_ENGINE_TOKEN', 'SURYA_CEF_THREADED', 'SURYA_BROWSER_ZERO_COPY', 'SURYA_BROWSER_ZERO_COPY_PROBE', 'SURYA_SELFTEST_SCROLL', 'SURYA_SELFTEST_ANIM', 'SURYA_SELFTEST_TIMER', 'SURYA_PUMP_TIMER', 'SURYA_FRAME_LATENCY', 'SURYA_CEF_FPS', 'SURYA_PRESENT_WAITABLE', 'SURYA_EXTERNAL_BEGIN_FRAME', 'SURYA_COARSE_TIMER', 'SURYA_PUMP_MS', 'SURYA_ASTRA_BUILD') {
   Remove-Item "Env:$key" -ErrorAction SilentlyContinue
 }
 foreach ($line in Get-Content "$runs\$Name.env") {
@@ -19,7 +19,7 @@ foreach ($line in Get-Content "$runs\$Name.env") {
 }
 $build = $env:SURYA_ASTRA_BUILD
 if (-not $build) { $build = 'working' }
-if ($build -notin @('working', 'threaded', 'latency', 'present')) { throw "Unknown Astra build: $build" }
+if ($build -notin @('working', 'threaded', 'latency', 'present', 'combined', 'instrumented')) { throw "Unknown Astra build: $build" }
 $exe = if ($build -eq 'working') { 'E:\surya-astra-target\release\zeron.exe' } else { "E:\surya-astra-bin-$build\zeron.exe" }
 if (-not (Test-Path $exe)) { throw "Missing Astra executable: $exe" }
 $helper = Join-Path (Split-Path $exe) 'zeron-browser-helper.exe'
