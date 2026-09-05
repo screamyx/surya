@@ -15,7 +15,10 @@
 #   SURYA_XTEST_PYTHON=/store/agent-worktrees/surya-browser-ui/.xtest-venv/bin/python
 #
 # A click that fails now ends the run with exit 5 and writes no png, rather
-# than returning a green-looking frame of a screen nobody drove.
+# than returning a green-looking frame of a screen nobody drove. A grab that
+# comes back black ends it with exit 6, on the same reasoning. Both need the
+# thing they check to be checkable: without Pillow the black test cannot run
+# and the frame is reported UNVERIFIED.
 set -euo pipefail
 OUT=${1:?out dir}; ZERON=${2:-${CARGO_TARGET_DIR:-target}/debug/zeron}
 PROJECT=${3:-$(cd "$(dirname "$0")/../.." && pwd)}
@@ -106,7 +109,18 @@ shoot() { # shoot <name> <mode> <geom> <extra env...>
   kill $APP 2>/dev/null || true; wait $APP 2>/dev/null || true
   local panics; panics=$(grep -c "panicked at" "$WORK/app-$name.log" || true)
   # A grab with <= 2 colours is a black display, not a frame (10:44 incident).
+  # Counting them needs Pillow. With it, a black grab is fatal and no png
+  # survives; without it, say so loudly rather than imply the frame was
+  # checked, because "colours=?" next to "shot=1" reads as a pass.
   local colours; colours=$(python3 -c "from PIL import Image; im=Image.open('$OUT/$name.png').convert('RGB'); print(len(im.getcolors(1<<20) or [0]*3000))" 2>/dev/null || echo "?")
+  if [ "$colours" = "?" ]; then
+    echo "WARN: no Pillow here, so a black display cannot be told from a frame; $name is UNVERIFIED" >&2
+  elif [ "$colours" -le 2 ]; then
+    rm -f "$OUT/$name.png"
+    echo "shot=0 frames=0 FAILED: $name is a black display, not a frame (colours=$colours)" >&2
+    echo "the X server mapped the window but never presented; see the display notes in AGENTS.md" >&2
+    exit 6
+  fi
   echo "shot=1 bytes=$(stat -c %s "$OUT/$name.png") colours=$colours panics=$panics out=$OUT/$name.png"
   case "$name" in *browser*) grep -E "browser: (on_paint #1|load_end|LOAD ERROR)" "$WORK/app-$name.log" | head -3 || true;; esac
   grep -E "ZERON_OPEN_PANE" "$WORK/app-$name.log" | head -1 || true
