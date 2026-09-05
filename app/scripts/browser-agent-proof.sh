@@ -63,7 +63,9 @@ grep -q "IPC server listening" "$OUT/engine.log" || { echo "engine did not liste
 # 2. A space and a chat, so the app has a transcript to show.
 node - "$PORT" "$OUT/www" seed <<'JS'
 const [port, project] = process.argv.slice(2);
-const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+// The engine enforces the token on its socket once ZERON_IPC_TOKEN is set
+// (engine ipc.rs, enforces_token), loopback included: dial with it.
+const ws = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { Authorization: `Bearer ${process.env.ZERON_IPC_TOKEN}` } });
 let id = 0; const pending = new Map();
 const call = (method, params) => new Promise((ok, err) => {
   const n = ++id; pending.set(n, { ok, err }); ws.send(JSON.stringify({ id: n, method, params }));
@@ -90,17 +92,28 @@ ZERON_DATA_DIR="$OUT/ui" ZERON_IPC_PORT=$PORT ZERON_OPEN_PANE=browser \
   SURYA_BROWSER_DUMP="$OUT/frames" RUST_LOG=info ZERON_WINDOW_SIZE=${W}x${H} \
   "$BIN" > "$OUT/zeron.log" 2>&1 &
 APP=$!
-sleep 10; command -v xrefresh >/dev/null && xrefresh
-for _ in $(seq 1 "$WAIT"); do grep -q "browser-agent: attached" "$OUT/zeron.log" 2>/dev/null && break; sleep 1; done
+# On :7 (no compositor) the window paints only on an expose, and until it
+# does the pane's view is 0x0: CEF paints a default 800x600 nobody sees and
+# Page.captureScreenshot waits for a frame that never comes. So expose it
+# every few seconds until the pane says it is visible, before the turn.
+sleep 10
+for i in $(seq 1 "$WAIT"); do
+  [ $(( i % 5 )) -eq 1 ] && command -v xrefresh >/dev/null && xrefresh
+  grep -q "browser-agent: attached" "$OUT/zeron.log" 2>/dev/null && grep -q "browser: visible=1" "$OUT/zeron.log" 2>/dev/null && break
+  sleep 1
+done
 ATTACHED=$(grep -c "browser-agent: attached" "$OUT/zeron.log"); ATTACHED=${ATTACHED:-0}
-echo "attached=$ATTACHED after the wait"
+VISIBLE=$(grep -c "browser: visible=1" "$OUT/zeron.log"); VISIBLE=${VISIBLE:-0}
+echo "attached=$ATTACHED visible=$VISIBLE after the wait"
 # Let CEF finish its first (blank) load before the agent's turn.
 for _ in $(seq 1 60); do grep -q "browser: load_end" "$OUT/zeron.log" 2>/dev/null && break; sleep 1; done
 
 # 4. The agent's turn: one run on the chat; the mock calls the four tools.
 node - "$PORT" "$OUT/www" run <<'JS'
 const [port, project] = process.argv.slice(2);
-const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+// The engine enforces the token on its socket once ZERON_IPC_TOKEN is set
+// (engine ipc.rs, enforces_token), loopback included: dial with it.
+const ws = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { Authorization: `Bearer ${process.env.ZERON_IPC_TOKEN}` } });
 let id = 0; const pending = new Map();
 const call = (method, params) => new Promise((ok, err) => {
   const n = ++id; pending.set(n, { ok, err }); ws.send(JSON.stringify({ id: n, method, params }));
