@@ -1,10 +1,11 @@
 # Rename runbook: zeron -> surya
 
 Run this on frozen main, after the last feature PR merges.
-It touches 293 files, so nothing rebases across it.
+It touches 295 files, so nothing rebases across it.
 
-Dry-run source for every number below: main `77048b0`, 2026-09-05 11:27, on a
-throwaway clone under `/store/surya-rename-dryrun/`.
+Dry-run source for every number below: main `3dfcf38` plus this script's fix,
+2026-09-05 11:45, on a throwaway clone. The counts grow as main grows - a
+small drift is normal, a sudden drop is not.
 
 ## The commands
 
@@ -19,7 +20,14 @@ cd app
 cargo check --workspace --all-targets
 cargo test --jobs 2 -p surya-proto -p surya-doc -p surya-rpc \
                     -p surya-engine -p surya-harness -p surya-mcp
+cargo test --jobs 2 -p surya-a2ui
+SURYA_SMOKE_CARGO=cargo scripts/smoke.sh
 ```
+
+Those are CI's three jobs, in CI's order - the a2ui test and the smoke are
+two steps of one job.
+The smoke is a required check and links `-p surya`, so it is the slowest and
+the one most likely to show a rename that only breaks at run time.
 
 The second apply is not optional.
 It is the only check that catches a rule which rewrites its own output, and
@@ -29,18 +37,18 @@ that class of bug has now been found three times in this script.
 
 | Line | Expect | Meaning |
 | --- | --- | --- |
-| `files in scope` | 293 | grows with main; a sudden drop means the scope broke |
-| `files_changed` | 293 | first run |
+| `files in scope` | 295 | grows with main; a sudden drop means the scope broke |
+| `files_changed` | 295 | first run |
 | `paths_moved` | 6 | `apps/zeron`, three `dist/` assets, the ui logo, the theme-import bin |
 | `files_routed` | 6 | env reads sent through the compat alias |
 | `user_set_reads_still_direct` | 1 | `crates/mcp/src/tasks.rs`, deliberate |
 | `compat_blocks_added` | 3 | links.rs, lib.rs, daemon.rs |
 | `cargo_update` | `ok` | the lock regenerated |
-| `zeron_hits_before / after` | 2736 / 319 | every remaining hit is listed below |
+| `zeron_hits_before / after` | 2772 / 322 | every remaining hit is listed below |
 | `missed` | 0 | the scope-drift guard found nothing |
 
 Second and third run: `files_changed=0 paths_moved=0 compat_blocks_added=0`,
-and `files in scope` drops to 22 (the files that keep the old name on purpose).
+and `files in scope` drops to 23 (the files that keep the old name on purpose).
 
 ## If a step fails
 
@@ -55,17 +63,17 @@ The script edits in place.
 If anything above fires, `git checkout -- .` and start again - it is
 re-runnable on any clean main, and takes about three seconds.
 
-## The 319 hits it leaves, all deliberate
+## The 322 hits it leaves, all deliberate
 
 Counted the way the script counts: `rg` over `app deploy docs .github`.
-The eight rows sum to exactly 319.
+The eight rows sum to exactly 322.
 
 | Hits | Where | Why |
 | --- | --- | --- |
 | 250 | `apps/ios`, `edge/`, `apps/landing`, `apps/www-redirect` | out of scope, rows 13-15 |
 | 24 | `theme/src/{builtins,vscode,lib}.rs`, `ui/src/theme.rs` | `zeron-dark`, `zeron-light`, their family and display names are user state in `ui-settings.json` (row 19) |
 | 15 | `crates/engine/src/data_dir.rs` | the module that adopts the old dir, excluded from the rename |
-| 10 | `docs/` | the rename plan and notes, which have to name both words |
+| 13 | `docs/` | the rename plan and notes, which have to name both words |
 | 7 | `ui/src/{markdown/parser,transcript}.rs`, `harness/{src/adapter_install,tests/managed_install*}.rs` | `zeronsh/comet` provenance links (rows 16-17) |
 | 6 | `app/docs/`, `app/README*.md` | same |
 | 4 | `apps/surya/src/{main,update_cli}.rs` | `zeron.sh` and `edge.zeron.sh`, the domain until surya has one (row 10) |
