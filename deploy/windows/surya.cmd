@@ -17,8 +17,9 @@ if not exist "%ZERON_DATA_DIR%" mkdir "%ZERON_DATA_DIR%"
 set "SURYA_EXTRA_ARGS=%*"
 set "SURYA_EXE=%~dp0zeron.exe"
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$a = @('--headless', $env:SURYA_EXE); $cfg = Join-Path $env:SURYA_HOME 'servers.json';" ^
+  "$dq = [string][char]34; $q = { param($s) if ($s -match ('[\s' + $dq + ']')) { $dq + $s.Replace($dq, '\' + $dq) + $dq } else { $s } };" ^
+  "$a = @('--headless', (& $q $env:SURYA_EXE)); $cfg = Join-Path $env:SURYA_HOME 'servers.json';" ^
   "if (Test-Path $cfg) { $j = Get-Content -Raw $cfg | ConvertFrom-Json; if ($j.engine) { $a += @('--engine', $j.engine); if ($j.token) { $a += @('--engine-token', $j.token) } } };" ^
-  "if ($env:SURYA_EXTRA_ARGS) { $a += ($env:SURYA_EXTRA_ARGS -split ' ' | Where-Object { $_ }) };" ^
+  "if ($env:SURYA_EXTRA_ARGS) { $a += ([regex]::Matches($env:SURYA_EXTRA_ARGS, ($dq + '([^' + $dq + ']*)' + $dq + '|(\S+)')) | ForEach-Object { if ($_.Groups[1].Success) { & $q $_.Groups[1].Value } else { $_.Value } }) };" ^
   "Start-Process -FilePath conhost.exe -ArgumentList $a -WindowStyle Hidden"
 endlocal

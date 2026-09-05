@@ -2683,6 +2683,22 @@ impl Shell {
         AppState::bootstrap(self.state.clone(), self.boot.clone(), cx);
     }
 
+    /// The boot dial to a saved server failed: forget it as the active server
+    /// (persisted, so the next launch does not repeat the failure), boot the
+    /// local engine, and optionally land on Settings -> Servers to fix the
+    /// entry. The Failed gate used to offer Retry only, so a bad saved server
+    /// (a wrong port, say) locked the user out until they edited
+    /// ui-settings.json by hand.
+    fn leave_failed_server(&mut self, open_servers: bool, cx: &mut Context<Self>) {
+        self.settings.active_server = None;
+        self.schedule_save(cx);
+        self.switch_engine(None, cx);
+        if open_servers {
+            self.open_settings(SettingsSection::Servers, cx);
+        }
+        cx.notify();
+    }
+
     /// Swap the engine the whole app talks to: a saved server (`Some`) or the
     /// local engine (`None`). An embedded engine drains and releases its data
     /// dir first; a network engine is simply left running for whoever else
@@ -7592,6 +7608,36 @@ impl Shell {
                         .on_click(cx.listener(|this, _, _, cx| this.retry_engine(cx)))
                         .child(SharedString::from("Retry")),
                 )
+                // A saved server that will not answer must not lock the user
+                // out: two ways past the gate that do not need a text editor
+                // (owner, dtry, 2026-09-05: a saved pc-ajim:22 entry).
+                .children(self.boot.remote.is_some().then(|| {
+                    let hover = theme.glass_hover();
+                    let button = |id: &'static str, label: &str| {
+                        div()
+                            .id(id)
+                            .px(px(12.0))
+                            .py(px(6.0))
+                            .rounded(px(8.0))
+                            .border_1()
+                            .border_color(theme.border)
+                            .text_size(crate::typography::ui_rems(13.0))
+                            .text_color(theme.text)
+                            .cursor_pointer()
+                            .hover(move |s| s.bg(hover))
+                            .child(SharedString::from(label.to_string()))
+                    };
+                    div()
+                        .flex()
+                        .gap(px(Theme::SPACE_MD))
+                        .child(button("use-local-engine", "Use this computer").on_click(
+                            cx.listener(|this, _, _, cx| this.leave_failed_server(false, cx)),
+                        ))
+                        .child(button("fix-server", "Fix the server\u{2026}").on_click(
+                            cx.listener(|this, _, _, cx| this.leave_failed_server(true, cx)),
+                        ))
+                        .into_any_element()
+                }))
                 .into_any_element(),
             // Login card (zeron App.tsx Gate): centered card on the grid —
             // logo, "Log in to Zeron", copy, full-width white Log in button.

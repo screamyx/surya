@@ -416,3 +416,54 @@ pub async fn connect_ws_with_token(url: &str, token: Option<&str>) -> Result<Rpc
     });
     Ok(RpcClient::new(out_tx, in_rx))
 }
+
+#[cfg(test)]
+mod connect_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+    use tokio::io::AsyncWriteExt;
+
+    async fn listener() -> (tokio::net::TcpListener, String) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        (listener, url)
+    }
+
+    /// An sshd on the dialed port answers with its banner, not HTTP: the dial
+    /// must fail at once, not sit in the 5 s window (asked=1 failed_fast=1).
+    #[tokio::test]
+    async fn a_non_http_endpoint_fails_fast() {
+        let (listener, url) = listener().await;
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let _ = socket.write_all(b"SSH-2.0-OpenSSH_9.6\r\n").await;
+            tokio::time::sleep(Duration::from_secs(20)).await;
+        });
+        let started = Instant::now();
+        let err = connect_ws_with_token(&url, None)
+            .await
+            .err()
+            .expect("an SSH banner is not a websocket handshake");
+        assert!(started.elapsed() < Duration::from_secs(4), "took {:?}", started.elapsed());
+        assert!(matches!(err, RpcError::Transport(_)), "{err:?}");
+    }
+
+    /// A port that accepts and then says nothing is capped by CONNECT_TIMEOUT
+    /// (asked=1 timed_out=1); without the cap the app would wait forever.
+    #[tokio::test]
+    async fn a_silent_endpoint_times_out() {
+        let (listener, url) = listener().await;
+        tokio::spawn(async move {
+            let (_socket, _) = listener.accept().await.unwrap();
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        });
+        let started = Instant::now();
+        let err = connect_ws_with_token(&url, None)
+            .await
+            .err()
+            .expect("a silent endpoint must time out");
+        assert!(err.to_string().contains("timed out"), "{err}");
+        let took = started.elapsed();
+        assert!(took >= Duration::from_secs(4) && took < Duration::from_secs(8), "took {took:?}");
+    }
+}
