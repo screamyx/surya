@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use futures::future::Either;
 use gpui::{Context, Task};
-use serde_json::{Value, json};
+use serde_json::json;
 use zeron_rpc::methods;
 
 use crate::state::{AppState, EngineHandle};
@@ -93,7 +93,7 @@ pub fn spawn(cx: &mut Context<AppState>, handle: EngineHandle) -> Task<()> {
 
 /// The shape of one reply, kept in one place so the test pins it.
 #[cfg(test)]
-fn reply_for(id: u64, result: Result<Value, String>) -> Value {
+fn reply_for(id: u64, result: Result<serde_json::Value, String>) -> serde_json::Value {
     match result {
         Ok(ok) => json!({ "id": id, "ok": ok }),
         Err(error) => json!({ "id": id, "error": error }),
