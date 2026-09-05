@@ -254,6 +254,10 @@ impl TasksPane {
                 .child(
                     div()
                         .flex_1()
+                        // The input reports a wide minimum; without this the
+                        // row overflows and pushes the button out of the column.
+                        .min_w(px(0.0))
+                        .overflow_hidden()
                         .px(px(10.0))
                         .py(px(6.0))
                         .rounded(px(8.0))
@@ -266,6 +270,7 @@ impl TasksPane {
                 .child(
                     div()
                         .id("task-quick-add-go")
+                        .flex_none()
                         .w(px(28.0))
                         .h(px(28.0))
                         .rounded(px(8.0))
