@@ -378,7 +378,12 @@ pub fn render_block(
                         .min_w(px(18.0))
                         .text_size(crate::typography::ui_rems(MD_TEXT_SIZE))
                         .line_height(crate::typography::ui_rems(MD_LINE_HEIGHT))
-                        .text_color(theme.accent)
+                        // An ordered-list marker is punctuation, not an
+                        // action. Painting every "1." in the accent spends
+                        // the one loud colour on numbering, so when a real
+                        // action arrives it has nothing left (design critic
+                        // round 2, T2).
+                        .text_color(theme.text_muted)
                         .child(SharedString::from(format!("{}.", start + item_ix as u64)))
                         .into_any_element(),
                     None => div()
@@ -615,12 +620,22 @@ pub struct FlatText {
     pub code_ranges: Vec<Range<usize>>,
 }
 
-/// Inline-code tint: a text-safe use of the selected accent identity.
+/// Inline code reads as text, on a neutral wash.
+///
+/// It used to take the accent identity (`theme.code_text` / `code_wash`),
+/// which put the one loud colour on every backticked word in a reply. In a
+/// technical transcript that is most of the nouns, so a paragraph became a
+/// field of orange and a real action had nothing left to stand out with
+/// (design critic round 2, T2). The accent tokens stay on [`Theme`] for
+/// anything that genuinely wants them.
 pub fn inline_code_text(theme: &Theme) -> Hsla {
-    theme.code_text
+    theme.text
 }
 pub fn inline_code_wash(theme: &Theme) -> Hsla {
-    theme.code_wash
+    crate::theme::wash(match theme.appearance {
+        crate::theme::Appearance::Dark => 0.08,
+        crate::theme::Appearance::Light => 0.05,
+    })
 }
 /// Rounded-wash geometry: small radius on a slightly inset box (paint-only —
 /// x extends 2px past the glyphs, y insets 2px from the 22px line box).

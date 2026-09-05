@@ -4184,7 +4184,14 @@ impl Shell {
         };
         let (hover, text) = (theme.glass_hover(), theme.text);
         let selected_wash = crate::theme::glass_selected_bg();
-        let subline = theme.text_muted.opacity(0.5);
+        // One tone for every secondary line in the row: the device line, the
+        // branch line and the corner. It was `text_muted.opacity(0.5)`, which
+        // is around 2.3:1 on the panel - under AA, and on a SELECTED row it
+        // sank so far into the wash that a pixel sample of the critic's
+        // round-2 frame could barely separate the device text from the row
+        // background. `text_faint` is the token for exactly this job and is
+        // held to AA on every plane that carries text.
+        let subline = theme.text_faint;
         let select_id = id.clone();
         let menu_id = id.clone();
         // Hover fades over transition-colors (zeron session-row.tsx) — both
