@@ -67,7 +67,7 @@ fn wheel(dy: i32) -> bool {
 struct Counts {
     cef_frames: u64,
     app_frames: u64,
-    p2d_mark: usize,
+    p2d_mark: u64,
 }
 
 fn counts() -> Counts {
