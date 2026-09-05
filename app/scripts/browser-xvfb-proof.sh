@@ -33,6 +33,11 @@ mkdir -p "$OUT"
 
 DATA="$OUT/data"
 rm -rf "$DATA"; mkdir -p "$DATA"
+# SURYA_PROOF_APPEARANCE=light|dark: pin the app's appearance for this run
+# (the page's prefers-color-scheme follows it; see browser-scheme-proof.sh).
+if [ -n "${SURYA_PROOF_APPEARANCE:-}" ]; then
+  printf '{"appearance":"%s"}\n' "$SURYA_PROOF_APPEARANCE" > "$DATA/ui-settings.json"
+fi
 LOG="$OUT/zeron.log"
 SHOT="$OUT/window.png"
 W=1600; H=1000
