@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * REDUCED-MOTION gate — WCAG 2.2 SC 2.3.3 (Animation from Interactions, AAA)
- * and the house rule in CLAUDE.md: "Always respect prefers-reduced-motion.
+ * and the house rule in ux-ui-expert/SKILL.md: "Always respect prefers-reduced-motion.
  * Replace with fade or instant."
  *
  * Renders every harness twice — once at no-preference, once at reduce — and

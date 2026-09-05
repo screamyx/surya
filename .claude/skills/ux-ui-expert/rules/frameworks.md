@@ -2,7 +2,7 @@
 
 Loaded when generating code for a specific stack.
 
-Split out of `CLAUDE.md` so it loads only when the work calls for it. The
+Split out of `.claude/skills/ux-ui-expert/SKILL.md` so it loads only when the work calls for it. The
 headings below are unchanged, so any pointer to them still resolves.
 
 ---

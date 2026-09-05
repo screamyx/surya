@@ -1,6 +1,6 @@
 # Vision Accessibility — Low Vision, Color Blindness, High Contrast
 
-Beyond the baseline contrast ratios (CLAUDE.md Color Guidelines), this covers users with low vision, color vision deficiency (CVD), light sensitivity, and OS-level high-contrast/forced-colors modes.
+Beyond the baseline contrast ratios (ux-ui-expert/SKILL.md Color Guidelines), this covers users with low vision, color vision deficiency (CVD), light sensitivity, and OS-level high-contrast/forced-colors modes.
 
 ---
 
@@ -23,7 +23,7 @@ Beyond the baseline contrast ratios (CLAUDE.md Color Guidelines), this covers us
 
 ## Light sensitivity & dark mode
 
-- Offer both light and dark themes (semantic tokens auto-swap — CLAUDE.md Dark Mode). Honor `prefers-color-scheme`.
+- Offer both light and dark themes (semantic tokens auto-swap — ux-ui-expert/SKILL.md Dark Mode). Honor `prefers-color-scheme`.
 - Avoid pure-black-on-pure-white for large text blocks if it causes halation; our `surface.page`/`text.primary` are tuned for comfort.
 - No flashing > 3×/sec (WCAG 2.3.1) — seizure safety.
 

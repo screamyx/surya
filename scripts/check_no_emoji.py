@@ -3,7 +3,7 @@
 or the agent's own instruction surface.
 
 The kit forbids emoji in product UI (taste/design-taste.md) — this enforces it so it
-can't drift back. It also scans the files the AGENT reads on every run (CLAUDE.md,
+can't drift back. It also scans the files the AGENT reads (AGENTS.md, CLAUDE.md, the ux-ui-expert skill,
 the skills, component/workflow/content/accessibility specs): if those contain emoji,
 the model imitates them and emits emoji-laden output. Keeping the instruction surface
 emoji-free is what actually stops emoji in generated design systems.
@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # the files the model loads and imitates. README is marketing/branding and is excluded.
 DEFAULT = [
     ROOT / "examples", ROOT / "taste",
-    ROOT / "CLAUDE.md", ROOT / "CONTEXT.md",
+    ROOT / "AGENTS.md", ROOT / "CLAUDE.md", ROOT / "CONTEXT.md",
     ROOT / ".claude" / "skills", ROOT / ".claude" / "rules", ROOT / ".claude" / "commands",
     ROOT / ".claude" / "agents", ROOT / "evals", ROOT / "templates",
     ROOT / "components", ROOT / "workflows", ROOT / "content",

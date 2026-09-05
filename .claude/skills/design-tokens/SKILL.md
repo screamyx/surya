@@ -9,7 +9,7 @@ invocation: model
 Produce and maintain DTCG (`$type`/`$value`) tokens following the project's 3-tier system.
 
 ## Steps
-1. Read `.claude/rules/tokens-and-color.md` → "Token System" + "Color Guidelines" and `.claude/rules/typography-and-spacing.md` for the rules (4px base, Major Third scale, OKLCH palette generation, dark-mode-at-semantic-layer).
+1. Read `.claude/skills/ux-ui-expert/rules/tokens-and-color.md` → "Token System" + "Color Guidelines" and `.claude/skills/ux-ui-expert/rules/typography-and-spacing.md` for the rules (4px base, Major Third scale, OKLCH palette generation, dark-mode-at-semantic-layer).
 2. Read the relevant existing files in `tokens/` to match structure: `colors.json`, `typography.json`, `spacing.json`, `shadows.json`, `borders.json`, `breakpoints.json`, `motion.json`, `gradients.json`, `opacity.json`, `blur.json`, `sizing.json`, `states.json`, `theming.json`.
 3. Generate/extend tokens:
    - Primitives = raw values (never used directly). Semantic = purpose aliases. Component = component-scoped.

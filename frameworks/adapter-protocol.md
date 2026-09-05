@@ -25,7 +25,7 @@ Rule: produce the token layer first, then components reference it. Never hardcod
 Every generated component must expose:
 - **Variants** (e.g. primary/secondary/ghost/destructive) — driven by a typed prop.
 - **Sizes** (sm/md/lg) with exact dimensions from `tokens/sizing.json`.
-- **The 8 states** (default, hover, focus, active, disabled, loading, error, selected) per `CLAUDE.md` — render only those that apply.
+- **The 8 states** (default, hover, focus, active, disabled, loading, error, selected) per `.claude/skills/ux-ui-expert/SKILL.md` — render only those that apply.
 - **Accessibility wiring** — role/name/state, keyboard model, focus management (`accessibility/aria-patterns.md`).
 - **Composition** — ref forwarding / slots / children as the target idiomatically allows.
 

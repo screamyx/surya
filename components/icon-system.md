@@ -7,7 +7,7 @@ Icons are a token-governed subsystem, not loose SVGs. Consistency in grid, strok
 ## Foundations
 
 - **Grid:** design on a single pixel grid (commonly 24×24) with a consistent live area + padding. Every icon shares the grid so optical weight matches.
-- **Stroke:** one stroke width across the set (e.g. 1.5–2px at 24px). Keep stroke constant across sizes — scale the canvas, not the stroke, or the set looks inconsistent (CLAUDE.md: "keep stroke weight consistent across sizes").
+- **Stroke:** one stroke width across the set (e.g. 1.5–2px at 24px). Keep stroke constant across sizes — scale the canvas, not the stroke, or the set looks inconsistent (ux-ui-expert/SKILL.md: "keep stroke weight consistent across sizes").
 - **Style:** pick one — outline OR solid OR duotone — as the primary; use the alternate only for a deliberate signal (e.g. solid = selected/active). Don't mix styles arbitrarily.
 - **Optical alignment:** align to optical center, not geometric; balance visual mass.
 
@@ -36,7 +36,7 @@ Icons are a token-governed subsystem, not loose SVGs. Consistency in grid, strok
 ## Accessibility
 
 - **Decorative icon** (next to a text label): `aria-hidden="true"` and no `title` — the label carries meaning. Most UI icons are decorative.
-- **Meaningful icon** (icon-only button/status): give an accessible name — `aria-label` on the button, or `role="img"` + `aria-label`/`<title>` on the SVG. Icon-only controls still need a ≥ 24×24px (44px recommended) hit target (CLAUDE.md).
+- **Meaningful icon** (icon-only button/status): give an accessible name — `aria-label` on the button, or `role="img"` + `aria-label`/`<title>` on the SVG. Icon-only controls still need a ≥ 24×24px (44px recommended) hit target (ux-ui-expert/SKILL.md).
 - **Never icon-alone for status** — pair with text/color-plus-shape (`accessibility/vision.md`); an icon's meaning isn't universal.
 - Use `currentColor` so icons meet contrast with their text context and adapt to high-contrast mode.
 
