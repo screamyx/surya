@@ -410,6 +410,7 @@ pub(crate) fn bar_chart(
         return r.fallback_box(&format!("BarChart: no data at {abs}"));
     }
     let peak = items.iter().map(|(v, _)| *v).fold(0.0, f64::max);
+    let inked = peak_index(items.iter().map(|(v, _)| *v));
     let scale = max.filter(|m| *m > 0.0).unwrap_or(peak).max(f64::EPSILON);
     div()
         .flex()
@@ -420,7 +421,7 @@ pub(crate) fn bar_chart(
         .min_w_0()
         // One budget unit per bar (a bar is a small subtree), and the bar
         // never leaves its lane: a model-supplied `max` below a value clamps.
-        .children(items.into_iter().take_while(|_| r.budget.take()).map(|(value, label)| {
+        .children(items.into_iter().enumerate().take_while(|_| r.budget.take()).map(|(ix, (value, label))| {
             let h = ((value / scale) as f32 * BAR_MAX_HEIGHT).clamp(3.0, BAR_MAX_HEIGHT);
             div()
                 .flex()
@@ -435,15 +436,11 @@ pub(crate) fn bar_chart(
                         .h(px(BAR_MAX_HEIGHT))
                         .flex()
                         .items_end()
-                        // The tallest bar carries the ink; the rest sit back so
-                        // the headline number stays the brightest thing on the
-                        // card (critic round 2, C2).
+                        // One bar carries the ink, the first at the peak; the
+                        // rest sit back so the headline number stays the
+                        // brightest thing on the card (critic round 2, C2).
                         .child(div().w_full().h(px(h)).rounded(px(3.0)).bg(
-                            if peak > 0.0 && value >= peak {
-                                theme.text
-                            } else {
-                                theme.text_muted
-                            },
+                            if inked == Some(ix) { theme.text } else { theme.text_muted },
                         )),
                 )
                 .child(
@@ -456,4 +453,40 @@ pub(crate) fn bar_chart(
                 )
         }))
         .into_any_element()
+}
+
+/// The first bar at the peak, or none when every value is zero or below:
+/// ties share a height, not the ink.
+fn peak_index(values: impl Iterator<Item = f64>) -> Option<usize> {
+    let mut best: Option<(usize, f64)> = None;
+    for (ix, v) in values.enumerate() {
+        if v > 0.0 && best.is_none_or(|(_, b)| v > b) {
+            best = Some((ix, v));
+        }
+    }
+    best.map(|(ix, _)| ix)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::peak_index;
+
+    /// Ties: one bar is inked, the first at the peak. `asked=4 passed=4`.
+    #[test]
+    fn peak_index_inks_one_bar_on_ties() {
+        let cases: [(&[f64], Option<usize>, &str); 4] = [
+            (&[4.0, 6.0, 3.0, 8.0, 7.0], Some(3), "one clear peak"),
+            (&[5.0, 8.0, 8.0, 2.0], Some(1), "tie: the first peak only"),
+            (&[0.0, 0.0], None, "all zero: nothing inked"),
+            (&[-1.0, -3.0], None, "all negative: nothing inked"),
+        ];
+        let asked = cases.len();
+        let mut passed = 0;
+        for (values, want, why) in cases {
+            assert_eq!(peak_index(values.iter().copied()), want, "{why}");
+            passed += 1;
+        }
+        eprintln!("peak index cases asked={asked} passed={passed}");
+        assert_eq!(passed, asked);
+    }
 }
