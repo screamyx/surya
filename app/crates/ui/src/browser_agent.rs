@@ -53,7 +53,7 @@ pub fn spawn(cx: &mut Context<AppState>, handle: EngineHandle) -> Task<()> {
                         let args = item["args"].clone();
                         CALLED.fetch_add(1, Ordering::Relaxed);
                         let run = std::pin::pin!(surya_browser::agent::run(&op, &args));
-                        let deadline = cx.background_executor().timer(OP_DEADLINE);
+                        let deadline = std::pin::pin!(cx.background_executor().timer(OP_DEADLINE));
                         let result = match futures::future::select(run, deadline).await {
                             Either::Left((result, _)) => result,
                             Either::Right(_) => Err(format!(

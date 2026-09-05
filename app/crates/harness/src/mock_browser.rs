@@ -209,7 +209,7 @@ async fn session(url: String, tx: mpsc::UnboundedSender<AgentEvent>) {
         Err(e) => {
             println!("browser-mock: tools_called=0 ok=0 ({e})");
             emit(AgentEvent::Error { message: e });
-            emit(AgentEvent::Done { status: DoneStatus::Failed, result: None, error: None, session_id: None });
+            emit(AgentEvent::Done { status: DoneStatus::Errored, result: None, error: None, session_id: None });
             return;
         }
     };
@@ -259,7 +259,7 @@ async fn session(url: String, tx: mpsc::UnboundedSender<AgentEvent>) {
         text: format!("Done: {ok} of {called} browser tools succeeded.\n"),
     });
     emit(AgentEvent::Done {
-        status: if ok == called { DoneStatus::Completed } else { DoneStatus::Failed },
+        status: if ok == called { DoneStatus::Completed } else { DoneStatus::Errored },
         result: None,
         error: None,
         session_id: None,

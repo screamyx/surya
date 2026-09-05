@@ -235,7 +235,7 @@ wrap_load_handler! {
 
         fn on_load_end(
             &self,
-            _browser: Option<&mut Browser>,
+            browser: Option<&mut Browser>,
             frame: Option<&mut Frame>,
             status: ::std::os::raw::c_int,
         ) {
