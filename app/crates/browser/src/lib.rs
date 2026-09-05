@@ -172,6 +172,13 @@ pub fn start(cx: &mut gpui::App, scheme: ColorScheme) {
     let id = tabs::tab_open(&url);
     let made = tabs::active_browser() != 0;
     println!("browser: create asked=1 made={} url={url} tab={id}", u8::from(made));
+    // `SURYA_BROWSER_URLS=a,b`: more tabs at start, for a proof of the
+    // strip without the strip (the last one opened is the active tab).
+    if let Ok(more) = std::env::var("SURYA_BROWSER_URLS") {
+        for extra in more.split(',').map(str::trim).filter(|u| !u.is_empty()) {
+            tabs::tab_open(extra);
+        }
+    }
     // Kick the loop once so CEF gets going before its first callback.
     pump::schedule_pump(0);
     pump::start_heartbeat();

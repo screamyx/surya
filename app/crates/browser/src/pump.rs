@@ -96,6 +96,7 @@ pub(crate) fn install(cx: &mut gpui::App) {
             while let Ok(()) = rx.try_recv() {}
             IDLE_RAN.fetch_add(1, Ordering::Relaxed);
             work_now();
+            crate::tabs::selftest_tick();
             let now = (INPUT_SEQ.load(Ordering::Relaxed), PUMP_ASKS.load(Ordering::Relaxed));
             let frames = crate::render::frames();
             let quiet = now == seen && frames == seen_frames;

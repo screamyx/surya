@@ -335,6 +335,30 @@ pub fn zoom() -> f64 {
     with(|t| t.active().map(|t| t.zoom).unwrap_or(0.0))
 }
 
+/// `SURYA_SELFTEST_TABS=<secs>`: that long after start, switch to the first
+/// tab once, from the pump (main thread), so a proof can grab the pane
+/// before and after a tab switch with no strip to click.
+pub(crate) fn selftest_tick() {
+    use std::sync::OnceLock;
+    static AT: OnceLock<Option<std::time::Instant>> = OnceLock::new();
+    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let at = AT.get_or_init(|| {
+        std::env::var("SURYA_SELFTEST_TABS")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .map(|secs| std::time::Instant::now() + std::time::Duration::from_secs(secs))
+    });
+    let Some(at) = at else { return };
+    if std::time::Instant::now() < *at || DONE.swap(true, std::sync::atomic::Ordering::AcqRel) {
+        return;
+    }
+    let first = with(|t| t.tabs.first().map(|t| t.id));
+    if let Some(id) = first {
+        tab_activate(id);
+        println!("browser: selftest tabs: activated first tab {id}, active_browser={}", active_browser());
+    }
+}
+
 pub(crate) fn counters() -> String {
     format!("tabs={} opened={} active={}", count(), OPENED.load(Ordering::Relaxed), active_tab().unwrap_or(0))
 }
