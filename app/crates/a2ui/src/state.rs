@@ -5,7 +5,13 @@
 
 use gpui::FocusHandle;
 use serde_json::Value;
+use std::cell::RefCell;
 use std::collections::HashMap;
+
+use crate::images::{ImagePolicy, ResolvedImage};
+
+/// Image decisions kept per card; the memo empties past this.
+pub const MAX_IMAGE_MEMO: usize = 64;
 
 use crate::data::{DataModel, Scope, resolve_value, value_to_bool, value_to_string};
 use crate::model::{Action, Card, Dynamic, EventAction};
@@ -50,6 +56,10 @@ pub struct CardState {
     pub focus: Option<FocusHandle>,
     /// Bumped on every applied change — a cheap "re-measure me" signal.
     pub revision: u64,
+    /// Image decisions by URL, filled on first render (see
+    /// [`Self::image`]). Interior mutability because the renderer holds
+    /// `&CardState`; cleared with the state on a card change.
+    pub images: RefCell<HashMap<String, ResolvedImage>>,
 }
 
 impl CardState {
@@ -61,7 +71,24 @@ impl CardState {
             focused: None,
             focus: None,
             revision: 0,
+            images: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// The memoized decision for `url` under `policy`; decided once. The
+    /// memo holds at most [`MAX_IMAGE_MEMO`] URLs: an Image bound to a
+    /// TextField's path would otherwise add one entry per keystroke.
+    pub fn image(&self, url: &str, policy: &ImagePolicy) -> ResolvedImage {
+        if let Some(hit) = self.images.borrow().get(url) {
+            return hit.clone();
+        }
+        let resolved: ResolvedImage = policy.decide(url).into();
+        let mut images = self.images.borrow_mut();
+        if images.len() >= MAX_IMAGE_MEMO {
+            images.clear();
+        }
+        images.insert(url.to_owned(), resolved.clone());
+        resolved
     }
 
     pub fn with_focus(mut self, focus: FocusHandle) -> Self {
@@ -220,6 +247,18 @@ mod tests {
         state.apply(&CardEvent::SetValue { binding: binding.clone(), value: json!(false) });
         assert!(!state.read_bool(&binding, &literal, &Scope::root()));
         assert_eq!(state.revision, 1);
+    }
+
+    #[test]
+    fn image_memo_is_bounded() {
+        let card = card();
+        let state = CardState::new(&card);
+        let policy = ImagePolicy::default();
+        for i in 0..(MAX_IMAGE_MEMO * 3) {
+            state.image(&format!("https://h/{i}.png"), &policy);
+            assert!(state.images.borrow().len() <= MAX_IMAGE_MEMO);
+        }
+        assert!(matches!(state.image("https://h/0.png", &policy), ResolvedImage::Placeholder(h) if h == "h"));
     }
 
     #[test]

@@ -651,3 +651,134 @@ async fn live_commands_discovery() {
     assert!(!commands.is_empty());
     eprintln!("{} commands, first: {:?}", commands.len(), commands.first());
 }
+
+/// A `mcp__surya__show_card` call whose result lands produces one Card event,
+/// read out of the card store by the tool_use id the sidecar stamped on it.
+/// A failed show_card produces none, and an ordinary tool never produces one.
+#[tokio::test]
+async fn a_resolved_show_card_call_emits_one_card_event_in_transcript_order() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("cards.jsonl");
+    // Exactly what surya-mcp writes: one JSON line per shown card. The line
+    // for the FAILED call is absent, as it would be - a rejected card writes
+    // nothing.
+    std::fs::write(
+        &store,
+        serde_json::json!({
+            "card_id": "card_abc",
+            "surface_id": "card_abc",
+            "tool_use_id": "toolu_card_ok",
+            "agent_id": "seat-1",
+            "workspace": "demo",
+            "at": "2026-09-05T00:00:00Z",
+            "a2ui": [
+                {"version": "v0.9.1", "createSurface": {"surfaceId": "card_abc", "catalogId": "c"}},
+                {"version": "v0.9.1", "updateComponents": {"surfaceId": "card_abc", "components": [
+                    {"id": "root", "component": "Card", "child": "body"}
+                ]}}
+            ]
+        })
+        .to_string()
+            + "\n",
+    )
+    .unwrap();
+
+    let mut req = request("scenario:card");
+    req.surya = Some(zeron_proto::SuryaOptions {
+        agent_id: "seat-1".into(),
+        workspace: "demo".into(),
+        mcp_binary: None,
+        card_store: Some(store.to_string_lossy().into()),
+        mail_socket: None,
+        catalog_id: None,
+    });
+    let (controls, _steer, _token) = controls("A");
+    let events = run_to_end(&harness(), req, controls).await;
+
+    // A drawn card replaces its own tool chip: no ToolCall and no ToolResult
+    // for the call that succeeded, so the transcript shows the card alone.
+    let card_chips = events
+        .iter()
+        .filter(|e| {
+            matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_card_ok")
+                || matches!(e, AgentEvent::ToolResult { id, .. } if id == "toolu_card_ok")
+        })
+        .count();
+    let cards: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            AgentEvent::Card {
+                card_id,
+                surface_id,
+                tool_use_id,
+                a2ui,
+            } => Some((card_id, surface_id, tool_use_id, a2ui)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        (cards.len(), card_chips),
+        (1, 0),
+        "tool_uses=2 card_events={} chips_for_the_drawn_card={card_chips}",
+        cards.len()
+    );
+    let (card_id, surface_id, tool_use_id, a2ui) = cards[0];
+    assert_eq!(card_id, "card_abc");
+    assert_eq!(surface_id, "card_abc");
+    assert_eq!(tool_use_id, "toolu_card_ok");
+    assert_eq!(a2ui.len(), 2, "the whole envelope list rides the event");
+
+    // A show_card that FAILED keeps its pair, or the user would never learn
+    // the agent tried to draw something.
+    let failed_call = events
+        .iter()
+        .any(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_card_bad"));
+    let failed_result = events.iter().any(
+        |e| matches!(e, AgentEvent::ToolResult { id, is_error, .. } if id == "toolu_card_bad" && *is_error),
+    );
+    assert!(failed_call && failed_result, "a failed card stays visible");
+
+    // An ordinary tool is untouched.
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_bash"))
+    );
+
+    // The card lands where the call was: after the preceding frame's events
+    // and before the next assistant frame's tool call.
+    let position = |predicate: &dyn Fn(&AgentEvent) -> bool| {
+        events.iter().position(|e| predicate(e)).expect("event present")
+    };
+    let card = position(&|e| matches!(e, AgentEvent::Card { .. }));
+    let later_call =
+        position(&|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_bash"));
+    assert!(card < later_call, "card={card} later_call={later_call}");
+}
+
+/// Without the surya option there is no card store to read, so the card is
+/// lifted from the call's own input instead. Still a card, still no chip.
+#[tokio::test]
+async fn without_a_card_store_the_card_is_lifted_from_the_call_input() {
+    let (controls, _steer, _token) = controls("A");
+    let events = run_to_end(&harness(), request("scenario:card"), controls).await;
+    let cards = events
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::Card { .. }))
+        .count();
+    let chips = events
+        .iter()
+        .filter(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_card_ok"))
+        .count();
+    assert_eq!(
+        (cards, chips),
+        (1, 0),
+        "tool_uses=2 card_events={cards} chips_for_the_drawn_card={chips}"
+    );
+    // The failed call keeps its chip either way.
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, AgentEvent::ToolCall { id, .. } if id == "toolu_card_bad"))
+    );
+}

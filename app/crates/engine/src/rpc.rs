@@ -1372,7 +1372,12 @@ impl RpcService for EngineRpc {
                 self.workspace.watch_spaces(),
             ))),
             methods::WATCH_TASKS => {
-                let p: crate::tasks::WatchTasksParams = parse_params(params)?;
+                // No params (`null`) = every board, as the method doc says.
+                let p: crate::tasks::WatchTasksParams = if params.is_null() {
+                    Default::default()
+                } else {
+                    parse_params(params)?
+                };
                 Ok(RpcReply::Stream(crate::tasks::watch_tasks_stream(
                     self.workspace.watch_tasks(),
                     p.space_id,

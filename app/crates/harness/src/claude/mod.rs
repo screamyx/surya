@@ -492,6 +492,7 @@ impl Harness for ClaudeHarness {
             interrupt_grace: self.interrupt_grace,
             kill_grace: self.kill_grace,
             stderr_tail,
+            card_store: request.surya.as_ref().map(surya::card_store),
         }));
 
         Ok(futures::stream::unfold(event_rx, |mut rx| async move {
@@ -616,6 +617,8 @@ struct Session {
     kill_grace: Duration,
     /// Rolling stderr tail for the crash message on an unexpected exit.
     stderr_tail: crate::StderrTail,
+    /// Where the surya sidecar records cards, when this run has one.
+    card_store: Option<PathBuf>,
 }
 
 /// The per-run event loop: one task multiplexing stdout frames, the steering
@@ -631,6 +634,7 @@ async fn run_session(session: Session) {
         interrupt_grace,
         kill_grace,
         stderr_tail,
+        card_store,
     } = session;
     let RunControls {
         request_input,
@@ -640,7 +644,7 @@ async fn run_session(session: Session) {
     } = controls;
     let request_input = Arc::new(request_input);
 
-    let mut norm = Normalizer::new();
+    let mut norm = Normalizer::new().with_card_store(card_store);
     let mut steering_open = true;
     let mut interrupted = false;
     let mut interrupt_sent = false;
@@ -988,6 +992,14 @@ mod tests {
             .map(|i| args[i + 1].clone())
             .expect("--append-system-prompt-file is passed");
         assert!(std::fs::read_to_string(&append).unwrap().contains("show_card"));
+
+        // surya owns mail, so the CLI's own cross-session tools are denied.
+        let denied = args
+            .iter()
+            .position(|a| a == "--disallowed-tools")
+            .map(|i| args[i + 1].clone())
+            .expect("--disallowed-tools is passed");
+        assert_eq!(denied, "SendMessage,ListAgents");
     }
 
     #[test]

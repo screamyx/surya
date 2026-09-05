@@ -4634,7 +4634,7 @@ impl Transcript {
             on_event,
         }
         .render();
-        crate::cards::log_render(ix, row_id, card, &self.list, window);
+        crate::cards::log_render(ix, row_id, version, card, &self.list, window);
         el
     }
 

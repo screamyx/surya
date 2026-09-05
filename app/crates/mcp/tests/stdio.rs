@@ -8,12 +8,10 @@ use std::process::{Command, Stdio};
 
 use serde_json::{Value, json};
 
-/// The binary under test, built beside this integration test by cargo.
-fn binary() -> std::path::PathBuf {
-    let mut path = std::env::current_exe().expect("the test binary has a path");
-    path.pop(); // deps/
-    path.pop(); // debug/
-    path.join(env!("CARGO_PKG_NAME"))
+/// The binary under test. Cargo sets this for every `[[bin]]` in the package,
+/// so it survives `--target`, a custom target dir, and the `.exe` suffix.
+fn binary() -> &'static str {
+    env!("CARGO_BIN_EXE_surya-mcp")
 }
 
 /// Send every request in order, return one response per request that has an id.

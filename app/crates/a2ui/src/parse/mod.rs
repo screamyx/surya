@@ -295,6 +295,12 @@ pub fn parse_component(v: &Value) -> Result<Component, String> {
                 })
                 .unwrap_or_default(),
         },
+        "BarChart" => ComponentKind::BarChart {
+            values: dyn_string(obj, "values").unwrap_or(Dynamic::Literal(String::new())),
+            value_key: obj.get("valueKey").and_then(Value::as_str).map(str::to_owned),
+            label_key: obj.get("labelKey").and_then(Value::as_str).map(str::to_owned),
+            max: obj.get("max").and_then(Value::as_f64),
+        },
         other => ComponentKind::Unknown {
             name: other.to_owned(),
             raw: v.clone(),

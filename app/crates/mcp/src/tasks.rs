@@ -133,10 +133,6 @@ impl TaskTools {
         Ok(Self { client })
     }
 
-    pub fn with_client(client: RpcClient) -> Self {
-        Self { client }
-    }
-
     /// Dispatch one tool call. Errors are agent-readable strings (the MCP
     /// server puts them in `isError: true` results).
     pub async fn call(&self, name: &str, args: Value) -> Result<Value, String> {
