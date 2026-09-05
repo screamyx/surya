@@ -39,7 +39,9 @@ pub(crate) fn work_now() {
         return;
     }
     WORK_DID.fetch_add(1, Ordering::Relaxed);
+    let started = Instant::now();
     do_message_loop_work();
+    crate::frame_timing::main_pump(started.elapsed());
 }
 
 /// CEF's `on_schedule_message_pump_work`: pump now, or in `delay_ms`.
@@ -76,6 +78,18 @@ pub(crate) fn base_ms() -> u64 {
 pub(crate) fn install(cx: &mut gpui::App) {
     let (tx, mut rx) = mpsc::unbounded::<()>();
     if WAKE.set(tx).is_err() {
+        return;
+    }
+    if crate::cef_thread::threaded() {
+        println!("browser: pump mode=threaded wake-only");
+        cx.spawn(async move |cx: &mut gpui::AsyncApp| {
+            while rx.next().await.is_some() {
+                while let Ok(()) = rx.try_recv() {}
+                crate::render::drain_frames();
+                IDLE_REFRESH.fetch_add(1, Ordering::Relaxed);
+                cx.refresh();
+            }
+        }).detach();
         return;
     }
     let base = Duration::from_millis(base_ms());
@@ -129,6 +143,7 @@ pub fn pump(_window: &mut gpui::Window, _cx: &mut gpui::App) {
         return;
     }
     RENDERS.fetch_add(1, Ordering::Relaxed);
+    crate::render::drain_frames();
     crate::perf::on_render();
     work_now();
 }
@@ -160,7 +175,8 @@ pub fn counters() -> String {
         crate::render::background_paints(),
         crate::render::kept_frames(),
         crate::zero_copy::counters()
-    ) + &format!(" {}", crate::perf::counters())
+    ) + &format!(" {} {} {} {}", crate::perf::counters(), crate::cef_thread::counters(),
+        crate::frame_handoff::counters(), crate::frame_timing::counters())
 }
 
 /// Print the counters every 5 seconds from a plain thread that reads atomics
@@ -175,7 +191,7 @@ pub(crate) fn start_heartbeat() {
             loop {
                 std::thread::sleep(Duration::from_secs(5));
                 let work = WORK_DID.load(Ordering::Relaxed);
-                let stalled = work == last_work;
+                let stalled = !crate::cef_thread::threaded() && work == last_work;
                 last_work = work;
                 println!(
                     "browser: t={:.0}s {}{}",

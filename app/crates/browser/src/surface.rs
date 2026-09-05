@@ -130,7 +130,8 @@ pub fn surface() -> gpui::AnyElement {
                 println!("browser: view -> {w}x{h} scale={} resizes={n}", sf as f32 / 1000.0);
                 notify_resized();
             }
-            let Some((seq, src)) = crate::render::frame() else { return };
+            let Some((seq, src, arrived_us)) = crate::render::frame() else { return };
+            let draw_started = Instant::now();
             let img = match src {
                 FrameSource::Cpu(img) => img,
                 // Already on the GPU: the fork's renderer opens the texture
@@ -138,6 +139,7 @@ pub fn surface() -> gpui::AnyElement {
                 #[cfg(windows)]
                 FrameSource::Shared(texture) => {
                     window.paint_external_texture(bounds, &texture);
+                    crate::frame_timing::on_draw(seq, arrived_us, draw_started);
                     return;
                 }
             };
@@ -145,7 +147,9 @@ pub fn surface() -> gpui::AnyElement {
             let t0 = Instant::now();
             // comet's fork (e2ddcc6): `paint_image(bounds, radii, image, frame, grayscale)`;
             // haktui's gpui took a second `image_bounds` here.
-            let _ = window.paint_image(bounds, Corners::default(), img.clone(), 0, false);
+            if window.paint_image(bounds, Corners::default(), img.clone(), 0, false).is_err() {
+                return;
+            }
             if fresh {
                 let us = t0.elapsed().as_micros() as u64;
                 UPLOAD_N.fetch_add(1, Ordering::Relaxed);
@@ -162,6 +166,7 @@ pub fn surface() -> gpui::AnyElement {
             if let Some(prev) = prev {
                 let _ = window.drop_image(prev);
             }
+            crate::frame_timing::on_draw(seq, arrived_us, draw_started);
         },
     )
     .size_full()

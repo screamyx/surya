@@ -23,6 +23,7 @@ pub(crate) static VIEW_H: AtomicI32 = AtomicI32::new(600);
 pub(crate) static SCALE: AtomicU32 = AtomicU32::new(1000);
 
 static PAINTS: AtomicU64 = AtomicU64::new(0);
+static NEXT_FRAME: AtomicU64 = AtomicU64::new(1);
 static VIEW_RECT_ASKS: AtomicU64 = AtomicU64::new(0);
 /// Last painted frame size, `w << 32 | h`, in device pixels.
 static LAST_SIZE: AtomicU64 = AtomicU64::new(0);
@@ -42,6 +43,7 @@ pub(crate) enum FrameSource {
 struct FrameBuf {
     seq: u64,
     src: FrameSource,
+    arrived_us: u64,
 }
 /// The latest frame of every browser, by CEF identifier. A parked tab keeps
 /// its last frame, so switching back to it shows something at once. Bounded
@@ -65,23 +67,53 @@ pub(crate) fn background_paints() -> u64 {
 }
 
 /// The active tab's latest frame.
-pub(crate) fn frame() -> Option<(u64, FrameSource)> {
+pub(crate) fn frame() -> Option<(u64, FrameSource, u64)> {
+    drain_frames();
     frame_of(crate::tabs::active_browser())
 }
 
-fn frame_of(browser: i32) -> Option<(u64, FrameSource)> {
+fn frame_of(browser: i32) -> Option<(u64, FrameSource, u64)> {
     if browser == 0 {
         return None;
     }
-    FRAMES.lock().ok()?.as_ref()?.get(&browser).map(|f| (f.seq, f.src.clone()))
+    FRAMES.lock().ok()?.as_ref()?.get(&browser).map(|f| (f.seq, f.src.clone(), f.arrived_us))
+}
+
+/// Only the gpui thread consumes owned paint messages. Close callbacks can
+/// overtake a queued paint, so never reinstall a frame for a closed browser.
+pub(crate) fn drain_frames() {
+    if !crate::cef_thread::threaded() { return; }
+    let started = Instant::now();
+    let active = crate::tabs::active_browser();
+    for frame in crate::frame_handoff::drain() {
+        if crate::client::has_browser(frame.browser) {
+            store_at(frame.browser, frame.seq, frame.source, active, frame.arrived_us);
+            // A close can race the membership check above. If its forget
+            // ran before our store, finish that removal again; if it runs
+            // after this check, the close callback removes our store.
+            if !crate::client::has_browser(frame.browser) { forget(frame.browser); }
+        }
+    }
+    crate::frame_timing::main_handoff(started.elapsed());
+}
+
+fn publish(browser: i32, src: FrameSource, arrived_us: u64) {
+    let seq = NEXT_FRAME.fetch_add(1, Ordering::Relaxed);
+    if crate::cef_thread::threaded() {
+        crate::frame_handoff::publish(crate::frame_handoff::PendingFrame {
+            browser, seq, source: src, arrived_us,
+        });
+    } else {
+        store_at(browser, seq, src, crate::tabs::active_browser(), arrived_us);
+    }
 }
 
 /// Keep `browser`'s latest frame, dropping the oldest other one past the
 /// bound. `active` is never the one dropped.
-fn store(browser: i32, seq: u64, src: FrameSource, active: i32) {
+fn store_at(browser: i32, seq: u64, src: FrameSource, active: i32, arrived_us: u64) {
     let Ok(mut guard) = FRAMES.lock() else { return };
     let map = guard.get_or_insert_with(HashMap::new);
-    map.insert(browser, FrameBuf { seq, src });
+    map.insert(browser, FrameBuf { seq, src, arrived_us });
     while map.len() > KEPT_FRAMES {
         let oldest = map
             .iter()
@@ -197,6 +229,7 @@ wrap_render_handler! {
                 return;
             }
             let active = crate::tabs::active_browser();
+            let arrived_us = crate::frame_timing::now_us();
             let t0 = Instant::now();
             let len = (width as usize) * (height as usize) * 4;
             // SAFETY: CEF owns `buffer` for the duration of the callback and
@@ -212,13 +245,13 @@ wrap_render_handler! {
             if id != active {
                 // Parked, or created and not activated yet: keep the frame
                 // for when it is shown, count it apart, move nothing else.
-                let seq = BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-                store(id, seq, FrameSource::Cpu(img), active);
+                BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed);
+                publish(id, FrameSource::Cpu(img), arrived_us);
                 return;
             }
             let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
             crate::perf::on_paint();
-            store(id, n, FrameSource::Cpu(img), active);
+            publish(id, FrameSource::Cpu(img), arrived_us);
             LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
             let us = t0.elapsed().as_micros() as u64;
             COPY_N.fetch_add(1, Ordering::Relaxed);
@@ -253,17 +286,19 @@ wrap_render_handler! {
             }
             #[cfg(windows)]
             if let Some(info) = info {
+                let arrived_us = crate::frame_timing::now_us();
                 let Some(texture) = crate::zero_copy::on_accelerated_paint(info) else { return };
                 let active = crate::tabs::active_browser();
                 if id != active {
-                    let seq = BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-                    store(id, seq, FrameSource::Shared(texture), active);
+                    BACKGROUND_PAINTS.fetch_add(1, Ordering::Relaxed);
+                    publish(id, FrameSource::Shared(texture), arrived_us);
                     return;
                 }
                 // The texture is the visible part of the paint, not its coded size.
                 let (width, height) = texture.size();
-                let n = PAINTS.fetch_add(1, Ordering::Relaxed) + 1;
-                store(id, n, FrameSource::Shared(texture), active);
+                PAINTS.fetch_add(1, Ordering::Relaxed);
+                crate::perf::on_paint();
+                publish(id, FrameSource::Shared(texture), arrived_us);
                 LAST_SIZE.store(((width as u64) << 32) | (height as u32 as u64), Ordering::Relaxed);
             }
             #[cfg(not(windows))]
@@ -315,7 +350,7 @@ mod tests {
         forget_all();
         let active = 1;
         for id in 1..=(KEPT_FRAMES as i32 + 3) {
-            store(id, id as u64, img(), active);
+            store_at(id, id as u64, img(), active, 0);
         }
         assert_eq!(kept_frames(), KEPT_FRAMES);
         assert!(frame_of(active).is_some(), "the active frame is never the one dropped");

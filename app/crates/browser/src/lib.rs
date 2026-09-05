@@ -21,6 +21,8 @@ mod cef_thread;
 mod client;
 mod clock;
 mod events;
+mod frame_handoff;
+mod frame_timing;
 pub mod input;
 mod page;
 mod perf;

@@ -43,8 +43,14 @@ async fn sleep(cx: &mut gpui::AsyncApp, d: Duration) {
 /// Load a page straight into the active browser. The address bar refuses
 /// `data:` addresses on purpose, so this does not go through [`crate::navigate`].
 fn load(url: &str) -> bool {
-    let Some(frame) = crate::client::browser().and_then(|b| b.main_frame()) else { return false };
-    frame.load_url(Some(&CefString::from(url)));
+    let id = crate::tabs::active_browser();
+    if !crate::client::has_browser(id) { return false; }
+    let url = url.to_owned();
+    crate::cef_thread::on_ui(move || {
+        if let Some(frame) = crate::client::browser_of(id).and_then(|b| b.main_frame()) {
+            frame.load_url(Some(&CefString::from(url.as_str())));
+        }
+    });
     crate::pump::schedule_pump(0);
     true
 }
@@ -52,13 +58,18 @@ fn load(url: &str) -> bool {
 /// One wheel notch at the middle of the view, the way a mouse sends it.
 fn wheel(dy: i32) -> bool {
     use std::sync::atomic::Ordering;
-    let Some(host) = crate::client::host() else { return false };
+    let id = crate::tabs::active_browser();
+    if !crate::client::has_browser(id) { return false; }
     let x = crate::render::VIEW_W.load(Ordering::Acquire) / 2;
     let y = crate::render::VIEW_H.load(Ordering::Acquire) / 2;
     let ev = MouseEvent { x, y, modifiers: 0 };
     // The same marker a real wheel sets on its way to CEF.
     crate::pump::mark_input();
-    host.send_mouse_wheel_event(Some(&ev), 0, dy);
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = crate::client::host_of(id) {
+            host.send_mouse_wheel_event(Some(&ev), 0, dy);
+        }
+    });
     true
 }
 
@@ -68,10 +79,11 @@ struct Counts {
     cef_frames: u64,
     app_frames: u64,
     p2d_mark: u64,
+    surface_mark: crate::frame_timing::Mark,
 }
 
 fn counts() -> Counts {
-    Counts { cef_frames: crate::render::frames(), app_frames: crate::perf::renders(), p2d_mark: crate::perf::mark() }
+    Counts { cef_frames: crate::render::frames(), app_frames: crate::perf::renders(), p2d_mark: crate::perf::mark(), surface_mark: crate::frame_timing::mark() }
 }
 
 fn delta(before: Counts) -> (u64, u64, String) {
@@ -79,7 +91,7 @@ fn delta(before: Counts) -> (u64, u64, String) {
     (
         now.cef_frames - before.cef_frames,
         now.app_frames - before.app_frames,
-        crate::perf::summary(before.p2d_mark),
+        format!("{} {}", crate::perf::summary(before.p2d_mark), crate::frame_timing::summary(before.surface_mark)),
     )
 }
 
