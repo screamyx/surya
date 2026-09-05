@@ -303,6 +303,18 @@ The plan and the counts are in `docs/rename-zeron-to-surya.md` (PR #16): "zeron 
 - Amended 11:03 (PR #48): the data-dir adoption is one helper `adopt(home, current, previous)` that COPIES into `<current>.incoming` and renames it in atomically; the pre-existing `.comet-native` migration now goes through it too, so it copies where it used to rename (accepted, safer, one path). After the rename the pair is (`.surya`, `.zeron`) and the `.comet-native` step drops.
 - Amended 10:33 from the rename dry run (PR #41): the data dir is COPIED, not renamed (this decision wins over row 5 of the plan). Comet's two built-in themes become `comet_light` / `comet_dark` and keep their display names ("Zeron Light/Dark" stays as the provenance label); `surya_light` / `surya_dark` already exist from PR #2, so a literal rename would collide (E0428).
 
+## 24. CI runs on a self-hosted runner on pc-ajim; the owner's spawn order narrows to user2
+
+Coordinator ruling, 2026-09-05 12:49, owner asleep (autonomy order 06:17).
+
+GitHub-hosted jobs stopped starting at 12:35 local. Every run since, main pushes and PR runs alike, fails in 3-5 s with 0 steps. The check-run annotation, read raw off the API by raven, says verbatim: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings". Fixing billing is spend and stays the owner's call.
+
+- CI moves to a self-hosted runner on this box: `pc-ajim-surya`, label `surya-ci`, service `actions.runner.screamyx-surya.pc-ajim-surya`, dir `/store/gha-runner-surya`, running as `user` like the project-jag, haktui and code-search runners (PR #70).
+- The service is throttled (systemd drop-in: CPUWeight=20, MemoryHigh=24G) so the owner's interactive session wins under load, and it builds into a persistent `CARGO_TARGET_DIR=/store/surya-ci-target` set in the runner's `.env`. That directory is the cache; rust-cache is gone.
+- The hosted-only steps are gone with it: `sudo rm -rf` of SDK directories, `apt-get`, rust-cache. CI never runs `sudo` on a shared machine.
+- This supersedes the ci.yml header's "GitHub-hosted on purpose" (PR #37 era). If the owner restores billing, moving back is one `runs-on` edit plus restoring those steps.
+- Owner order 12:48, verbatim: "no more spawn on user's side, only on this side of luvus". No new seats on the `user` uid from now; the live user seats run to their retirement and are not respawned.
+
 ## Open
 
 None at day zero.
