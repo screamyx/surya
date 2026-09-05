@@ -28,6 +28,9 @@ $target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path 
 $dist = Join-Path $Root "dist\surya-windows"
 if (-not $env:HOME) { $env:HOME = $env:USERPROFILE }
 
+if ($Browser -and -not $NoBuild -and -not $env:CEF_PATH) {
+    throw "-Browser needs CEF_PATH (a directory the cef crate downloads CEF into, once); unset it would re-download into the build dir"
+}
 if (-not $NoBuild) {
     # A tarball checkout has no .git: hand the stamp to crates/proto/build.rs.
     if ($Sha) { $env:ZERON_BUILD_SHA = $Sha }
@@ -59,40 +62,50 @@ Write-Host "== packing $dist"
 if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 Copy-Item $exe (Join-Path $dist "zeron.exe")
-# Any DLL the build placed beside the exe travels with it (none today; the
-# fonts and icons are compiled into the binary).
-Get-ChildItem (Join-Path $target "release") -Filter *.dll -ErrorAction SilentlyContinue |
-    ForEach-Object { Copy-Item $_.FullName $dist }
+# DLLs of the app's own travel with it, by name (none today; the fonts and
+# icons are compiled into the binary). Never a *.dll sweep: after one
+# -Browser build the release dir also holds Chromium's 300 MB, which a plain
+# zip must not carry.
+$release = Join-Path $target "release"
+$appDlls = @()
+foreach ($name in $appDlls) {
+    $src = Join-Path $release $name
+    if (-not (Test-Path $src)) { throw "missing $src" }
+    Copy-Item $src $dist
+}
 Copy-Item (Join-Path $PSScriptRoot "surya.cmd") (Join-Path $dist "surya.cmd")
 $cefVersion = $null
 if ($Browser) {
-    # The cef crate's build script copied Chromium's runtime files (libcef.dll,
-    # chrome_elf.dll, *.pak, icudtl.dat, *.bin, locales\) next to the exe in
-    # target\release; CEF loads them from the exe's own folder, so the zip
-    # carries the same set. The helper is CEF's subprocess (renderer, GPU).
-    $release = Join-Path $target "release"
-    $helper = Join-Path $release "zeron-browser-helper.exe"
-    if (-not (Test-Path $helper)) { throw "no $helper (build with -Browser, not -NoBuild from a plain build)" }
-    if (-not (Test-Path (Join-Path $release "libcef.dll"))) { throw "no libcef.dll in $release (the cef build script did not run)" }
-    Copy-Item $helper $dist
-    $cefFiles = @("*.dll", "*.pak", "*.dat", "*.bin", "*.json")
-    Get-ChildItem (Join-Path $release "*") -File -Include $cefFiles |
-        ForEach-Object { Copy-Item $_.FullName $dist -Force }
-    Copy-Item (Join-Path $release "locales") (Join-Path $dist "locales") -Recurse -Force
-    # Licence and version: CEF is BSD-3-Clause, Chromium's third-party
-    # notices are CREDITS.html from the CEF binary; archive.json names the
-    # exact CEF + Chromium build that was downloaded.
-    Copy-Item (Join-Path $PSScriptRoot "CEF-LICENSE.txt") $dist
-    $credits = Join-Path $release "CREDITS.html"
-    if (Test-Path $credits) { Copy-Item $credits $dist }
-    $archive = Join-Path $release "archive.json"
-    if (Test-Path $archive) {
-        $m = [regex]::Match((Get-Content $archive -Raw), 'cef_binary_([^+]+)\+g[0-9a-f]+\+chromium-([0-9.]+)')
-        if ($m.Success) { $cefVersion = "CEF $($m.Groups[1].Value), Chromium $($m.Groups[2].Value)" }
+    # The cef crate's build script copied Chromium's runtime files next to
+    # the exe in target\release; CEF loads them from the exe's own folder, so
+    # the zip carries the same set. Every name is required: a missing one is
+    # a Chromium that fails at start-up, not a smaller zip. CREDITS.html is
+    # Chromium's third-party notices (from the CEF dist root); archive.json
+    # names the exact CEF + Chromium build that was downloaded.
+    $cefRequired = @(
+        "zeron-browser-helper.exe",
+        "libcef.dll", "chrome_elf.dll",
+        "d3dcompiler_47.dll", "dxcompiler.dll", "dxil.dll",
+        "libEGL.dll", "libGLESv2.dll",
+        "vk_swiftshader.dll", "vk_swiftshader_icd.json", "vulkan-1.dll",
+        "chrome_100_percent.pak", "chrome_200_percent.pak", "resources.pak",
+        "icudtl.dat", "v8_context_snapshot.bin",
+        "CREDITS.html", "archive.json"
+    )
+    $missing = @($cefRequired | Where-Object { -not (Test-Path (Join-Path $release $_)) })
+    if ($missing.Count -gt 0) {
+        throw "browser runtime incomplete in ${release}: missing $($missing -join ', ') (build with -Browser, not -NoBuild from a plain build)"
     }
-    if (-not $cefVersion) { $cefVersion = "CEF (version unknown: no archive.json beside the exe)" }
-    $shipped = @(Get-ChildItem $dist -File).Count
-    Write-Host "== browser: $cefVersion; shipped $shipped files (helper + CEF runtime) and locales\"
+    $locales = Join-Path $release "locales"
+    $localeCount = @(Get-ChildItem $locales -Filter *.pak -File -ErrorAction SilentlyContinue).Count
+    if ($localeCount -lt 1) { throw "browser runtime incomplete: no *.pak in $locales" }
+    foreach ($name in $cefRequired) { Copy-Item (Join-Path $release $name) $dist -Force }
+    Copy-Item $locales (Join-Path $dist "locales") -Recurse -Force
+    Copy-Item (Join-Path $PSScriptRoot "CEF-LICENSE.txt") $dist
+    $m = [regex]::Match((Get-Content (Join-Path $release "archive.json") -Raw), 'cef_binary_([^+]+)\+g[0-9a-f]+\+chromium-([0-9.]+)')
+    if (-not $m.Success) { throw "archive.json beside the exe does not name a cef_binary_<cef>+g<hash>+chromium-<version> archive" }
+    $cefVersion = "CEF $($m.Groups[1].Value), Chromium $($m.Groups[2].Value)"
+    Write-Host "== browser: $cefVersion; shipped $($cefRequired.Count) required files, $localeCount locales, CEF-LICENSE.txt"
 }
 @(
     "surya windows app",
