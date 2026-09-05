@@ -259,6 +259,32 @@ it drops users onto the fallback.
 The theme contrast test covers the default pair again, at comet's own measured
 numbers.
 
+## Review round 2 (#82, at `ec42930`)
+
+One finding, and it was the kind only a second pair of eyes catches: the Needs
+you page had no way out.
+
+Making the queue a page put it over the whole main area, and nothing closed it.
+`OpenChat` selected the chat *behind* the page, so the conversation and the
+sheet the row points at both stayed underneath the queue.
+The collapsed row focused the composer directly, which was correct while the
+list was a strip above the feed, but the shell suppresses the composer while the
+page is up, so the click focused something that was not on screen.
+Both exits looked like a click that did nothing.
+
+Fixed at `6b2a763`: the shell's subscriber sets `inbox_shown = Some(false)` on
+the way out, and the collapsed row emits `OpenChat(row.chat_id)` instead of
+focusing, so both paths route through the same close-then-select.
+The dead strip mount, its measuring canvas and the `inbox_stack` field went with
+it.
+
+Worth recording why this nearly reached the owner.
+`ec42930` was built for Windows and launched for him before the fix existed.
+The sidebar shows a "Needs you" badge, which is exactly what a curious owner
+clicks first, and the build shown to prove his complaint was fixed would have
+trapped him on a page with no visible way back.
+He was warned, and the build was rebuilt at `6b2a763`.
+
 ## Comet's contrast, measured
 
 The default-pair test prints these and holds the floors just under them, so a
