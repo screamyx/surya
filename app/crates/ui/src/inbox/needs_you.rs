@@ -95,6 +95,13 @@ impl NeedsYouPane {
         inbox_rows(&self.items, &self.chats)
     }
 
+    /// How many things are waiting. The rail badge and the shell's
+    /// auto-show rule both want the count, and neither needs the rows built
+    /// to get it.
+    pub fn count(&self) -> usize {
+        self.items.len()
+    }
+
     fn start_watches(&mut self, cx: &mut Context<Self>) {
         let Some(engine) = self
             .state

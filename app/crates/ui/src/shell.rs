@@ -1989,9 +1989,27 @@ impl Shell {
         if let Some(forced) = self.inbox_shown {
             return forced;
         }
+        self.inbox_count(cx) > 0
+    }
+
+    /// How many things are waiting, 0 before the pane exists.
+    fn inbox_count(&self, cx: &App) -> usize {
         self.inbox_pane
             .as_ref()
-            .is_some_and(|pane| !pane.read(cx).rows().is_empty())
+            .map_or(0, |pane| pane.read(cx).count())
+    }
+
+    /// A hide applies to the queue the user was looking at, not to the rest
+    /// of the session. Once that queue empties the override is dropped, so
+    /// the next thing that blocks opens the list again instead of being
+    /// swallowed by a toggle from an hour ago.
+    ///
+    /// A deliberate OPEN survives an empty queue: the user asked to see the
+    /// quiet state, so it stays until they close it.
+    fn expire_inbox_override(&mut self, cx: &App) {
+        if self.inbox_shown == Some(false) && self.inbox_count(cx) == 0 {
+            self.inbox_shown = None;
+        }
     }
 
     fn tasks_pane(&mut self, cx: &mut Context<Self>) -> Option<Entity<crate::tasks::TasksPane>> {
@@ -4155,6 +4173,12 @@ impl Shell {
         let inner: AnyElement = match self.route {
             Route::Settings(section) => self.render_settings_nav(section, &theme, cx),
             Route::Chat => {
+                // Built before anything asks whether it is visible. The pane
+                // is what carries the WatchNeedsYou subscription, so until it
+                // exists the queue is always empty and the list could never
+                // appear on its own.
+                self.inbox_pane(cx);
+                self.expire_inbox_override(cx);
                 let entries = self.render_rail_entries(&theme, cx);
                 // Decision 15: the agent tree sits above the chat list, so a
                 // spawned agent is visible where its spawner is.
@@ -4202,10 +4226,10 @@ impl Shell {
     }
 
     /// Decision 11 rail entries above the session list: Home, Needs you,
-    /// Agents, Tasks, Files. Home and Files/Tasks act now; Needs you and
-    /// Agents wait for the inbox pane (feat/inbox-ui) and render dimmed.
+    /// Agents, Tasks, Files. All five act.
     fn render_rail_entries(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let inbox_on = self.inbox_visible(cx);
+        let waiting = self.inbox_count(cx);
         let active = if self.right_pane_open(cx) {
             Some(self.resolved_right_active(cx))
         } else {
@@ -4265,10 +4289,20 @@ impl Shell {
                     true,
                     theme,
                 )
+                // The count is the point of the entry: decision 20 wants how
+                // many things are waiting readable without opening the list.
+                .when(waiting > 0, |el| {
+                    el.child(div().flex_1()).child(crate::inbox::chrome::badge(
+                        theme,
+                        SharedString::from(waiting.to_string()),
+                        theme.accent,
+                    ))
+                })
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_inbox(cx))),
             )
-            // The agent tree lives in this same sidebar right below, so this
-            // entry scrolls to it rather than opening a second surface.
+            // The agent tree is always mounted right below in this same
+            // sidebar, so there is no second surface to open. The click only
+            // makes sure the rail exists and redraws.
             .child(
                 entry("rail-agents", icons::BOT, "Agents", false, true, theme).on_click(
                     cx.listener(|this, _, _, cx| {
