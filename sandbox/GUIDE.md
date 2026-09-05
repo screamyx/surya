@@ -34,6 +34,11 @@ identical defaults. The following pairs are exact within this sandbox:
 | `active:bg-element-active` | `.active(\|s\| s.bg(theme.element_active))` |
 | `focus:bg-element-hover` | `.track_focus(&handle).focus(\|s\| s.bg(theme.element_hover))` |
 
+Alpha modifiers such as `bg-warning/14` are admitted only on opaque tokens (and
+the native `wash` helper). Tailwind multiplies existing alpha while GPUI
+`opacity()` replaces it, so modifiers on already-translucent tokens are rejected
+rather than silently changing the paint.
+
 Numeric spacing uses Tailwind's 0.25rem unit, not pixels. At the default 16px root,
 `p-2` is 8px. Rust uses both fixed `px` and scalable `ui_rems`; preserve the original
 unit on port-back when the design has not changed. Each allowed prefix has a finite
@@ -98,6 +103,34 @@ reads method bodies and macro prefixes. Commit regenerated files with their sour
 Fonts and SVG geometry are copied from the native assets; icons use `currentColor`.
 The toolkit's independent JSON palette is not the app palette.
 
+## Port in, per screen, from Rust to React
+
+1. In your own worktree, choose the next authorized native screen and record its
+   Rust revision, theme, viewport and Windows reference frames. Include seeded,
+   empty and relevant selected, busy or failure states. Do not use the old mockup.
+2. Read the GPUI struct, its `Render` implementation, split render helpers and
+   surrounding shell. Trace the model fields, derived values, element ids, focus
+   and scroll ownership, emitted events and listener callbacks before writing JSX.
+3. Create one React component with the same struct name and mirror the Rust file
+   boundaries. Name each source file in a header comment; keep `impl` render helpers
+   as pure functions. Reuse the existing Shell frame and stay under 500 lines.
+4. Translate the element tree and style calls through `whitelist.json`, preserving
+   nesting, ordering, flex constraints, token roles and interaction states. Record
+   fixed `px` versus scalable `ui_rems` units for the return trip. If a style has no
+   admitted pair, document the gap instead of adding arbitrary CSS or classes.
+5. Express native model inputs as typed fixture props with stable ids. Keep counts
+   derived and turn events/listeners into intent callbacks. Leave subscriptions,
+   transport and routing in Rust; use only local `useState` where needed. Let the
+   harness supply fixtures and show callback results without a backend.
+6. Run `npm run generate` to refresh native tokens and assets, then `npm run lint`,
+   `npm test` and `npm run build`. Extend the browser proof for the new screen's
+   fixtures and meaningful interactions; verify mouse and keyboard callbacks.
+7. Capture the browser screen at the reference viewport in both themes. Inspect
+   it beside the Windows frames, including empty and interactive states. Correct
+   translation errors and record remaining differences under known gaps. Review
+   this baseline before iterating its design; use the procedure below to port the
+   resulting screen diff back into GPUI.
+
 ## Port back, per screen, from the diff
 
 1. Record the baseline Rust revision, fixture, theme, viewport and screenshots.
@@ -126,6 +159,9 @@ The toolkit's independent JSON palette is not the app palette.
   them emits a callback shown by the harness. No chat screen or composer is ported.
 - The current registry uses purple selected-row fills; the reference uses gray.
   The current Rust value is retained.
+- The dark Windows reference shows an accent dot and accent-colored `Input`
+  status on the rail chat row. `src/shell/rail.tsx` currently renders `Input` as
+  plain faint age text without the dot; this status treatment is not yet ported.
 - Browser font rasterization and native Windows caption controls differ. Titlebar
   actions and unported rail destinations report fixture events, not OS commands.
 - Shell/rail colors follow the current resolved theme. Reference build and stored
@@ -151,7 +187,3 @@ In another terminal run `npm run proof`. Install Chromium with
 Chromium executable. `SANDBOX_URL` overrides the local server URL. Original Windows
 reference files must be available at the paths listed in `scripts/proof.mjs`; the
 script copies them without modification and captures side-by-side comparisons.
-
-Alpha modifiers are admitted only on opaque tokens (and the native `wash` helper).
-Tailwind multiplies existing alpha while GPUI `opacity()` replaces it, so modifiers
-on already-translucent tokens are rejected rather than silently changing the paint.
