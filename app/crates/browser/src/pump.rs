@@ -96,6 +96,7 @@ pub(crate) fn install(cx: &mut gpui::App) {
             while let Ok(()) = rx.try_recv() {}
             IDLE_RAN.fetch_add(1, Ordering::Relaxed);
             work_now();
+            crate::tabs::selftest_tick();
             let now = (INPUT_SEQ.load(Ordering::Relaxed), PUMP_ASKS.load(Ordering::Relaxed));
             let frames = crate::render::frames();
             let quiet = now == seen && frames == seen_frames;
@@ -128,7 +129,7 @@ pub fn counters() -> String {
     let (w, h) = crate::render::last_size();
     format!(
         "renders={} work_did={} pump_asks={} timer_armed={} timer_fired={} idle_armed={} idle_ran={} \
-         idle_refresh={} inputs={} frames={} size={w}x{h} {} \
+         idle_refresh={} inputs={} frames={} size={w}x{h} {} {} \
          copy_ms n={cn} last={clast:.2} avg={cavg:.2} max={cmax:.2} \
          upload_ms n={n} last={last:.2} avg={avg:.2} max={max:.2}",
         RENDERS.load(Ordering::Relaxed),
@@ -142,6 +143,11 @@ pub fn counters() -> String {
         INPUT_SEQ.load(Ordering::Relaxed),
         crate::render::frames(),
         crate::client::lifecycle_counters(),
+        crate::tabs::counters(),
+    ) + &format!(
+        " bg_paints={} kept_frames={}",
+        crate::render::background_paints(),
+        crate::render::kept_frames()
     )
 }
 
