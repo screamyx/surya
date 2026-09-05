@@ -14,7 +14,8 @@
 # display that actually paints (the headless Xorg on the GPU, :7).
 set -u
 APPEARANCE="${1:-light}"
-WAIT="${2:-150}"
+# How many two-second turns to wait for the engine line before giving up.
+WAIT="${2:-90}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TARGET="${CARGO_TARGET_DIR:-$(cd "$HERE/.." && pwd)/target}"
 BIN="$TARGET/debug/zeron"
@@ -44,36 +45,44 @@ export ZERON_DATA_DIR="$DATA" ZERON_IPC_PORT SURYA_CEF_CACHE="$DATA/cef" \
        SURYA_CEF_LOG="$OUT/cef.log" RUST_LOG=info
 "$BIN" > "$LOG" 2>&1 &
 APP=$!
-# gpui's X11 backend on a headless server paints one frame and then waits
-# for an Expose; xrefresh is the kick.
-sleep 20; command -v xrefresh >/dev/null && xrefresh
-REMAIN=$(( WAIT > 20 ? WAIT - 20 : 1 ))
-sleep "$REMAIN"; command -v xrefresh >/dev/null && xrefresh; sleep 3
+# There is no window manager on the headless Xorg, so nothing places the
+# window on screen and nothing gives it the keyboard: x7-window does both.
+sleep 10
+"$PY" "$HERE/x7-window.py" "$DISPLAY" 0 0 $W $H 240 || echo "window move failed"
+# The window maps long before the shell renders into it; a debug build under
+# load takes another minute. Wait for the engine line, then the first frame.
+for _ in $(seq 1 "$WAIT"); do
+  grep -q "engine core assembled" "$LOG" && break
+  sleep 2
+done
+sleep 15; command -v xrefresh >/dev/null && xrefresh; sleep 3
 
-# The keyboard has to be in the page for the pane's chords to be the ones
-# under test, so click the page first, then drive the chrome.
+# The keyboard starts in the page, as it does after a person clicks a page.
 "$PY" "$HERE/x7-click.py" "$DISPLAY" $(( W - 200 )) $(( H / 2 )) || echo "click failed"
 sleep 1
 
-# 1. a second tab, typed into and loaded; 2. back to the first; 3. the find
-# bar with a query that matches; 4. zoom to 125% (two ladder steps).
-"$PY" "$HERE/x7-keys.py" "$DISPLAY" \
-  ctrl+t "example.com" enter \
-  || echo "keys step 1 failed"
-sleep 12; command -v xrefresh >/dev/null && xrefresh; sleep 2
-"$PY" "$HERE/x7-keys.py" "$DISPLAY" \
-  ctrl+f "Domain" \
-  || echo "keys step 2 failed"
-sleep 4
-"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+equal ctrl+equal || echo "keys step 3 failed"
-sleep 3; command -v xrefresh >/dev/null && xrefresh; sleep 2
+# A second tab, then three addresses typed into the bar and loaded. ctrl-a
+# selects what the bar already shows, the way a fresh click in Chrome does.
+"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+t "example.org" enter || echo "keys 1 failed"
+sleep 14
+"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "iana.org" enter || echo "keys 2 failed"
+sleep 14
+"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "example.com" enter || echo "keys 3 failed"
+sleep 16; command -v xrefresh >/dev/null && xrefresh; sleep 2
+
+# Find a word the page actually shows, then zoom two steps to 125%.
+"$PY" "$HERE/x7-click.py" "$DISPLAY" $(( W - 200 )) $(( H / 2 )) || echo "click failed"
+"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+f "Domain" || echo "keys 4 failed"
+sleep 5
+"$PY" "$HERE/x7-keys.py" "$DISPLAY" ctrl+equal ctrl+equal || echo "keys 5 failed"
+sleep 4; command -v xrefresh >/dev/null && xrefresh; sleep 3
 
 ffmpeg -loglevel error -y -f x11grab -video_size "${W}x${H}" -i "$DISPLAY" -frames:v 1 "$SHOT"
 kill $APP 2>/dev/null; sleep 1; kill -9 $APP 2>/dev/null
 
-echo "--- the pane's own counters, last line:"
-grep -E "^browser-ui: " "$LOG" | tail -1
-echo "--- every line the pane printed:"
-grep -cE "^browser-ui: " "$LOG" | sed 's/^/lines=/'
-grep -E "browser: (created|address|load_end)" "$LOG" | tail -4
+echo "--- what the pane did, in its own words:"
+grep -E "^browser-ui: " "$LOG" | grep -v "^browser-ui: key " | tail -12
+echo "--- tabs, and what loaded:"
+grep -E "browser: (created|address|load_end)" "$LOG" | tail -8
+grep -E "^browser: t=" "$LOG" | tail -1 | sed -n 's/.*\(tabs=[0-9]* opened=[0-9]* active=[0-9]*\).*/\1/p'
 echo "proof: appearance=$APPEARANCE shot=$SHOT ($(stat -c %s "$SHOT" 2>/dev/null || echo 0) bytes)"

@@ -58,7 +58,10 @@ fn one(
         .max_w(px(TAB_MAX_WIDTH))
         .rounded(px(6.0))
         .cursor_pointer()
-        .when(is_active, |el| el.bg(theme.surface_raised))
+        .when(is_active, |el| {
+            el.bg(theme.surface_raised).border_1().border_color(theme.border)
+        })
+        .when(!is_active, |el| el.border_1().border_color(gpui::transparent_black()))
         .when(!is_active, |el| el.hover(|s| s.bg(theme.element_hover)))
         // A tab that is still loading says so, the way a spinner does in
         // Chrome, without a spinner's cost on an offscreen browser.
@@ -69,8 +72,9 @@ fn one(
             div()
                 .flex_1()
                 .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
+                // An ellipsis, not a hard clip: a strip full of titles cut
+                // mid-word reads as a rendering fault.
+                .truncate()
                 .text_size(crate::typography::ui_rems(12.0))
                 .text_color(if is_active { theme.text } else { theme.text_muted })
                 .child(title.clone()),
