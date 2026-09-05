@@ -142,10 +142,11 @@ pub(crate) fn on_accelerated_paint(info: &cef::AcceleratedPaintInfo) -> Option<g
             COPY_MAX_US.fetch_max(us, Ordering::Relaxed);
             if n <= 3 || n % 60 == 0 {
                 println!(
-                    "browser: accelerated_paint #{n}: {}x{}, gpu copy {:.2}ms",
+                    "browser: accelerated_paint #{n}: {}x{}, gpu copy {:.2}ms; {}",
                     snap.width,
                     snap.height,
-                    us as f64 / 1000.0
+                    us as f64 / 1000.0,
+                    counters()
                 );
             }
             // SAFETY: `snap.handle` is an NT handle to a BGRA8 texture of
