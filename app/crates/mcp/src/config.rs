@@ -87,18 +87,43 @@ impl Config {
 }
 
 /// Append one JSON line to `path`, creating parent directories as needed.
+///
+/// Owner-only on unix, directory and file both. These are the cards the agent
+/// drew and the mail it sent: another user on the box has no business reading
+/// them, and none writing them. The modes are set at creation rather than
+/// chmod-ed after, so there is no window where the file is world-readable.
 pub fn append_line(path: &std::path::Path, line: &str) -> std::io::Result<()> {
     use std::io::Write;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        create_private_dir(parent)?;
     }
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
     file.write_all(line.as_bytes())?;
     file.write_all(b"\n")?;
     file.flush()
+}
+
+/// Create `dir` and every parent, owner-only on unix.
+fn create_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(dir)
+    }
 }
 
 #[cfg(test)]
@@ -116,6 +141,20 @@ mod tests {
             mail_log: PathBuf::from("/tmp/mail.jsonl"),
         };
         assert_eq!(cfg.cards_dir(), PathBuf::from("/repo/.surya/cards"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_store_and_its_directory_are_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("private").join("cards.jsonl");
+        append_line(&path, "{}").unwrap();
+        let mode = |p: &std::path::Path| {
+            std::fs::metadata(p).unwrap().permissions().mode() & 0o777
+        };
+        assert_eq!(mode(path.parent().unwrap()), 0o700, "the directory");
+        assert_eq!(mode(&path), 0o600, "the file");
     }
 
     #[test]

@@ -128,19 +128,23 @@ fn run_dir(root: &Path, agent_id: &str) -> PathBuf {
 /// Create `dir` and every parent, owner-only on unix. The config carries the
 /// agent's own paths and is read by a process we launch, so no other user has
 /// business reading or writing it.
+///
+/// The mode is set as the directory is created, not chmod-ed after: a
+/// create-then-tighten leaves a window where the directory is world-writable,
+/// which is the whole hazard this function exists to close.
 fn create_private_dir(dir: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        // Tighten every level we own, not just the leaf: an existing shared
-        // root stays as it is and the write below fails loudly instead.
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
-        if let Some(parent) = dir.parent() {
-            let _ = std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700));
-        }
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)
     }
-    Ok(())
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(dir)
+    }
 }
 
 /// The `--mcp-config` body. Every surya path the sidecar needs rides the

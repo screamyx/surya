@@ -4,7 +4,6 @@
 use serde_json::Value;
 use zeron_proto::{AgentEvent, DoneStatus, HarnessId, TodoItem, ToolCall};
 
-use super::surya::SHOW_CARD_TOOL;
 use super::wire::{ContentBlock, Frame};
 
 /// Human-readable text for the CLI's assistant-level error codes. These arrive
