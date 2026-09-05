@@ -41,7 +41,7 @@ use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::theme::Theme;
 use state::ZoomMemory;
 
-pub use keys::counters;
+pub use keys::{counters, init};
 
 pub const TAB_STRIP_HEIGHT: f32 = 32.0;
 pub const BAR_HEIGHT: f32 = 36.0;

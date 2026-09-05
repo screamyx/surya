@@ -120,8 +120,10 @@ sleep 3
 drive "$HERE/x7-click.py" "$DISPLAY" "$TAB1_X" "$ROW_Y"
 sleep 3
 
-# The blank tab takes the keyboard, so this types straight into the bar.
-drive "$HERE/x7-keys.py" "$DISPLAY" "example.com" enter
+# The blank tab's bar is empty and waiting; click it and select-all anyway,
+# so a stray character cannot turn this into example.comexample.com.
+drive "$HERE/x7-click.py" "$DISPLAY" "$BAR_X" "$BAR_Y"
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "example.com" enter
 sleep 14
 # A refused scheme has to say so on screen, not only on stdout.
 drive "$HERE/x7-click.py" "$DISPLAY" "$BAR_X" "$BAR_Y"
@@ -133,7 +135,9 @@ drive "$HERE/x7-keys.py" "$DISPLAY" escape
 sleep 2
 
 # Back to two tabs for the frame, then find and zoom.
-drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+t "example.com" enter
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+t
+sleep 2
+drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+a "example.com" enter
 sleep 14
 drive "$HERE/x7-click.py" "$DISPLAY" "$PAGE_X" "$PAGE_Y"
 drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+f "Domain"

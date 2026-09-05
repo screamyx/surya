@@ -178,6 +178,10 @@ impl BrowserPane {
         if last {
             super::backend::tab_open("");
             super::keys::tab_opened();
+            // Typing, not following: for a moment the crate still reports the
+            // closed tab as the active one, and a bar that follows the page
+            // would put its address straight back into an empty tab.
+            self.url_editing = true;
             self.set_url_text(String::new(), cx);
             super::keys::report("close tab, opened a blank one in its place");
         } else {

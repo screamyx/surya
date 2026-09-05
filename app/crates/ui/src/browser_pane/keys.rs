@@ -1,64 +1,69 @@
 //! The chords the pane owns, and the counters that prove they ran.
 //!
-//! These are a **capture-phase key listener**, not a keymap binding, and the
-//! reason is a rule in gpui's keymap. `Keymap::binding_enabled`
-//! (`keymap.rs`) gives a binding with no context predicate
-//! `Some(contexts.len())`, the deepest depth there is, while a binding with
-//! a predicate gets the depth at which its context matched.
-//! `bindings_for_input` sorts on depth first and only breaks ties by
-//! insertion order. So a context-less `ctrl-tab` bound anywhere in the app
-//! beats a `BrowserPane` binding whenever the pane's context is not the last
-//! one on the stack - which is exactly the case when the keyboard sits in
-//! the address field, where the stack ends with the input's own context.
-//! comet binds `ctrl-tab` to NextSession and `cmd-w` to CloseWindow without
-//! a context (`shell.rs`, `app_menus.rs`), so a bound pane would have cycled
-//! sessions instead of tabs and no amount of ordering would fix it.
+//! Getting a chord to the pane at all took three tries, so the rule is
+//! written down here rather than rediscovered. Read from gpui's source, not
+//! from memory:
 //!
-//! `Window::dispatch_key_event` runs capture-phase key listeners **before**
-//! it resolves any binding, so a capture listener on the pane's root wins
-//! whenever the keyboard is inside the pane, and touches nothing when it is
-//! not. One mechanism for every chord, and no dependence on what the rest of
-//! the app binds.
+//! * `Window::dispatch_key_event` resolves keymap **bindings first**, and
+//!   only calls `finish_dispatch_key_event` - which runs capture-phase and
+//!   then bubble-phase key listeners - if no binding consumed the event. So
+//!   a listener of any phase cannot beat a binding. A capture listener here
+//!   was silently skipped for ctrl-tab, and only for ctrl-tab, because that
+//!   is the one chord comet already binds.
+//! * `Keymap::binding_enabled` gives a binding with **no context** the depth
+//!   `contexts.len()`, the deepest there is, while a binding with a context
+//!   gets the depth its context matched at. `bindings_for_input` sorts on
+//!   depth first, so a `BrowserPane`-scoped binding loses to comet's
+//!   context-less `ctrl-tab` (NextSession) and `cmd-w` (CloseWindow)
+//!   whenever the pane's context is not last on the stack - which is exactly
+//!   the case while the keyboard is in the address field.
+//! * Ties at equal depth break by insertion order, later wins
+//!   (`ix_b.cmp(ix_a)`).
+//!
+//! So the pane's chords are bound with **no context, after comet's**, from
+//! the end of `shell::apply_keymap`. Equal depth, later insertion, so they
+//! sort first. Scoping then comes from the handlers, not the binding:
+//! `dispatch_action_on_node_inner` sets `propagate_event = true` before
+//! walking the focused path, so when the pane is not focused there is no
+//! `on_action` for these on that path, propagation survives, and comet's own
+//! binding runs next. The pane takes ctrl-tab only when the keyboard is
+//! inside it.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use gpui::{prelude::*, Context, Focusable as _, KeyDownEvent, Window};
+use gpui::{actions, prelude::*, App, Context, Focusable as _, KeyBinding, KeyDownEvent, Window};
 
 use super::{backend, state, BrowserPane};
 
-/// What a chord means to the pane. `ctrl` on Windows and Linux, `cmd` on
-/// macOS: the owner uses both machines, and a browser that ignores cmd-t on
-/// a Mac is not a browser (haktui's `input/commands.rs` takes the same view).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Chord {
-    NewTab,
-    CloseTab,
-    NextTab,
-    PreviousTab,
-    FindInPage,
-    ZoomIn,
-    ZoomOut,
-    ZoomReset,
-}
+actions!(
+    browser_pane,
+    [NewTab, CloseTab, NextTab, PreviousTab, FindInPage, ZoomIn, ZoomOut, ZoomReset]
+);
 
-fn chord(event: &KeyDownEvent) -> Option<Chord> {
-    let ks = &event.keystroke;
-    if !(ks.modifiers.control || ks.modifiers.platform) || ks.modifiers.alt {
-        return None;
-    }
-    Some(match ks.key.as_str() {
-        "t" => Chord::NewTab,
-        "w" => Chord::CloseTab,
-        "f" => Chord::FindInPage,
-        "tab" if ks.modifiers.shift => Chord::PreviousTab,
-        "tab" => Chord::NextTab,
+/// Bind the pane's chords. Called from the END of `shell::apply_keymap`,
+/// which clears the whole keymap and rebuilds it whenever the shortcuts
+/// change; being last is what makes these sort ahead of comet's own
+/// context-less bindings. See the module header for why.
+pub fn init(cx: &mut App) {
+    // ctrl on Windows and Linux, cmd on macOS. Both, because the owner uses
+    // both machines and a browser that ignores cmd-t on a Mac is not a
+    // browser (haktui's `input/commands.rs` takes the same view).
+    let mut bindings = Vec::new();
+    for prefix in ["cmd", "ctrl"] {
+        bindings.push(KeyBinding::new(&format!("{prefix}-t"), NewTab, None));
+        bindings.push(KeyBinding::new(&format!("{prefix}-w"), CloseTab, None));
+        bindings.push(KeyBinding::new(&format!("{prefix}-f"), FindInPage, None));
+        bindings.push(KeyBinding::new(&format!("{prefix}-tab"), NextTab, None));
+        bindings.push(KeyBinding::new(&format!("shift-{prefix}-tab"), PreviousTab, None));
         // gpui resolves ctrl-shift-= to "+" and clears shift, so both
-        // spellings of zoom-in arrive here and both are Chrome's.
-        "=" | "+" => Chord::ZoomIn,
-        "-" | "_" => Chord::ZoomOut,
-        "0" => Chord::ZoomReset,
-        _ => return None,
-    })
+        // spellings of zoom-in arrive and both are Chrome's.
+        bindings.push(KeyBinding::new(&format!("{prefix}-="), ZoomIn, None));
+        bindings.push(KeyBinding::new(&format!("{prefix}-+"), ZoomIn, None));
+        bindings.push(KeyBinding::new(&format!("{prefix}--"), ZoomOut, None));
+        bindings.push(KeyBinding::new(&format!("{prefix}-0"), ZoomReset, None));
+    }
+    println!("browser-ui: keymap asked={n} bound={n}", n = bindings.len());
+    cx.bind_keys(bindings);
 }
 
 /// `SURYA_TRACE_BROWSER_UI=1` prints every key the pane's root is handed,
@@ -68,10 +73,18 @@ fn tracing() -> bool {
     std::env::var_os("SURYA_TRACE_BROWSER_UI").is_some()
 }
 
-/// The pane's root: the chords in the capture phase, and the enter and
-/// escape the two fields deliberately leave unbound, in the bubble phase.
+/// The pane's root: the action handlers, whose presence on the focused
+/// dispatch path is what scopes the chords to this pane, and the enter and
+/// escape the two fields deliberately leave unbound.
 pub fn bind(root: gpui::Div, cx: &mut Context<BrowserPane>) -> gpui::Div {
-    root.capture_key_down(cx.listener(BrowserPane::on_chord))
+    root.on_action(cx.listener(BrowserPane::act_new_tab))
+        .on_action(cx.listener(BrowserPane::act_close_tab))
+        .on_action(cx.listener(BrowserPane::act_next_tab))
+        .on_action(cx.listener(BrowserPane::act_previous_tab))
+        .on_action(cx.listener(BrowserPane::act_find))
+        .on_action(cx.listener(BrowserPane::act_zoom_in))
+        .on_action(cx.listener(BrowserPane::act_zoom_out))
+        .on_action(cx.listener(BrowserPane::act_zoom_reset))
         .on_key_down(cx.listener(BrowserPane::on_key))
 }
 
@@ -140,38 +153,55 @@ pub(super) fn report(what: &str) {
 }
 
 impl BrowserPane {
-    /// Capture phase: the pane's own chords, before any keymap binding and
-    /// before the page's key path in `surya_browser::panel`.
-    fn on_chord(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(chord) = chord(event) else { return };
+    fn act_new_tab(&mut self, _: &NewTab, window: &mut Window, cx: &mut Context<Self>) {
+        self.chord("NewTab", cx);
+        self.open_tab(window, cx);
+    }
+
+    fn act_close_tab(&mut self, _: &CloseTab, _: &mut Window, cx: &mut Context<Self>) {
+        self.chord("CloseTab", cx);
+        let Some(active) = backend::active_tab() else { return };
+        self.close(active, cx);
+    }
+
+    fn act_next_tab(&mut self, _: &NextTab, _: &mut Window, cx: &mut Context<Self>) {
+        self.chord("NextTab", cx);
+        self.step_tab(1, cx);
+    }
+
+    fn act_previous_tab(&mut self, _: &PreviousTab, _: &mut Window, cx: &mut Context<Self>) {
+        self.chord("PreviousTab", cx);
+        self.step_tab(-1, cx);
+    }
+
+    fn act_find(&mut self, _: &FindInPage, window: &mut Window, cx: &mut Context<Self>) {
+        self.chord("FindInPage", cx);
+        self.open_find(window, cx);
+    }
+
+    fn act_zoom_in(&mut self, _: &ZoomIn, _: &mut Window, cx: &mut Context<Self>) {
+        self.chord("ZoomIn", cx);
+        self.step_zoom(state::zoom_in(self.zoom_percent), cx);
+    }
+
+    fn act_zoom_out(&mut self, _: &ZoomOut, _: &mut Window, cx: &mut Context<Self>) {
+        self.chord("ZoomOut", cx);
+        self.step_zoom(state::zoom_out(self.zoom_percent), cx);
+    }
+
+    fn act_zoom_reset(&mut self, _: &ZoomReset, _: &mut Window, cx: &mut Context<Self>) {
+        self.chord("ZoomReset", cx);
+        self.step_zoom(state::ZOOM_DEFAULT, cx);
+    }
+
+    /// Every chord handler starts here: count it, trace it, and take it off
+    /// the event so comet's own binding for the same keys does not also run.
+    fn chord(&mut self, name: &str, cx: &mut Context<Self>) {
         key_seen();
-        if tracing() {
-            println!("browser-ui: chord {chord:?}");
-        }
-        match chord {
-            Chord::NewTab => self.open_tab(window, cx),
-            Chord::CloseTab => {
-                let Some(active) = backend::active_tab() else { return };
-                self.close(active, cx);
-            }
-            Chord::NextTab => {
-                if !self.step_tab(1, cx) {
-                    return;
-                }
-            }
-            Chord::PreviousTab => {
-                if !self.step_tab(-1, cx) {
-                    return;
-                }
-            }
-            Chord::FindInPage => self.open_find(window, cx),
-            Chord::ZoomIn => self.step_zoom(state::zoom_in(self.zoom_percent), cx),
-            Chord::ZoomOut => self.step_zoom(state::zoom_out(self.zoom_percent), cx),
-            Chord::ZoomReset => self.step_zoom(state::ZOOM_DEFAULT, cx),
-        }
         key_handled();
-        // The chord was the pane's, so nothing else sees it: not the page,
-        // and not comet's own context-less bindings for ctrl-tab and cmd-w.
+        if tracing() {
+            println!("browser-ui: chord {name}");
+        }
         cx.stop_propagation();
     }
 
