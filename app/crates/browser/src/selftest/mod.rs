@@ -83,7 +83,9 @@ fn delta(before: Counts) -> (u64, u64, String) {
     )
 }
 
-/// Which timer the idle pump is on, for the line.
+/// Which path the pump's waits are on, for the line: `clock` is the
+/// browser's clock for both the idle chain and CEF's delayed asks, `pool`
+/// is gpui's timer and a condvar.
 fn pump_timer() -> &'static str {
-    if crate::clock::pool_timer() { "pool" } else { "clock" }
+    crate::clock::label()
 }
