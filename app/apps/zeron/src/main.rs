@@ -406,16 +406,13 @@ fn dirs_data_dir() -> std::path::PathBuf {
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(std::path::PathBuf::from)
         .expect("neither HOME nor USERPROFILE is set");
-    let dir = home.join(".zeron");
-    // One-shot 0.2.0 migration: adopt the pre-rename data dir (sign-in,
-    // device identity, prefs) instead of starting fresh.
-    if !dir.exists() {
-        let old = home.join(".comet-native");
-        if old.exists() && std::fs::rename(&old, &dir).is_ok() {
-            eprintln!("migrated data dir {} -> {}", old.display(), dir.display());
-        }
-    }
-    dir
+    // First start after the rename: adopt the previous data dir (sign-in,
+    // device identity, prefs) instead of starting signed out. A COPY, so a
+    // user who goes back to the old build still finds their data - see
+    // `zeron_engine::data_dir`. Both names are arguments, so the rename only
+    // has to move them along by one.
+    zeron_engine::data_dir::adopt_and_report(&home, ".zeron", ".comet-native");
+    home.join(".zeron")
 }
 
 /// `zeron sync`: dial the running engine's IPC and print per-room sync state.
