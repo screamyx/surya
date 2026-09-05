@@ -248,6 +248,11 @@ impl ClaudeHarness {
             cmd.arg(&files.mcp_config);
             cmd.arg("--append-system-prompt-file");
             cmd.arg(&files.system_append);
+            // The cards skill, as a one-skill plugin. Without this the agent
+            // is told a card beats prose and given no reference for writing
+            // one; with it the skill shows up as `surya:surya-cards`.
+            cmd.arg("--plugin-dir");
+            cmd.arg(&files.plugin_dir);
             // surya is the host of every agent, so surya owns mail
             // (decision 19). The CLI's own cross-session messaging talks to
             // Claude Code sessions surya does not know about, and an agent
@@ -1002,6 +1007,18 @@ mod tests {
         assert!(std::fs::read_to_string(&append).unwrap().contains("show_card"));
 
         // surya owns mail, so the CLI's own cross-session tools are denied.
+        let plugin = args
+            .iter()
+            .position(|a| a == "--plugin-dir")
+            .map(|i| args[i + 1].clone())
+            .expect("--plugin-dir is passed");
+        assert!(
+            std::path::Path::new(&plugin)
+                .join("skills/surya-cards/SKILL.md")
+                .exists(),
+            "the plugin dir carries the cards skill"
+        );
+
         let denied = args
             .iter()
             .position(|a| a == "--disallowed-tools")

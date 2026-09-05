@@ -25,6 +25,13 @@ use zeron_proto::SuryaOptions;
 /// The prompt append, compiled in so an installed binary needs no asset path.
 const SYSTEM_APPEND: &str = include_str!("../../../../assets/surya-system-append.md");
 
+/// The cards skill, compiled in for the same reason. The append says a card
+/// beats prose and names the six shapes; this carries the JSON for each one
+/// and the A2UI escape hatch. It is a skill rather than more append because
+/// the append rides every turn's system prompt and this is 160 lines the
+/// agent needs only when it actually draws a card.
+const CARDS_SKILL: &str = include_str!("../../../../assets/skills/surya-cards/SKILL.md");
+
 /// Claude Code's own cross-session messaging, denied while surya is host so
 /// `mcp__surya__send_message` is the only way an agent reaches another agent.
 pub const DENIED_TOOLS: &str = "SendMessage,ListAgents";
@@ -38,10 +45,15 @@ pub const SHOW_CARD_TOOL: &str = "mcp__surya__show_card";
 /// app's transcript detection depends on this string.
 pub const SERVER_NAME: &str = "surya";
 
-/// The two generated paths, ready to hand to the CLI.
+/// The generated paths, ready to hand to the CLI.
 pub struct SuryaFiles {
     pub mcp_config: PathBuf,
     pub system_append: PathBuf,
+    /// A one-skill plugin directory. Claude Code loads it with `--plugin-dir`
+    /// and the agent sees `surya:surya-cards` - measured against 2.1.261, the
+    /// skill lands in both the init frame's `skills` and its
+    /// `slash_commands`.
+    pub plugin_dir: PathBuf,
 }
 
 /// Locate the `surya-mcp` binary: the explicit option, then
@@ -213,9 +225,19 @@ pub fn prepare_in(root: &Path, options: &SuryaOptions, cwd: &str) -> Option<Sury
         tracing::warn!("could not write {system_append_path:?}: {error}");
         return None;
     }
+    let plugin_dir = match write_cards_plugin(&dir) {
+        Ok(plugin_dir) => plugin_dir,
+        Err(error) => {
+            // The cards skill is a reference the agent opens on demand, not a
+            // precondition: the append still teaches show_card without it.
+            tracing::warn!("could not write the surya cards plugin: {error}");
+            return None;
+        }
+    };
     Some(SuryaFiles {
         mcp_config: mcp_config_path,
         system_append: system_append_path,
+        plugin_dir,
     })
 }
 
@@ -285,6 +307,28 @@ pub fn card_store(options: &SuryaOptions) -> PathBuf {
         Some(home) => PathBuf::from(home).join(".surya").join("cards.jsonl"),
         None => std::env::temp_dir().join("surya").join("cards.jsonl"),
     }
+}
+
+/// Lay the cards skill out as a one-skill plugin, the shape Claude Code's
+/// `--plugin-dir` reads: a `.claude-plugin/plugin.json` naming the skills
+/// folder, and `skills/<name>/SKILL.md`.
+fn write_cards_plugin(dir: &Path) -> std::io::Result<PathBuf> {
+    let plugin = dir.join("plugin");
+    let skill = plugin.join("skills").join("surya-cards");
+    create_private_dir(&skill)?;
+    create_private_dir(&plugin.join(".claude-plugin"))?;
+    std::fs::write(
+        plugin.join(".claude-plugin").join("plugin.json"),
+        json!({
+            "name": SERVER_NAME,
+            "description": "surya's own abilities: the card shapes show_card draws.",
+            "version": env!("CARGO_PKG_VERSION"),
+            "skills": "./skills/",
+        })
+        .to_string(),
+    )?;
+    std::fs::write(skill.join("SKILL.md"), CARDS_SKILL)?;
+    Ok(plugin)
 }
 
 #[cfg(test)]
@@ -401,6 +445,18 @@ mod tests {
         assert!(config["mcpServers"]["surya"].is_object());
         let append = std::fs::read_to_string(&files.system_append).unwrap();
         assert!(append.contains("show_card"), "the append teaches show_card");
+
+        // The skill ships as a plugin because that is what --plugin-dir reads.
+        let manifest: Value = serde_json::from_str(
+            &std::fs::read_to_string(files.plugin_dir.join(".claude-plugin/plugin.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["name"], "surya");
+        assert_eq!(manifest["skills"], "./skills/");
+        let skill =
+            std::fs::read_to_string(files.plugin_dir.join("skills/surya-cards/SKILL.md")).unwrap();
+        assert!(skill.starts_with("---"), "the skill keeps its frontmatter");
+        assert!(skill.contains("diff-summary"), "and its shape table");
     }
 
     #[test]
