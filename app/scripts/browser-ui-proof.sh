@@ -55,6 +55,13 @@ for _ in $(seq 1 "$WAIT"); do
   grep -q "engine core assembled" "$LOG" && break
   sleep 2
 done
+# The engine is not the pane. Wait for the browser the pane opens and for
+# the keymap the shell binds when it is built: without both, the first
+# chord lands on a window that has not rendered and is simply lost.
+for _ in $(seq 1 "$WAIT"); do
+  grep -q "browser: created" "$LOG" && grep -q "browser-ui: keymap" "$LOG" && break
+  sleep 2
+done
 sleep 15; command -v xrefresh >/dev/null && xrefresh; sleep 3
 
 # The keyboard starts in the page, as it does after a person clicks a page.
