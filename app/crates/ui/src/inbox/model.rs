@@ -57,6 +57,56 @@ pub fn badge_for(kind: NeedsYouKind) -> &'static str {
 /// plainly that it has no name.
 pub const UNTITLED_CHAT: &str = "Untitled chat";
 
+/// Is this row's own answer surface already on screen?
+///
+/// A question for the chat the user is reading can be offered twice: once as
+/// a card in this list, and again as the question sheet in that chat's
+/// transcript, with the same options on both (round 4, I2). The sheet is the
+/// real one - it is where the answer is typed - so the card collapses to one
+/// line that only says the queue still holds it.
+///
+/// `open_sheet` is the request id the open chat's transcript is actually
+/// asking about (`composer::pending_input_request`). Passing it makes this a
+/// fact rather than a guess, and every trap here is a case where the guess
+/// would have been wrong:
+///
+/// - A SUBAGENT's question is filed under the PARENT's chat id with the
+///   child's agent id (`engine/src/agent_states.rs`
+///   `note_subagent_event`), and subagent events never fold into the parent
+///   transcript (`engine/src/sessions.rs`, "Tagged events NEVER fold into
+///   the parent transcript"). Collapsing on the chat id alone would point the
+///   user at a sheet that is not there.
+/// - A chat the user just opened has no transcript yet for a frame or two.
+/// - An answered question keeps its row until the next `WatchNeedsYou`
+///   frame, but its sheet is resolved the moment it is answered.
+///
+/// Questions only. A permission and a stopped run have no second surface, so
+/// collapsing them would leave the user with nothing to press.
+pub fn answered_in_the_open_chat(
+    row: &InboxRow,
+    open_chat: Option<&str>,
+    open_sheet: Option<&str>,
+) -> bool {
+    row.kind == NeedsYouKind::Question
+        && open_chat == Some(row.chat_id.as_str())
+        // A top-level question carries the chat id as its agent id
+        // (`open_questions(&chat_id, &chat_id, ..)`); a child carries
+        // `child_agent_id`.
+        && row.agent_id == row.chat_id
+        && split_question_id(&row.id)
+            .is_some_and(|(request_id, _)| open_sheet == Some(request_id))
+}
+
+/// Does the bold title say anything the badge above it does not?
+///
+/// A question's title is the model's own header, and a model that writes
+/// "Question" leaves the card reading "Question" twice, once in the badge and
+/// once in bold under it (round 4, I3).
+pub fn title_adds_to_badge(row: &InboxRow) -> bool {
+    let title = row.title.trim();
+    !title.is_empty() && !title.eq_ignore_ascii_case(row.badge.trim())
+}
+
 /// Build the list the needs-you view draws. `items` arrives newest-first from
 /// `WatchNeedsYou` and that order is kept: the engine already sorted it, and
 /// re-sorting here would be a second opinion that can disagree.

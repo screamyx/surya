@@ -323,3 +323,154 @@ fn an_orphan_child_is_dropped_rather_than_drawn_at_the_root() {
         "no parent means no tree to hang it under; the next frame carries both"
     );
 }
+
+/// Round 4, I2: a question is drawn twice only when the chat on screen is
+/// asking THAT question. Everything else keeps its full card, because the
+/// card is the only place those can be answered.
+#[test]
+fn only_the_question_whose_own_sheet_is_open_collapses() {
+    let items = [
+        item("req-1:q1", "chat-1", NeedsYouKind::Question),
+        item("req-2:q1", "chat-2", NeedsYouKind::Question),
+        item("req-3:q1", "chat-1", NeedsYouKind::Permission),
+        item("req-4:q1", "chat-1", NeedsYouKind::Failed),
+    ];
+    let rows = inbox_rows(&items, &[]);
+    let collapsed: Vec<&str> = rows
+        .iter()
+        .filter(|row| answered_in_the_open_chat(row, Some("chat-1"), Some("req-1")))
+        .map(|row| row.id.as_str())
+        .collect();
+    assert_eq!(
+        collapsed,
+        vec!["req-1:q1"],
+        "only the question whose sheet is on screen collapses"
+    );
+    for row in &rows {
+        assert!(
+            !answered_in_the_open_chat(row, None, None),
+            "no chat open means no sheet to defer to: {}",
+            row.id
+        );
+        assert!(
+            !answered_in_the_open_chat(row, Some("chat-1"), None),
+            "a chat with no sheet up yet still needs its buttons: {}",
+            row.id
+        );
+        assert!(
+            !answered_in_the_open_chat(row, Some("chat-1"), Some("req-9")),
+            "the sheet on screen is asking something else: {}",
+            row.id
+        );
+    }
+}
+
+/// A SUBAGENT's question is filed under the PARENT's chat id, but subagent
+/// events never fold into the parent transcript, so the parent has no sheet
+/// for it. Collapsing it would leave the user pointed at a sheet that is not
+/// there, with the buttons gone: answerable nowhere.
+#[test]
+fn a_child_s_question_keeps_its_buttons_in_the_parent_chat() {
+    let mut child = item("req-1:q1", "chat-1", NeedsYouKind::Question);
+    child.agent_id = child_agent_id("chat-1", "tool-7");
+    let rows = inbox_rows(&[child], &[]);
+    assert_ne!(rows[0].agent_id, rows[0].chat_id);
+    assert!(
+        !answered_in_the_open_chat(&rows[0], Some("chat-1"), Some("req-1")),
+        "the parent's sheet is not this child's sheet"
+    );
+
+    // The same id pair, top-level this time: the engine passes the chat id as
+    // the agent id, and that one does collapse.
+    let mut top = item("req-1:q1", "chat-1", NeedsYouKind::Question);
+    top.agent_id = "chat-1".into();
+    let rows = inbox_rows(&[top], &[]);
+    assert!(answered_in_the_open_chat(
+        &rows[0],
+        Some("chat-1"),
+        Some("req-1")
+    ));
+}
+
+/// The collapsed row says "answer below", so prove something IS below: the
+/// same transcript the shell hands the composer must yield this row's
+/// request. This is the pairing the row promises, checked end to end rather
+/// than restated.
+#[test]
+fn the_row_only_collapses_when_the_transcript_really_carries_its_sheet() {
+    use crate::composer::pending_input_request;
+    use zeron_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
+
+    let sheet = |resolved: bool| {
+        vec![SessionMessageEntry {
+            id: "m1".into(),
+            role: MessageRole::Assistant,
+            parts: vec![MessagePart::Input {
+                id: "in-req-1".into(),
+                request_id: "req-1".into(),
+                questions: vec![zeron_proto::UserInputQuestion {
+                    id: "q1".into(),
+                    header: "Question".into(),
+                    question: "Which sync strategy?".into(),
+                    options: vec!["Poll".into(), "Fold".into()],
+                    multi_select: false,
+                }],
+                resolved,
+            }],
+            created_at: 0,
+            device_id: "d".into(),
+            status: Some(MessageStatus::Streaming),
+            continuation_of: None,
+        }]
+    };
+
+    let mut top = item("req-1:q1", "chat-1", NeedsYouKind::Question);
+    top.agent_id = "chat-1".into();
+    let rows = inbox_rows(&[top], &[]);
+
+    let open = pending_input_request(&sheet(false)).map(|(id, _)| id);
+    assert_eq!(open.as_deref(), Some("req-1"), "the sheet is up");
+    assert!(
+        answered_in_the_open_chat(&rows[0], Some("chat-1"), open.as_deref()),
+        "collapse only with the sheet proven present"
+    );
+
+    // Answered: the sheet resolves at once, the row survives until the next
+    // WatchNeedsYou frame. It must come back as a full card in that gap, not
+    // point at a sheet that has gone.
+    let answered = pending_input_request(&sheet(true)).map(|(id, _)| id);
+    assert_eq!(answered, None);
+    assert!(!answered_in_the_open_chat(
+        &rows[0],
+        Some("chat-1"),
+        answered.as_deref()
+    ));
+}
+/// Round 4, I3: the engine fills a question's title from the model's own
+/// header, and a model that answers "Question" leaves the card saying it
+/// twice - once in the badge, once in bold under it.
+#[test]
+fn a_title_that_only_repeats_the_badge_is_not_worth_drawing() {
+    let mut items = [item("q-1", "chat-1", NeedsYouKind::Question)];
+    items[0].title = "Question".into();
+    let rows = inbox_rows(&items, &[]);
+    assert!(!title_adds_to_badge(&rows[0]));
+
+    items[0].title = "  question  ".into();
+    let rows = inbox_rows(&items, &[]);
+    assert!(
+        !title_adds_to_badge(&rows[0]),
+        "spacing and case are not meaning"
+    );
+
+    items[0].title = String::new();
+    let rows = inbox_rows(&items, &[]);
+    assert!(!title_adds_to_badge(&rows[0]), "an empty title says nothing");
+
+    items[0].title = "Which sync strategy?".into();
+    let rows = inbox_rows(&items, &[]);
+    assert!(
+        title_adds_to_badge(&rows[0]),
+        "a real header still gets its line"
+    );
+}
