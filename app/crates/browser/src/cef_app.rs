@@ -16,11 +16,21 @@ wrap_browser_process_handler! {
 /// Switches for the browser process. Software rendering by default: the
 /// pane takes CPU pixels anyway, and a GPU process under a virtual display
 /// is the first thing to fail. `SURYA_CEF_GPU=1` leaves the GPU on.
-fn switches() -> Vec<&'static str> {
-    let mut s = Vec::new();
+fn switches() -> Vec<String> {
+    // Chrome's first-run flow on a fresh profile makes ContentMainRun return
+    // 28 (RESULT_CODE_EULA_REFUSED) on Linux and CEF's initialize fails
+    // (measured 2026-09-05 under Xvfb; a second launch on the same profile
+    // failed the same way). Skipping first run and the default-browser
+    // prompt is what an embedded browser wants anyway.
+    let mut s = vec!["no-first-run".to_string(), "no-default-browser-check".to_string()];
     if std::env::var_os("SURYA_CEF_GPU").is_none() {
-        s.push("disable-gpu");
-        s.push("disable-gpu-compositing");
+        s.push("disable-gpu".to_string());
+        s.push("disable-gpu-compositing".to_string());
+    }
+    // `SURYA_CEF_SWITCHES=a,b=c`: extra Chromium switches for a diagnosis,
+    // e.g. `enable-logging=stderr,v=1`.
+    if let Ok(extra) = std::env::var("SURYA_CEF_SWITCHES") {
+        s.extend(extra.split(',').map(str::trim).filter(|x| !x.is_empty()).map(String::from));
     }
     s
 }
@@ -39,7 +49,13 @@ wrap_app! {
             }
             let Some(cl) = command_line else { return };
             for switch in switches() {
-                cl.append_switch(Some(&CefString::from(switch)));
+                match switch.split_once('=') {
+                    Some((name, value)) => cl.append_switch_with_value(
+                        Some(&CefString::from(name)),
+                        Some(&CefString::from(value)),
+                    ),
+                    None => cl.append_switch(Some(&CefString::from(switch.as_str()))),
+                }
             }
             println!("browser: switches {:?}", switches());
         }

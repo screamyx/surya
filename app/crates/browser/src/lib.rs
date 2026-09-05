@@ -136,6 +136,16 @@ pub fn start(cx: &mut gpui::App) {
         browser_subprocess_path: helper
             .map(|p| CefString::from(p.to_string_lossy().as_ref()))
             .unwrap_or_default(),
+        // `SURYA_CEF_LOG=<file>`: Chromium's own log, verbose, for a
+        // diagnosis. Off by default (CEF then logs errors to stderr).
+        log_file: std::env::var("SURYA_CEF_LOG")
+            .map(|f| CefString::from(f.as_str()))
+            .unwrap_or_default(),
+        log_severity: if std::env::var_os("SURYA_CEF_LOG").is_some() {
+            LogSeverity::VERBOSE
+        } else {
+            LogSeverity::default()
+        },
         ..Default::default()
     };
     let mut app = cef_app::SuryaApp::new();

@@ -12,10 +12,13 @@ members = [
     "crates/update",
     "crates/ui",
     "crates/syntax",
-    "crates/browser",
     "crates/a2ui",
     "apps/zeron",
 ]
+# surya-browser is a path dependency, not a member: it links Chromium (CEF)
+# and its build script downloads the CEF binary, which `cargo check
+# --workspace` (CI) must never pull. `-p zeron --features browser` builds it.
+exclude = ["crates/browser"]
 
 [workspace.package]
 version = "0.2.34"
