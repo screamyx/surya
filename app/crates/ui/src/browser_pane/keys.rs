@@ -62,15 +62,9 @@ pub fn init(cx: &mut App) {
         bindings.push(KeyBinding::new(&format!("{prefix}--"), ZoomOut, None));
         bindings.push(KeyBinding::new(&format!("{prefix}-0"), ZoomReset, None));
     }
-    println!("browser-ui: keymap asked={n} bound={n}", n = bindings.len());
+    let n = bindings.len();
     cx.bind_keys(bindings);
-}
-
-/// `SURYA_TRACE_BROWSER_UI=1` prints every key the pane's root is handed,
-/// which is how a proof run tells a chord that never matched from one that
-/// matched and did nothing.
-fn tracing() -> bool {
-    std::env::var_os("SURYA_TRACE_BROWSER_UI").is_some()
+    tracing::info!(target: "surya_browser_ui", asked = n, bound = n, "keymap applied");
 }
 
 /// The pane's root: the action handlers, whose presence on the focused
@@ -132,8 +126,8 @@ pub(super) fn zoomed() {
     ZOOMS.fetch_add(1, Ordering::Relaxed);
 }
 
-/// One line, printed after every action the pane takes, so a proof run can
-/// be read off stdout without a screenshot.
+/// The counters, as one string, logged after every action the pane takes so
+/// a proof run can be read from the log without a screenshot.
 pub fn counters() -> String {
     format!(
         "keys={} handled={} typed={} navigated={} tabs_opened={} tabs_closed={} finds={} zooms={}",
@@ -148,8 +142,11 @@ pub fn counters() -> String {
     )
 }
 
+/// One line per thing the pane did, with the counters beside it. `info`, not
+/// stdout: the ui crate logs through tracing, and a shipped build should not
+/// print on every chord.
 pub(super) fn report(what: &str) {
-    println!("browser-ui: {what}; {}", counters());
+    tracing::info!(target: "surya_browser_ui", action = what, counters = %counters(), "pane acted");
 }
 
 impl BrowserPane {
@@ -199,9 +196,10 @@ impl BrowserPane {
     fn chord(&mut self, name: &str, cx: &mut Context<Self>) {
         key_seen();
         key_handled();
-        if tracing() {
-            println!("browser-ui: chord {name}");
-        }
+        // `debug`, because a chord that fires is only interesting while
+        // something is wrong; RUST_LOG turns it on instead of an env var of
+        // this module's own.
+        tracing::debug!(target: "surya_browser_ui", chord = name, "chord taken");
         cx.stop_propagation();
     }
 

@@ -191,11 +191,14 @@ mod tests {
         assert!(!is_user_edit("https://example.com/", "https://example.com/"));
         // A person typing over it.
         assert!(is_user_edit("https://example.com/x", "https://example.com/"));
-        // An agent navigation the pane has not written yet: the field still
-        // holds the previous address, so this is NOT a user edit and the
-        // render pass is free to follow the page. This is the case that
-        // showed about:blank while the page was on two.html.
+        // Boot: nothing written, nothing typed.
         assert!(!is_user_edit("", ""));
+        // The reported case. An agent navigated to two.html; the field still
+        // holds the address the pane last wrote, so this is not a user edit
+        // and the render pass is free to replace it with the new one. Before
+        // the fix this arrived as an `Edited` after the guard flag had been
+        // cleared, latched the field, and left it reading about:blank.
+        assert!(!is_user_edit("about:blank", "about:blank"));
         // A person clearing the field is an edit, even to empty.
         assert!(is_user_edit("", "https://example.com/"));
     }

@@ -73,7 +73,7 @@ done
 # the keymap the shell binds when it is built: without both, the first
 # chord lands on a window that has not rendered and is simply lost.
 for _ in $(seq 1 "$WAIT"); do
-  grep -q "browser: created" "$LOG" && grep -q "browser-ui: keymap" "$LOG" && break
+  grep -q "browser: created" "$LOG" && grep -q "surya_browser_ui.*keymap applied" "$LOG" && break
   sleep 2
 done
 sleep 15; command -v xrefresh >/dev/null && xrefresh; sleep 3
@@ -103,7 +103,7 @@ PAGE_X=$(( W - 200 )); PAGE_Y=$(( H / 2 ))
 # ctrl-tab and shift-ctrl-tab. comet binds both context-less for its own
 # session strip, so these are the chords that prove the pane takes them in
 # the capture phase; if the keymap rule ever wins again they switch sessions
-# and `browser-ui: switch tab` never appears.
+# and no `action="switch tab"` line ever appears.
 drive "$HERE/x7-keys.py" "$DISPLAY" ctrl+tab
 sleep 3
 drive "$HERE/x7-keys.py" "$DISPLAY" shift+ctrl+tab
@@ -152,7 +152,10 @@ ffmpeg -loglevel error -y -f x11grab -video_size "${W}x${H}" -i "$DISPLAY" -fram
 kill $APP 2>/dev/null; sleep 1; kill -9 $APP 2>/dev/null
 
 echo "--- what the pane did, in its own words:"
-grep -E "^browser-ui: " "$LOG" | grep -v "^browser-ui: key " | tail -12
+# The pane logs through tracing on the surya_browser_ui target, so this needs
+# RUST_LOG to let info through - which the launch above sets. A grep that
+# silently stops matching is how a proof run comes back empty and green.
+grep -E "surya_browser_ui" "$LOG" | tail -12
 echo "--- tabs, and what loaded:"
 grep -E "browser: (created|address|load_end)" "$LOG" | tail -8
 grep -E "^browser: t=" "$LOG" | tail -1 | sed -n 's/.*\(tabs=[0-9]* opened=[0-9]* active=[0-9]*\).*/\1/p'
