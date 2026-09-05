@@ -17,6 +17,7 @@
 //! commands behind its buttons.
 
 mod cef_app;
+mod cef_thread;
 mod client;
 mod events;
 pub mod input;
