@@ -39,11 +39,13 @@ Proof that the whole chain holds, with one counter pair per hop, is the test `ap
 ## 1. How the agent learns about cards
 
 Two files teach it, and both ship inside the app.
+The append rides every turn's system prompt, so it stays short: when a card beats prose, and the six shape names.
+The skill is loaded only when the agent draws a card: the JSON per shape and the raw A2UI escape hatch.
 
 | What | Where | How it reaches the agent |
 | --- | --- | --- |
 | The prompt append | `app/assets/surya-system-append.md` | The harness embeds it (`harness/src/claude/surya.rs:26`) and writes it to the run folder as `system-append.md` before every run (`surya.rs:206-212`). |
-| The cards skill | `app/assets/skills/surya-cards/SKILL.md` | Ships in the repo only. Nothing in the app copies it into an agent's skills folder yet (no match for "skill" in `harness/src/claude/surya.rs` on 2026-09-05), so today the append alone reaches the agent, and a person installs the skill by hand. |
+| The cards skill | `app/assets/skills/surya-cards/SKILL.md` | The harness embeds it (`surya.rs:33`, PR #47), lays it out in the run folder as a one-skill plugin (`write_cards_plugin`, `surya.rs:315-321`) and starts Claude Code with `--plugin-dir` (`claude/mod.rs:254-255`). The agent then sees it as the skill `surya:surya-cards` and can also invoke it as `/surya:surya-cards` (surya-mcp, measured against Claude Code 2.1.261, `surya.rs:53`). |
 
 The append opens with the situation the agent is in: "surya is a desktop app, not a terminal. The person reading you sees a native window".
 Then it gives the rule for when to draw instead of write.
