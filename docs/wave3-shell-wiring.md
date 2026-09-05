@@ -24,6 +24,10 @@ Sources read for this: `shell.rs` on `origin/main`, `origin/feat/surya-look`, `o
 
 Constructor mismatch to settle first: Files takes `EngineHandle`, Tasks and Inbox take `Arc<RpcClient>`. `RpcClient` is not `Clone`, so the shell can only hand out `EngineHandle` (from `AppState::engine()`). Phase 2 changes Tasks and Inbox to take `EngineHandle` (one-line constructor edits on their modules) rather than adding a second client type to the shell.
 
+## Current defect this fixes
+
+On main after the cef merge, the Files card opens OVER the browser pane on the new-session canvas instead of beside it as a tab (surya-cef, proof `docs/proof/cef-pane-xorg7-files-card-over-it-2026-09-05.png`, PR #19). Two surfaces fighting for the same right-pane area is exactly what the tabbed host below removes: one `RightSurface` active per panel key, the rest reachable from the tab strip.
+
 ## The right pane is already a tabbed host
 
 comet's shell keeps `right_tabs: HashMap<String, Vec<RightSurface>>` per panel key, with `set_right_active`, `toggle_right_pane`, `right_pane_open`, `resolved_right_active`, a surface picker (`render_surface_picker`, the `surface-card-*` rows) and a tab strip (`render_right_tab_strip`). cef's branch adds `RightSurface::Browser` by following that pattern exactly. Files and Tasks do the same. No new pane container.
