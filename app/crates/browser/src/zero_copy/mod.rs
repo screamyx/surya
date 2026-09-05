@@ -7,6 +7,14 @@
 //! gpui as an `ExternalTexture`, which the fork's DirectX renderer blits into
 //! the swap chain. No pixel touches the CPU.
 //!
+//! The device is made before the first browser ([`ready`]); only if that
+//! worked does the browser get `shared_texture_enabled`, so a box where D3D11
+//! sharing is not available keeps the CPU path with the flag set. Once a
+//! browser has shared textures CEF never calls `on_paint` for it again, so a
+//! frame that fails later is dropped and the pane keeps its last good frame;
+//! a device that dies is retired and counted, and the pane keeps that frame
+//! until the browser is reopened.
+//!
 //! Unset, nothing here runs and the CPU path in `render.rs` is byte for byte
 //! what it was. Off Windows the switch is inert.
 
@@ -25,28 +33,15 @@ pub(crate) fn enabled() -> bool {
     })
 }
 
-/// gpui's adapter name (`Window::gpu_specs().device_name`, empty when gpui
-/// does not say), stored by the surface element on its first paint so the
-/// device below lands on the same GPU as gpui's renderer: a shared texture
-/// opens only on the adapter that made it.
-static GPU_NAME: Mutex<Option<String>> = Mutex::new(None);
-
-pub(crate) fn set_gpu_name(name: &str) {
-    if let Ok(mut slot) = GPU_NAME.lock() {
-        if slot.is_none() {
-            *slot = Some(name.to_string());
-        }
-    }
-}
-
 /// Accelerated paints CEF delivered.
 static ACCEL: AtomicU64 = AtomicU64::new(0);
 /// Of those, copied and published.
 static COPIED: AtomicU64 = AtomicU64::new(0);
-/// Dropped before the surface element had told us gpui's adapter.
-static WAITED: AtomicU64 = AtomicU64::new(0);
-/// Dropped by a D3D11 error; the first five and every 300th are printed.
+/// Dropped by a D3D11 error on that frame; the first five and every 300th
+/// are printed.
 static FAILED: AtomicU64 = AtomicU64::new(0);
+/// Dropped because the device is gone (retired after a fatal error).
+static DEAD: AtomicU64 = AtomicU64::new(0);
 static COPY_LAST_US: AtomicU64 = AtomicU64::new(0);
 static COPY_TOTAL_US: AtomicU64 = AtomicU64::new(0);
 static COPY_MAX_US: AtomicU64 = AtomicU64::new(0);
@@ -77,53 +72,62 @@ pub fn counters() -> String {
         .and_then(|a| a.clone())
         .unwrap_or_else(|| "none".to_string());
     format!(
-        "zero_copy=on accel={} copied={n} waited={} failed={} \
+        "zero_copy=on accel={} copied={n} failed={} dead={} \
          gpu_ms last={last:.2} avg={avg:.2} max={max:.2} adapter=\"{adapter}\"",
         ACCEL.load(Ordering::Relaxed),
-        WAITED.load(Ordering::Relaxed),
         FAILED.load(Ordering::Relaxed),
+        DEAD.load(Ordering::Relaxed),
     )
+}
+
+/// The device, made once by [`ready`]. `Err` after a fatal error: the
+/// device is retired and not remade (a reopened browser starts over).
+#[cfg(windows)]
+static DEVICE: Mutex<Option<Result<d3d11::Device, String>>> = Mutex::new(None);
+
+/// Whether a browser made now may use shared textures: the switch is on and
+/// this crate's D3D11 device exists. Makes the device on the first call, on
+/// the main thread, before any browser. Off Windows: never.
+#[cfg(windows)]
+pub(crate) fn ready() -> bool {
+    if !enabled() {
+        return false;
+    }
+    let Ok(mut device) = DEVICE.lock() else { return false };
+    if device.is_none() {
+        let made = d3d11::Device::new();
+        match &made {
+            Ok(d) => {
+                println!("browser: zero_copy device on \"{}\" luid={:?}", d.name(), d.luid());
+                if let Ok(mut a) = ADAPTER.lock() {
+                    *a = Some(d.name().to_string());
+                }
+            }
+            Err(e) => println!("browser: zero_copy device failed, browsers take the CPU path: {e}"),
+        }
+        *device = Some(made);
+    }
+    matches!(device.as_ref(), Some(Ok(_)))
+}
+
+#[cfg(not(windows))]
+pub(crate) fn ready() -> bool {
+    false
 }
 
 /// Turn one accelerated paint into a texture gpui can draw. Runs inside
 /// CEF's callback on the main thread; everything it touches on the pooled
 /// texture is finished before it returns, as `cef_render_handler.h` demands.
+/// `None` drops the frame and the pane keeps the last one.
 #[cfg(windows)]
 pub(crate) fn on_accelerated_paint(info: &cef::AcceleratedPaintInfo) -> Option<gpui::ExternalTexture> {
-    /// Made on the first paint. An error is kept so a broken device is
-    /// reported once and not retried sixty times a second.
-    static DEVICE: Mutex<Option<Result<d3d11::Device, String>>> = Mutex::new(None);
-
     let n = ACCEL.fetch_add(1, Ordering::Relaxed) + 1;
-    let mut device = DEVICE.lock().ok()?;
-    if device.is_none() {
-        // Until the surface has painted once we do not know gpui's adapter.
-        // Drop the frame: the surface's first paint resizes the view, and
-        // that resize makes CEF paint again.
-        let Some(prefer) = GPU_NAME.lock().ok().and_then(|g| g.clone()) else {
-            WAITED.fetch_add(1, Ordering::Relaxed);
-            return None;
-        };
-        let made = d3d11::Device::new(if prefer.is_empty() { None } else { Some(&prefer) });
-        match &made {
-            Ok(d) => {
-                println!(
-                    "browser: zero_copy device on \"{}\" luid={:?} (gpui reports \"{prefer}\")",
-                    d.name(),
-                    d.luid()
-                );
-                if let Ok(mut a) = ADAPTER.lock() {
-                    *a = Some(d.name().to_string());
-                }
-            }
-            Err(e) => println!("browser: zero_copy device failed: {e}"),
-        }
-        *device = Some(made);
-    }
-    let device = match device.as_ref()? {
-        Ok(d) => d,
-        Err(_) => {
-            FAILED.fetch_add(1, Ordering::Relaxed);
+    // A clone (COM refcount) out of the lock: the GPU wait below must not
+    // hold the lock, and `ready` may be asked from a tab opening meanwhile.
+    let device = match DEVICE.lock().ok()?.as_ref() {
+        Some(Ok(d)) => d.clone(),
+        _ => {
+            DEAD.fetch_add(1, Ordering::Relaxed);
             return None;
         }
     };
@@ -133,9 +137,11 @@ pub(crate) fn on_accelerated_paint(info: &cef::AcceleratedPaintInfo) -> Option<g
         FAILED.fetch_add(1, Ordering::Relaxed);
         return None;
     }
+    let r = &info.extra.visible_rect;
+    let visible = [r.x, r.y, r.width, r.height];
     static PROBE: OnceLock<bool> = OnceLock::new();
     let probe = *PROBE.get_or_init(|| std::env::var_os("SURYA_BROWSER_ZERO_COPY_PROBE").is_some());
-    match device.snapshot(handle, probe) {
+    match device.snapshot(handle, visible, probe) {
         Ok(snap) => {
             let us = snap.took.as_micros() as u64;
             COPIED.fetch_add(1, Ordering::Relaxed);
@@ -146,10 +152,12 @@ pub(crate) fn on_accelerated_paint(info: &cef::AcceleratedPaintInfo) -> Option<g
                 let [open, create, submit, wait] = snap.split;
                 let probe = snap.probe_wait_us.map(|p| format!(" probe_wait {p}us")).unwrap_or_default();
                 println!(
-                    "browser: accelerated_paint #{n}: {}x{}, gpu copy {:.2}ms \
+                    "browser: accelerated_paint #{n}: {}x{} of {}x{}, gpu copy {:.2}ms \
                      (open {open}us create {create}us submit {submit}us wait {wait}us{probe}); {}",
                     snap.width,
                     snap.height,
+                    info.extra.coded_size.width,
+                    info.extra.coded_size.height,
                     us as f64 / 1000.0,
                     counters()
                 );
@@ -167,6 +175,14 @@ pub(crate) fn on_accelerated_paint(info: &cef::AcceleratedPaintInfo) -> Option<g
                 )
             };
             Some(texture)
+        }
+        Err(e) if e.fatal => {
+            DEAD.fetch_add(1, Ordering::Relaxed);
+            println!("browser: zero_copy device lost at paint #{n}, retired; the pane keeps its last frame: {e}");
+            if let Ok(mut slot) = DEVICE.lock() {
+                *slot = Some(Err(e.msg));
+            }
+            None
         }
         Err(e) => {
             let f = FAILED.fetch_add(1, Ordering::Relaxed) + 1;
