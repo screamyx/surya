@@ -6,9 +6,10 @@ use std::rc::Rc;
 
 use gpui::prelude::*;
 use gpui::{AnyElement, App, ClickEvent, FontWeight, Hsla, SharedString, Window, div, px, rems};
-use serde_json::Value;
 
+use crate::budget::{Budget, expand_children};
 use crate::data::{Scope, resolve_string};
+use crate::images::ImagePolicy;
 use crate::model::*;
 use crate::state::{CardEvent, CardState};
 use crate::theme::CardTheme;
@@ -33,6 +34,10 @@ pub struct Renderer<'a> {
     pub card: &'a Card,
     pub state: &'a CardState,
     pub theme: &'a CardTheme,
+    /// Where this card's images may load from (host-owned).
+    pub policy: &'a ImagePolicy,
+    /// Element cap for this render pass; a fresh [`Budget::default`] per row.
+    pub budget: Budget,
     /// Prefix for every stateful element id — unique per transcript row.
     pub key: SharedString,
     pub on_event: OnEvent,
@@ -94,20 +99,33 @@ impl<'a> Renderer<'a> {
                     ComponentKind::Card { child } => self.component(child, &ctx.deeper()),
                     _ => self.component(ROOT_ID, &ctx),
                 };
-                frame = frame.child(
-                    div()
-                        .w_full()
-                        .min_w_0()
-                        .p(px(CARD_PADDING))
-                        .flex()
-                        .flex_col()
-                        .child(body),
-                );
-                if !self.card.errors.is_empty() {
-                    frame = frame.child(self.diagnostics(false));
+                if self.budget.exceeded() {
+                    // A runaway tree (template fan-out) is not drawn at all:
+                    // the panel says why instead of a half card.
+                    drop(body);
+                    frame = frame.child(self.diagnostics(
+                        true,
+                        Some(format!(
+                            "card exceeds the element budget ({} elements)",
+                            self.budget.cap()
+                        )),
+                    ));
+                } else {
+                    frame = frame.child(
+                        div()
+                            .w_full()
+                            .min_w_0()
+                            .p(px(CARD_PADDING))
+                            .flex()
+                            .flex_col()
+                            .child(body),
+                    );
+                    if !self.card.errors.is_empty() {
+                        frame = frame.child(self.diagnostics(false, None));
+                    }
                 }
             }
-            None => frame = frame.child(self.diagnostics(true)),
+            None => frame = frame.child(self.diagnostics(true, None)),
         }
         frame.into_any_element()
     }
@@ -119,6 +137,11 @@ impl<'a> Renderer<'a> {
     pub(crate) fn component(&self, id: &str, ctx: &Ctx) -> AnyElement {
         if ctx.depth > MAX_DEPTH {
             return self.fallback_box(&format!("nesting too deep at \"{id}\""));
+        }
+        if !self.budget.take() {
+            // Cheap and non-recursive: the whole card is replaced by the
+            // budget panel in `render`, this box never shows.
+            return gpui::Empty.into_any_element();
         }
         let Some(c) = self.card.get(id) else {
             return self.fallback_box(&format!("missing component \"{id}\""));
@@ -174,30 +197,27 @@ impl<'a> Renderer<'a> {
     }
 
     fn children(&self, ctx: &Ctx, list: &ChildList) -> Vec<AnyElement> {
-        match list {
-            ChildList::Static(ids) => ids.iter().map(|id| self.component(id, ctx)).collect(),
-            ChildList::Template { component_id, path } => {
-                let abs = ctx.scope.absolute(path);
-                let count = self
-                    .state
-                    .data
-                    .get(&abs)
-                    .and_then(Value::as_array)
-                    .map_or(0, Vec::len)
-                    .min(MAX_TEMPLATE_ITEMS);
-                (0..count)
-                    .map(|ix| {
-                        let sub = Ctx {
-                            scope: Scope::item(format!("{abs}/{ix}")),
-                            depth: ctx.depth,
-                            ink: ctx.ink,
-                            instance: format!("{}{ix}:", ctx.instance),
-                        };
-                        self.component(component_id, &sub)
-                    })
-                    .collect()
-            }
-        }
+        let is_template = matches!(list, ChildList::Template { .. });
+        expand_children(self.card, self.state, &ctx.scope, list, MAX_TEMPLATE_ITEMS)
+            .into_iter()
+            .enumerate()
+            .map(|(ix, (id, scope))| {
+                if self.budget.exceeded() {
+                    return gpui::Empty.into_any_element();
+                }
+                let sub = Ctx {
+                    scope,
+                    depth: ctx.depth,
+                    ink: ctx.ink,
+                    instance: if is_template {
+                        format!("{}{ix}:", ctx.instance)
+                    } else {
+                        ctx.instance.clone()
+                    },
+                };
+                self.component(&id, &sub)
+            })
+            .collect()
     }
 
     fn stack(
@@ -349,7 +369,10 @@ impl<'a> Renderer<'a> {
             .border_b_1()
             .border_color(theme.border)
             .children(tabs.iter().enumerate().map(|(ix, tab)| {
-                let title = resolve_string(&self.state.data, &ctx.scope, &tab.title);
+                let title = crate::leaf::clip(
+                    &resolve_string(&self.state.data, &ctx.scope, &tab.title),
+                    crate::leaf::MAX_LABEL_CHARS,
+                );
                 let active = ix == selected;
                 let on_event = self.on_event.clone();
                 let component_id = c.id.clone();
@@ -417,9 +440,9 @@ impl<'a> Renderer<'a> {
             .into_any_element()
     }
 
-    /// Parse diagnostics: the whole body when there is no root, a quiet
-    /// footer otherwise.
-    fn diagnostics(&self, whole: bool) -> AnyElement {
+    /// Parse diagnostics: the whole body when there is no root (or the
+    /// budget is spent, with `headline`), a quiet footer otherwise.
+    fn diagnostics(&self, whole: bool, headline: Option<String>) -> AnyElement {
         let theme = self.theme;
         let mut el = div()
             .w_full()
@@ -445,10 +468,10 @@ impl<'a> Renderer<'a> {
             el = el.border_t_1().border_color(theme.border);
         }
         el.children(
-            self.card
-                .errors
-                .iter()
-                .map(|e| div().child(SharedString::from(e.clone()))),
+            headline
+                .into_iter()
+                .chain(self.card.errors.iter().cloned())
+                .map(|e| div().child(SharedString::from(e))),
         )
         .into_any_element()
     }

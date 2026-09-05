@@ -1,0 +1,5 @@
+[
+  {"version": "v0.9.1", "createSurface": {"surfaceId": "hostile_index", "catalogId": "https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json"}},
+  {"version": "v0.9.1", "updateComponents": {"surfaceId": "hostile_index", "components": [{"id": "root", "component": "Text", "text": {"path": "/x/0"}}]}},
+  {"version": "v0.9.1", "updateDataModel": {"surfaceId": "hostile_index", "path": "/x/99999999999", "value": "boom"}}
+]
