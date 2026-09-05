@@ -34,10 +34,12 @@ fn from_override(value: Option<&str>) -> Override {
     }
 }
 
-/// The frame rate to hand CEF. The override is read once; the display is
-/// asked every call, so a pane shown again after a move to another monitor
-/// gets that monitor's rate (`client.rs` calls this from `open()` and
-/// `show()`). Each value is logged the first time it is seen.
+/// The frame rate to hand CEF. The override is read once; the primary
+/// display is asked every call (`refresh_hz` is `EnumDisplaySettingsW(None)`,
+/// the primary display's current mode), so a pane shown again after the
+/// primary display changed mode gets the new rate (`client.rs` calls this
+/// from `open()` and `show()`). A pane moved to another monitor is not
+/// followed: that is a per-window query, not wired. Logged on change.
 pub(crate) fn frame_rate() -> i32 {
     static OVERRIDE: OnceLock<Option<i32>> = OnceLock::new();
     static LAST: AtomicI32 = AtomicI32::new(0);

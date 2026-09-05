@@ -66,9 +66,16 @@ pub(crate) fn fired() -> u64 {
     FIRED.load(Ordering::Relaxed)
 }
 
-/// Deadlines asked for and served so far, as a pair.
+/// Deadlines asked for and served so far, and passes that panicked and were
+/// caught (zero in a healthy session; the first is logged, the rest only
+/// show here).
 pub(crate) fn counters() -> String {
-    format!("clock asked={} fired={}", ASKED.load(Ordering::Relaxed), FIRED.load(Ordering::Relaxed))
+    format!(
+        "clock asked={} fired={} pass_panics={}",
+        ASKED.load(Ordering::Relaxed),
+        FIRED.load(Ordering::Relaxed),
+        PASS_PANICS.load(Ordering::Relaxed)
+    )
 }
 
 /// The pump is on this clock: the idle chain waits here instead of on
