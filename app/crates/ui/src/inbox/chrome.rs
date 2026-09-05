@@ -161,13 +161,14 @@ pub fn body_text(theme: &Theme, text: impl Into<SharedString>) -> Div {
         .child(text.into())
 }
 
-/// A monospace line for a tool command — it is literal text the user is
-/// approving, so it must not be reflowed into prose.
+/// A monospace block for a tool command.
+///
+/// It WRAPS rather than truncating: this is the literal text the user is
+/// approving, and a command whose tail is cut off is a command they were not
+/// shown. Monospace so it is not reflowed into prose.
 pub fn command_text(theme: &Theme, text: impl Into<SharedString>) -> Div {
     div()
         .min_w_0()
-        .truncate()
-        .whitespace_nowrap()
         .px(px(6.0))
         .py(px(3.0))
         .rounded(px(5.0))
