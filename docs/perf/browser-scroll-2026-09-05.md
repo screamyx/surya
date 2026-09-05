@@ -19,7 +19,7 @@ The record this builds on is haktui's `docs/spike-scroll-frame-rate-2026-08-28.m
 
 | variable | default | what |
 | --- | --- | --- |
-| `SURYA_PUMP_TIMER=pool` | clock | the idle pump waits on gpui's thread-pool timer instead of the browser's clock (the control) |
+| `SURYA_PUMP_TIMER=pool` | clock | both pump waits on the old path: gpui's timer for the idle chain, a condvar for CEF's delayed asks (the control) |
 | `SURYA_PUMP_MS=<n>` | 8 | the idle pump's base interval |
 | `SURYA_CEF_FPS=<n>` | display rate, capped at 120 | CEF's `windowless_frame_rate` |
 | `SURYA_COARSE_TIMER=1` | off | skip `timeBeginPeriod(1)` and the coalescing opt-out |
