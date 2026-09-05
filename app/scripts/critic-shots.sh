@@ -68,9 +68,9 @@ shoot() { # shoot <name> <mode> <geom> <extra env...>
   env ZERON_DATA_DIR="$UI" ZERON_IPC_PORT=$PORT ZERON_WINDOW_SIZE=$geom DISPLAY=$DISPLAY_NO "$@" \
     "$ZERON" > "$WORK/app-$name.log" 2>&1 &
   APP=$!
-  sleep "${SHOT_WAIT:-12}"
+  sleep "${SHOT_WAIT:-24}"
   DISPLAY=$DISPLAY_NO xrefresh; sleep 3
-  if [ "${SHOT_WAIT:-12}" -gt 12 ]; then DISPLAY=$DISPLAY_NO xrefresh; sleep 3; fi
+  if [ "${SHOT_WAIT:-24}" -gt 12 ]; then DISPLAY=$DISPLAY_NO xrefresh; sleep 3; fi
   ffmpeg -loglevel error -y -f x11grab -video_size 1600x1000 -i "$DISPLAY_NO" -frames:v 1 "$OUT/$name.png"
   kill $APP 2>/dev/null || true; wait $APP 2>/dev/null || true
   local panics; panics=$(grep -c "panicked at" "$WORK/app-$name.log" || true)
@@ -94,7 +94,7 @@ for mode in light dark; do
 done
 if [ -n "${SURYA_SHOT_BROWSER:-}" ]; then
   for mode in light dark; do
-    SHOT_WAIT=28 shoot "shell-browser-$mode" "$mode" 1440x900 \
+    SHOT_WAIT="${SHOT_WAIT:-28}" shoot "shell-browser-$mode" "$mode" 1440x900 \
       ZERON_OPEN_BROWSER=1 SURYA_BROWSER_URL="${SURYA_BROWSER_URL:-https://example.com}" \
       SURYA_CEF_CACHE="$WORK/cef-$mode" RUST_LOG=info
   done
