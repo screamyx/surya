@@ -208,3 +208,40 @@ mod tests {
         assert!(matches!(policy.decide(&format!("data:image/png;base64,{huge}")), ImageDecision::Denied(r) if r.contains("too large")));
     }
 }
+
+/// The render-ready form of a decision, memoized per card so canonicalize,
+/// metadata and the data: decode + hash run once per URL, not per frame.
+#[derive(Clone)]
+pub enum ResolvedImage {
+    Source(gpui::ImageSource),
+    Placeholder(String),
+    Denied(String),
+}
+
+impl std::fmt::Debug for ResolvedImage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolvedImage::Source(_) => f.write_str("ResolvedImage::Source(..)"),
+            ResolvedImage::Placeholder(h) => write!(f, "ResolvedImage::Placeholder({h:?})"),
+            ResolvedImage::Denied(r) => write!(f, "ResolvedImage::Denied({r:?})"),
+        }
+    }
+}
+
+impl From<ImageDecision> for ResolvedImage {
+    fn from(decision: ImageDecision) -> Self {
+        use gpui::{ImageSource, Resource};
+        use std::sync::Arc;
+        match decision {
+            ImageDecision::File(path) => ResolvedImage::Source(ImageSource::Resource(
+                Resource::Path(Arc::from(path.as_path())),
+            )),
+            ImageDecision::Data { format, bytes } => ResolvedImage::Source(ImageSource::Image(
+                Arc::new(gpui::Image::from_bytes(format, bytes)),
+            )),
+            ImageDecision::Remote(url) => ResolvedImage::Source(ImageSource::from(url.as_str())),
+            ImageDecision::Placeholder(host) => ResolvedImage::Placeholder(host),
+            ImageDecision::Denied(reason) => ResolvedImage::Denied(reason),
+        }
+    }
+}
