@@ -9,10 +9,12 @@
 //! model can see, and as a card in the card store (like `show_card`) so the
 //! transcript shows the picture where the tool ran.
 //!
-//! Every call carries the engine's pane token (`ZERON_IPC_TOKEN`, else
-//! `{ZERON_DATA_DIR or ~/.surya}/ipc-token`, a 0600 file of the engine's
-//! user): the engine refuses Browser.* without it, so a stranger's process
-//! on the box cannot drive the owner's pane through this server either.
+//! Every call carries the engine's pane token: `ZERON_IPC_TOKEN`, else the
+//! `ipc-token` file under `ZERON_DATA_DIR`, else under the engine's own
+//! default data dir (`~/.zeron`, then `~/.surya` after decision 23's
+//! rename); a 0600 file of the engine's user, see [`pane_token`]. The
+//! engine refuses Browser.* without it, so a stranger's process on the box
+//! cannot drive the owner's pane through this server either.
 
 use serde_json::{Value, json};
 use zeron_rpc::methods;

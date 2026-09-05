@@ -163,7 +163,7 @@ mod tests {
 }
 
 #[cfg(test)]
-mod tests {
+mod token_tests {
     use super::pane_token;
 
     fn write(dir: &std::path::Path, token: &str) {
