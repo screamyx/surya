@@ -24,9 +24,19 @@ fn env_or(name: &str, fallback: impl FnOnce() -> Option<String>, default: &str) 
 fn main() {
     println!("cargo:rerun-if-env-changed=ZERON_BUILD_SHA");
     println!("cargo:rerun-if-env-changed=ZERON_BUILD_COMMIT_TIME");
-    if let Some(dir) = git(&["rev-parse", "--git-dir"]) {
-        println!("cargo:rerun-if-changed={dir}/HEAD");
-        println!("cargo:rerun-if-changed={dir}/refs/heads");
+    // HEAD lives in the worktree's git dir, the branch refs in the common dir
+    // (a linked worktree has no refs/heads of its own). A missing path would
+    // make cargo rerun this script on every build, so only existing ones count.
+    for (args, tail) in [
+        (["rev-parse", "--git-dir"], "HEAD"),
+        (["rev-parse", "--git-common-dir"], "refs/heads"),
+    ] {
+        if let Some(dir) = git(&args) {
+            let path = format!("{dir}/{tail}");
+            if std::path::Path::new(&path).exists() {
+                println!("cargo:rerun-if-changed={path}");
+            }
+        }
     }
     let sha = env_or(
         "ZERON_BUILD_SHA",

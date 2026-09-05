@@ -1170,6 +1170,9 @@ pub struct Shell {
     debug_gate: Option<GatePhase>,
     debug_upload: Option<String>,
     debug_cards: Option<String>,
+    /// The engine-skew message the user dismissed this session; a different
+    /// mismatch (re-attach elsewhere) shows the banner again.
+    engine_skew_dismissed: Option<String>,
     /// The demo chat has been inserted at least once this session.
     demo_cards_seeded: bool,
     sidebar_tween: Option<WidthTween>,
@@ -1425,6 +1428,7 @@ impl Shell {
             debug_gate,
             debug_upload,
             debug_cards,
+            engine_skew_dismissed: None,
             demo_cards_seeded: false,
             sidebar_tween: None,
             right_tween: None,
@@ -6271,16 +6275,22 @@ impl Shell {
     /// The version-skew strip: shown while the attached engine was built from
     /// a different commit than this app. It floats just under the titlebar so
     /// it never shifts the transcript; nothing is refused, a send that then
-    /// misbehaves has its reason on screen.
+    /// misbehaves has its reason on screen. The outer row has no id and no
+    /// handlers, so clicks beside the card fall through to the transcript; the
+    /// card itself occludes. Dismiss hides that message for this app session.
     fn render_engine_skew_banner(
         &self,
         theme: &Theme,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
         let message = self.state.read(cx).engine_skew.clone()?;
+        if self.engine_skew_dismissed.as_deref() == Some(message.as_str()) {
+            return None;
+        }
+        let text = message.clone();
+        let hover_bg = theme.wash(0.08);
         Some(
             div()
-                .id("engine-skew-banner")
                 .absolute()
                 .top(px(Theme::TITLEBAR_HEIGHT + 8.0))
                 .left_0()
@@ -6289,16 +6299,36 @@ impl Shell {
                 .justify_center()
                 .child(
                     div()
+                        .id("engine-skew-banner")
+                        .occlude()
                         .max_w(px(720.0))
+                        .flex()
+                        .items_start()
+                        .gap(px(10.0))
                         .px(px(12.0))
                         .py(px(6.0))
                         .rounded(px(8.0))
-                        .bg(theme.warning_muted)
+                        .bg(theme.warning_wash)
                         .border_1()
-                        .border_color(theme.warning)
+                        .border_color(gpui::Hsla { a: 0.5, ..theme.warning })
                         .text_size(crate::typography::ui_rems(13.0))
                         .text_color(theme.text)
-                        .child(SharedString::from(message)),
+                        .child(div().flex_1().min_w_0().child(SharedString::from(text)))
+                        .child(
+                            div()
+                                .id("engine-skew-dismiss")
+                                .flex_none()
+                                .px(px(5.0))
+                                .rounded(px(4.0))
+                                .text_color(theme.text_muted)
+                                .cursor_pointer()
+                                .hover(move |s| s.bg(hover_bg))
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.engine_skew_dismissed = Some(message.clone());
+                                    cx.notify();
+                                }))
+                                .child(SharedString::from("\u{00d7}")),
+                        ),
                 )
                 .into_any_element(),
         )

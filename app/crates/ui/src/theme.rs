@@ -651,6 +651,12 @@ pub struct Theme {
     pub warning: Hsla,
     /// Softer warning for secondary copy.
     pub warning_muted: Hsla,
+    /// A low-emphasis warning SURFACE for banners: `warning` at wash alpha
+    /// over the panel, mirroring [`Self::accent_wash`]. Text on it stays
+    /// `text` / `text_muted`; both clear 4.5:1 against the blended result
+    /// (`warning_wash_keeps_text_readable`). `warning` and `warning_muted`
+    /// are text tones, never a fill.
+    pub warning_wash: Hsla,
     /// Success / online — emerald.
     pub success: Hsla,
     /// Working / streaming indicator in the selected accent family.
@@ -991,6 +997,7 @@ impl Theme {
             danger_muted: oklch(0.808, 0.114, 19.571), // red-300
             warning: oklch(0.828, 0.189, 84.429),      // amber-400
             warning_muted: oklch(0.924, 0.12, 95.746), // amber-200
+            warning_wash: warning_wash_for(oklch(0.828, 0.189, 84.429), Appearance::Dark),
             success: oklch(0.765, 0.177, 163.223),     // emerald-400
             busy: accent.activity,
             glyph: accent.glyph,
@@ -1083,6 +1090,7 @@ impl Theme {
             danger_muted: oklch(0.505, 0.213, 27.518),  // red-700
             warning: oklch(0.555, 0.163, 48.998),       // amber-700 — carries 12px text
             warning_muted: oklch(0.473, 0.137, 46.201), // amber-800
+            warning_wash: warning_wash_for(oklch(0.555, 0.163, 48.998), Appearance::Light),
             success: oklch(0.596, 0.145, 163.225),      // emerald-600
             busy: accent.activity,
             glyph: accent.glyph,
@@ -1224,6 +1232,7 @@ impl Theme {
         theme.danger = model_color(colors.danger);
         theme.danger_muted = model_color(colors.danger_muted);
         theme.warning = model_color(colors.warning);
+        theme.warning_wash = warning_wash_for(theme.warning, theme.appearance);
         theme.warning_muted = model_color(colors.warning_muted);
         theme.success = model_color(colors.success);
         theme.success_muted = model_color(colors.success_muted);
@@ -1580,6 +1589,17 @@ pub fn grey(value: u8) -> Hsla {
 }
 
 /// Convert an oklch color (CSS notation: L 0..1, C, H in degrees) to gpui Hsla.
+/// `warning` at the alpha a banner wash uses over the panel: 0.10 light,
+/// 0.18 dark. Past 0.16 light / 0.18 dark, `text_muted` drops under 4.5:1 on
+/// the blended result (surya-theme's measurement, 2026-09-05).
+pub fn warning_wash_for(warning: Hsla, appearance: Appearance) -> Hsla {
+    let a = match appearance {
+        Appearance::Dark => 0.18,
+        Appearance::Light => 0.10,
+    };
+    Hsla { a, ..warning }
+}
+
 pub fn oklch(l: f32, c: f32, h_deg: f32) -> Hsla {
     let [r, g, b] = oklch_to_srgb(l, c, h_deg);
     let (h, s, l) = rgb_to_hsl(r, g, b);
@@ -2127,6 +2147,37 @@ mod tests {
             "dark amber-400 unexpectedly passes on white; the invert-is-wrong \
              premise needs rechecking"
         );
+    }
+
+    /// A wash is translucent, so its contrast is measured against the wash
+    /// BLENDED over the panel, never the raw wash colour: asserting on the raw
+    /// wash passes while the real pixels fail (surya-theme rule, PR #38).
+    #[test]
+    fn warning_wash_keeps_text_readable() {
+        fn over(top: Hsla, under: Hsla) -> Hsla {
+            let (t, u) = (top.to_rgb(), under.to_rgb());
+            let a = top.a;
+            gpui::Rgba {
+                r: t.r * a + u.r * (1.0 - a),
+                g: t.g * a + u.g * (1.0 - a),
+                b: t.b * a + u.b * (1.0 - a),
+                a: 1.0,
+            }
+            .into()
+        }
+        for t in [Theme::dark(), Theme::light()] {
+            for (panel_name, panel) in [("bg", t.bg), ("surface", t.surface)] {
+                let blended = over(t.warning_wash, panel);
+                for (name, fg) in [("text", t.text), ("text_muted", t.text_muted)] {
+                    let r = contrast_ratio(fg, blended);
+                    assert!(
+                        r >= 4.5,
+                        "{:?} {name} on warning_wash over {panel_name} is {r:.2}:1",
+                        t.appearance
+                    );
+                }
+            }
+        }
     }
 
     /// Code is *text*, so syntax tones are held to the body-copy bar, not the
