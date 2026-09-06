@@ -14,7 +14,7 @@ use gpui::{
 use zeron_proto::files::{FileRead, FileWrite, LineRange};
 use zeron_rpc::methods;
 
-pub use super::editor_doc::{Body, Conflict, EditorDoc, SaveOutcome};
+pub use super::editor_doc::{Body, Conflict, EditorDoc, SaveOutcome, Switch};
 use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::state::EngineHandle;
 use crate::theme::Theme;
@@ -63,7 +63,46 @@ impl FileEditor {
         }
     }
 
+    /// A click in the tree. A dirty buffer is never replaced without asking:
+    /// the prompt goes up and the path waits behind it (`prompt`). The same
+    /// dirty file clicked again keeps its buffer and takes any prompt down:
+    /// clicking the file you are on is choosing to stay. The rule and its
+    /// state change are `EditorDoc::click`, tested there.
     pub fn open(&mut self, path: String, cx: &mut Context<Self>) {
+        let current = self.input.read(cx).text().to_string();
+        match self.doc.click(&current, &path) {
+            Switch::Load => self.load(path, cx),
+            Switch::Prompt | Switch::Stay => cx.notify(),
+        }
+    }
+
+    /// The prompt's Save: write, and open the waiting path once the write
+    /// lands (`save`'s answer takes it). A refused write drops it. When no
+    /// write can start (a conflict banner is up: the owner settles that
+    /// first) the prompt steps aside rather than sit there doing nothing.
+    fn save_then_open(&mut self, cx: &mut Context<Self>) {
+        self.save(cx);
+        if !self.doc.saving {
+            self.keep_editing(cx);
+        }
+    }
+
+    /// The prompt's Discard: the waiting path loads over the edits.
+    fn discard_then_open(&mut self, cx: &mut Context<Self>) {
+        if let Some(path) = self.doc.take_pending_open() {
+            self.load(path, cx);
+        }
+    }
+
+    /// The prompt's Keep editing: the prompt goes, the buffer stays.
+    fn keep_editing(&mut self, cx: &mut Context<Self>) {
+        self.doc.keep_editing();
+        cx.notify();
+    }
+
+    /// Replace the buffer with `path`'s read. Only `open` and the prompt's
+    /// answers get here, after the dirty check.
+    fn load(&mut self, path: String, cx: &mut Context<Self>) {
         self.doc.loading(&path);
         self.input.update(cx, |input, cx| input.set_text("", cx));
         let engine = self.engine.clone();
@@ -114,6 +153,9 @@ impl FileEditor {
                     Ok(write) => {
                         if this.doc.write_answered(write, text) == SaveOutcome::Saved {
                             cx.emit(EditorEvent::Saved(path));
+                            if let Some(next) = this.doc.take_pending_open() {
+                                this.load(next, cx);
+                            }
                         }
                     }
                     Err(err) => this.doc.failed(err.to_string()),
@@ -214,6 +256,44 @@ impl FileEditor {
         )
     }
 
+    /// The unsaved-edits prompt, in the pane above the buffer. Three ways
+    /// out, all explicit: nothing here is a native dialog.
+    fn prompt(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<gpui::Div> {
+        let next = self.doc.prompt_for(self.input.read(cx).text())?.to_string();
+        let here = self.doc.path.clone().unwrap_or_default();
+        Some(
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap(px(8.0))
+                .px(px(10.0))
+                .py(px(6.0))
+                .bg(theme.surface_raised) // TOKEN: surya.banner.ask
+                .border_b_1()
+                .border_color(theme.border)
+                .text_size(px(12.0))
+                .text_color(theme.text)
+                .child(format!("{here} has unsaved changes. Save or discard them before opening {next}?"))
+                .child(div().flex_1())
+                .child(
+                    crate::popover::btn_ghost(theme, "Keep editing", "files-editor-keep")
+                        .id("files-editor-keep")
+                        .on_click(cx.listener(|this, _, _, cx| this.keep_editing(cx))),
+                )
+                .child(
+                    crate::popover::btn_danger(theme, "Discard")
+                        .id("files-editor-discard")
+                        .on_click(cx.listener(|this, _, _, cx| this.discard_then_open(cx))),
+                )
+                .child(
+                    crate::popover::btn_primary(theme, "Save")
+                        .id("files-editor-save-then-open")
+                        .on_click(cx.listener(|this, _, _, cx| this.save_then_open(cx))),
+                ),
+        )
+    }
+
     fn placeholder(&self, theme: &Theme) -> Option<gpui::Div> {
         let text = match &self.doc.body {
             Body::Text => return None,
@@ -253,6 +333,7 @@ impl Render for FileEditor {
         let theme = Theme::of(cx).clone();
         let header = self.header(&theme, cx);
         let banner = self.banner(&theme, cx);
+        let prompt = self.prompt(&theme, cx);
         let placeholder = self.placeholder(&theme);
         div()
             .id("files-editor")
@@ -265,6 +346,7 @@ impl Render for FileEditor {
             .size_full()
             .bg(theme.surface) // TOKEN: surya.editor.bg
             .child(header)
+            .children(prompt)
             .children(banner)
             .when_some(placeholder, |d, p| d.child(p))
             .when(self.doc.body == Body::Text, |d| {
