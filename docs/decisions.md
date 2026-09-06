@@ -165,6 +165,8 @@ Agents write cards as tool calls (`show_card`), never as text in the reply. The 
 Because a workspace card is JSON, an agent working in that repo can add a new card the same way it adds a skill.
 Escape hatch, not day one: a built and installed surya plugin for a visual the primitives cannot express.
 
+Shown cards are recorded one file per chat, at `<data dir>/cards/<chat id>.jsonl`, and the engine hands that path to the agent on every real run (2026-09-06). There was no prior convention - the app reads whichever path the run carries - so this is the choice, written down rather than left implicit.
+
 ## 15. Rail and agent tree
 
 Owner, 2026-09-05 01:44: "the left rails could be done better i think."

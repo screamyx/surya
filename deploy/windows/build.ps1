@@ -16,7 +16,7 @@ Building with -Browser also needs CMake, Ninja (`python -m pip install
 ninja`) and CEF_PATH set to a directory the cef crate may download into
 (about 250 MB once; app\crates\browser\README.md). -NoBuild reads none of
 these.
-Output: dist\surya-windows\ (surya.exe, surya.cmd, VERSION.txt; with
+Output: dist\surya-windows\ (surya.exe, surya-mcp.exe, surya.cmd, VERSION.txt; with
         -Browser also surya-browser-helper.exe, libcef.dll and the other
         CEF DLLs, *.pak, icudtl.dat, v8_context_snapshot.bin, locales\,
         CREDITS.html, CEF-LICENSE.txt, archive.json) and
@@ -47,9 +47,9 @@ if (-not $NoBuild) {
     try {
         cargo --version
         if ($Browser) {
-            cargo build --release -p surya --features browser
+            cargo build --release -p surya -p surya-mcp --features browser
         } else {
-            cargo build --release -p surya
+            cargo build --release -p surya -p surya-mcp
         }
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit $LASTEXITCODE" }
     } finally { Pop-Location }
@@ -72,6 +72,11 @@ Write-Host "== packing $dist"
 if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
 Copy-Item $exe (Join-Path $dist "surya.exe")
+# The sidecar ships in the zip beside the engine - the harness looks there
+# first, and the app runs the daemon locally on Windows.
+$mcp = Join-Path $target "release\surya-mcp.exe"
+if (-not (Test-Path $mcp)) { throw "no sidecar at $mcp; build without -NoBuild" }
+Copy-Item $mcp (Join-Path $dist "surya-mcp.exe")
 # DLLs of the app's own travel with it, by name (none today; the fonts and
 # icons are compiled into the binary). Never a *.dll sweep: after one
 # -Browser build the release dir also holds Chromium's 300 MB, which a plain

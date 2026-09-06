@@ -1,0 +1,178 @@
+//! Decision 5 reaches a real agent, or it reaches nobody.
+//!
+//! The harness wires the `surya-mcp` sidecar, the prompt append, the cards
+//! skill and the `SendMessage` denial only when `RunRequest.surya` is `Some`
+//! (`harness/src/claude/mod.rs`). Every `Some(SuryaOptions)` in the tree used
+//! to be a test, an example or a `#[cfg(test)]` block, so no running engine
+//! ever set it: real sessions had no `show_card`, no cards skill, and the
+//! CLI's own cross-session messaging was never denied.
+//!
+//! This test holds the seam shut from the engine side. The harness records
+//! the request it was handed and the assertions read it back.
+
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use async_trait::async_trait;
+use futures::stream::BoxStream;
+
+use surya_engine::{EngineCore, HarnessRegistry};
+use surya_harness::{Harness, HarnessError, RunControls};
+use surya_proto::{
+    AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
+    SteeringMode, SuryaOptions,
+};
+
+const CHAT: &str = "chat-surya-options";
+const CWD: &str = "/repo/checkout";
+
+/// Keeps every request it is asked to run.
+struct RecordingHarness {
+    seen: Arc<Mutex<Vec<RunRequest>>>,
+}
+
+#[async_trait]
+impl Harness for RecordingHarness {
+    fn id(&self) -> HarnessId {
+        HarnessId::Mock
+    }
+    fn display_name(&self) -> &str {
+        "Recording"
+    }
+    fn supports_steering(&self) -> bool {
+        false
+    }
+    fn steering_mode(&self) -> SteeringMode {
+        SteeringMode::TurnBoundary
+    }
+    fn reasoning_levels(&self) -> &[ReasoningLevel] {
+        &[ReasoningLevel::Medium]
+    }
+    async fn models(&self) -> Result<Vec<Model>, HarnessError> {
+        Ok(vec![])
+    }
+    async fn run(
+        &self,
+        request: RunRequest,
+        _controls: RunControls,
+    ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        self.seen.lock().expect("seen").push(request);
+        let events: Vec<Result<AgentEvent, HarnessError>> = vec![Ok(AgentEvent::Done {
+            status: DoneStatus::Completed,
+            result: None,
+            error: None,
+            session_id: None,
+        })];
+        Ok(Box::pin(futures::stream::iter(events)))
+    }
+}
+
+fn run_request(prompt: &str) -> RunRequest {
+    RunRequest {
+        // What the app sends: the composer does not know the host's paths, so
+        // it sends None and the engine fills it in.
+        surya: None,
+        prompt: prompt.to_string(),
+        harness: Some(HarnessId::Mock),
+        model: None,
+        reasoning: None,
+        model_options: serde_json::Map::new(),
+        cwd: CWD.to_string(),
+        sandbox: SandboxLevel::WorkspaceWrite,
+        auto_approve: false,
+        resume: None,
+        attachments: Vec::new(),
+        worktree: None,
+    }
+}
+
+async fn dispatched_request(prompt: &str) -> RunRequest {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let seen: Arc<Mutex<Vec<RunRequest>>> = Arc::default();
+    let registry = HarnessRegistry::new();
+    registry.register(Arc::new(RecordingHarness { seen: seen.clone() }));
+    let core = EngineCore::assemble(
+        &tmp.path().join("data"),
+        Arc::new(registry),
+        HarnessId::Mock,
+        None,
+    )
+    .expect("engine core assembles");
+    core.sessions
+        .dispatch(CHAT, HarnessId::Mock, run_request(prompt), None)
+        .await
+        .expect("dispatch");
+
+    for _ in 0..200 {
+        if let Some(request) = seen.lock().expect("seen").first().cloned() {
+            return request;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    panic!("the harness was never handed a request");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_user_run_carries_the_surya_block() {
+    let request = dispatched_request("compare A and B in a table").await;
+
+    let options: SuryaOptions = request
+        .surya
+        .expect("a real run must carry the surya block, or the sidecar never loads");
+
+    // The mail system addresses a top-level agent by its chat id.
+    assert_eq!(options.agent_id, CHAT);
+    // The workspace doubles as the sidecar's catalog root.
+    assert_eq!(options.workspace, CWD);
+    // One card file per chat, under the data dir.
+    let store = options.card_store.expect("card store");
+    assert!(
+        store.ends_with(&format!("cards/{CHAT}.jsonl")),
+        "card_store={store}"
+    );
+    // Left to the harness, which looks beside the executable then on PATH -
+    // which is where the installer now puts it.
+    assert_eq!(options.mcp_binary, None);
+}
+
+/// A title run is the engine talking to itself: it builds its own request in
+/// `titles.rs` and calls the harness directly, never through `dispatch`. It
+/// must not get tools, a card prompt or a mail address, or it shows up as an
+/// agent that can act.
+///
+/// Asserted as a count rather than by forcing a title run: whatever else the
+/// engine starts while this dispatch runs, exactly one request may carry the
+/// block, and it must be the user's.
+#[tokio::test(flavor = "multi_thread")]
+async fn only_the_user_run_carries_it() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let seen: Arc<Mutex<Vec<RunRequest>>> = Arc::default();
+    let registry = HarnessRegistry::new();
+    registry.register(Arc::new(RecordingHarness { seen: seen.clone() }));
+    let core = EngineCore::assemble(
+        &tmp.path().join("data"),
+        Arc::new(registry),
+        HarnessId::Mock,
+        None,
+    )
+    .expect("engine core assembles");
+    core.sessions
+        .dispatch(CHAT, HarnessId::Mock, run_request("write the thing"), None)
+        .await
+        .expect("dispatch");
+
+    // Let anything else the engine starts (the auto-titler) land too.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let requests = seen.lock().expect("seen").clone();
+    let with: Vec<&RunRequest> = requests.iter().filter(|r| r.surya.is_some()).collect();
+    let prompts: Vec<&str> = requests.iter().map(|r| r.prompt.as_str()).collect();
+    assert_eq!(
+        with.len(),
+        1,
+        "runs={} with_block={} prompts={prompts:?}",
+        requests.len(),
+        with.len()
+    );
+    assert_eq!(with[0].prompt, "write the thing");
+}

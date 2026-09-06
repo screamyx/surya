@@ -91,7 +91,7 @@ fn current_uid() -> String {
 }
 
 /// `~/.surya`, falling back to the runtime dir when HOME is unset.
-fn surya_home_dir() -> PathBuf {
+pub(crate) fn surya_home_dir() -> PathBuf {
     match env_path("HOME") {
         Some(home) => home.join(".surya"),
         None => runtime_dir(),

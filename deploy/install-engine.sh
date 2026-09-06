@@ -51,7 +51,7 @@ TARGET_DIR="${CARGO_TARGET_DIR:-$APP/target}"
 if [ "$BUILD" = 1 ]; then
   command -v "${CARGO%% *}" >/dev/null 2>&1 || die "cargo not found; install Rust from https://rustup.rs then re-run"
   say "building the engine (release, this takes a while the first time)"
-  (cd "$APP" && $CARGO build --release -p surya)
+  (cd "$APP" && $CARGO build --release -p surya -p surya-mcp)
 fi
 [ -x "$TARGET_DIR/release/surya" ] || die "no binary at $TARGET_DIR/release/surya (run without --no-build)"
 
@@ -60,6 +60,12 @@ say "installing to $BIN_DIR"
 install -d "$BIN_DIR"
 install -m755 "$TARGET_DIR/release/surya" "$BIN_DIR/surya.new"
 mv -f "$BIN_DIR/surya.new" "$BIN_DIR/surya"
+# The sidecar goes BESIDE the engine: that is the first place the harness
+# looks (`harness/src/claude/surya.rs`), before PATH. Without it every real
+# run silently loses show_card, the cards skill and the SendMessage denial.
+[ -x "$TARGET_DIR/release/surya-mcp" ] || die "no sidecar at $TARGET_DIR/release/surya-mcp (run without --no-build)"
+install -m755 "$TARGET_DIR/release/surya-mcp" "$BIN_DIR/surya-mcp.new"
+mv -f "$BIN_DIR/surya-mcp.new" "$BIN_DIR/surya-mcp"
 cat > "$BIN_DIR/surya-engine" <<'HELPER'
 #!/usr/bin/env bash
 # surya-engine status|token|logs|restart|stop|start - manage the engine service.
