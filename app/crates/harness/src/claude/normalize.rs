@@ -877,8 +877,6 @@ mod tests {
         assert!(matches!(&other[0], AgentEvent::ToolCall { call: ToolCall::Mcp { .. }, .. }));
     }
 
-    /// A `browser_screenshot` call keeps its chip, and the picture the
-    /// sidecar recorded follows as its own card row under `<id>:shot`.
     /// Every run carries a store path now (the engine fills `SuryaOptions` on
     /// every dispatch), so "a store is configured" no longer means "the
     /// sidecar recorded this". A card whose A2UI rides in the tool input and
@@ -907,6 +905,8 @@ mod tests {
         );
     }
 
+    /// A `browser_screenshot` call keeps its chip, and the picture the
+    /// sidecar recorded follows as its own card row under `<id>:shot`.
     #[test]
     fn browser_screenshot_keeps_its_chip_and_adds_a_card_row() {
         let dir = tempfile::tempdir().unwrap();
