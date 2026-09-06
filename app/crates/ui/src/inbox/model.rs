@@ -14,8 +14,8 @@ mod tests;
 
 use std::collections::HashMap;
 
-use zeron_doc::SessionCommandPayload;
-use zeron_proto::{
+use surya_doc::SessionCommandPayload;
+use surya_proto::{
     AgentState, AgentStateRow, Chat, NeedsYouItem, NeedsYouKind, PermissionDecision, RememberRule,
     RuleScope, UserInputAnswer,
 };

@@ -11,7 +11,7 @@
 #
 # Bash and not a Rust integration test, on purpose: the point is to drive the
 # ENGINE THE APP TALKS TO, from outside the workspace, through the binaries a
-# user runs - `zeron headless`, `zeron mail`, `surya-mcp` - over a websocket
+# user runs - `surya headless`, `surya mail`, `surya-mcp` - over a websocket
 # nobody stubbed. A #[test] would link the engine into the test binary and
 # prove a different thing. `crates/rpc/examples/rpc_probe.rs` already speaks
 # the wire protocol from the shell, so no new Rust is needed.
@@ -78,9 +78,9 @@ start_engine() { # start_engine <data-dir> [bind]
   PORT="$(free_port)"
   local args=()
   [ -n "$bind" ] && args+=(--bind "$bind")
-  ZERON_DATA_DIR="$dir" ZERON_IPC_PORT="$PORT" \
+  SURYA_DATA_DIR="$dir" SURYA_IPC_PORT="$PORT" \
     CLAUDE_CODE_EXECUTABLE="$FAKE_CLAUDE" \
-    ZERON_WORKOS_CLIENT_ID="" \
+    SURYA_WORKOS_CLIENT_ID="" \
     "$ZERON" headless "${args[@]}" >"$WORK/engine.log" 2>&1 &
   ENGINE_PID=$!
   for _ in $(seq 1 100); do
@@ -95,10 +95,10 @@ stop_engine() { [ -n "$ENGINE_PID" ] && kill "$ENGINE_PID" 2>/dev/null; wait "$E
 
 echo "== build =="
 chmod +x "$FAKE_CLAUDE"
-$CARGO build -p zeron -p surya-mcp >"$WORK/build.log" 2>&1 || { tail -30 "$WORK/build.log"; exit 1; }
-$CARGO build -p zeron-rpc --example rpc_probe >>"$WORK/build.log" 2>&1 || { tail -30 "$WORK/build.log"; exit 1; }
+$CARGO build -p surya -p surya-mcp >"$WORK/build.log" 2>&1 || { tail -30 "$WORK/build.log"; exit 1; }
+$CARGO build -p surya-rpc --example rpc_probe >>"$WORK/build.log" 2>&1 || { tail -30 "$WORK/build.log"; exit 1; }
 TARGET="$(cargo metadata --format-version 1 --no-deps 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin)["target_directory"])')"
-ZERON="$TARGET/debug/zeron"
+ZERON="$TARGET/debug/surya"
 MCP="$TARGET/debug/surya-mcp"
 RPC_PROBE="$TARGET/debug/examples/rpc_probe"
 for bin in "$ZERON" "$MCP" "$RPC_PROBE"; do [ -x "$bin" ] || { echo "missing $bin"; exit 1; }; done
@@ -111,12 +111,12 @@ echo "== a. remote auth (PR #3) =="
 # enforce it (crates/engine/src/ipc.rs, enforces_token).
 TOKEN="smoke-$(date +%s)"
 PORT="$(free_port)"
-ZERON_DATA_DIR="$WORK/auth" ZERON_IPC_PORT="$PORT" ZERON_IPC_TOKEN="$TOKEN" \
-  ZERON_WORKOS_CLIENT_ID="" "$ZERON" headless >"$WORK/auth-engine.log" 2>&1 &
+SURYA_DATA_DIR="$WORK/auth" SURYA_IPC_PORT="$PORT" SURYA_IPC_TOKEN="$TOKEN" \
+  SURYA_WORKOS_CLIENT_ID="" "$ZERON" headless >"$WORK/auth-engine.log" 2>&1 &
 ENGINE_PID=$!
 accepted=0; rejected=0
 for _ in $(seq 1 100); do
-  if ZERON_DATA_DIR="$WORK/auth" ZERON_IPC_PORT="$PORT" ZERON_IPC_TOKEN="$TOKEN" \
+  if SURYA_DATA_DIR="$WORK/auth" SURYA_IPC_PORT="$PORT" SURYA_IPC_TOKEN="$TOKEN" \
      "$ZERON" mail drain >/dev/null 2>&1; then accepted=1; break; fi
   kill -0 "$ENGINE_PID" 2>/dev/null || { echo "auth engine died:"; tail -20 "$WORK/auth-engine.log"; exit 1; }
   sleep 0.2
@@ -217,7 +217,7 @@ sys.exit(0 if any(r.get("chatId")==chat and r.get("status")=="idle" for r in row
 }
 wait_idle smoke-a smoke-b
 # The BODY carries the scenario, so the mail turn itself completes.
-SEND="$(ZERON_DATA_DIR="$WORK/engine" ZERON_IPC_PORT="$PORT" "$ZERON" mail send smoke-b "scenario:happy please check the diff" --from smoke-a)"
+SEND="$(SURYA_DATA_DIR="$WORK/engine" SURYA_IPC_PORT="$PORT" "$ZERON" mail send smoke-b "scenario:happy please check the diff" --from smoke-a)"
 sent="$(printf '%s' "$SEND" | sed -n 's/^sent=\([0-9]*\).*/\1/p')"
 sent="${sent:-0}"
 delivered=0; acked=0; carried=0

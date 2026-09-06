@@ -5,7 +5,7 @@ use std::sync::{Arc, Barrier, Mutex};
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use zeron_engine::{
+use surya_engine::{
     AuthState, Engine, EngineConfig, EngineCore, EngineProfile, HarnessId, WorkspaceScope,
     default_registry,
 };
@@ -21,7 +21,7 @@ fn config(
         edge_url,
         edge_token: edge_token.map(str::to_string),
         ipc_port: 0,
-        ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+        ipc_bind: surya_engine::ipc::DEFAULT_BIND,
         ipc_token: None,
         default_harness: HarnessId::Mock,
         org_id: None,

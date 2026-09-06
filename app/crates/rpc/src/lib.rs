@@ -1,8 +1,8 @@
-//! zeron-rpc — the typed control plane (UiRpc / ControlRpc) over WebSocket + in-memory
+//! surya-rpc — the typed control plane (UiRpc / ControlRpc) over WebSocket + in-memory
 //! transports, plus the device-room relay transport ({s,k,to,from} frames — [`device_room`]).
 //!
 //! Framing: ndjson envelopes, one JSON object per WebSocket text message (or per line on
-//! byte transports), matching the shape of zeron's Effect RPC without the Effect runtime:
+//! byte transports), matching the shape of surya's Effect RPC without the Effect runtime:
 //!
 //! - client → server: `{id, method, params}` to invoke, `{id, cancel: true}` to stop a stream;
 //! - server → client: `{id, ok}` / `{id, err}` for unary calls,
@@ -58,12 +58,12 @@ pub mod methods {
     /// app foregrounded). No params; IPC-only. Each room ignores the hint
     /// unless it has been broadcast-quiet ≥30s, so this is cheap to spam.
     pub const PROBE_SYNC: &str = "ProbeSync";
-    /// Live sync introspection (`zeron sync` / debug surfaces): per-room
+    /// Live sync introspection (`surya sync` / debug surfaces): per-room
     /// connection state, last pushed-frame/ack ages, rejoin/probe/resync
     /// counters for the workspace room and every open chat doc. No params;
     /// IPC-only.
     pub const SYNC_STATUS: &str = "SyncStatus";
-    /// Pushed edge-connectivity posture (`zeron_proto::Connectivity`):
+    /// Pushed edge-connectivity posture (`surya_proto::Connectivity`):
     /// current value first, then every change — the connection pill /
     /// composer-honesty / queued-badge feed. No params; IPC-only.
     pub const WATCH_CONNECTIVITY: &str = "WatchConnectivity";
@@ -78,7 +78,7 @@ pub mod methods {
     /// `{messages}` now, then a fresh list on every mail change — the
     /// Messages pane's feed. No params; IPC-only.
     pub const WATCH_MAIL: &str = "WatchMail";
-    /// In-flight queued-attachment transfers (`zeron_proto::TransferProgress`
+    /// In-flight queued-attachment transfers (`surya_proto::TransferProgress`
     /// list): current set first, then a fresh snapshot per landed chunk —
     /// the sending thumbnail's percent-ring feed. No params; IPC-only.
     pub const WATCH_TRANSFERS: &str = "WatchTransfers";
@@ -117,7 +117,7 @@ pub mod methods {
     /// Params are tagged `{op: createChat|createSpace|renameSpace|deleteSpace|
     /// renameChat|setChatArchived|deleteChat|renameDevice|markChatSeen|
     /// createTask|updateTask|deleteTask|reorderTask, …}`.
-    // Browser pane (`zeron_engine::browser_rpc`): an agent's browser_* tool
+    // Browser pane (`surya_engine::browser_rpc`): an agent's browser_* tool
     // reaches the app's pane through the engine. Not relay-forwardable: the
     // pane is on the device the app runs on.
     /// `{op, args}` -> the pane's answer; fails when no app pane is attached.
@@ -171,7 +171,7 @@ pub mod methods {
     pub const CREATE_WORKTREE: &str = "CreateWorktree";
     pub const DELETE_WORKTREE: &str = "DeleteWorktree";
     // Files (ControlRpc, relay-forwardable): the tree + editor data path, jailed
-    // to a space's checkout root. Types + haktui mapping: `zeron_proto::files`.
+    // to a space's checkout root. Types + haktui mapping: `surya_proto::files`.
     /// Lazy directory listing `{spaceId, path, depth}` -> `FileTree`.
     pub const FILES_TREE: &str = "FilesTree";
     /// Stream of debounced `FileWatchBatch`es for `{spaceId}`.

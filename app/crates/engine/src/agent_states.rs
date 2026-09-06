@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use chrono::{DateTime, Utc};
 use tokio::sync::{oneshot, watch};
 
-use zeron_proto::{
+use surya_proto::{
     AgentEvent, AgentStateRow, AllowRule, DoneStatus, NeedsYouItem, PermissionDecision,
     PermissionRequest, RememberRule, SessionStatus, UserInputQuestion, child_agent_id,
 };

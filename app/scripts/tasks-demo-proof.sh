@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Headless proof for `zeron --tasks-demo` (surya task board pane): start a
+# Headless proof for `surya --tasks-demo` (surya task board pane): start a
 # throwaway local engine, open only the Tasks pane under Xvfb for N seconds,
 # count starts and panics. Prints `started=1 panics=0` on success.
 #
-#   scripts/tasks-demo-proof.sh [seconds] [path/to/zeron]
+#   scripts/tasks-demo-proof.sh [seconds] [path/to/surya]
 set -euo pipefail
 SECS=${1:-5}
-ZERON=${2:-${CARGO_TARGET_DIR:-target}/debug/zeron}
-[ -x "$ZERON" ] || { echo "no zeron binary at $ZERON" >&2; exit 2; }
+ZERON=${2:-${CARGO_TARGET_DIR:-target}/debug/surya}
+[ -x "$ZERON" ] || { echo "no surya binary at $ZERON" >&2; exit 2; }
 WORK=$(mktemp -d /tmp/tasks-demo-XXXXXX)
 PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
 trap 'kill $ENGINE 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
-ZERON_DATA_DIR="$WORK/engine" ZERON_IPC_PORT=$PORT "$ZERON" headless > "$WORK/engine.log" 2>&1 &
+SURYA_DATA_DIR="$WORK/engine" SURYA_IPC_PORT=$PORT "$ZERON" headless > "$WORK/engine.log" 2>&1 &
 ENGINE=$!
 for _ in $(seq 1 60); do
   grep -q "IPC server listening" "$WORK/engine.log" 2>/dev/null && break
@@ -20,7 +20,7 @@ for _ in $(seq 1 60); do
 done
 
 set +e
-ZERON_DATA_DIR="$WORK/ui" ZERON_IPC_PORT=$PORT SURYA_DEMO_EXIT_SECS=$SECS \
+SURYA_DATA_DIR="$WORK/ui" SURYA_IPC_PORT=$PORT SURYA_DEMO_EXIT_SECS=$SECS \
   xvfb-run -a -s "-screen 0 1440x900x24" "$ZERON" --tasks-demo > "$WORK/demo.log" 2>&1
 DEMO_EXIT=$?
 set -e

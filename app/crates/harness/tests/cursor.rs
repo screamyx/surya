@@ -7,8 +7,8 @@ use std::time::Duration;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 
-use zeron_harness::{CancellationToken, CursorHarness, Harness, RunControls, SteerMessage};
-use zeron_proto::{AgentEvent, DoneStatus, HarnessId, RunRequest, SandboxLevel, ToolCall};
+use surya_harness::{CancellationToken, CursorHarness, Harness, RunControls, SteerMessage};
+use surya_proto::{AgentEvent, DoneStatus, HarnessId, RunRequest, SandboxLevel, ToolCall};
 
 fn fixture_path() -> PathBuf {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -55,7 +55,7 @@ fn controls() -> (RunControls, mpsc::Sender<SteerMessage>, CancellationToken) {
         }),
         steering: steer_rx,
         interrupt: token.clone(),
-        permission: zeron_harness::permission::PermissionGate::auto_allow(),
+        permission: surya_harness::permission::PermissionGate::auto_allow(),
     };
     (controls, steer_tx, token)
 }
@@ -67,7 +67,7 @@ async fn run_to_first_done(
     controls: RunControls,
 ) -> Vec<AgentEvent> {
     let mut stream = harness.run(req, controls).await.expect("run starts");
-    tokio::time::timeout(zeron_test_deadlines::WAIT, async {
+    tokio::time::timeout(surya_test_deadlines::WAIT, async {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");
@@ -173,7 +173,7 @@ async fn steer_after_done_becomes_the_next_turn() {
         .await
         .expect("run starts");
 
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async {
         let mut events = Vec::new();
         let mut dones = 0;
         while let Some(ev) = stream.next().await {
@@ -230,7 +230,7 @@ async fn interrupt_maps_to_interrupted_done() {
         .await
         .expect("run starts");
 
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");

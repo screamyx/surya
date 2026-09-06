@@ -13,7 +13,7 @@ const colorFields = fields(block(variant, 'let colors = ThemeColors'));
 const themes = {};
 for (const mode of ['light', 'dark']) {
   const dark = mode === 'dark';
-  const seedFields = fields(block(block(builtins, `fn zeron_${mode}()`), 'variant(Seeds'));
+  const seedFields = fields(block(block(builtins, `fn comet_${mode}()`), 'variant(Seeds'));
   const seed = Object.fromEntries(Object.entries(seedFields).filter(([, v]) => /^"#[a-f0-9]{6}"$/i.test(v))
     .map(([k, v]) => [`seed.${k}`, color(JSON.parse(v))]));
   const env = { ...seed, dark };

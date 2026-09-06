@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use tokio::sync::oneshot;
-use zeron_proto::{PermissionDecision, PermissionRequest};
+use surya_proto::{PermissionDecision, PermissionRequest};
 
 type PermissionFn =
     dyn Fn(PermissionRequest) -> oneshot::Receiver<PermissionDecision> + Send + Sync;

@@ -8,7 +8,7 @@ publish = false
 description = "haktui's offscreen Chromium (CEF) pane, ported onto comet's gpui"
 
 # Its own root: app/Cargo.toml excludes this crate so CI never pulls CEF.
-# Build it through `cargo build -p zeron --features browser`; run its tests
+# Build it through `cargo build -p surya --features browser`; run its tests
 # from this directory (`cargo test`, needs CEF_PATH and a cargo slot).
 [workspace]
 

@@ -3,7 +3,7 @@
 
 use super::*;
 use chrono::{TimeZone, Utc};
-use zeron_proto::child_agent_id;
+use surya_proto::child_agent_id;
 
 fn chat(id: &str, title: Option<&str>) -> Chat {
     Chat {
@@ -399,7 +399,7 @@ fn a_child_s_question_keeps_its_buttons_in_the_parent_chat() {
 #[test]
 fn the_row_only_collapses_when_the_transcript_really_carries_its_sheet() {
     use crate::composer::pending_input_request;
-    use zeron_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
+    use surya_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 
     let sheet = |resolved: bool| {
         vec![SessionMessageEntry {
@@ -408,7 +408,7 @@ fn the_row_only_collapses_when_the_transcript_really_carries_its_sheet() {
             parts: vec![MessagePart::Input {
                 id: "in-req-1".into(),
                 request_id: "req-1".into(),
-                questions: vec![zeron_proto::UserInputQuestion {
+                questions: vec![surya_proto::UserInputQuestion {
                     id: "q1".into(),
                     header: "Question".into(),
                     question: "Which sync strategy?".into(),

@@ -233,8 +233,8 @@ fn to_doc_part(part: &MessagePart) -> Result<DocPartJson, DocError> {
             resolved: Some(*resolved),
             decision: decision.map(|d| {
                 match d {
-                    zeron_proto::PermissionDecision::Allow => "allow",
-                    zeron_proto::PermissionDecision::Deny => "deny",
+                    surya_proto::PermissionDecision::Allow => "allow",
+                    surya_proto::PermissionDecision::Deny => "deny",
                 }
                 .to_owned()
             }),
@@ -313,8 +313,8 @@ fn from_doc_part(p: DocPartJson) -> MessagePart {
             command: p.command.unwrap_or_default(),
             resolved: p.resolved.unwrap_or(false),
             decision: match p.decision.as_deref() {
-                Some("allow") => Some(zeron_proto::PermissionDecision::Allow),
-                Some("deny") => Some(zeron_proto::PermissionDecision::Deny),
+                Some("allow") => Some(surya_proto::PermissionDecision::Allow),
+                Some("deny") => Some(surya_proto::PermissionDecision::Deny),
                 _ => None,
             },
             reason: p.reason,
@@ -696,7 +696,7 @@ impl SessionDoc {
                             loro::ValueOrContainer::Value(v) => serde_json::to_value(v).ok(),
                             _ => None,
                         })
-                        .and_then(|j| serde_json::from_value::<zeron_proto::ToolCall>(j).ok())
+                        .and_then(|j| serde_json::from_value::<surya_proto::ToolCall>(j).ok())
                         .is_some_and(|c| c.is_subagent_spawn());
                     if !is_spawn {
                         return Ok(false);
@@ -1030,7 +1030,7 @@ pub fn join_continuation_entries(entries: Vec<SessionMessageEntry>) -> Vec<Sessi
 
 /// Incremental streaming writer for one assistant entry.
 ///
-/// Port of zeron's `DocSegmentWriter` diff discipline: called with the *folded* parts of the
+/// Port of surya's `DocSegmentWriter` diff discipline: called with the *folded* parts of the
 /// live segment (from `fold_event_into_parts`) at each commit tick, it diffs against what's in
 /// the doc and writes only the delta:
 /// - trailing text growth → `LoroText` append (RLE-merged),
@@ -1337,7 +1337,7 @@ pub fn materialize_tail(
 mod tests {
     use super::*;
     use crate::parts::fold_event_into_parts;
-    use zeron_proto::{AgentEvent, ToolCall};
+    use surya_proto::{AgentEvent, ToolCall};
 
     fn user_entry(id: &str, text: &str) -> SessionMessageEntry {
         SessionMessageEntry {
@@ -1385,7 +1385,7 @@ mod tests {
             tool_name: "Bash".into(),
             command: "gh-axi pr view 266 --repo screamyx/surya".into(),
             resolved: true,
-            decision: Some(zeron_proto::PermissionDecision::Deny),
+            decision: Some(surya_proto::PermissionDecision::Deny),
             reason: Some("you denied it".into()),
             rule: None,
         };
@@ -1414,7 +1414,7 @@ mod tests {
         assert_eq!(tool_name, "Bash");
         assert_eq!(command, "gh-axi pr view 266 --repo screamyx/surya");
         assert!(resolved);
-        assert_eq!(*decision, Some(zeron_proto::PermissionDecision::Deny));
+        assert_eq!(*decision, Some(surya_proto::PermissionDecision::Deny));
         assert_eq!(reason.as_deref(), Some("you denied it"));
     }
 
@@ -1445,7 +1445,7 @@ mod tests {
             tool_name: "Bash".into(),
             command: "gh-axi pr view 266".into(),
             resolved: true,
-            decision: Some(zeron_proto::PermissionDecision::Allow),
+            decision: Some(surya_proto::PermissionDecision::Allow),
             reason: None,
             rule: Some("Bash gh-axi* in surya".into()),
         };
@@ -1512,7 +1512,7 @@ mod tests {
         let mut w = SegmentWriter::begin(&doc, "e1", "dev", 1).unwrap();
         let mut part = MessagePart::Tool {
             id: "call_alpha".into(),
-            call: zeron_proto::ToolCall::Unknown {
+            call: surya_proto::ToolCall::Unknown {
                 name: "Agent: alpha".into(),
                 input: None,
             },
@@ -1565,7 +1565,7 @@ mod tests {
         // subtype and turned Run chips into dead spawn links, 2026-08-20).
         let doc = SessionDoc::init("c1").unwrap();
         let mut w = SegmentWriter::begin(&doc, "e1", "dev", 1).unwrap();
-        let tool = |id: &str, call: zeron_proto::ToolCall| MessagePart::Tool {
+        let tool = |id: &str, call: surya_proto::ToolCall| MessagePart::Tool {
             id: id.into(),
             call,
             is_error: false,
@@ -1583,13 +1583,13 @@ mod tests {
         let parts = vec![
             tool(
                 "toolu_bash",
-                zeron_proto::ToolCall::Exec {
+                surya_proto::ToolCall::Exec {
                     command: "git clone …".into(),
                 },
             ),
             tool(
                 "toolu_spawn",
-                zeron_proto::ToolCall::Unknown {
+                surya_proto::ToolCall::Unknown {
                     name: "Agent: scan".into(),
                     input: None,
                 },
@@ -1836,7 +1836,7 @@ mod tests {
                 id: "t1".into(),
                 is_error: false,
                 output: Some("total 0\nmore lines".into()),
-                diff: Some(zeron_proto::ToolDiff {
+                diff: Some(surya_proto::ToolDiff {
                     path: "/w/a.rs".into(),
                     old_text: Some("old\n".into()),
                     new_text: "new\n".into(),
@@ -1892,7 +1892,7 @@ mod tests {
                 is_error: false,
                 resolved: true,
                 output: Some("full inline output\nline 2".into()),
-                diff: Some(zeron_proto::ToolDiff {
+                diff: Some(surya_proto::ToolDiff {
                     path: "/w/a.rs".into(),
                     old_text: Some("old".into()),
                     new_text: "new".into(),

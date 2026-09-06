@@ -1,4 +1,4 @@
-//! `ZERON_MOCK_BROWSER=<url>`: the mock harness drives the app's browser
+//! `SURYA_MOCK_BROWSER=<url>`: the mock harness drives the app's browser
 //! pane through the real path. It starts the real `surya-mcp` binary the
 //! way Claude Code would, speaks MCP to it over stdio, and calls
 //! `browser_open`, `browser_snapshot`, `browser_click` (the first link the
@@ -20,13 +20,13 @@ use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
 
-use zeron_proto::{AgentEvent, DoneStatus, ToolCall};
+use surya_proto::{AgentEvent, DoneStatus, ToolCall};
 
 use crate::HarnessError;
 
 /// The URL to open, when the knob is set.
 pub fn wanted() -> Option<String> {
-    std::env::var("ZERON_MOCK_BROWSER")
+    std::env::var("SURYA_MOCK_BROWSER")
         .ok()
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty())
@@ -97,7 +97,7 @@ impl Mcp {
             next_id: 0,
             card_store,
         };
-        mcp.request("initialize", json!({ "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "zeron-mock", "version": "0" } }))
+        mcp.request("initialize", json!({ "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "surya-mock", "version": "0" } }))
             .await?;
         mcp.stdin
             .write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n")

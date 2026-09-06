@@ -1,4 +1,4 @@
-# Rename runbook: zeron -> surya
+# Rename runbook: surya -> surya
 
 Run this on frozen main, after the last feature PR merges.
 It touches 329 files, so nothing rebases across it.
@@ -11,7 +11,7 @@ has moved much; a runbook that disagrees with the script is worse than none.
 ## The commands
 
 ```
-git fetch origin && git checkout -b rename/zeron-to-surya origin/main
+git fetch origin && git checkout -b rename/surya-to-surya origin/main
 
 scripts/rename-apply.sh --check      # lists the files, writes nothing
 scripts/rename-apply.sh              # applies, prints the counters
@@ -40,12 +40,12 @@ that class of bug has now been found three times in this script.
 | --- | --- | --- |
 | `files in scope` | 329 | grows with main; a sudden drop means the scope broke |
 | `files_changed` | 329 | first run |
-| `paths_moved` | 6 | `apps/zeron`, three `dist/` assets, the ui logo, the theme-import bin |
+| `paths_moved` | 6 | `apps/surya`, three `dist/` assets, the ui logo, the theme-import bin |
 | `files_routed` | 8 | env reads sent through the compat alias |
 | `user_set_reads_still_direct` | 1 | `crates/rpc/tests/device_room.rs`, a test |
 | `compat_blocks_added` | 3 | links.rs, lib.rs, daemon.rs |
 | `cargo_update` | `ok` | the lock regenerated |
-| `zeron_hits_before / after` | 3050 / 340 | every remaining hit is listed below |
+| `surya_hits_before / after` | 3050 / 340 | every remaining hit is listed below |
 | `missed` | 0 | the scope-drift guard found nothing |
 
 Second and third run: `files_changed=0 paths_moved=0 compat_blocks_added=0`,
@@ -72,7 +72,7 @@ The eight rows sum to exactly 340 (`docs/` gained one as main moved).
 | Hits | Where | Why |
 | --- | --- | --- |
 | 250 | `apps/ios`, `edge/`, `apps/landing`, `apps/www-redirect` | out of scope, rows 13-15 |
-| 40 | `theme/src/{lib,builtins,vscode}.rs`, `ui/src/{theme,settings}.rs` | `zeron-dark` / `zeron-light` ids, family and display names are user state in `ui-settings.json` (row 19), down to the saved default and its test |
+| 40 | `theme/src/{lib,builtins,vscode}.rs`, `ui/src/{theme,settings}.rs` | `surya-dark` / `surya-light` ids, family and display names are user state in `ui-settings.json` (row 19), down to the saved default and its test |
 | 15 | `crates/engine/src/data_dir.rs` | the module that adopts the old dir, excluded from the rename |
 | 15 | `docs/` | the rename plan, notes and this runbook, which have to name both words |
 | 7 | `ui/src/{markdown/parser,transcript}.rs`, `harness/{src/adapter_install,tests/managed_install*}.rs` | `zeronsh/comet` provenance links (rows 16-17) |
@@ -81,9 +81,9 @@ The eight rows sum to exactly 340 (`docs/` gained one as main moved).
 | 3 | `ui/src/{links,lib}.rs`, `apps/surya/src/daemon.rs` | the compat blocks name the old scheme, registration and unit on purpose |
 
 `crates/proto/src/env_compat.rs` shows zero here and still holds 11 hits: they
-are all the all-caps `ZERON_` prefix, which `[Zz]eron` does not match. The same
+are all the all-caps `SURYA_` prefix, which `[Zz]eron` does not match. The same
 gap kept `crates/proto/build.rs` out of the rename until 2026-09-05, and is why
-the selector now matches `ZERON_` as well.
+the selector now matches `SURYA_` as well.
 
 `AGENTS.md` is in scope but outside these four roots, so the script's counter
 never sees its 3 remaining hits: lines 8 and 72 are `zeronsh/comet`
@@ -96,18 +96,18 @@ script never had it in scope. It holds 17 more, across `deploy.yml`,
 
 ## Two things the script does not do
 
-1. **Bundle ids.** `sh.zeron.app`, the notify id and the conversation URL type
+1. **Bundle ids.** `sh.surya.app`, the notify id and the conversation URL type
    wait on the owner picking a domain.
 2. **`app/.github/workflows/release.yml` line 134.** It asserts
-   `ls dist/ | grep -q "zeron-$ver-"`, and the renamed `package-linux.sh`
+   `ls dist/ | grep -q "surya-$ver-"`, and the renamed `package-linux.sh`
    writes `surya-$ver-linux-$arch`. That workflow is comet's and never fires
    from a subdirectory, so it is dead here - but anyone who revives it gets a
    release job that fails on a name check. Owner call, not a script rule.
 
 ## After the merge
 
-An existing Linux install keeps a stale `~/.local/bin/zeron` binary.
+An existing Linux install keeps a stale `~/.local/bin/surya` binary.
 `deploy/install-engine.sh` writes the new `~/.local/bin/surya` and rewrites the
 unit to point at it, so nothing runs the old one - it is only disk.
-The old `~/.zeron` data dir is kept too, on purpose: the adoption copies, so a
+The old `~/.surya` data dir is kept too, on purpose: the adoption copies, so a
 user who goes back to the previous build still finds their sign-in.

@@ -1,4 +1,4 @@
-//! `zeron files-demo <checkout>`: the [`FilesPane`] alone in a window against
+//! `surya files-demo <checkout>`: the [`FilesPane`] alone in a window against
 //! a local engine, so the tree and editor can be driven without the shell.
 //! The engine gets its own data dir and IPC port so the demo never attaches
 //! to, or writes a space into, the real app's workspace.
@@ -11,8 +11,8 @@ use std::path::PathBuf;
 
 use gpui::{App, AppContext as _, Bounds, WindowBounds, WindowOptions, px, size};
 use gpui_tokio::Tokio;
-use zeron_proto::HarnessId;
-use zeron_rpc::methods;
+use surya_proto::HarnessId;
+use surya_rpc::methods;
 
 use super::FilesPane;
 use crate::state::{EngineBootConfig, EngineHandle};
@@ -78,7 +78,7 @@ pub fn run_demo(checkout: PathBuf, data_dir: PathBuf, ipc_port: u16, edge_url: S
                     WindowOptions {
                         window_bounds: Some(WindowBounds::Windowed(bounds)),
                         window_min_size: Some(size(px(600.), px(400.))),
-                        app_id: Some("zeron-files-demo".into()),
+                        app_id: Some("surya-files-demo".into()),
                         ..Default::default()
                     },
                     move |window, cx| {

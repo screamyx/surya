@@ -11,7 +11,7 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-use zeron_proto::Model;
+use surya_proto::Model;
 
 use crate::HarnessError;
 use crate::jsonrpc::{Incoming, RpcClient};

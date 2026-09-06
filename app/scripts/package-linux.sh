@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Linux packaging: build the release binary and produce
-#   target/package/zeron-<version>-linux-<arch>.tar.gz
+#   target/package/surya-<version>-linux-<arch>.tar.gz
 # containing the binary, the .desktop entry, and the icon, plus an install.sh
 # that drops them into ~/.local (XDG) paths.
 #
 # Usage: scripts/package-linux.sh [--browser]
 #   --browser  build with the CEF browser pane (cargo feature `browser`) and
-#              ship Chromium's runtime files and zeron-browser-helper beside
+#              ship Chromium's runtime files and surya-browser-helper beside
 #              the binary. Mirrors deploy/windows/build.ps1 -Browser: every
 #              name below is required, and a missing one stops the build
 #              rather than producing a tarball whose Chromium dies at
@@ -26,7 +26,7 @@ PROFILE="${PROFILE:-release}"
 ARCH="$(uname -m)"
 VERSION="$(grep -m1 '^version' "$ROOT/Cargo.toml" | sed 's/.*"\(.*\)".*/\1/')"
 OUT_DIR="$ROOT/target/package"
-STAGE="$OUT_DIR/zeron-$VERSION-linux-$ARCH"
+STAGE="$OUT_DIR/surya-$VERSION-linux-$ARCH"
 TARBALL="$STAGE.tar.gz"
 
 BROWSER=0
@@ -47,10 +47,10 @@ cd "$ROOT"
 FEATURES=()
 [[ "$BROWSER" == 1 ]] && FEATURES=(--features browser)
 if [[ "$PROFILE" == "release" ]]; then
-  "$CARGO" build --release -p zeron "${FEATURES[@]}"
+  "$CARGO" build --release -p surya "${FEATURES[@]}"
   BUILT="$ROOT/target/release"
 else
-  "$CARGO" build -p zeron "${FEATURES[@]}"
+  "$CARGO" build -p surya "${FEATURES[@]}"
   BUILT="$ROOT/target/debug"
 fi
 # CARGO_TARGET_DIR moves the whole thing; the CEF runtime is copied there by
@@ -58,28 +58,28 @@ fi
 if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
   BUILT="$CARGO_TARGET_DIR/$([[ "$PROFILE" == "release" ]] && echo release || echo debug)"
 fi
-BIN="$BUILT/zeron"
+BIN="$BUILT/surya"
 [[ -x "$BIN" ]] || { echo "no binary at $BIN" >&2; exit 1; }
 
 rm -rf "$STAGE" "$TARBALL"
 mkdir -p "$STAGE"
-install -m 755 "$BIN" "$STAGE/zeron"
-install -m 644 "$ROOT/dist/zeron.desktop" "$STAGE/zeron.desktop"
-install -m 644 "$ROOT/dist/zeron.png" "$STAGE/zeron.png"
+install -m 755 "$BIN" "$STAGE/surya"
+install -m 644 "$ROOT/dist/surya.desktop" "$STAGE/surya.desktop"
+install -m 644 "$ROOT/dist/surya.png" "$STAGE/surya.png"
 mkdir -p "$STAGE/licenses/fonts"
 cp "$ROOT/crates/ui/assets/fonts/licenses/"* "$STAGE/licenses/fonts/"
 
 CEF_VERSION=""
 if [[ "$BROWSER" == 1 ]]; then
   # The cef crate's build script copied Chromium's runtime files next to the
-  # binary; CEF loads them from the binary's own folder (the zeron binary
-  # carries an $ORIGIN rpath under this feature, apps/zeron/build.rs), so the
+  # binary; CEF loads them from the binary's own folder (the surya binary
+  # carries an $ORIGIN rpath under this feature, apps/surya/build.rs), so the
   # tarball carries the same set. Every name is required: a missing one is a
   # Chromium that fails at start-up, not a smaller tarball. CREDITS.html is
   # Chromium's third-party notices; archive.json names the exact CEF and
   # Chromium build that was downloaded.
   CEF_REQUIRED=(
-    zeron-browser-helper
+    surya-browser-helper
     libcef.so
     libEGL.so libGLESv2.so
     libvk_swiftshader.so vk_swiftshader_icd.json libvulkan.so.1
@@ -130,7 +130,7 @@ fi
   echo "version: $VERSION"
   echo "arch: $ARCH"
   echo "built: $(date -Iseconds) on $(hostname)"
-  echo "run: ./zeron (or ./install.sh, then zeron)"
+  echo "run: ./surya (or ./install.sh, then surya)"
   if [[ "$BROWSER" == 1 ]]; then
     echo "browser pane: yes, $CEF_VERSION, BSD-3-Clause (CEF-LICENSE.txt, CREDITS.html)"
     echo "page sandbox: needs the root-owned chrome-sandbox that install.sh sets up"
@@ -141,21 +141,21 @@ fi
 
 cat >"$STAGE/install.sh" <<'INSTALL'
 #!/usr/bin/env bash
-# Install Zeron into ~/.local (no root needed for the app itself).
+# Install Surya into ~/.local (no root needed for the app itself).
 #
 # The app is installed as a DIRECTORY, not a lone binary. With the browser
-# pane, zeron loads libcef.so, the .pak files, locales/ and the
-# zeron-browser-helper from its own folder (the binary carries an $ORIGIN
-# rpath, apps/zeron/build.rs), and it looks for chrome-sandbox there too. A
+# pane, surya loads libcef.so, the .pak files, locales/ and the
+# surya-browser-helper from its own folder (the binary carries an $ORIGIN
+# rpath, apps/surya/build.rs), and it looks for chrome-sandbox there too. A
 # copy of just the binary into ~/.local/bin would find none of that: no
 # browser pane at all, and no sandbox. So everything goes to
-# ~/.local/lib/zeron and ~/.local/bin/zeron is a symlink to it. Both the
+# ~/.local/lib/surya and ~/.local/bin/surya is a symlink to it. Both the
 # dynamic loader and the app resolve the symlink before expanding $ORIGIN, so
 # the runtime is found either way.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LIBDIR="${ZERON_PREFIX:-$HOME/.local}/lib/zeron"
-BINDIR="${ZERON_PREFIX:-$HOME/.local}/bin"
+LIBDIR="${SURYA_PREFIX:-$HOME/.local}/lib/surya"
+BINDIR="${SURYA_PREFIX:-$HOME/.local}/bin"
 
 mkdir -p "$LIBDIR" "$BINDIR"
 # Everything except this script and the two desktop-integration files, which
@@ -163,17 +163,17 @@ mkdir -p "$LIBDIR" "$BINDIR"
 for entry in "$HERE"/*; do
   name="$(basename "$entry")"
   case "$name" in
-    install.sh|zeron.desktop|zeron.png) continue ;;
+    install.sh|surya.desktop|surya.png) continue ;;
   esac
   rm -rf "$LIBDIR/${name:?}"
   cp -a "$entry" "$LIBDIR/$name"
 done
-chmod 755 "$LIBDIR/zeron"
-[ -f "$LIBDIR/zeron-browser-helper" ] && chmod 755 "$LIBDIR/zeron-browser-helper"
-ln -sfn "$LIBDIR/zeron" "$BINDIR/zeron"
+chmod 755 "$LIBDIR/surya"
+[ -f "$LIBDIR/surya-browser-helper" ] && chmod 755 "$LIBDIR/surya-browser-helper"
+ln -sfn "$LIBDIR/surya" "$BINDIR/surya"
 
-install -Dm644 "$HERE/zeron.desktop" "$HOME/.local/share/applications/zeron.desktop"
-install -Dm644 "$HERE/zeron.png" "$HOME/.local/share/icons/hicolor/1024x1024/apps/zeron.png"
+install -Dm644 "$HERE/surya.desktop" "$HOME/.local/share/applications/surya.desktop"
+install -Dm644 "$HERE/surya.png" "$HOME/.local/share/icons/hicolor/1024x1024/apps/surya.png"
 command -v update-desktop-database >/dev/null 2>&1 \
   && update-desktop-database "$HOME/.local/share/applications" || true
 
@@ -185,7 +185,7 @@ command -v update-desktop-database >/dev/null 2>&1 \
 # This step is REQUIRED for sandboxed pages. There is no automatic fallback:
 # if you skip it, web pages keep running with your own permissions for good,
 # and the app says so every time it starts. Run this script again to do it.
-if [ -f "$LIBDIR/chrome-sandbox" ] && [ "${ZERON_SKIP_SANDBOX_SETUP:-}" != "1" ]; then
+if [ -f "$LIBDIR/chrome-sandbox" ] && [ "${SURYA_SKIP_SANDBOX_SETUP:-}" != "1" ]; then
   if command -v sudo >/dev/null 2>&1; then
     echo "Setting up the browser page sandbox (asks for your password)."
     if sudo chown root:root "$LIBDIR/chrome-sandbox" && sudo chmod 4755 "$LIBDIR/chrome-sandbox"; then
@@ -200,7 +200,7 @@ if [ -f "$LIBDIR/chrome-sandbox" ] && [ "${ZERON_SKIP_SANDBOX_SETUP:-}" != "1" ]
     echo "  sudo chown root:root $LIBDIR/chrome-sandbox && sudo chmod 4755 $LIBDIR/chrome-sandbox"
   fi
 fi
-echo "Installed to $LIBDIR (command: $BINDIR/zeron)."
+echo "Installed to $LIBDIR (command: $BINDIR/surya)."
 echo "Make sure $BINDIR is on your PATH."
 INSTALL
 chmod 755 "$STAGE/install.sh"

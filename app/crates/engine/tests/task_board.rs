@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_proto::{HarnessId, Task, TaskStatus};
-use zeron_rpc::methods;
+use surya_engine::{EngineCore, HarnessRegistry};
+use surya_proto::{HarnessId, Task, TaskStatus};
+use surya_rpc::methods;
 
 #[path = "../../mcp/src/tasks.rs"]
 #[allow(dead_code)]
@@ -24,14 +24,14 @@ fn assemble(dir: &std::path::Path) -> EngineCore {
 }
 
 async fn next_board(rx: &mut tokio::sync::mpsc::Receiver<serde_json::Value>) -> Vec<Task> {
-    let item = tokio::time::timeout(zeron_test_deadlines::WAIT, rx.recv())
+    let item = tokio::time::timeout(surya_test_deadlines::WAIT, rx.recv())
         .await
         .expect("WatchTasks emits before the deadline")
         .expect("stream alive");
     serde_json::from_value(item).expect("board decodes as Vec<Task>")
 }
 
-async fn create_space(client: &zeron_rpc::RpcClient, device_id: &str) {
+async fn create_space(client: &surya_rpc::RpcClient, device_id: &str) {
     client
         .call(
             methods::MUTATE,
@@ -47,8 +47,8 @@ async fn create_space(client: &zeron_rpc::RpcClient, device_id: &str) {
 async fn two_clients_one_creates_the_other_sees_it_and_the_tool_updates_it() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let core = assemble(&tmp.path().join("data"));
-    let client_a = zeron_rpc::memory_client(core.rpc_service());
-    let client_b = zeron_rpc::memory_client(core.rpc_service());
+    let client_a = surya_rpc::memory_client(core.rpc_service());
+    let client_b = surya_rpc::memory_client(core.rpc_service());
     create_space(&client_a, &core.device_id).await;
 
     // B watches the board first: the initial snapshot is empty.
@@ -87,7 +87,7 @@ async fn two_clients_one_creates_the_other_sees_it_and_the_tool_updates_it() {
         .await
         .expect("ephemeral port");
     let port = listener.local_addr().unwrap().port();
-    tokio::spawn(zeron_rpc::serve_ws_listener(listener, core.rpc_service()));
+    tokio::spawn(surya_rpc::serve_ws_listener(listener, core.rpc_service()));
     let tools =
         mcp_tasks::TaskTools::connect_to_with_token(&format!("ws://127.0.0.1:{port}"), None)
             .await
@@ -161,7 +161,7 @@ async fn reorder_keeps_board_order_across_a_restart() {
     let data = tmp.path().join("data");
     {
         let core = assemble(&data);
-        let client = zeron_rpc::memory_client(core.rpc_service());
+        let client = surya_rpc::memory_client(core.rpc_service());
         create_space(&client, &core.device_id).await;
         for (id, title) in [
             ("t-1", "one"),
@@ -219,7 +219,7 @@ async fn reorder_keeps_board_order_across_a_restart() {
     println!("asked={} ordered={ordered}", expected.len());
     assert_eq!(ids, expected, "order after restart");
     assert_eq!(tasks[0].rank, 0.5);
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = surya_rpc::memory_client(core.rpc_service());
     let mut all = client
         .subscribe(methods::WATCH_TASKS, serde_json::json!({}))
         .await
@@ -240,15 +240,15 @@ async fn reorder_keeps_board_order_across_a_restart() {
 async fn task_tools_present_the_ipc_token_to_a_protected_engine() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let core = assemble(&tmp.path().join("data"));
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = surya_rpc::memory_client(core.rpc_service());
     create_space(&client, &core.device_id).await;
 
-    // A token-protected loopback engine (`ZERON_IPC_TOKEN` set, PR #3).
+    // A token-protected loopback engine (`SURYA_IPC_TOKEN` set, PR #3).
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("ephemeral port");
     let port = listener.local_addr().unwrap().port();
-    tokio::spawn(zeron_rpc::serve_ws_listener_with_auth(
+    tokio::spawn(surya_rpc::serve_ws_listener_with_auth(
         listener,
         core.rpc_service(),
         Some(Arc::from("secret-token")),
@@ -278,8 +278,8 @@ async fn task_tools_present_the_ipc_token_to_a_protected_engine() {
     // The env-derived target carries the token the same way.
     let target = mcp_tasks::resolve_target(
         |key| match key {
-            "ZERON_IPC_TOKEN" => Some("secret-token".to_string()),
-            "ZERON_IPC_PORT" => Some(port.to_string()),
+            "SURYA_IPC_TOKEN" => Some("secret-token".to_string()),
+            "SURYA_IPC_PORT" => Some(port.to_string()),
             _ => None,
         },
         |_| None,

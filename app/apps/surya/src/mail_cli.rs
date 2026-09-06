@@ -1,24 +1,24 @@
-//! `zeron mail send|drain|ack` — the thin CLI shim over the engine's `Mail.*`
+//! `surya mail send|drain|ack` — the thin CLI shim over the engine's `Mail.*`
 //! RPCs (decision 19: "a thin `agb` command that calls the daemon over its
 //! local socket keeps `agb send`, `agb drain`, `agb ack` working in every
 //! existing skill"). Output is deliberately agb-shaped so a skill can alias
 //! one command to the other.
 
-use zeron_engine::ipc::IpcConfig;
-use zeron_rpc::methods;
+use surya_engine::ipc::IpcConfig;
+use surya_rpc::methods;
 
-/// Same dial as `zeron sync`: the engine's IPC config carries the bind and the
+/// Same dial as `surya sync`: the engine's IPC config carries the bind and the
 /// token, so an off-loopback engine authenticates instead of refusing.
-async fn client(ipc: &IpcConfig) -> anyhow::Result<zeron_rpc::RpcClient> {
+async fn client(ipc: &IpcConfig) -> anyhow::Result<surya_rpc::RpcClient> {
     ipc.connect().await.map_err(|e| {
         anyhow::anyhow!(
-            "no engine listening on {} ({e}) — is zeron running?",
+            "no engine listening on {} ({e}) — is surya running?",
             ipc.dial_addr()
         )
     })
 }
 
-/// `zeron mail send <to> <body>` → one line per delivery id.
+/// `surya mail send <to> <body>` → one line per delivery id.
 pub async fn send(ipc: IpcConfig, from: &str, to: &str, body: &str) -> anyhow::Result<()> {
     let client = client(&ipc).await?;
     let reply = client
@@ -49,7 +49,7 @@ pub async fn send(ipc: IpcConfig, from: &str, to: &str, body: &str) -> anyhow::R
     Ok(())
 }
 
-/// `zeron mail drain [--agent X]` — what is waiting, and what is in flight.
+/// `surya mail drain [--agent X]` — what is waiting, and what is in flight.
 pub async fn drain(ipc: IpcConfig, agent: Option<&str>) -> anyhow::Result<()> {
     let client = client(&ipc).await?;
     let mut params = serde_json::Map::new();
@@ -96,7 +96,7 @@ pub async fn drain(ipc: IpcConfig, agent: Option<&str>) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `zeron mail ack <id>` — the manual "seen"; turn completion acks on its own.
+/// `surya mail ack <id>` — the manual "seen"; turn completion acks on its own.
 pub async fn ack(ipc: IpcConfig, id: &str) -> anyhow::Result<()> {
     let client = client(&ipc).await?;
     let reply = client

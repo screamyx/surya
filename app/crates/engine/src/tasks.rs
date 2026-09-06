@@ -1,6 +1,6 @@
 //! Task board — engine side. One board per space; the user edits it in the
 //! app, agents read and update it through the `surya-mcp` task tools. Rows
-//! live in the registry (`zeron_doc::registry::tasks`), so every device and
+//! live in the registry (`surya_doc::registry::tasks`), so every device and
 //! every viewport on one engine sees the same board.
 //!
 //! This module owns the [`WorkspaceHost`] task API and the `WatchTasks`
@@ -13,8 +13,8 @@ use futures::stream::BoxStream;
 use serde::Deserialize;
 use tokio::sync::watch;
 
-use zeron_doc::TaskPatch;
-use zeron_proto::{Task, TaskStatus};
+use surya_doc::TaskPatch;
+use surya_proto::{Task, TaskStatus};
 
 use crate::EngineError;
 use crate::workspace_host::WorkspaceHost;

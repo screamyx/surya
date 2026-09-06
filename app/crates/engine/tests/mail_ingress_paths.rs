@@ -13,7 +13,7 @@
 
 use std::path::PathBuf;
 
-use zeron_engine::MailIngressPaths;
+use surya_engine::MailIngressPaths;
 
 /// The sidecar's resolution, restated from `crates/mcp/src/config.rs`.
 ///

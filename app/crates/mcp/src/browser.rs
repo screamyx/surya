@@ -2,22 +2,22 @@
 //! `browser_snapshot`, `browser_click`, `browser_type`, `browser_screenshot`
 //! and `browser_eval`. Each is one `Browser.Call` engine RPC over the same
 //! IPC socket the task tools dial; the engine hands the op to the app's
-//! browser pane and returns what the page said (`zeron_engine::browser_rpc`).
+//! browser pane and returns what the page said (`surya_engine::browser_rpc`).
 //! So the agent acts on the page the owner is looking at, in the app.
 //!
 //! `browser_screenshot` comes back twice: as an MCP image content block the
 //! model can see, and as a card in the card store (like `show_card`) so the
 //! transcript shows the picture where the tool ran.
 //!
-//! Every call carries the engine's pane token: `ZERON_IPC_TOKEN`, else the
-//! `ipc-token` file under `ZERON_DATA_DIR`, else under the engine's own
-//! default data dir (`~/.zeron`, then `~/.surya` after decision 23's
+//! Every call carries the engine's pane token: `SURYA_IPC_TOKEN`, else the
+//! `ipc-token` file under `SURYA_DATA_DIR`, else under the engine's own
+//! default data dir (`~/.surya`, then `~/.surya` after decision 23's
 //! rename); a 0600 file of the engine's user, see [`pane_token`]. The
 //! engine refuses Browser.* without it, so a stranger's process on the box
 //! cannot drive the owner's pane through this server either.
 
 use serde_json::{Value, json};
-use zeron_rpc::methods;
+use surya_rpc::methods;
 
 use crate::cards;
 use crate::config::Config;
@@ -32,7 +32,7 @@ pub const SCREENSHOT: &str = "browser_screenshot";
 pub const EVAL: &str = "browser_eval";
 
 /// The largest screenshot that goes into a card as a `data:` URI; the
-/// renderer's own cap (`zeron_a2ui::images::MAX_DATA_URI_BYTES`).
+/// renderer's own cap (`surya_a2ui::images::MAX_DATA_URI_BYTES`).
 const MAX_CARD_IMAGE_BYTES: usize = 2 * 1024 * 1024;
 
 pub fn handles(name: &str) -> bool {
@@ -95,22 +95,22 @@ pub fn tool_specs() -> Vec<Value> {
     ]
 }
 
-/// The pane token: `ZERON_IPC_TOKEN`, else the engine's `ipc-token` file
-/// under `ZERON_DATA_DIR`, else the engine's own default data dir.
+/// The pane token: `SURYA_IPC_TOKEN`, else the engine's `ipc-token` file
+/// under `SURYA_DATA_DIR`, else the engine's own default data dir.
 ///
 /// The last step used to be `~/.surya`, which is this crate's CARD workspace
 /// (`config::home_dir`), not the engine's data dir - the engine defaults to
-/// `~/.zeron` (`apps/zeron/src/main.rs`). On a default install that meant no
+/// `~/.surya` (`apps/surya/src/main.rs`). On a default install that meant no
 /// token was ever found and every browser tool errored.
 ///
-/// Both names are tried because decision 23's rename from `.zeron` to
-/// `.surya` is in flight: `zeron_engine::data_dir::adopt_and_report` copies
-/// the dir, so during the changeover either can be the live one. `.zeron`
+/// Both names are tried because decision 23's rename from `.surya` to
+/// `.surya` is in flight: `surya_engine::data_dir::adopt_and_report` copies
+/// the dir, so during the changeover either can be the live one. `.surya`
 /// goes first, because that is what the app writes today.
 pub fn pane_token() -> Option<String> {
     resolve_pane_token(
-        std::env::var("ZERON_IPC_TOKEN").ok(),
-        std::env::var_os("ZERON_DATA_DIR")
+        surya_proto::env_compat::var("IPC_TOKEN").ok(),
+        surya_proto::env_compat::var_os("DATA_DIR")
             .filter(|d| !d.is_empty())
             .map(std::path::PathBuf::from),
         std::env::var_os("HOME").map(std::path::PathBuf::from),
@@ -142,7 +142,7 @@ pub fn resolve_pane_token(
         return Some(t);
     }
     let home = home?;
-    read(home.join(".zeron")).or_else(|| read(home.join(".surya")))
+    read(home.join(".surya")).or_else(|| read(home.join(".surya")))
 }
 
 #[cfg(test)]
@@ -158,7 +158,7 @@ mod token_tests {
     #[test]
     fn the_env_token_wins() {
         let home = tempfile::tempdir().unwrap();
-        write(&home.path().join(".zeron"), "from-file");
+        write(&home.path().join(".surya"), "from-file");
         assert_eq!(
             resolve_pane_token(
                 Some("  from-env  ".into()),
@@ -171,13 +171,13 @@ mod token_tests {
         );
     }
 
-    /// Case 2, a default install: no env, no ZERON_DATA_DIR, so the engine's
+    /// Case 2, a default install: no env, no SURYA_DATA_DIR, so the engine's
     /// own default dir is where the token is. This is the case that used to
     /// fail - the old code looked in `~/.surya`, the card workspace.
     #[test]
     fn the_default_install_finds_the_engines_own_dir() {
         let home = tempfile::tempdir().unwrap();
-        write(&home.path().join(".zeron"), "engine-token");
+        write(&home.path().join(".surya"), "engine-token");
         assert_eq!(
             resolve_pane_token(None, None, Some(home.path().to_path_buf())).as_deref(),
             Some("engine-token")
@@ -193,12 +193,12 @@ mod token_tests {
         );
     }
 
-    /// `ZERON_DATA_DIR` beats the home default, and an empty file is not a
+    /// `SURYA_DATA_DIR` beats the home default, and an empty file is not a
     /// token: falling through to the default dir beats sending "".
     #[test]
     fn an_explicit_data_dir_wins_and_an_empty_file_does_not_count() {
         let home = tempfile::tempdir().unwrap();
-        write(&home.path().join(".zeron"), "home-token");
+        write(&home.path().join(".surya"), "home-token");
         let explicit = tempfile::tempdir().unwrap();
         write(explicit.path(), "explicit-token");
         assert_eq!(
@@ -239,11 +239,11 @@ pub fn call_blocking(
         .build()
         .map_err(|e| format!("tokio runtime: {e}"))?;
     let token = pane_token().ok_or(
-        "no pane token: set ZERON_IPC_TOKEN or run under the engine's ZERON_DATA_DIR (its ipc-token file)",
+        "no pane token: set SURYA_IPC_TOKEN or run under the engine's SURYA_DATA_DIR (its ipc-token file)",
     )?;
     let answer = runtime.block_on(async {
         let target = engine_target();
-        let client = zeron_rpc::connect_ws_with_token(&target.url, target.token.as_deref())
+        let client = surya_rpc::connect_ws_with_token(&target.url, target.token.as_deref())
             .await
             .map_err(|e| format!("no surya engine at {}: {e}", target.url))?;
         client

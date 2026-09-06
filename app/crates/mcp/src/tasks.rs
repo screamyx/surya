@@ -1,6 +1,6 @@
 //! Task board tools for the `surya-mcp` server: `list_tasks`, `create_task`,
 //! `update_task`. Each tool is one engine RPC over the localhost IPC socket
-//! (`ws://127.0.0.1:$ZERON_IPC_PORT`, default 27654; `SURYA_ENGINE_URL`
+//! (`ws://127.0.0.1:$SURYA_IPC_PORT`, default 27654; `SURYA_ENGINE_URL`
 //! overrides). No MCP-framework types leak in here: the server's dispatch
 //! calls [`TaskTools::call`] with the tool name and the JSON arguments and
 //! forwards the JSON result. [`tool_specs`] is the `tools/list` entry set.
@@ -10,36 +10,36 @@
 //! `SURYA_WORKSPACE` the harness put in the server's env, so an agent can
 //! omit it.
 //!
-//! Semantics live in the engine (`zeron_engine::tasks`); this file only shapes
+//! Semantics live in the engine (`surya_engine::tasks`); this file only shapes
 //! arguments and answers for an agent.
 
 use serde_json::{Value, json};
-use zeron_rpc::{RpcClient, RpcError, methods};
+use surya_rpc::{RpcClient, RpcError, methods};
 
 pub const LIST_TASKS: &str = "list_tasks";
 pub const CREATE_TASK: &str = "create_task";
 pub const UPDATE_TASK: &str = "update_task";
 
-/// Default engine IPC port (`apps/zeron/src/main.rs`).
+/// Default engine IPC port (`apps/surya/src/main.rs`).
 const DEFAULT_IPC_PORT: u16 = 27654;
 
 /// Where the engine listens and what it wants to hear first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EngineTarget {
     pub url: String,
-    /// The IPC token when the engine enforces one (`ZERON_IPC_TOKEN`, or a
-    /// non-loopback bind whose token lives in `{ZERON_DATA_DIR}/ipc-token`).
+    /// The IPC token when the engine enforces one (`SURYA_IPC_TOKEN`, or a
+    /// non-loopback bind whose token lives in `{SURYA_DATA_DIR}/ipc-token`).
     pub token: Option<String>,
 }
 
 /// The engine target from the environment the harness passed down. Mirrors
-/// `zeron_engine::ipc::IpcConfig::{dial_url, resolve_token}` without pulling
+/// `surya_engine::ipc::IpcConfig::{dial_url, resolve_token}` without pulling
 /// the engine crate into this binary:
 /// - `SURYA_ENGINE_URL` overrides the address;
-/// - `ZERON_BIND` (default loopback) and `ZERON_IPC_PORT` (default 27654)
+/// - `SURYA_BIND` (default loopback) and `SURYA_IPC_PORT` (default 27654)
 ///   build it otherwise; a wildcard bind dials loopback;
-/// - `ZERON_IPC_TOKEN` is the token; without it a non-loopback bind reads
-///   `{ZERON_DATA_DIR}/ipc-token`; an open loopback socket has none.
+/// - `SURYA_IPC_TOKEN` is the token; without it a non-loopback bind reads
+///   `{SURYA_DATA_DIR}/ipc-token`; an open loopback socket has none.
 pub fn engine_target() -> EngineTarget {
     resolve_target(
         |key| std::env::var(key).ok(),
@@ -57,14 +57,14 @@ pub fn resolve_target(
             .map(|v| v.trim().to_string())
             .filter(|v| !v.is_empty())
     };
-    let bind: std::net::IpAddr = non_empty("ZERON_BIND")
+    let bind: std::net::IpAddr = non_empty("SURYA_BIND")
         .and_then(|b| b.parse().ok())
         .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
     let loopback = bind.is_loopback();
-    let mut token = non_empty("ZERON_IPC_TOKEN");
+    let mut token = non_empty("SURYA_IPC_TOKEN");
     if token.is_none()
         && !loopback
-        && let Some(dir) = non_empty("ZERON_DATA_DIR")
+        && let Some(dir) = non_empty("SURYA_DATA_DIR")
     {
         token = read_file(&std::path::Path::new(&dir).join("ipc-token"))
             .map(|t| t.trim().to_string())
@@ -73,7 +73,7 @@ pub fn resolve_target(
     let url = match non_empty("SURYA_ENGINE_URL") {
         Some(url) => url,
         None => {
-            let port = non_empty("ZERON_IPC_PORT")
+            let port = non_empty("SURYA_IPC_PORT")
                 .and_then(|p| p.parse::<u16>().ok())
                 .unwrap_or(DEFAULT_IPC_PORT);
             let host = if bind.is_unspecified() {
@@ -184,7 +184,7 @@ impl TaskTools {
     /// or wrong token is refused at the handshake and reported as such.
     pub async fn connect_to_with_token(url: &str, token: Option<&str>) -> Result<Self, String> {
         let client =
-            zeron_rpc::connect_ws_with_token(url, token)
+            surya_rpc::connect_ws_with_token(url, token)
                 .await
                 .map_err(|e| match token {
                     Some(_) => {
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn target_takes_env_token_and_port() {
         let t = target(
-            &[("ZERON_IPC_PORT", "4000"), ("ZERON_IPC_TOKEN", " tok ")],
+            &[("SURYA_IPC_PORT", "4000"), ("SURYA_IPC_TOKEN", " tok ")],
             None,
         );
         assert_eq!(t.url, "ws://127.0.0.1:4000");
@@ -335,7 +335,7 @@ mod tests {
 
     #[test]
     fn target_reads_the_data_dir_token_for_a_network_bind() {
-        let vars = [("ZERON_BIND", "0.0.0.0"), ("ZERON_DATA_DIR", "/data")];
+        let vars = [("SURYA_BIND", "0.0.0.0"), ("SURYA_DATA_DIR", "/data")];
         let t = target(&vars, Some("file-token\n"));
         assert_eq!(
             t.url,
@@ -344,13 +344,13 @@ mod tests {
         );
         assert_eq!(t.token.as_deref(), Some("file-token"));
         let t = target(
-            &[("ZERON_BIND", "192.168.1.9"), ("ZERON_DATA_DIR", "/data")],
+            &[("SURYA_BIND", "192.168.1.9"), ("SURYA_DATA_DIR", "/data")],
             None,
         );
         assert_eq!(t.url, format!("ws://192.168.1.9:{DEFAULT_IPC_PORT}"));
         assert_eq!(t.token, None, "no file yet: dial and let the engine refuse");
         // A loopback bind never reads the file: the engine does not enforce.
-        let t = target(&[("ZERON_DATA_DIR", "/data")], Some("ignored"));
+        let t = target(&[("SURYA_DATA_DIR", "/data")], Some("ignored"));
         assert_eq!(t.token, None);
     }
 
@@ -359,7 +359,7 @@ mod tests {
         let t = target(
             &[
                 ("SURYA_ENGINE_URL", "ws://host:1"),
-                ("ZERON_IPC_TOKEN", "t"),
+                ("SURYA_IPC_TOKEN", "t"),
             ],
             None,
         );

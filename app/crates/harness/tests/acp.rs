@@ -7,8 +7,8 @@ use std::time::Duration;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 
-use zeron_harness::{AcpHarness, CancellationToken, Harness, RunControls, SteerMessage};
-use zeron_proto::{
+use surya_harness::{AcpHarness, CancellationToken, Harness, RunControls, SteerMessage};
+use surya_proto::{
     AgentEvent, DoneStatus, HarnessId, RunRequest, SandboxLevel, SteeringMode, TodoItem, ToolCall,
     UserInputAnswer,
 };
@@ -65,7 +65,7 @@ fn controls() -> (RunControls, mpsc::Sender<SteerMessage>, CancellationToken) {
         }),
         steering: steer_rx,
         interrupt: token.clone(),
-        permission: zeron_harness::permission::PermissionGate::auto_allow(),
+        permission: surya_harness::permission::PermissionGate::auto_allow(),
     };
     (controls, steer_tx, token)
 }
@@ -77,7 +77,7 @@ async fn run_to_end(
 ) -> Vec<AgentEvent> {
     let stream = harness.run(req, controls).await.expect("run starts");
     tokio::time::timeout(
-        zeron_test_deadlines::WAIT,
+        surya_test_deadlines::WAIT,
         stream.map(|r| r.expect("stream event")).collect::<Vec<_>>(),
     )
     .await
@@ -142,7 +142,7 @@ async fn happy_path_maps_chunks_tools_diffs_plans_and_commands() {
     assert!(events.contains(&AgentEvent::ToolCall {
         id: "t1".into(),
         call: ToolCall::Exec {
-            command: "cargo test -p zeron-harness".into()
+            command: "cargo test -p surya-harness".into()
         },
     }));
     let exec_output = events
@@ -157,7 +157,7 @@ async fn happy_path_maps_chunks_tools_diffs_plans_and_commands() {
             _ => None,
         })
         .expect("exec output present");
-    assert!(exec_output.starts_with("   Compiling zeron-harness"));
+    assert!(exec_output.starts_with("   Compiling surya-harness"));
     assert_eq!(exec_output.lines().count(), 6, "{exec_output:?}");
 
     // Edit tool: single-shot completed call carries the inline diff.
@@ -216,7 +216,7 @@ async fn happy_path_maps_chunks_tools_diffs_plans_and_commands() {
 async fn config_options_apply_requested_model_and_effort() {
     let (controls, _steer, _token) = controls();
     let mut req = request("scenario:config");
-    req.reasoning = Some(zeron_proto::ReasoningLevel::Medium);
+    req.reasoning = Some(surya_proto::ReasoningLevel::Medium);
     let events = run_to_end(&harness(), req, controls).await;
     // The fixture answers refusal unless BOTH set_config_option calls
     // (model grok-4.5, effort medium) arrived before the prompt.
@@ -263,7 +263,7 @@ async fn steering_extension_injects_mid_turn() {
         .run(request("scenario:steer-ext"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         while let Some(ev) = stream.next().await {
@@ -309,7 +309,7 @@ async fn steer_racing_the_turn_end_never_emits_steered_after_done() {
         .run(request("scenario:steer-race"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         while let Some(ev) = stream.next().await {
@@ -357,7 +357,7 @@ async fn rejected_steer_queues_and_delivers_at_the_turn_boundary() {
         .run(request("scenario:steer-queue"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         let mut steer = Some(steer);
@@ -411,7 +411,7 @@ async fn interrupt_sends_session_cancel_and_ends_interrupted() {
         .run(request("scenario:interrupt"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         while let Some(ev) = stream.next().await {
@@ -436,7 +436,7 @@ async fn wedged_agent_escalates_to_signals_and_still_ends_interrupted() {
         .run(request("scenario:wedge"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         let mut stream = stream;
         while let Some(ev) = stream.next().await {
@@ -498,9 +498,9 @@ fn descriptor_surface_matches_registry_expectations() {
     assert_eq!(
         harness.reasoning_levels(),
         &[
-            zeron_proto::ReasoningLevel::Low,
-            zeron_proto::ReasoningLevel::Medium,
-            zeron_proto::ReasoningLevel::High,
+            surya_proto::ReasoningLevel::Low,
+            surya_proto::ReasoningLevel::Medium,
+            surya_proto::ReasoningLevel::High,
         ]
     );
 }
@@ -517,9 +517,9 @@ async fn models_are_discovered_from_the_acp_session() {
     assert_eq!(
         models[0].reasoning_levels,
         vec![
-            zeron_proto::ReasoningLevel::Low,
-            zeron_proto::ReasoningLevel::Medium,
-            zeron_proto::ReasoningLevel::High,
+            surya_proto::ReasoningLevel::Low,
+            surya_proto::ReasoningLevel::Medium,
+            surya_proto::ReasoningLevel::High,
         ],
         "{models:?}"
     );
@@ -607,12 +607,12 @@ fn hermes_and_pi_descriptor_surfaces_match_registry_expectations() {
     assert_eq!(
         pi.reasoning_levels(),
         &[
-            zeron_proto::ReasoningLevel::Minimal,
-            zeron_proto::ReasoningLevel::Low,
-            zeron_proto::ReasoningLevel::Medium,
-            zeron_proto::ReasoningLevel::High,
-            zeron_proto::ReasoningLevel::XHigh,
-            zeron_proto::ReasoningLevel::Max,
+            surya_proto::ReasoningLevel::Minimal,
+            surya_proto::ReasoningLevel::Low,
+            surya_proto::ReasoningLevel::Medium,
+            surya_proto::ReasoningLevel::High,
+            surya_proto::ReasoningLevel::XHigh,
+            surya_proto::ReasoningLevel::Max,
         ]
     );
 }
@@ -641,7 +641,7 @@ async fn prompt_complete_extension_settles_a_hung_prompt_response() {
         .run(request("scenario:prompt-complete-hang"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");
@@ -674,7 +674,7 @@ async fn stale_prompt_complete_never_settles_a_newer_turn() {
         .run(request("scenario:prompt-complete-stale"), controls)
         .await
         .expect("run starts");
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");
@@ -790,7 +790,7 @@ async fn grok_subagent_lifecycle_tails_the_disk_transcript_into_tagged_events() 
     let tool = pos(&|e| {
         matches!(
             e,
-            AgentEvent::ToolCall { id, call: zeron_proto::ToolCall::Exec { command } }
+            AgentEvent::ToolCall { id, call: surya_proto::ToolCall::Exec { command } }
                 if id == "call-1-0" && command == "ls"
         )
     })

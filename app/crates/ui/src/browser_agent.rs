@@ -1,7 +1,7 @@
 //! The pane's side of the browser broker: the app subscribes to the engine's
 //! `Browser.Watch` stream, runs each `{id, op, args}` on the CEF pane, and
 //! answers with `Browser.Reply`. That is how `surya-mcp`'s `browser_*` tools
-//! reach the page the owner is looking at (`zeron_engine::browser_rpc`).
+//! reach the page the owner is looking at (`surya_engine::browser_rpc`).
 //!
 //! Runs on the gpui foreground: the ops are DevTools calls whose replies
 //! arrive on the main thread from CEF's pump, so awaiting here is what lets
@@ -15,7 +15,7 @@ use std::time::Duration;
 use futures::future::Either;
 use gpui::{Context, Task};
 use serde_json::json;
-use zeron_rpc::methods;
+use surya_rpc::methods;
 
 use crate::state::{AppState, EngineHandle};
 
@@ -55,11 +55,11 @@ pub fn pane_token(dialed: Option<&str>, data_dir: Option<&Path>) -> Option<Strin
     if let Some(t) = dialed.map(str::to_string).and_then(non_empty) {
         return Some(t);
     }
-    if let Some(t) = std::env::var("ZERON_IPC_TOKEN").ok().and_then(non_empty) {
+    if let Some(t) = surya_proto::env_compat::var("IPC_TOKEN").ok().and_then(non_empty) {
         return Some(t);
     }
     let dir = data_dir?;
-    std::fs::read_to_string(zeron_engine::ipc::token_path(dir))
+    std::fs::read_to_string(surya_engine::ipc::token_path(dir))
         .ok()
         .and_then(non_empty)
 }
@@ -73,7 +73,7 @@ pub fn spawn(cx: &mut Context<AppState>, handle: EngineHandle, data_dir: Option<
                 pane_token(handle.dialed_token(), data_dir.as_deref()).unwrap_or_default();
             if token.is_empty() && !WARNED.swap(true, Ordering::AcqRel) {
                 println!(
-                    "browser-agent: no pane token (the engine was dialed without one, and neither ZERON_IPC_TOKEN nor {{data_dir}}/ipc-token is set); the engine will refuse the watch"
+                    "browser-agent: no pane token (the engine was dialed without one, and neither SURYA_IPC_TOKEN nor {{data_dir}}/ipc-token is set); the engine will refuse the watch"
                 );
             }
             match handle
@@ -167,7 +167,7 @@ mod token_tests {
     use super::pane_token;
 
     fn write(dir: &std::path::Path, token: &str) {
-        std::fs::write(zeron_engine::ipc::token_path(dir), token).unwrap();
+        std::fs::write(surya_engine::ipc::token_path(dir), token).unwrap();
     }
 
     /// Case 3, remote and Windows: the app dialed the engine with a token, and

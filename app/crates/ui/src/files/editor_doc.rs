@@ -2,7 +2,7 @@
 //! What a read becomes, when a save may go, what a refusal does. No gpui,
 //! so every rule here is unit-tested.
 
-use zeron_proto::files::{FileRead, FileWrite};
+use surya_proto::files::{FileRead, FileWrite};
 
 /// What the editor shows for a path.
 #[derive(Debug, Clone, PartialEq, Eq)]

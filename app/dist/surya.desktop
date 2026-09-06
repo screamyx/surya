@@ -1,13 +1,13 @@
 [Desktop Entry]
 Type=Application
-Name=Zeron
+Name=Surya
 GenericName=Coding Agent Controller
 Comment=Multi-device controller for coding agents
-Exec=zeron %u
-TryExec=zeron
-Icon=zeron
+Exec=surya %u
+TryExec=surya
+Icon=surya
 Terminal=false
 Categories=Development;Utility;
 Keywords=agent;claude;codex;ai;coding;
-StartupWMClass=zeron
-MimeType=x-scheme-handler/zeron;
+StartupWMClass=surya
+MimeType=x-scheme-handler/surya;

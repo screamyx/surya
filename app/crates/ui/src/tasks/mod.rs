@@ -1,6 +1,6 @@
 //! Task board pane (decision 11 feature 3). Self-contained: the shell mounts
 //! [`TasksPane::new`] with the engine client and a space id; nothing here
-//! touches `shell.rs`. `demo` is the `zeron --tasks-demo` entry.
+//! touches `shell.rs`. `demo` is the `surya --tasks-demo` entry.
 
 pub mod board;
 mod card;

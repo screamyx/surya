@@ -1,5 +1,5 @@
-//! Shared bootstrap for the single-pane demo entries (`zeron files-demo`,
-//! `zeron --tasks-demo`): the gpui globals a pane needs outside the shell,
+//! Shared bootstrap for the single-pane demo entries (`surya files-demo`,
+//! `surya --tasks-demo`): the gpui globals a pane needs outside the shell,
 //! and the self-quit used as the headless proof on a box with no display.
 //!
 //! `SURYA_DEMO_EXIT_SECS=<n>` quits after n seconds and prints

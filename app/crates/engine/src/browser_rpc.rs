@@ -36,7 +36,7 @@ use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::{mpsc, oneshot};
-use zeron_rpc::{RpcError, RpcReply, RpcService, methods, parse_params};
+use surya_rpc::{RpcError, RpcReply, RpcService, methods, parse_params};
 
 /// How long a tool call waits for the pane. A page load on a slow site is
 /// the longest op; the pane's own DevTools deadline is the same.
@@ -103,7 +103,7 @@ impl BrowserRpc {
         }
         if diff != 0 {
             return Err(RpcError::Failed(
-                "browser: not authorized; pass the engine's pane token ({data_dir}/ipc-token, or ZERON_IPC_TOKEN)".into(),
+                "browser: not authorized; pass the engine's pane token ({data_dir}/ipc-token, or SURYA_IPC_TOKEN)".into(),
             ));
         }
         Ok(())

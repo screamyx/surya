@@ -11,11 +11,11 @@ use std::time::Duration;
 
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
-use zeron_doc::{
+use surya_doc::{
     MessagePart, MessageRole, MessageStatus, SessionDoc, SessionMessageEntry, fold_event_into_parts,
 };
-use zeron_harness::{CancellationToken, ClaudeHarness, Harness, RunControls};
-use zeron_proto::{AgentEvent, RunRequest, SandboxLevel, SuryaOptions, UserInputAnswer};
+use surya_harness::{CancellationToken, ClaudeHarness, Harness, RunControls};
+use surya_proto::{AgentEvent, RunRequest, SandboxLevel, SuryaOptions, UserInputAnswer};
 
 use crate::transcript::{RowKind, rows_for_entry};
 
@@ -105,7 +105,7 @@ fn controls() -> RunControls {
         }),
         steering: steer_rx,
         interrupt: CancellationToken::new(),
-        permission: zeron_harness::permission::PermissionGate::auto_allow(),
+        permission: surya_harness::permission::PermissionGate::auto_allow(),
     }
 }
 

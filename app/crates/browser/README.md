@@ -4,7 +4,7 @@ haktui's offscreen Chromium (CEF 151) composited into comet's gpui window.
 Ported 2026-09-05 from `haktui/crates/haktui/src/browser/` (`osr.rs`,
 `osr_input.rs`, `chrome.rs`), split into files under 500 lines.
 
-Off by default. Build with `cargo build -p zeron --features browser`.
+Off by default. Build with `cargo build -p surya --features browser`.
 Tests: `cd app/crates/browser && cargo test` (the crate is its own workspace root; CI does not run it).
 
 ## How a frame gets on screen
@@ -26,14 +26,14 @@ those paths are not ported here.
 
 - `libcef.so`, `*.pak`, `locales/`, `icudtl.dat` sit next to the binary. The
   `cef-dll-sys` build script copies them into `target/<profile>/`.
-- `zeron-browser-helper` (apps/zeron, feature `browser`) is CEF's subprocess.
-  It must sit next to `zeron`. Without it CEF re-executes `zeron` itself, which
+- `surya-browser-helper` (apps/surya, feature `browser`) is CEF's subprocess.
+  It must sit next to `surya`. Without it CEF re-executes `surya` itself, which
   works because `preflight()` is the first line of `main`.
-- The binary carries an `$ORIGIN` rpath (apps/zeron/build.rs) so `libcef.so`
+- The binary carries an `$ORIGIN` rpath (apps/surya/build.rs) so `libcef.so`
   loads without `LD_LIBRARY_PATH`.
 - Windows: the same layout with `libcef.dll`, `chrome_elf.dll` and the other
   DLLs, `*.pak`, `icudtl.dat`, `*.bin`, `locales\` and
-  `zeron-browser-helper.exe` next to `zeron.exe`; Windows loads DLLs from the
+  `surya-browser-helper.exe` next to `surya.exe`; Windows loads DLLs from the
   exe's own folder, so no rpath is needed. `deploy\windows\build.ps1 -Browser`
   builds with the feature and ships that set in the zip. The cef crate needs
   CMake and Ninja on the build box and downloads the CEF binary (about 250 MB)
@@ -64,10 +64,10 @@ app.
   line per control with an id), `browser_click` (a real mouse click at the
   element), `browser_type`, `browser_screenshot`, `browser_eval`. Reached
   from surya-mcp through the engine's `Browser.Call`; the app serves the
-  pane through `Browser.Watch` / `Browser.Reply` (`zeron-ui/browser_agent.rs`).
+  pane through `Browser.Watch` / `Browser.Reply` (`surya-ui/browser_agent.rs`).
 - `src/emulation.rs`: Desktop, iPhone 15, Pixel 8, iPad presets through
   `Emulation.setDeviceMetricsOverride`, touch and a user agent; picked from
-  the bar (`zeron-ui/browser_device.rs`). The scale factor stays the
+  the bar (`surya-ui/browser_device.rs`). The scale factor stays the
   window's, as haktui found necessary under offscreen rendering.
 - `src/scheme.rs`: `set_color_scheme` sends `Emulation.setEmulatedMedia`
   when the app's appearance changes mid-session; the start-up switch stays

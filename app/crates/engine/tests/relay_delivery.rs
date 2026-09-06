@@ -25,14 +25,14 @@ use tokio_tungstenite::tungstenite::handshake::server::{
     Request as WsRequest, Response as WsResponse,
 };
 
-use zeron_doc::{MessageRole, MessageStatus, SessionCommandPayload};
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::{Harness, HarnessError, RunControls};
-use zeron_proto::{
+use surya_doc::{MessageRole, MessageStatus, SessionCommandPayload};
+use surya_engine::{EngineCore, HarnessRegistry};
+use surya_harness::{Harness, HarnessError, RunControls};
+use surya_proto::{
     AgentEvent, Device, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
     SteeringMode,
 };
-use zeron_rpc::{
+use surya_rpc::{
     DeviceFrameHeader, LinkCache, LinkCacheConfig, StaticToken, decode_device_frame,
     encode_device_frame, methods,
 };
@@ -225,7 +225,7 @@ async fn rows_dark_command_delivers_over_the_peer_relay_exactly_once() {
         created_at: None,
         version: Some("0.2.12".into()),
     });
-    let client_a = zeron_rpc::memory_client(core_a.rpc_service());
+    let client_a = surya_rpc::memory_client(core_a.rpc_service());
     client_a
         .call(
             methods::MUTATE,
@@ -267,7 +267,7 @@ async fn rows_dark_command_delivers_over_the_peer_relay_exactly_once() {
         .expect("queue on A");
 
     // B executes it — allow the 10s rows grace plus relay dial time.
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     loop {
         if complete_assistant_count(&core_b) == 1 {
             break;

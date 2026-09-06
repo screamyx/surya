@@ -58,10 +58,10 @@ run() { # run <name> <expected colour> <extra env...>
   rm -rf "$dir"
   env PROOF_OUT="$dir" SURYA_BROWSER_URLS="$B" "$@" "$HERE/browser-xvfb-proof.sh" "$A" "$WAIT" > "$OUT/run-$name.log" 2>&1
   local opened created switched heartbeat
-  opened=$(grep -c "browser: tab_open" "$dir/zeron.log" 2>/dev/null); opened=${opened:-0}
-  created=$(grep -c "browser: created id=" "$dir/zeron.log" 2>/dev/null); created=${created:-0}
-  switched=$(grep -c "browser: selftest tabs: activated" "$dir/zeron.log" 2>/dev/null); switched=${switched:-0}
-  heartbeat=$(grep -E "^browser: t=" "$dir/zeron.log" | tail -1 | grep -oE "tabs=[0-9]+ opened=[0-9]+ active=[0-9]+|bg_paints=[0-9]+ kept_frames=[0-9]+" | tr '\n' ' ')
+  opened=$(grep -c "browser: tab_open" "$dir/surya.log" 2>/dev/null); opened=${opened:-0}
+  created=$(grep -c "browser: created id=" "$dir/surya.log" 2>/dev/null); created=${created:-0}
+  switched=$(grep -c "browser: selftest tabs: activated" "$dir/surya.log" 2>/dev/null); switched=${switched:-0}
+  heartbeat=$(grep -E "^browser: t=" "$dir/surya.log" | tail -1 | grep -oE "tabs=[0-9]+ opened=[0-9]+ active=[0-9]+|bg_paints=[0-9]+ kept_frames=[0-9]+" | tr '\n' ' ')
   local colour; colour=$(dominant "$dir/window.png")
   local ok=0
   [ "${colour%% *}" = "$expect" ] && [ "$opened" -ge 2 ] && [ "$created" -ge 2 ] && ok=1

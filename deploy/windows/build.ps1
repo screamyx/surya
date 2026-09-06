@@ -2,11 +2,11 @@
 Build the surya Windows app and pack it as a folder plus a zip.
 
   powershell -ExecutionPolicy Bypass -File deploy\windows\build.ps1
-  ... -NoBuild            reuse target\release\zeron.exe
+  ... -NoBuild            reuse target\release\surya.exe
   ... -Sha abc1234        version tag when the checkout has no .git
   ... -Browser            build with the CEF browser pane (cargo feature
                           `browser`) and ship Chromium's runtime files and
-                          zeron-browser-helper.exe next to the exe.
+                          surya-browser-helper.exe next to the exe.
                           -NoBuild -Browser packs an earlier -Browser build;
                           -NoBuild without -Browser refuses a release dir
                           that holds a browser build (its exe needs libcef).
@@ -16,8 +16,8 @@ Building with -Browser also needs CMake, Ninja (`python -m pip install
 ninja`) and CEF_PATH set to a directory the cef crate may download into
 (about 250 MB once; app\crates\browser\README.md). -NoBuild reads none of
 these.
-Output: dist\surya-windows\ (zeron.exe, surya.cmd, VERSION.txt; with
-        -Browser also zeron-browser-helper.exe, libcef.dll and the other
+Output: dist\surya-windows\ (surya.exe, surya.cmd, VERSION.txt; with
+        -Browser also surya-browser-helper.exe, libcef.dll and the other
         CEF DLLs, *.pak, icudtl.dat, v8_context_snapshot.bin, locales\,
         CREDITS.html, CEF-LICENSE.txt, archive.json) and
         dist\surya-windows-<sha>.zip
@@ -40,24 +40,24 @@ if ($Browser -and -not $NoBuild -and -not $env:CEF_PATH) {
 }
 if (-not $NoBuild) {
     # A tarball checkout has no .git: hand the stamp to crates/proto/build.rs.
-    if ($Sha) { $env:ZERON_BUILD_SHA = $Sha }
-    if ($CommitTime) { $env:ZERON_BUILD_COMMIT_TIME = $CommitTime }
+    if ($Sha) { $env:SURYA_BUILD_SHA = $Sha }
+    if ($CommitTime) { $env:SURYA_BUILD_COMMIT_TIME = $CommitTime }
     Write-Host "== building the app (release)"
     Push-Location $app
     try {
         cargo --version
         if ($Browser) {
-            cargo build --release -p zeron --features browser
+            cargo build --release -p surya --features browser
         } else {
-            cargo build --release -p zeron
+            cargo build --release -p surya
         }
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed with exit $LASTEXITCODE" }
     } finally { Pop-Location }
 }
-$exe = Join-Path $target "release\zeron.exe"
+$exe = Join-Path $target "release\surya.exe"
 if (-not (Test-Path $exe)) { throw "no binary at $exe (run without -NoBuild)" }
 if ($NoBuild -and -not $Browser -and (Test-Path (Join-Path $target "release\libcef.dll"))) {
-    throw "release dir holds a -Browser build (libcef.dll beside zeron.exe); its exe needs CEF, so pack it with -Browser or rebuild without -NoBuild"
+    throw "release dir holds a -Browser build (libcef.dll beside surya.exe); its exe needs CEF, so pack it with -Browser or rebuild without -NoBuild"
 }
 
 if (-not $Sha) {
@@ -71,7 +71,7 @@ if (-not $Sha) {
 Write-Host "== packing $dist"
 if (Test-Path $dist) { Remove-Item -Recurse -Force $dist }
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-Copy-Item $exe (Join-Path $dist "zeron.exe")
+Copy-Item $exe (Join-Path $dist "surya.exe")
 # DLLs of the app's own travel with it, by name (none today; the fonts and
 # icons are compiled into the binary). Never a *.dll sweep: after one
 # -Browser build the release dir also holds Chromium's 300 MB, which a plain
@@ -93,7 +93,7 @@ if ($Browser) {
     # Chromium's third-party notices (from the CEF dist root); archive.json
     # names the exact CEF + Chromium build that was downloaded.
     $cefRequired = @(
-        "zeron-browser-helper.exe",
+        "surya-browser-helper.exe",
         "libcef.dll", "chrome_elf.dll",
         "d3dcompiler_47.dll", "dxcompiler.dll", "dxil.dll",
         "libEGL.dll", "libGLESv2.dll",

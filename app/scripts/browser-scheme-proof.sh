@@ -60,7 +60,7 @@ for MODE in $MODES; do
   RUN="$OUT/$MODE"
   rm -rf "$RUN"
   PROOF_OUT="$RUN" SURYA_PROOF_APPEARANCE="$MODE" "$HERE/browser-xvfb-proof.sh" "$URL" "$WAIT" > "$OUT/run-$MODE.log" 2>&1
-  SWITCHES=$(grep -m1 "browser: switches" "$RUN/zeron.log" 2>/dev/null || echo "(no switches line)")
+  SWITCHES=$(grep -m1 "browser: switches" "$RUN/surya.log" 2>/dev/null || echo "(no switches line)")
   LUM=$(luminance "$RUN/frames")
   MEAN=${LUM%% *}
   case "$MODE" in
@@ -70,7 +70,7 @@ for MODE in $MODES; do
   [ "$MEAN" = "none" ] && OK=0
   # A white frame is also what CEF paints before any page (its opaque
   # background), so a match needs the page to have actually loaded.
-  LOADED=$(grep -c "browser: load_end status=200" "$RUN/zeron.log" 2>/dev/null); LOADED=${LOADED:-0}
+  LOADED=$(grep -c "browser: load_end status=200" "$RUN/surya.log" 2>/dev/null); LOADED=${LOADED:-0}
   [ "$LOADED" -ge 1 ] || OK=0
   MATCHED=$((MATCHED + OK))
   echo "$MODE: $SWITCHES"

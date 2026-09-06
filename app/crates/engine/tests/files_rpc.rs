@@ -7,9 +7,9 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 use futures::StreamExt as _;
-use zeron_engine::files::{self, Jail};
-use zeron_engine::files_watch;
-use zeron_proto::files::{FileEventKind, FileKind, FileRead, FileWrite, LineRange};
+use surya_engine::files::{self, Jail};
+use surya_engine::files_watch;
+use surya_proto::files::{FileEventKind, FileKind, FileRead, FileWrite, LineRange};
 
 fn git(dir: &Path, args: &[&str]) {
     let status = Command::new("git")
@@ -169,7 +169,7 @@ async fn watch_emits_on_external_edits() {
         std::fs::write(&target, format!("fn main() {{ edit {i} }}\n")).unwrap();
         // Something in `target/` should never show up.
         std::fs::write(d.join("target/noise.o"), b"\0").unwrap();
-        let batch = tokio::time::timeout(zeron_test_deadlines::WAIT, batches.next())
+        let batch = tokio::time::timeout(surya_test_deadlines::WAIT, batches.next())
             .await
             .expect("a batch before the deadline")
             .expect("stream open");
@@ -196,7 +196,7 @@ async fn watch_emits_on_external_edits() {
     // Create + delete arrive with their kinds.
     let fresh = d.join("src/new.rs");
     std::fs::write(&fresh, "x\n").unwrap();
-    let batch = tokio::time::timeout(zeron_test_deadlines::WAIT, batches.next())
+    let batch = tokio::time::timeout(surya_test_deadlines::WAIT, batches.next())
         .await
         .unwrap()
         .unwrap();
@@ -210,7 +210,7 @@ async fn watch_emits_on_external_edits() {
     );
     tokio::time::sleep(Duration::from_millis(250)).await;
     std::fs::remove_file(&fresh).unwrap();
-    let batch = tokio::time::timeout(zeron_test_deadlines::WAIT, batches.next())
+    let batch = tokio::time::timeout(surya_test_deadlines::WAIT, batches.next())
         .await
         .unwrap()
         .unwrap();
@@ -338,7 +338,7 @@ fn write_with_stale_hash_is_refused_and_fresh_hash_saves() {
         .unwrap()
         .flatten()
         .map(|e| e.path())
-        .filter(|p| p.file_name().unwrap().to_string_lossy().contains(".zeron-"))
+        .filter(|p| p.file_name().unwrap().to_string_lossy().contains(".surya-"))
         .collect();
     assert!(leftovers.is_empty(), "{leftovers:?}");
 }

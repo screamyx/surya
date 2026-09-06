@@ -78,11 +78,11 @@ jobs:
       - name: headless tests
         run: |
           cargo test --jobs 6 \
-            -p zeron-proto \
-            -p zeron-doc \
-            -p zeron-rpc \
-            -p zeron-engine \
-            -p zeron-harness \
+            -p surya-proto \
+            -p surya-doc \
+            -p surya-rpc \
+            -p surya-engine \
+            -p surya-harness \
             -p surya-mcp
 
       - name: cargo check (whole workspace)
@@ -101,8 +101,8 @@ jobs:
       # under load than the run does (22x against the run's 8x). Worth it for
       # 659 tests that had never run in CI at all - but that is the trade, and
       # the quiet number alone would have hidden it.
-      - name: cargo test -p zeron-ui
-        run: cargo test --jobs 6 -p zeron-ui
+      - name: cargo test -p surya-ui
+        run: cargo test --jobs 6 -p surya-ui
 
       - name: cargo test -p surya-a2ui
         run: cargo test --jobs 6 -p surya-a2ui

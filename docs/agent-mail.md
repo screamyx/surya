@@ -78,9 +78,9 @@ Record: `{"from":"…","to":"…","body":"…","toDevice":"…"?}`.
 CLI shim, so an agb-shaped skill can alias to it:
 
 ```
-zeron mail send <to> <body> [--from X]
-zeron mail drain [--agent X]
-zeron mail ack <id>
+surya mail send <to> <body> [--from X]
+surya mail drain [--agent X]
+surya mail ack <id>
 ```
 
 ## Not here
@@ -98,12 +98,12 @@ devices, and auth.
 | `app/crates/engine/src/mail/envelope.rs` | 132 | the row, the address, the envelope line |
 | `app/crates/engine/src/mail/ingress.rs` | 215 | socket and jsonl ingress |
 | `app/crates/engine/src/mail/rpc.rs` | 99 | the four calls |
-| `app/apps/zeron/src/mail_cli.rs` | 113 | the CLI shim |
+| `app/apps/surya/src/mail_cli.rs` | 113 | the CLI shim |
 | `app/crates/engine/tests/agent_mail.rs` | 275 | the proof |
 
 ## Proof
 
-`cargo test -p zeron-engine --test agent_mail`, 2 passed 0 failed, 2026-09-05:
+`cargo test -p surya-engine --test agent_mail`, 2 passed 0 failed, 2026-09-05:
 
 ```
 unknown recipient: sent=1 delivered=0 acked=0

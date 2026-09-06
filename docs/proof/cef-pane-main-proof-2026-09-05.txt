@@ -1,4 +1,4 @@
-using ZERON_IPC_PORT=23716
+using SURYA_IPC_PORT=23716
 using DISPLAY=:7
 --- last heartbeat: browser: t=55s renders=18 work_did=1047 pump_asks=441 timer_armed=0 timer_fired=0 idle_armed=1030 idle_ran=1029 idle_refresh=3 inputs=0 frames=3 size=518x786 created=1 closed=0 popups_refused=0 visible=1 copy_ms n=3 last=0.05 avg=0.18 max=0.26 upload_ms n=2 last=0.11 avg=0.12 max=0.14
 proof: asked=1 frames=3 screenshot=/store/agent-worktrees/surya-cef/proof24/window.png (53438 bytes) dumps=3

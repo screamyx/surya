@@ -9,7 +9,7 @@ Rendered from main `75ec9a3` ("inbox: one question, one place to answer it (roun
 
 | Run | Knobs | Frames | colours | panics |
 | --- | --- | --- | --- | --- |
-| Inbox | `ZERON_MOCK_QUESTION=1`, 1440x900 and 1100x700, light and dark | `round-5-inbox-{light,dark}-{1440x900,1100x700}.png` | 11032-12316 | 0 |
+| Inbox | `SURYA_MOCK_QUESTION=1`, 1440x900 and 1100x700, light and dark | `round-5-inbox-{light,dark}-{1440x900,1100x700}.png` | 11032-12316 | 0 |
 | Browser | `SURYA_SHOT_PANES=browser` (the #62 launch knob, no click), `SURYA_BROWSER_URL` = a `data:` page with a `prefers-color-scheme: dark` rule | `round-5-browser-{light,dark}.png` | 15586 / 15284 | 0 |
 
 Counters: `seeded=1 space=1 chat=1 run=1 tasks=4` per run, `shot=1 panics=0` for each of the 6 frames, 0 black.

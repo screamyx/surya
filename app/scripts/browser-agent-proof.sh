@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prove an agent drives the browser pane over the real route: a headless
-# engine with the mock harness (`ZERON_MOCK_BROWSER=<url>`) runs the real
+# engine with the mock harness (`SURYA_MOCK_BROWSER=<url>`) runs the real
 # surya-mcp binary, whose browser_* tools go engine -> app pane -> CEF. The
 # app runs on the display with the Browser tab open, attached to that
 # engine, so the tools act on the page the owner would be looking at.
@@ -9,7 +9,7 @@
 #
 # Takes the display lock itself around the app's window time (launch, wait,
 # xrefresh, grab), never around a build; do not wrap it in another flock.
-# Needs: zeron + zeron-browser-helper built with --features browser, and
+# Needs: surya + surya-browser-helper built with --features browser, and
 # surya-mcp, in the same target dir; node (the seed); python3 (the page
 # server); ffmpeg (the grab).
 #
@@ -19,11 +19,11 @@ set -u
 WAIT="${1:-180}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TARGET="${CARGO_TARGET_DIR:-$(cd "$HERE/.." && pwd)/target}"
-BIN="$TARGET/debug/zeron"
+BIN="$TARGET/debug/surya"
 MCP="$TARGET/debug/surya-mcp"
 OUT="${PROOF_OUT:-/tmp/surya-browser-agent-proof}"
 rm -rf "$OUT"; mkdir -p "$OUT/www"
-[ -x "$BIN" ] || { echo "no binary at $BIN (build -p zeron --features browser)"; exit 2; }
+[ -x "$BIN" ] || { echo "no binary at $BIN (build -p surya --features browser)"; exit 2; }
 [ -x "$MCP" ] || { echo "no surya-mcp at $MCP (build -p surya-mcp)"; exit 2; }
 [ -f "$TARGET/debug/libcef.so" ] || { echo "no libcef.so next to the binary"; exit 2; }
 
@@ -44,11 +44,11 @@ echo "page $URL engine port $PORT"
 
 # The engine and the app run with separate data dirs here, so the pane
 # token (normally the engine's {data_dir}/ipc-token) is handed to both, and
-# to surya-mcp through the engine's environment, as ZERON_IPC_TOKEN.
-export ZERON_IPC_TOKEN="probe-$RANDOM$RANDOM$RANDOM"
+# to surya-mcp through the engine's environment, as SURYA_IPC_TOKEN.
+export SURYA_IPC_TOKEN="probe-$RANDOM$RANDOM$RANDOM"
 # 1. The engine, headless, with the mock harness driving surya-mcp.
-ZERON_DATA_DIR="$OUT/engine" ZERON_IPC_PORT=$PORT ZERON_HARNESS=mock \
-  ZERON_MOCK_BROWSER="$URL" SURYA_MCP_EXECUTABLE="$MCP" RUST_LOG=info \
+SURYA_DATA_DIR="$OUT/engine" SURYA_IPC_PORT=$PORT SURYA_HARNESS=mock \
+  SURYA_MOCK_BROWSER="$URL" SURYA_MCP_EXECUTABLE="$MCP" RUST_LOG=info \
   "$BIN" headless > "$OUT/engine.log" 2>&1 &
 ENGINE=$!
 cleanup() {
@@ -63,9 +63,9 @@ grep -q "IPC server listening" "$OUT/engine.log" || { echo "engine did not liste
 # 2. A space and a chat, so the app has a transcript to show.
 node - "$PORT" "$OUT/www" seed <<'JS'
 const [port, project] = process.argv.slice(2);
-// The engine enforces the token on its socket once ZERON_IPC_TOKEN is set
+// The engine enforces the token on its socket once SURYA_IPC_TOKEN is set
 // (engine ipc.rs, enforces_token), loopback included: dial with it.
-const ws = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { Authorization: `Bearer ${process.env.ZERON_IPC_TOKEN}` } });
+const ws = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { Authorization: `Bearer ${process.env.SURYA_IPC_TOKEN}` } });
 let id = 0; const pending = new Map();
 const call = (method, params) => new Promise((ok, err) => {
   const n = ++id; pending.set(n, { ok, err }); ws.send(JSON.stringify({ id: n, method, params }));
@@ -87,10 +87,10 @@ JS
 W=1600; H=1000
 exec 9>/store/surya-display7.lock
 flock 9
-ZERON_DATA_DIR="$OUT/ui" ZERON_IPC_PORT=$PORT ZERON_OPEN_PANE=browser \
+SURYA_DATA_DIR="$OUT/ui" SURYA_IPC_PORT=$PORT SURYA_OPEN_PANE=browser \
   SURYA_BROWSER_URL="about:blank" SURYA_CEF_CACHE="$OUT/ui/cef" \
-  SURYA_BROWSER_DUMP="$OUT/frames" RUST_LOG=info ZERON_WINDOW_SIZE=${W}x${H} \
-  "$BIN" > "$OUT/zeron.log" 2>&1 &
+  SURYA_BROWSER_DUMP="$OUT/frames" RUST_LOG=info SURYA_WINDOW_SIZE=${W}x${H} \
+  "$BIN" > "$OUT/surya.log" 2>&1 &
 APP=$!
 # On :7 (no compositor) the window paints only on an expose, and until it
 # does the pane's view is 0x0: CEF paints a default 800x600 nobody sees and
@@ -99,21 +99,21 @@ APP=$!
 sleep 10
 for i in $(seq 1 "$WAIT"); do
   [ $(( i % 5 )) -eq 1 ] && command -v xrefresh >/dev/null && xrefresh
-  grep -q "browser-agent: attached" "$OUT/zeron.log" 2>/dev/null && grep -q "browser: visible=1" "$OUT/zeron.log" 2>/dev/null && break
+  grep -q "browser-agent: attached" "$OUT/surya.log" 2>/dev/null && grep -q "browser: visible=1" "$OUT/surya.log" 2>/dev/null && break
   sleep 1
 done
-ATTACHED=$(grep -c "browser-agent: attached" "$OUT/zeron.log"); ATTACHED=${ATTACHED:-0}
-VISIBLE=$(grep -c "browser: visible=1" "$OUT/zeron.log"); VISIBLE=${VISIBLE:-0}
+ATTACHED=$(grep -c "browser-agent: attached" "$OUT/surya.log"); ATTACHED=${ATTACHED:-0}
+VISIBLE=$(grep -c "browser: visible=1" "$OUT/surya.log"); VISIBLE=${VISIBLE:-0}
 echo "attached=$ATTACHED visible=$VISIBLE after the wait"
 # Let CEF finish its first (blank) load before the agent's turn.
-for _ in $(seq 1 60); do grep -q "browser: load_end" "$OUT/zeron.log" 2>/dev/null && break; sleep 1; done
+for _ in $(seq 1 60); do grep -q "browser: load_end" "$OUT/surya.log" 2>/dev/null && break; sleep 1; done
 
 # 4. The agent's turn: one run on the chat; the mock calls the four tools.
 node - "$PORT" "$OUT/www" run <<'JS'
 const [port, project] = process.argv.slice(2);
-// The engine enforces the token on its socket once ZERON_IPC_TOKEN is set
+// The engine enforces the token on its socket once SURYA_IPC_TOKEN is set
 // (engine ipc.rs, enforces_token), loopback included: dial with it.
-const ws = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { Authorization: `Bearer ${process.env.ZERON_IPC_TOKEN}` } });
+const ws = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { Authorization: `Bearer ${process.env.SURYA_IPC_TOKEN}` } });
 let id = 0; const pending = new Map();
 const call = (method, params) => new Promise((ok, err) => {
   const n = ++id; pending.set(n, { ok, err }); ws.send(JSON.stringify({ id: n, method, params }));
@@ -138,7 +138,7 @@ flock -u 9
 echo "--- engine: mock and broker"
 grep -E "^browser-mock:" "$OUT/engine.log" | tail -6
 echo "--- app: agent ops"
-grep -E "^browser-agent:|^devtools:|^browser: (created|load_end|address)" "$OUT/zeron.log" | tail -12
+grep -E "^browser-agent:|^devtools:|^browser: (created|load_end|address)" "$OUT/surya.log" | tail -12
 LINE=$(grep -E "^browser-mock: tools_called=" "$OUT/engine.log" | tail -1)
 CALLED=$(sed -n 's/.*tools_called=\([0-9]*\).*/\1/p' <<<"$LINE"); CALLED=${CALLED:-0}
 OKS=$(sed -n 's/.*tools_called=[0-9]* ok=\([0-9]*\).*/\1/p' <<<"$LINE"); OKS=${OKS:-0}

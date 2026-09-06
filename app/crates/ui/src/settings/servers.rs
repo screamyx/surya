@@ -1,7 +1,7 @@
 //! Settings → Servers: the remote engines this app can drive directly over
 //! the network (decision 18: LAN, VPN or tailnet, no cloud in between). Each
-//! row is a `zeron headless --bind <addr>` on another machine; its token comes
-//! from `zeron status` there. Connect swaps the engine the whole app talks
+//! row is a `surya headless --bind <addr>` on another machine; its token comes
+//! from `surya status` there. Connect swaps the engine the whole app talks
 //! to. The shell owns the swap and persists the list, so this page only emits.
 
 use gpui::{
@@ -300,7 +300,7 @@ impl Render for ServersPage {
                 cx,
             ));
         }
-        // A `--engine` / `ZERON_ENGINE` target is dialed but never saved: give
+        // A `--engine` / `SURYA_ENGINE` target is dialed but never saved: give
         // it its own row so the badge does not fall on "This computer", and a
         // Save button so it can become a saved entry.
         if let ActiveRow::CommandLine(url) = &active {
@@ -309,7 +309,7 @@ impl Render for ServersPage {
                 "Command line".into(),
                 vec![
                     url.clone(),
-                    "from --engine or ZERON_ENGINE; Save keeps it".into(),
+                    "from --engine or SURYA_ENGINE; Save keeps it".into(),
                 ],
                 crate::icons::GLOBAL,
                 None,

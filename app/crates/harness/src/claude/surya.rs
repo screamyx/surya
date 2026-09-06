@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use zeron_proto::SuryaOptions;
+use surya_proto::SuryaOptions;
 
 /// The prompt append, compiled in so an installed binary needs no asset path.
 const SYSTEM_APPEND: &str = include_str!("../../../../assets/surya-system-append.md");
@@ -262,7 +262,7 @@ const CARD_TAIL_BYTES: u64 = 1 << 20;
 /// `tool_use_id` the sidecar stamped on it, so the match is exact: no
 /// ordering guess, no parsing of the tool result text. The scan runs backwards
 /// over the tail because the card just written is the last line.
-pub fn read_card(store: &Path, tool_use_id: &str) -> Option<zeron_proto::AgentEvent> {
+pub fn read_card(store: &Path, tool_use_id: &str) -> Option<surya_proto::AgentEvent> {
     if tool_use_id.is_empty() {
         return None;
     }
@@ -272,7 +272,7 @@ pub fn read_card(store: &Path, tool_use_id: &str) -> Option<zeron_proto::AgentEv
         .rev()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         .find(|record| record["tool_use_id"] == tool_use_id)?;
-    Some(zeron_proto::AgentEvent::Card {
+    Some(surya_proto::AgentEvent::Card {
         card_id: record["card_id"].as_str()?.to_string(),
         surface_id: record["surface_id"].as_str()?.to_string(),
         tool_use_id: tool_use_id.to_string(),
@@ -522,7 +522,7 @@ mod tests {
         .unwrap();
 
         let event = read_card(&store, "toolu_1").expect("the first card is still reachable");
-        let zeron_proto::AgentEvent::Card { card_id, a2ui, .. } = event else {
+        let surya_proto::AgentEvent::Card { card_id, a2ui, .. } = event else {
             panic!("read_card returns a Card");
         };
         assert_eq!(card_id, "card_a");

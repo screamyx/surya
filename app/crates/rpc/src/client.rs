@@ -366,7 +366,7 @@ pub async fn connect_ws(url: &str) -> Result<RpcClient, RpcError> {
 
 /// Dial a WebSocket RPC endpoint, presenting `Authorization: Bearer <token>`
 /// when a token is given. Engines bound off loopback require one
-/// (`zeron_rpc::serve_ws_listener_with_auth`); loopback engines ignore it.
+/// (`surya_rpc::serve_ws_listener_with_auth`); loopback engines ignore it.
 pub async fn connect_ws_with_token(url: &str, token: Option<&str>) -> Result<RpcClient, RpcError> {
     connect_ws_within(url, token, CONNECT_TIMEOUT).await
 }

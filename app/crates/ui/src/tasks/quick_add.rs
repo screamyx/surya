@@ -8,7 +8,7 @@
 //! instead"). This pane is that frame, so the two keys are handled here.
 
 use gpui::{Context, Focusable, KeyDownEvent, Window};
-use zeron_proto::TaskStatus;
+use surya_proto::TaskStatus;
 
 use super::board::TasksPane;
 

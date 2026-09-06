@@ -1,4 +1,4 @@
-//! `zeron inbox-demo`: the three inbox views in a window, against fixtures.
+//! `surya inbox-demo`: the three inbox views in a window, against fixtures.
 //!
 //! No engine and no ports: the views are fed [`super::demo`] rows directly,
 //! so this starts anywhere and exercises exactly the layout code. The
@@ -87,7 +87,7 @@ pub fn run_demo(data_dir: PathBuf) {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 window_min_size: Some(size(px(600.), px(400.))),
-                app_id: Some("zeron-inbox-demo".into()),
+                app_id: Some("surya-inbox-demo".into()),
                 ..Default::default()
             },
             move |window, cx| {

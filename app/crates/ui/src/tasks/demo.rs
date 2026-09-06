@@ -1,5 +1,5 @@
-//! `zeron --tasks-demo`: a window with only the Tasks pane, against the local
-//! engine (`zeron headless` on the IPC port). No shell, no sidebar. Set
+//! `surya --tasks-demo`: a window with only the Tasks pane, against the local
+//! engine (`surya headless` on the IPC port). No shell, no sidebar. Set
 //! `SURYA_DEMO_EXIT_SECS` (shared with files-demo) to quit by itself and print `started=1 panics=0`
 //! (the headless proof on a box without a display).
 
@@ -8,8 +8,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{App, AppContext as _, Bounds, WindowBounds, WindowOptions, px, size};
-use zeron_proto::Space;
-use zeron_rpc::methods;
+use surya_proto::Space;
+use surya_rpc::methods;
 
 use super::TasksPane;
 use crate::{icons, typography};
@@ -29,7 +29,7 @@ pub fn run(config: DemoConfig) {
 
         let url = format!("ws://127.0.0.1:{}", config.ipc_port);
         let wanted = config.space.clone();
-        let dial = gpui_tokio::Tokio::spawn(cx, async move { zeron_rpc::connect_ws(&url).await });
+        let dial = gpui_tokio::Tokio::spawn(cx, async move { surya_rpc::connect_ws(&url).await });
         cx.spawn(async move |cx| {
             let client = match dial.await {
                 Ok(Ok(client)) => Arc::new(client),
@@ -50,7 +50,7 @@ pub fn run(config: DemoConfig) {
                 cx.open_window(
                     WindowOptions {
                         window_bounds: Some(WindowBounds::Windowed(bounds)),
-                        app_id: Some("zeron-tasks-demo".into()),
+                        app_id: Some("surya-tasks-demo".into()),
                         ..Default::default()
                     },
                     move |window, cx| {
@@ -73,7 +73,7 @@ pub fn run(config: DemoConfig) {
 
 /// The requested space, else the first one the engine has, else a
 /// placeholder board that stays empty (the pane still runs).
-async fn pick_space(client: &zeron_rpc::RpcClient, wanted: Option<&str>) -> (String, String) {
+async fn pick_space(client: &surya_rpc::RpcClient, wanted: Option<&str>) -> (String, String) {
     let spaces: Vec<Space> = match client
         .subscribe(methods::WATCH_SPACES, serde_json::json!({}))
         .await

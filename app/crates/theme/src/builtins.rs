@@ -13,7 +13,7 @@ pub fn builtin_registry() -> &'static ThemeRegistry {
     REGISTRY.get_or_init(|| ThemeRegistry {
         families: vec![
             family("surya", "Surya", vec![surya_light(), surya_dark()]),
-            family("zeron", "Zeron", vec![zeron_light(), zeron_dark()]),
+            family("zeron", "Zeron", vec![comet_light(), comet_dark()]),
             family(
                 "vscode-default",
                 "VS Code Default",
@@ -245,7 +245,7 @@ const ANSI_LIGHT: [&str; 16] = [
 // The canvas is `shell`: in light it is parchment and the panels sit on it as
 // near-white cards; in dark it is the darkest plane and the cards climb out of
 // it. That inversion is deliberate and is why these are seeds of their own
-// rather than a tint of the Zeron pair, whose dark canvas is *lighter* than its
+// rather than a tint of the Surya pair, whose dark canvas is *lighter* than its
 // content panel.
 //
 // One accent, terracotta, carried from the pre-fork design brief. Neutrals are
@@ -357,7 +357,7 @@ fn surya_dark() -> ThemeVariant {
     })
 }
 
-fn zeron_dark() -> ThemeVariant {
+fn comet_dark() -> ThemeVariant {
     variant(Seeds {
         id: "zeron-dark",
         family_id: "zeron",
@@ -391,7 +391,7 @@ fn zeron_dark() -> ThemeVariant {
     })
 }
 
-fn zeron_light() -> ThemeVariant {
+fn comet_light() -> ThemeVariant {
     variant(Seeds {
         id: "zeron-light",
         family_id: "zeron",

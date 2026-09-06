@@ -56,9 +56,9 @@ use std::collections::HashSet;
 use std::time::Duration;
 use tokio::sync::watch;
 
-use zeron_doc::{MessagePart, SessionCommandPayload};
-use zeron_proto::{ChatConfig, EngineInfo, HarnessId, ToolCall, WorkspaceScope};
-use zeron_rpc::{LinkCache, RpcError, RpcReply, RpcService, methods, parse_params};
+use surya_doc::{MessagePart, SessionCommandPayload};
+use surya_proto::{ChatConfig, EngineInfo, HarnessId, ToolCall, WorkspaceScope};
+use surya_rpc::{LinkCache, RpcError, RpcReply, RpcService, methods, parse_params};
 
 use crate::agent_accounts::AgentAccounts;
 use crate::auth::Auth;
@@ -85,10 +85,10 @@ struct ChatParams {
 #[serde(rename_all = "camelCase")]
 struct RespondPermissionParams {
     request_id: String,
-    decision: zeron_proto::PermissionDecision,
+    decision: surya_proto::PermissionDecision,
     /// Present when the client asked to turn this answer into a rule.
     #[serde(default)]
-    remember: Option<zeron_proto::RememberRule>,
+    remember: Option<surya_proto::RememberRule>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -108,7 +108,7 @@ struct AgentIdParams {
 struct AddAllowRuleParams {
     #[serde(default)]
     name: Option<String>,
-    scope: zeron_proto::RuleScope,
+    scope: surya_proto::RuleScope,
     #[serde(default)]
     workspace_path: Option<String>,
     tool_name: String,
@@ -150,7 +150,7 @@ struct RelayCommandParams {
     chat_id: String,
     /// The full command entry, client-minted id included — the exactly-once
     /// key the host claims in its processed ledger before executing.
-    entry: zeron_doc::SessionCommandEntry,
+    entry: surya_doc::SessionCommandEntry,
 }
 
 #[derive(Debug, Deserialize)]
@@ -410,7 +410,7 @@ enum MutateParams {
     SetChatHost { chat_id: String, device_id: String },
     #[serde(rename_all = "camelCase")]
     SetChatArchived { chat_id: String, archived: bool },
-    /// Full-config replace on the chat row (zeron `SetChatConfig`): the
+    /// Full-config replace on the chat row (surya `SetChatConfig`): the
     /// composer's mid-session model / reasoning / options changes, LWW-synced
     /// so they survive restarts and reach every device.
     #[serde(rename_all = "camelCase")]
@@ -459,7 +459,7 @@ pub struct EngineRpc {
     agent_accounts: AgentAccounts,
     auth: Option<Auth>,
     links: Option<std::sync::Arc<LinkCache>>,
-    updater: Option<zeron_update::Updater>,
+    updater: Option<surya_update::Updater>,
     local_import: Option<crate::local_import::LocalImporter>,
     /// Agent mail sub-service (Mail.Send / Mail.List / Mail.Ack / WatchMail).
     mail: Option<crate::mail::MailRpc>,
@@ -486,7 +486,7 @@ impl EngineRpc {
         let engine_info = EngineInfo {
             device_id: doc_host.device_id().to_string(),
             workspace_scope,
-            build: Some(zeron_proto::build::current()),
+            build: Some(surya_proto::build::current()),
         };
         Self {
             sessions,
@@ -522,7 +522,7 @@ impl EngineRpc {
     }
 
     /// Attach the release checker (UpdateStatus stream + ApplyUpdate).
-    pub fn with_updater(mut self, updater: zeron_update::Updater) -> Self {
+    pub fn with_updater(mut self, updater: surya_update::Updater) -> Self {
         self.updater = Some(updater);
         self
     }
@@ -551,7 +551,7 @@ impl EngineRpc {
             .ok_or_else(|| RpcError::Failed("auth unavailable".into()))
     }
 
-    fn updater(&self) -> Result<&zeron_update::Updater, RpcError> {
+    fn updater(&self) -> Result<&surya_update::Updater, RpcError> {
         self.updater
             .as_ref()
             .ok_or_else(|| RpcError::Failed("updates unavailable".into()))
@@ -1095,15 +1095,15 @@ where
     .boxed()
 }
 
-/// The transcript watch as delta frames (`zeron_doc::transcript_delta`): a
+/// The transcript watch as delta frames (`surya_doc::transcript_delta`): a
 /// full `reset` first, then only changed entries per commit — the whole-Vec
 /// serialization here was the per-tick cost that scaled with transcript size.
 fn doc_messages_stream(
-    rx: watch::Receiver<Vec<zeron_doc::SessionMessageEntry>>,
+    rx: watch::Receiver<Vec<surya_doc::SessionMessageEntry>>,
 ) -> BoxStream<'static, serde_json::Value> {
-    use zeron_doc::transcript_delta::{TranscriptFrame, diff_transcript};
+    use surya_doc::transcript_delta::{TranscriptFrame, diff_transcript};
     futures::stream::unfold(
-        (rx, None::<Vec<zeron_doc::SessionMessageEntry>>),
+        (rx, None::<Vec<surya_doc::SessionMessageEntry>>),
         |(mut rx, mut prev)| async move {
             loop {
                 if prev.is_some() {
@@ -1337,7 +1337,7 @@ impl RpcService for EngineRpc {
                 RpcReply::value(&serde_json::json!({}))
             }
             methods::SYNC_STATUS => {
-                fn room_json(s: &zeron_sync::RoomStatsSnapshot) -> serde_json::Value {
+                fn room_json(s: &surya_sync::RoomStatsSnapshot) -> serde_json::Value {
                     serde_json::json!({
                         "connected": s.connected,
                         "synced": s.synced,
@@ -1350,7 +1350,7 @@ impl RpcService for EngineRpc {
                         "rejected": s.rejected,
                     })
                 }
-                fn chat2_json(s: &zeron_sync::ChatStatsSnapshot) -> serde_json::Value {
+                fn chat2_json(s: &surya_sync::ChatStatsSnapshot) -> serde_json::Value {
                     serde_json::json!({
                         "connected": s.connected,
                         "cursor": s.cursor,
@@ -1448,7 +1448,7 @@ impl RpcService for EngineRpc {
                     .filter(|n| !n.is_empty())
                     .map(str::to_string)
                     .unwrap_or_else(|| format!("{} {}", p.tool_name, pattern).trim().to_string());
-                let rule = zeron_proto::AllowRule {
+                let rule = surya_proto::AllowRule {
                     id: uuid::Uuid::new_v4().to_string(),
                     name,
                     scope: p.scope,
@@ -1611,7 +1611,7 @@ impl RpcService for EngineRpc {
                         _ => crate::diff_sync::capture_diff(&self.repos, root).await,
                     }
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
-                    RpcReply::value(&zeron_proto::CheckoutDiff {
+                    RpcReply::value(&surya_proto::CheckoutDiff {
                         checkout_id: identity.id,
                         device_id: self.doc_host.device_id().to_string(),
                         cwd: identity.root.to_string_lossy().to_string(),
@@ -1631,7 +1631,7 @@ impl RpcService for EngineRpc {
                 // behind an allocation so every unrelated RPC does not carry that
                 // state in `EngineRpc::handle`'s stack frame.
                 Box::pin(async move {
-                    let p: zeron_proto::GetCheckoutFileDiffTextRequest = parse_params(params)?;
+                    let p: surya_proto::GetCheckoutFileDiffTextRequest = parse_params(params)?;
                     let identity =
                         Box::pin(self.repos.checkout_identity(std::path::Path::new(&p.cwd)))
                             .await
@@ -1704,7 +1704,7 @@ impl RpcService for EngineRpc {
                             (snapshot, base, None)
                         }
                     };
-                    let stale = || zeron_proto::CheckoutFileDiffText {
+                    let stale = || surya_proto::CheckoutFileDiffText {
                         diff_checksum: p.diff_checksum.clone(),
                         old_text: None,
                         new_text: None,
@@ -1767,7 +1767,7 @@ impl RpcService for EngineRpc {
                     if current.checksum != p.diff_checksum {
                         return RpcReply::value(&stale());
                     }
-                    RpcReply::value(&zeron_proto::CheckoutFileDiffText {
+                    RpcReply::value(&surya_proto::CheckoutFileDiffText {
                         diff_checksum: p.diff_checksum,
                         old_text: pair.old_text,
                         new_text: pair.new_text,
@@ -1895,10 +1895,10 @@ impl RpcService for EngineRpc {
                     .list_drives()
                     .await
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
-                RpcReply::value(&zeron_proto::DriveListing { drives })
+                RpcReply::value(&surya_proto::DriveListing { drives })
             }
             methods::FILES_TREE => {
-                let p: zeron_proto::files::FileTreeParams = parse_params(params)?;
+                let p: surya_proto::files::FileTreeParams = parse_params(params)?;
                 let jail = self.files_jail(&p.space_id).await?;
                 let tree = tokio::task::spawn_blocking(move || {
                     crate::files::tree(&jail, &p.path, p.depth)
@@ -1909,7 +1909,7 @@ impl RpcService for EngineRpc {
                 RpcReply::value(&tree)
             }
             methods::FILES_WATCH => {
-                let p: zeron_proto::files::FileWatchParams = parse_params(params)?;
+                let p: surya_proto::files::FileWatchParams = parse_params(params)?;
                 let jail = self.files_jail(&p.space_id).await?;
                 // Recursive inotify adds and the gitignore reads are sync work;
                 // build the watcher on the blocking pool like diff_sync does.
@@ -1924,7 +1924,7 @@ impl RpcService for EngineRpc {
                 ))
             }
             methods::FILES_READ => {
-                let p: zeron_proto::files::FileReadParams = parse_params(params)?;
+                let p: surya_proto::files::FileReadParams = parse_params(params)?;
                 let jail = self.files_jail(&p.space_id).await?;
                 let read = tokio::task::spawn_blocking(move || {
                     crate::files::read(&jail, &p.path, p.range)
@@ -1935,7 +1935,7 @@ impl RpcService for EngineRpc {
                 RpcReply::value(&read)
             }
             methods::FILES_WRITE => {
-                let p: zeron_proto::files::FileWriteParams = parse_params(params)?;
+                let p: surya_proto::files::FileWriteParams = parse_params(params)?;
                 let jail = self.files_jail(&p.space_id).await?;
                 let written = tokio::task::spawn_blocking(move || {
                     crate::files::write(&jail, &p.path, &p.content, p.expected_hash.as_deref())
@@ -1946,7 +1946,7 @@ impl RpcService for EngineRpc {
                 RpcReply::value(&written)
             }
             methods::FILES_SEARCH => {
-                let p: zeron_proto::files::FileNameSearchParams = parse_params(params)?;
+                let p: surya_proto::files::FileNameSearchParams = parse_params(params)?;
                 if p.query.chars().count() > 256 {
                     return Err(RpcError::BadParams(
                         "FilesSearch query must not exceed 256 characters".into(),

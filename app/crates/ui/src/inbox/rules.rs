@@ -6,8 +6,8 @@
 //! can review and revoke has to exist and has to be plain.
 
 use gpui::{Context, Entity, Render, SharedString, Task, Window, div, prelude::*, px};
-use zeron_proto::{AllowRule, RuleScope};
-use zeron_rpc::methods;
+use surya_proto::{AllowRule, RuleScope};
+use surya_rpc::methods;
 
 use crate::inbox::chrome::{ButtonTone, body_text, button, command_text, empty_state, row_card};
 use crate::state::AppState;

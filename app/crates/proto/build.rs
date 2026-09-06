@@ -1,7 +1,7 @@
 //! Stamp the crate with the checkout it was built from, so an engine and a
 //! client can tell each other which commit they are. Reads git when the
-//! build runs inside a checkout; a tarball build passes `ZERON_BUILD_SHA`
-//! and `ZERON_BUILD_COMMIT_TIME` instead (deploy/windows/build.ps1 does).
+//! build runs inside a checkout; a tarball build passes `SURYA_BUILD_SHA`
+//! and `SURYA_BUILD_COMMIT_TIME` instead (deploy/windows/build.ps1 does).
 use std::process::Command;
 
 fn git(args: &[&str]) -> Option<String> {
@@ -22,8 +22,8 @@ fn env_or(name: &str, fallback: impl FnOnce() -> Option<String>, default: &str) 
 }
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=ZERON_BUILD_SHA");
-    println!("cargo:rerun-if-env-changed=ZERON_BUILD_COMMIT_TIME");
+    println!("cargo:rerun-if-env-changed=SURYA_BUILD_SHA");
+    println!("cargo:rerun-if-env-changed=SURYA_BUILD_COMMIT_TIME");
     // HEAD lives in the worktree's git dir, the branch refs in the common dir
     // (a linked worktree has no refs/heads of its own). A missing path would
     // make cargo rerun this script on every build, so only existing ones count.
@@ -39,15 +39,15 @@ fn main() {
         }
     }
     let sha = env_or(
-        "ZERON_BUILD_SHA",
+        "SURYA_BUILD_SHA",
         || git(&["rev-parse", "--short=9", "HEAD"]),
         "unknown",
     );
     let time = env_or(
-        "ZERON_BUILD_COMMIT_TIME",
+        "SURYA_BUILD_COMMIT_TIME",
         || git(&["show", "-s", "--format=%ct", "HEAD"]),
         "0",
     );
-    println!("cargo:rustc-env=ZERON_BUILD_SHA={sha}");
-    println!("cargo:rustc-env=ZERON_BUILD_COMMIT_TIME={time}");
+    println!("cargo:rustc-env=SURYA_BUILD_SHA={sha}");
+    println!("cargo:rustc-env=SURYA_BUILD_COMMIT_TIME={time}");
 }

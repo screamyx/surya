@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use zeron_proto::{AgentState, AgentStateRow, NeedsYouItem, NeedsYouKind, SessionStatus};
+use surya_proto::{AgentState, AgentStateRow, NeedsYouItem, NeedsYouKind, SessionStatus};
 
 use super::{AgentStates, Node, lock};
 

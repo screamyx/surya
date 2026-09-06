@@ -1,13 +1,13 @@
 # Comet's look, restored
 
-The app looks like zeron's comet again.
+The app looks like surya's comet again.
 Every feature stays.
 
 ## The order
 
 Owner, 2026-09-05 19:25, relayed by jag-0905-raven, verbatim:
 
-> just revert back the gui to how zeron's comet look. can you do that?
+> just revert back the gui to how surya's comet look. can you do that?
 
 then, one minute later:
 
@@ -19,7 +19,7 @@ then at 19:26:
 
 then at 19:32, which settled how far the revert goes:
 
-> the new gui should look like zeron's comet, but with our feature built in
+> the new gui should look like surya's comet, but with our feature built in
 
 ## The reference
 
@@ -121,14 +121,14 @@ Every number here was produced this session by reading the primary source.
 
 | Check | Result |
 | --- | --- |
-| `zeron_dark()` vs `fe35546` | byte-identical, 33 lines, md5 `ba0cd47865ab4552c49db58f70bbe4c8` |
-| `zeron_light()` vs `fe35546` | byte-identical, 33 lines, md5 `165e100a5201a1bb66a44c9fe627d238` |
+| `comet_dark()` vs `fe35546` | byte-identical, 33 lines, md5 `ba0cd47865ab4552c49db58f70bbe4c8` |
+| `comet_light()` vs `fe35546` | byte-identical, 33 lines, md5 `165e100a5201a1bb66a44c9fe627d238` |
 | `fn variant()` vs `fe35546` | byte-identical, 73 lines |
 | `Theme::from_variant` vs `fe35546` | 101 lines both sides, **one** added line, additive: `theme.warning_wash = warning_wash_for(...)` |
 | `glass_hover`, `input_glass_bg`, `wash`, `is_frost` | identical |
 | `BUBBLE_RADIUS` 16, `PANEL_RADIUS` 10, `CONTROL_RADIUS` 6 | unchanged since the import |
 
-`ThemeSelection::default()` is `zeron-light` / `zeron-dark` again, and so is the
+`ThemeSelection::default()` is `surya-light` / `surya-dark` again, and so is the
 registry fallback.
 System following is untouched.
 
@@ -177,7 +177,7 @@ Appearance.
 Nothing was deleted, so bringing the look back is a decision, not a rebuild.
 
 The reduced-motion switch stays.
-`ZERON_WINDOW_SIZE`, which the shot rig needs, stays.
+`SURYA_WINDOW_SIZE`, which the shot rig needs, stays.
 
 ## Deviations, written down rather than left silent
 
@@ -253,7 +253,7 @@ Without the second, the theme list would have an option that silently undoes
 itself.
 
 Two minor items also closed: `docs/decisions.md` now separates the Rust function
-names from the variant id strings, and records that the planned zeron-to-surya
+names from the variant id strings, and records that the planned surya-to-surya
 rename has to move the default selection and add a second settings migration or
 it drops users onto the fallback.
 The theme contrast test covers the default pair again, at comet's own measured
@@ -297,8 +297,8 @@ palette that drifts is caught without pretending comet clears a bar it does not.
 | faint | 3.90 | light canvas | **under AA** |
 | accent | 6.09 | dark panel | AA |
 
-`zeron-light` panel and card: body 13.13, muted 6.04, faint 4.32.
-`zeron-dark` panel: 16.56, 8.66, 5.52.
+`surya-light` panel and card: body 13.13, muted 6.04, faint 4.32.
+`surya-dark` panel: 16.56, 8.66, 5.52.
 
 `text_faint` misses AA on the canvas plane, and in comet's flat layout the canvas
 is the sidebar column, which carries real text: session rows and their
@@ -314,7 +314,7 @@ numbers.
 ## Still open
 
 Permissions.
-Comet renders none at the import commit and `zeron_doc::MessagePart` has no
+Comet renders none at the import commit and `surya_doc::MessagePart` has no
 `Permission` variant, so making them inline would be doc and engine work, not a
 look change.
 They render as they did.
@@ -322,7 +322,7 @@ Flagged to raven by surya-states.
 
 ## Green
 
-`cargo build -p zeron` exit 0.
-`zeron-theme` 26 passed, 0 failed.
-`zeron-ui` 652 passed, 0 failed.
+`cargo build -p surya` exit 0.
+`surya-theme` 26 passed, 0 failed.
+`surya-ui` 652 passed, 0 failed.
 Sixteen frames, `panics=0` on every one.

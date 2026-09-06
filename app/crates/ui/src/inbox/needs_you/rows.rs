@@ -6,7 +6,7 @@
 //! layout.
 
 use gpui::{Context, SharedString, div, prelude::*, px};
-use zeron_proto::{NeedsYouKind, PermissionDecision};
+use surya_proto::{NeedsYouKind, PermissionDecision};
 
 use super::{NeedsYouPane, OpenChat};
 use crate::inbox::chrome::{

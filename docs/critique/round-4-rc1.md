@@ -11,8 +11,8 @@ Not in RC1 and therefore still open here: #62 (browser launch knob) and #63 (tas
 | Run | Knobs | Frames | colours | panics |
 | --- | --- | --- | --- | --- |
 | Shell + panes | default GEOMS, `SURYA_SHOT_PANES="files tasks browser"`, `SURYA_SHOT_BROWSER_CLICK=129,69` | `round-4-shell-{light,dark}-{1440x900,1100x700}.png`, `round-4-shell-{files,tasks,browser}-{light,dark}.png` | 10019-17046 | 0 |
-| Cards | `ZERON_MOCK_CARDS=crates/a2ui/fixtures`, 1440x900 | `round-4-cards-{light,dark}-1440x900.png` | 15441 / 15546 | 0 |
-| Inbox | `ZERON_MOCK_QUESTION=1`, both sizes | `round-4-inbox-{light,dark}-{1440x900,1100x700}.png` | 12647-14885 | 0 |
+| Cards | `SURYA_MOCK_CARDS=crates/a2ui/fixtures`, 1440x900 | `round-4-cards-{light,dark}-1440x900.png` | 15441 / 15546 | 0 |
+| Inbox | `SURYA_MOCK_QUESTION=1`, both sizes | `round-4-inbox-{light,dark}-{1440x900,1100x700}.png` | 12647-14885 | 0 |
 
 Counters: `seeded=1 space=1 chat=1 run=1 tasks=4` per run, `shot=1 panics=0` for each of the 18 frames, 0 black.
 
@@ -44,7 +44,7 @@ Still not judged: drag, tabs, the edit sheet, answering a question (one click pe
 | N2 | Chat title shown three times | still open, and the agents tree makes it four in the plain shell (titlebar, page title, tree row, session row) |
 | N3 | Tasks third column clipped | still open on RC1, fixed on main by #63 |
 | N4 | No action wears the accent | still open (theme question) |
-| B1 | `ZERON_OPEN_PANE=browser` dead at launch | still open on RC1, fixed on main by #62; the rig's click is the RC1 workaround |
+| B1 | `SURYA_OPEN_PANE=browser` dead at launch | still open on RC1, fixed on main by #62; the rig's click is the RC1 workaround |
 | L2 | Transcript measure 736 px | still open, owner call |
 
 ## New findings, by owner

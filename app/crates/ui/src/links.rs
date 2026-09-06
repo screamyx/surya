@@ -1,7 +1,7 @@
 //! Stable conversation links shared by sidebar copy actions and inbound URL routing.
 
 use sha2::{Digest, Sha256};
-use zeron_proto::{AuthState, Chat, HarnessId, WorkspaceScope};
+use surya_proto::{AuthState, Chat, HarnessId, WorkspaceScope};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationDeepLink {
@@ -41,18 +41,22 @@ pub fn workspace_locator(
     Some(format!("{:x}", hash.finalize())[..16].to_string())
 }
 
-pub fn zeron_conversation_link(chat_id: &str, workspace: &str) -> String {
+pub fn surya_conversation_link(chat_id: &str, workspace: &str) -> String {
     format!(
-        "zeron://open/chat/{}?workspace={}",
+        "surya://open/chat/{}?workspace={}",
         encode_component(chat_id),
         encode_component(workspace)
     )
 }
 
-pub fn parse_zeron_conversation_link(url: &str) -> Result<ConversationDeepLink, &'static str> {
+pub fn parse_surya_conversation_link(url: &str) -> Result<ConversationDeepLink, &'static str> {
+    // One release of both: a link minted before the rename is in chats
+    // people already have.
+    const LEGACY_SCHEME: &str = "zeron://open/chat/";
     let rest = url
-        .strip_prefix("zeron://open/chat/")
-        .ok_or("not a Zeron conversation link")?;
+        .strip_prefix("surya://open/chat/")
+        .or_else(|| url.strip_prefix(LEGACY_SCHEME))
+        .ok_or("not a Surya conversation link")?;
     let (chat_id, query) = rest.split_once('?').ok_or("missing workspace locator")?;
     if chat_id.is_empty() || chat_id.contains('/') {
         return Err("invalid conversation id");
@@ -128,12 +132,12 @@ mod tests {
             branch: None,
             checkout_id: None,
             source_context: None,
-            config: Some(zeron_proto::ChatConfig {
+            config: Some(surya_proto::ChatConfig {
                 harness,
                 model: None,
                 reasoning: None,
                 model_options: Default::default(),
-                sandbox: zeron_proto::SandboxLevel::WorkspaceWrite,
+                sandbox: surya_proto::SandboxLevel::WorkspaceWrite,
             }),
             last_message_preview: None,
             last_message_at: None,
@@ -147,10 +151,10 @@ mod tests {
     }
 
     #[test]
-    fn zeron_link_round_trips_reserved_characters() {
-        let link = zeron_conversation_link("chat/with space", "workspace:one");
+    fn surya_link_round_trips_reserved_characters() {
+        let link = surya_conversation_link("chat/with space", "workspace:one");
         assert_eq!(
-            parse_zeron_conversation_link(&link).unwrap(),
+            parse_surya_conversation_link(&link).unwrap(),
             ConversationDeepLink {
                 chat_id: "chat/with space".into(),
                 workspace: "workspace:one".into(),
@@ -160,9 +164,9 @@ mod tests {
 
     #[test]
     fn malformed_or_foreign_links_are_rejected() {
-        assert!(parse_zeron_conversation_link("https://example.com").is_err());
-        assert!(parse_zeron_conversation_link("zeron://open/chat/id").is_err());
-        assert!(parse_zeron_conversation_link("zeron://open/chat/%GG?workspace=x").is_err());
+        assert!(parse_surya_conversation_link("https://example.com").is_err());
+        assert!(parse_surya_conversation_link("surya://open/chat/id").is_err());
+        assert!(parse_surya_conversation_link("surya://open/chat/%GG?workspace=x").is_err());
     }
 
     #[test]
@@ -189,7 +193,7 @@ mod tests {
             workspace_locator(
                 scope,
                 Some(&AuthState::NeedsOrganization {
-                    user: zeron_proto::UserProfile {
+                    user: surya_proto::UserProfile {
                         id: "user-a".into(),
                         email: "user@example.com".into(),
                         name: None,
@@ -203,7 +207,7 @@ mod tests {
             workspace_locator(
                 scope,
                 Some(&AuthState::SignedIn {
-                    user: zeron_proto::UserProfile {
+                    user: surya_proto::UserProfile {
                         id: "user-a".into(),
                         email: "user@example.com".into(),
                         name: None,

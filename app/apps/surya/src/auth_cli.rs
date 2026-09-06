@@ -1,8 +1,8 @@
-//! `zeron login` / `zeron logout` / `zeron status` — the standalone auth surface.
+//! `surya login` / `surya logout` / `surya status` — the standalone auth surface.
 //!
-//! Sign-in used to live only inside `zeron headless`, coupling authentication to
+//! Sign-in used to live only inside `surya headless`, coupling authentication to
 //! the long-running daemon. These commands work on the persisted session
-//! (`{data_dir}/session.json`) and exit, so a service-managed `zeron headless`
+//! (`{data_dir}/session.json`) and exit, so a service-managed `surya headless`
 //! only ever *loads* credentials. While an engine is running it owns the session
 //! (WorkOS refresh tokens are single-use and rotate on every refresh), so login
 //! and logout take the same data-dir lock the engine holds and refuse politely
@@ -10,7 +10,7 @@
 
 use std::io::IsTerminal;
 
-use zeron_engine::{AuthState, Engine, EngineConfig, InstanceLock, WorkspaceScope};
+use surya_engine::{AuthState, Engine, EngineConfig, InstanceLock, WorkspaceScope};
 
 #[derive(Debug, PartialEq, Eq)]
 struct AccountStatus {
@@ -62,21 +62,21 @@ fn account_status(scope: WorkspaceScope, auth: &AuthState) -> AccountStatus {
             AuthState::NeedsOrganization { user } => AccountStatus {
                 mode: "synced",
                 auth: format!(
-                    "signed in as {} but no workspace selected — run `zeron login`",
+                    "signed in as {} but no workspace selected — run `surya login`",
                     user.email
                 ),
                 healthy: false,
             },
             AuthState::SignedOut => AccountStatus {
                 mode: "synced",
-                auth: "saved session is no longer valid — run `zeron login`".into(),
+                auth: "saved session is no longer valid — run `surya login`".into(),
                 healthy: false,
             },
         },
     }
 }
 
-/// `zeron login`: authenticate via the paste-code flow (and workspace
+/// `surya login`: authenticate via the paste-code flow (and workspace
 /// onboarding), persist `session.json`, and exit.
 pub async fn login(config: EngineConfig) -> anyhow::Result<()> {
     std::fs::create_dir_all(&config.data_dir)?;
@@ -94,14 +94,14 @@ pub async fn login(config: EngineConfig) -> anyhow::Result<()> {
                 .map(|org| format!(" (workspace {org})"))
                 .unwrap_or_default()
         );
-        println!("Run `zeron logout` first to switch accounts.");
+        println!("Run `surya logout` first to switch accounts.");
         println!("The next engine start will use the synced workspace.");
         return Ok(());
     }
     if !std::io::stdin().is_terminal() {
-        anyhow::bail!("zeron login needs an interactive terminal");
+        anyhow::bail!("surya login needs an interactive terminal");
     }
-    zeron_engine::terminal_sign_in(&auth).await?;
+    surya_engine::terminal_sign_in(&auth).await?;
     match auth.state() {
         AuthState::SignedIn { user, org_id } => {
             println!(
@@ -112,7 +112,7 @@ pub async fn login(config: EngineConfig) -> anyhow::Result<()> {
                     .unwrap_or_default()
             );
             println!(
-                "Sync is ready. Start or restart Zeron to open the synced workspace; existing local sessions will stay local."
+                "Sync is ready. Start or restart Surya to open the synced workspace; existing local sessions will stay local."
             );
         }
         // terminal_sign_in only returns Ok once signed in; keep an honest fallback.
@@ -121,7 +121,7 @@ pub async fn login(config: EngineConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `zeron logout`: remove the persisted session.
+/// `surya logout`: remove the persisted session.
 pub async fn logout(config: EngineConfig) -> anyhow::Result<()> {
     std::fs::create_dir_all(&config.data_dir)?;
     let _lock = engine_lock(&config, "sign out")?;
@@ -156,7 +156,7 @@ pub async fn logout(config: EngineConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `zeron status`: report the fixed scope a new engine would select, optional
+/// `surya status`: report the fixed scope a new engine would select, optional
 /// auth, and engine liveness. Local-only is a healthy signed-out state.
 pub async fn status(config: EngineConfig) -> anyhow::Result<()> {
     let auth = Engine::build_auth(&config).await;
@@ -188,7 +188,7 @@ pub async fn status(config: EngineConfig) -> anyhow::Result<()> {
         "Bind:     {} ({})",
         ipc.bind,
         if ipc.is_loopback() {
-            "loopback only; set ZERON_BIND to serve the network"
+            "loopback only; set SURYA_BIND to serve the network"
         } else {
             "network; token required"
         }
@@ -200,9 +200,9 @@ pub async fn status(config: EngineConfig) -> anyhow::Result<()> {
             Err(err) => println!("Token:    unavailable ({err})"),
         }
     }
-    // The stamp a client compares against (`zeron_proto::build::skew`); an
+    // The stamp a client compares against (`surya_proto::build::skew`); an
     // app that shows the skew banner names this line's value.
-    println!("Build:    {}", zeron_proto::build::current().label());
+    println!("Build:    {}", surya_proto::build::current().label());
     if !account.healthy {
         std::process::exit(1);
     }
@@ -212,13 +212,13 @@ pub async fn status(config: EngineConfig) -> anyhow::Result<()> {
 /// Prefer the immutable scope of a live runtime. Falling back to the next-boot
 /// derivation is correct when no engine is listening and tolerant of old
 /// daemons that predate EngineInfo.
-async fn live_engine_scope(ipc: &zeron_engine::ipc::IpcConfig) -> Option<WorkspaceScope> {
+async fn live_engine_scope(ipc: &surya_engine::ipc::IpcConfig) -> Option<WorkspaceScope> {
     let client = ipc.connect().await.ok()?;
     let value = client
-        .call(zeron_rpc::methods::ENGINE_INFO, serde_json::json!({}))
+        .call(surya_rpc::methods::ENGINE_INFO, serde_json::json!({}))
         .await
         .ok()?;
-    serde_json::from_value::<zeron_engine::EngineInfo>(value)
+    serde_json::from_value::<surya_engine::EngineInfo>(value)
         .ok()
         .map(|info| info.workspace_scope)
 }
@@ -231,7 +231,7 @@ fn engine_lock(config: &EngineConfig, verb: &str) -> anyhow::Result<InstanceLock
     InstanceLock::acquire(&config.data_dir).map_err(|err| {
         anyhow::anyhow!(
             "{err}\nCannot {verb} while an engine is running — stop it first \
-             (`zeron daemon stop`, or quit the Zeron app), or use the running UI instead."
+             (`surya daemon stop`, or quit the Surya app), or use the running UI instead."
         )
     })
 }
@@ -239,7 +239,7 @@ fn engine_lock(config: &EngineConfig, verb: &str) -> anyhow::Result<InstanceLock
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeron_engine::{AuthUser, HarnessId};
+    use surya_engine::{AuthUser, HarnessId};
 
     fn config(data_dir: &std::path::Path) -> EngineConfig {
         EngineConfig {
@@ -247,7 +247,7 @@ mod tests {
             edge_url: "http://127.0.0.1:1".into(),
             edge_token: None,
             ipc_port: 0,
-            ipc_bind: zeron_engine::ipc::DEFAULT_BIND,
+            ipc_bind: surya_engine::ipc::DEFAULT_BIND,
             ipc_token: None,
             default_harness: HarnessId::Mock,
             org_id: None,

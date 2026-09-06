@@ -1,5 +1,5 @@
 //! The paint tokens a card renders with. The host fills this from its own
-//! theme (comet: `zeron_ui::theme::Theme`), so a card carries no colors of
+//! theme (comet: `surya_ui::theme::Theme`), so a card carries no colors of
 //! its own and always sits on the transcript's palette. Numbers are layout,
 //! colors are paint — the same rule the transcript follows.
 

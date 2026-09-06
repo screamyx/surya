@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove the CEF pane paints on a box with no display: launch zeron under
+# Prove the CEF pane paints on a box with no display: launch surya under
 # Xvfb with the Browser surface open, wait, screenshot, and grep the log
 # for the browser's own counters. Prints asked/paint pairs, never a bare 0.
 #
@@ -14,21 +14,21 @@
 # (Scripts that take the lock themselves, like critic-shots.sh, must not be
 # wrapped this way: the nested flock never returns.)
 #
-# The app probes ZERON_IPC_PORT (default 27654) and attaches to whatever
+# The app probes SURYA_IPC_PORT (default 27654) and attaches to whatever
 # engine answers there. On a box with other seats' engines that means
 # attaching to a stranger's engine, so every run gets its own free port
-# (override with ZERON_IPC_PORT) and the app embeds its own engine.
+# (override with SURYA_IPC_PORT) and the app embeds its own engine.
 #
-# Needs: xvfb-run, ffmpeg (x11grab), a `zeron` built with --features browser.
+# Needs: xvfb-run, ffmpeg (x11grab), a `surya` built with --features browser.
 set -u
 URL="${1:-https://example.com}"
 WAIT="${2:-25}"
 TARGET="${CARGO_TARGET_DIR:-$(cd "$(dirname "$0")/.." && pwd)/target}"
-BIN="$TARGET/debug/zeron"
+BIN="$TARGET/debug/surya"
 OUT="${PROOF_OUT:-/tmp/surya-browser-proof}"
 mkdir -p "$OUT"
 [ -x "$BIN" ] || { echo "no binary at $BIN (build with --features browser)"; exit 2; }
-[ -x "$TARGET/debug/zeron-browser-helper" ] || echo "warning: no zeron-browser-helper next to zeron; CEF will re-exec zeron"
+[ -x "$TARGET/debug/surya-browser-helper" ] || echo "warning: no surya-browser-helper next to surya; CEF will re-exec surya"
 [ -f "$TARGET/debug/libcef.so" ] || { echo "no libcef.so next to the binary"; exit 2; }
 
 DATA="$OUT/data"
@@ -38,20 +38,20 @@ rm -rf "$DATA"; mkdir -p "$DATA"
 if [ -n "${SURYA_PROOF_APPEARANCE:-}" ]; then
   printf '{"appearance":"%s"}\n' "$SURYA_PROOF_APPEARANCE" > "$DATA/ui-settings.json"
 fi
-LOG="$OUT/zeron.log"
+LOG="$OUT/surya.log"
 SHOT="$OUT/window.png"
 W=1600; H=1000
-if [ -z "${ZERON_IPC_PORT:-}" ]; then
+if [ -z "${SURYA_IPC_PORT:-}" ]; then
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    ZERON_IPC_PORT=$(( 20000 + RANDOM % 20000 ))
-    ss -Hltn 2>/dev/null | grep -q ":$ZERON_IPC_PORT " || break
+    SURYA_IPC_PORT=$(( 20000 + RANDOM % 20000 ))
+    ss -Hltn 2>/dev/null | grep -q ":$SURYA_IPC_PORT " || break
   done
 fi
-echo "using ZERON_IPC_PORT=$ZERON_IPC_PORT"
+echo "using SURYA_IPC_PORT=$SURYA_IPC_PORT"
 
 RUN='
   set -u
-  export ZERON_DATA_DIR="'"$DATA"'" ZERON_IPC_PORT='"$ZERON_IPC_PORT"' ZERON_OPEN_PANE=browser \
+  export SURYA_DATA_DIR="'"$DATA"'" SURYA_IPC_PORT='"$SURYA_IPC_PORT"' SURYA_OPEN_PANE=browser \
          SURYA_BROWSER_URL="'"$URL"'" SURYA_CEF_CACHE="'"$DATA"'/cef" \
          SURYA_BROWSER_DUMP="'"$OUT"'/frames" RUST_LOG=info
   # `setsid` puts the app in its own process group and the trap kills that

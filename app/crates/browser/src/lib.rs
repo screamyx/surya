@@ -115,7 +115,7 @@ fn cache_dir() -> String {
 fn helper_path() -> Option<std::path::PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
-    let name = if cfg!(windows) { "zeron-browser-helper.exe" } else { "zeron-browser-helper" };
+    let name = if cfg!(windows) { "surya-browser-helper.exe" } else { "surya-browser-helper" };
     let path = dir.join(name);
     path.is_file().then_some(path)
 }

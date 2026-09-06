@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use chrono::Utc;
 use tokio::sync::watch;
-use zeron_proto::{AllowRule, PermissionRequest, RememberRule, RuleScope};
+use surya_proto::{AllowRule, PermissionRequest, RememberRule, RuleScope};
 
 #[cfg(test)]
 mod tests;
@@ -82,7 +82,7 @@ impl AllowRules {
 
     /// In-memory table for tests.
     pub fn ephemeral() -> Self {
-        Self::open(std::env::temp_dir().join(format!("zeron-rules-{}", new_id())))
+        Self::open(std::env::temp_dir().join(format!("surya-rules-{}", new_id())))
     }
 
     pub fn watch(&self) -> watch::Receiver<Vec<AllowRule>> {

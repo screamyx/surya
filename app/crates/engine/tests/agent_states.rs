@@ -10,11 +10,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use zeron_engine::agent_states::AgentStates;
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::Harness;
-use zeron_harness::mock::MockHarness;
-use zeron_proto::{
+use surya_engine::agent_states::AgentStates;
+use surya_engine::{EngineCore, HarnessRegistry};
+use surya_harness::Harness;
+use surya_harness::mock::MockHarness;
+use surya_proto::{
     AgentEvent, AgentState, AgentStateRow, DoneStatus, HarnessId, NeedsYouKind, NeedsYouItem,
     PermissionDecision, RememberRule, RunRequest, RuleScope, SandboxLevel, UserInputQuestion,
 };
@@ -76,7 +76,7 @@ fn asks_permission(request_id: &str, command: &str) -> AgentEvent {
 }
 
 async fn wait_for<F: FnMut() -> bool>(mut predicate: F, what: &str) {
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     while !predicate() {
         assert!(
             tokio::time::Instant::now() < deadline,
@@ -141,7 +141,7 @@ async fn three_sessions_two_of_them_need_you() {
     );
 
     // The done chat: finished, unread.
-    states.note_session("chat-done", zeron_proto::SessionStatus::Working);
+    states.note_session("chat-done", surya_proto::SessionStatus::Working);
     states.note_run_end("chat-done", DoneStatus::Completed, "");
 
     let rows = states.states();
@@ -362,7 +362,7 @@ async fn a_subagent_frame_makes_a_child_that_rolls_up() {
             started(),
             AgentEvent::ToolCall {
                 id: "tool-9".into(),
-                call: zeron_proto::ToolCall::Unknown {
+                call: surya_proto::ToolCall::Unknown {
                     name: "Agent: scan the repo".into(),
                     input: Some(serde_json::json!({ "description": "scan the repo" })),
                 },
@@ -459,10 +459,10 @@ async fn a_subagent_frame_makes_a_child_that_rolls_up() {
 #[test]
 fn rules_persist_across_an_engine_restart() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let states = AgentStates::new(zeron_engine::rules::AllowRules::open(dir.path()));
+    let states = AgentStates::new(surya_engine::rules::AllowRules::open(dir.path()));
     states
         .rules()
-        .add(zeron_proto::AllowRule {
+        .add(surya_proto::AllowRule {
             id: "r-1".into(),
             name: "read-only git".into(),
             scope: RuleScope::Global,
@@ -474,7 +474,7 @@ fn rules_persist_across_an_engine_restart() {
         })
         .expect("adds");
 
-    let reopened = AgentStates::new(zeron_engine::rules::AllowRules::open(dir.path()));
+    let reopened = AgentStates::new(surya_engine::rules::AllowRules::open(dir.path()));
     let rules = reopened.rules().list();
     println!("written=1 read_back={}", rules.len());
     assert_eq!(rules.len(), 1);

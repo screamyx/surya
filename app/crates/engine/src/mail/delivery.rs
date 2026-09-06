@@ -27,7 +27,7 @@
 
 use std::sync::atomic::Ordering;
 
-use zeron_proto::SessionStatus;
+use surya_proto::SessionStatus;
 
 use super::Mail;
 use crate::EngineError;
@@ -268,7 +268,7 @@ impl Mail {
 
     /// The run configuration a mail turn borrows: the agent's last run if it
     /// has one, else its chat row's stored config.
-    fn run_request_for(&self, agent: &str, prompt: &str) -> Option<zeron_proto::RunRequest> {
+    fn run_request_for(&self, agent: &str, prompt: &str) -> Option<surya_proto::RunRequest> {
         self.inner
             .sessions
             .last_request(agent)
@@ -284,7 +284,7 @@ impl Mail {
 fn set_run_delay() -> Option<std::time::Duration> {
     static DELAY: std::sync::OnceLock<Option<std::time::Duration>> = std::sync::OnceLock::new();
     *DELAY.get_or_init(|| {
-        std::env::var("ZERON_MAIL_SET_RUN_DELAY_MS")
+        std::env::var("SURYA_MAIL_SET_RUN_DELAY_MS")
             .ok()
             .and_then(|ms| ms.parse::<u64>().ok())
             .map(std::time::Duration::from_millis)

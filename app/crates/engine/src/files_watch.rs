@@ -18,7 +18,7 @@ use futures::StreamExt as _;
 use futures::stream::BoxStream;
 use notify::Watcher as _;
 use tokio::sync::mpsc;
-use zeron_proto::files::{FileEvent, FileEventKind, FileWatchBatch};
+use surya_proto::files::{FileEvent, FileEventKind, FileWatchBatch};
 
 use crate::EngineError;
 use crate::files::Jail;

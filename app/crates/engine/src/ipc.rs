@@ -3,8 +3,8 @@
 //! Loopback stays exactly as it always was: `127.0.0.1:<port>`, no token.
 //! Binding anywhere else (a LAN, VPN or tailnet address, or `0.0.0.0`) puts
 //! the socket on the network, so it requires a shared token. The token is
-//! `ZERON_IPC_TOKEN` when set, otherwise `{data_dir}/ipc-token`, generated on
-//! the first non-loopback start and printed by `zeron status`. A remote
+//! `SURYA_IPC_TOKEN` when set, otherwise `{data_dir}/ipc-token`, generated on
+//! the first non-loopback start and printed by `surya status`. A remote
 //! viewport presents it as `Authorization: Bearer <token>`.
 //!
 //! No TLS here on purpose: the networks this is meant for (tailnet, VPN, LAN)
@@ -17,11 +17,11 @@ use std::sync::Arc;
 /// File under the data dir holding the generated token (mode 0600 on unix).
 pub const TOKEN_FILE: &str = "ipc-token";
 
-/// Environment variable naming the bind address (`ZERON_BIND`).
-pub const BIND_ENV: &str = "ZERON_BIND";
+/// Environment variable naming the bind address (`SURYA_BIND`).
+pub const BIND_ENV: &str = "SURYA_BIND";
 
-/// Environment variable carrying an explicit token (`ZERON_IPC_TOKEN`).
-pub const TOKEN_ENV: &str = "ZERON_IPC_TOKEN";
+/// Environment variable carrying an explicit token (`SURYA_IPC_TOKEN`).
+pub const TOKEN_ENV: &str = "SURYA_IPC_TOKEN";
 
 pub const DEFAULT_BIND: IpAddr = IpAddr::V4(Ipv4Addr::LOCALHOST);
 
@@ -58,7 +58,7 @@ impl IpcConfig {
         load_or_create_token(&self.data_dir).map(Some)
     }
 
-    /// The address a local CLI (`zeron status`, `zeron sync`) dials to reach
+    /// The address a local CLI (`surya status`, `surya sync`) dials to reach
     /// this engine: the bind address itself, or loopback for a wildcard bind.
     pub fn dial_addr(&self) -> SocketAddr {
         let host = if self.bind.is_unspecified() {
@@ -78,15 +78,15 @@ impl IpcConfig {
 
     /// Dial this engine from the same machine, presenting the token when one
     /// is enforced.
-    pub async fn connect(&self) -> Result<zeron_rpc::RpcClient, zeron_rpc::RpcError> {
+    pub async fn connect(&self) -> Result<surya_rpc::RpcClient, surya_rpc::RpcError> {
         let token = self
             .resolve_token()
-            .map_err(|e| zeron_rpc::RpcError::Transport(format!("ipc token: {e}")))?;
-        zeron_rpc::connect_ws_with_token(&self.dial_url(), token.as_deref()).await
+            .map_err(|e| surya_rpc::RpcError::Transport(format!("ipc token: {e}")))?;
+        surya_rpc::connect_ws_with_token(&self.dial_url(), token.as_deref()).await
     }
 }
 
-/// Parse `ZERON_BIND`-style input. Empty or unset means loopback.
+/// Parse `SURYA_BIND`-style input. Empty or unset means loopback.
 pub fn parse_bind(value: Option<&str>) -> Result<IpAddr, String> {
     match value.map(str::trim).filter(|v| !v.is_empty()) {
         None => Ok(DEFAULT_BIND),
@@ -121,7 +121,7 @@ pub fn load_or_create_token(data_dir: &Path) -> std::io::Result<String> {
     std::fs::create_dir_all(data_dir)?;
     let token = generate_token();
     write_private(&path, &token)?;
-    tracing::info!(path = %path.display(), "IPC token generated; `zeron status` prints it");
+    tracing::info!(path = %path.display(), "IPC token generated; `surya status` prints it");
     Ok(token)
 }
 
@@ -150,7 +150,7 @@ fn write_private(path: &Path, contents: &str) -> std::io::Result<()> {
 /// network address would let anyone on it run agents as this user.
 pub async fn serve(
     config: &IpcConfig,
-    service: Arc<dyn zeron_rpc::RpcService>,
+    service: Arc<dyn surya_rpc::RpcService>,
 ) -> std::io::Result<tokio::task::JoinHandle<()>> {
     let token = config.resolve_token()?;
     if !config.is_loopback() && token.is_none() {
@@ -170,7 +170,7 @@ pub async fn serve(
         "IPC server listening"
     );
     let token: Option<Arc<str>> = token.map(Arc::from);
-    Ok(tokio::spawn(zeron_rpc::serve_ws_listener_with_auth(
+    Ok(tokio::spawn(surya_rpc::serve_ws_listener_with_auth(
         listener, service, token,
     )))
 }
@@ -273,29 +273,29 @@ mod tests {
         };
         let task = serve(&config, Arc::new(Denied)).await.unwrap();
         let url = format!("ws://127.0.0.1:{port}");
-        assert!(zeron_rpc::connect_ws(&url).await.is_err(), "no token must be refused");
+        assert!(surya_rpc::connect_ws(&url).await.is_err(), "no token must be refused");
         assert!(
-            zeron_rpc::connect_ws_with_token(&url, Some("wrong")).await.is_err(),
+            surya_rpc::connect_ws_with_token(&url, Some("wrong")).await.is_err(),
             "wrong token must be refused"
         );
-        let client = zeron_rpc::connect_ws_with_token(&url, Some("secret-token"))
+        let client = surya_rpc::connect_ws_with_token(&url, Some("secret-token"))
             .await
             .expect("right token connects");
         let err = client.call("Anything", serde_json::json!({})).await.unwrap_err();
-        assert!(matches!(err, zeron_rpc::RpcError::UnknownMethod(_)));
+        assert!(matches!(err, surya_rpc::RpcError::UnknownMethod(_)));
         task.abort();
     }
 
     struct Denied;
 
     #[async_trait::async_trait]
-    impl zeron_rpc::RpcService for Denied {
+    impl surya_rpc::RpcService for Denied {
         async fn handle(
             &self,
             method: &str,
             _params: serde_json::Value,
-        ) -> Result<zeron_rpc::RpcReply, zeron_rpc::RpcError> {
-            Err(zeron_rpc::RpcError::UnknownMethod(method.to_string()))
+        ) -> Result<surya_rpc::RpcReply, surya_rpc::RpcError> {
+            Err(surya_rpc::RpcError::UnknownMethod(method.to_string()))
         }
     }
 }

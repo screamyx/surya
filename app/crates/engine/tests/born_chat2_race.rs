@@ -15,10 +15,10 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 
-use zeron_doc::{MessageRole, MessageStatus, SessionCommandPayload, SessionMessageEntry};
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::{Harness, HarnessError, RunControls};
-use zeron_proto::{
+use surya_doc::{MessageRole, MessageStatus, SessionCommandPayload, SessionMessageEntry};
+use surya_engine::{EngineCore, HarnessRegistry};
+use surya_harness::{Harness, HarnessError, RunControls};
+use surya_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
     SteeringMode,
 };
@@ -87,7 +87,7 @@ async fn wait_for<F>(mut predicate: F, what: &str)
 where
     F: FnMut() -> bool,
 {
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     while !predicate() {
         assert!(
             tokio::time::Instant::now() < deadline,
@@ -130,10 +130,10 @@ async fn transcript_survives_open_racing_create_chat() {
         let live_writer_ref = handle.doc_arc();
 
         // The mint lands a beat later, exactly as the composer sends it.
-        let client = zeron_rpc::memory_client(core.rpc_service());
+        let client = surya_rpc::memory_client(core.rpc_service());
         client
             .call(
-                zeron_rpc::methods::MUTATE,
+                surya_rpc::methods::MUTATE,
                 serde_json::json!({
                     "op": "createChat",
                     "chatId": CHAT,

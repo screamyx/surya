@@ -9,8 +9,8 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
-use zeron_engine::{Auth, AuthConfig, AuthState};
-use zeron_rpc::TokenSource;
+use surya_engine::{Auth, AuthConfig, AuthState};
+use surya_rpc::TokenSource;
 
 // ---------------------------------------------------------------------------
 // Fake JWTs
@@ -251,7 +251,7 @@ async fn wait_for<T: Clone + PartialEq>(
     rx: &mut tokio::sync::watch::Receiver<T>,
     check: impl Fn(&T) -> bool,
 ) {
-    tokio::time::timeout(zeron_test_deadlines::WAIT, async {
+    tokio::time::timeout(surya_test_deadlines::WAIT, async {
         loop {
             if check(&rx.borrow()) {
                 return;
@@ -527,7 +527,7 @@ async fn sign_out_invalidates_pending_and_in_flight_oauth_callbacks() {
         "{callback}?code=in-flight&state={second_state}"
     )));
     tokio::time::timeout(
-        zeron_test_deadlines::WAIT,
+        surya_test_deadlines::WAIT,
         edge.state.exchange_started.notified(),
     )
     .await

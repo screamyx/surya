@@ -123,7 +123,7 @@ mod tests {
     fn handle(device_id: &str) -> EngineHandle {
         let (out, _out_rx) = mpsc::channel::<String>(1);
         let (_in_tx, inbound) = mpsc::channel::<String>(1);
-        EngineHandle::for_test(Arc::new(zeron_rpc::RpcClient::new(out, inbound)), device_id)
+        EngineHandle::for_test(Arc::new(surya_rpc::RpcClient::new(out, inbound)), device_id)
     }
 
     /// The regression, stated as a counter pair: a reconnect replaces the

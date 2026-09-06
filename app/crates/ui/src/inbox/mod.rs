@@ -80,7 +80,7 @@ impl Render for InboxPane {
 /// specific to one person or one network).
 pub mod demo {
     use chrono::{TimeZone, Utc};
-    use zeron_proto::{
+    use surya_proto::{
         AgentState, AgentStateRow, AllowRule, Chat, NeedsYouItem, NeedsYouKind, RuleScope,
         child_agent_id,
     };

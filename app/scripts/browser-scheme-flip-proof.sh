@@ -36,7 +36,7 @@ PROOF_OUT="$OUT/run" SURYA_PROOF_APPEARANCE=light SURYA_PROOF_FLIP_SCHEME="$FLIP
 
 # Mean luminance of the first frame dumped after the page loaded, and of
 # the last one: white ~255 before the flip, black ~0 after.
-python3 - "$OUT/run/frames" "$OUT/run/zeron.log" <<'PY' | tee "$OUT/measure.txt"
+python3 - "$OUT/run/frames" "$OUT/run/surya.log" <<'PY' | tee "$OUT/measure.txt"
 import sys, glob, os
 from PIL import Image
 frames = sorted(glob.glob(sys.argv[1] + "/frame-*.png"))

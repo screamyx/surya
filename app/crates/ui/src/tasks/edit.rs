@@ -7,7 +7,7 @@ use gpui::{
     prelude::*, px,
 };
 
-use zeron_proto::{Task, TaskStatus};
+use surya_proto::{Task, TaskStatus};
 
 use super::board::TasksPane;
 use super::model::{COLUMNS, column_label};

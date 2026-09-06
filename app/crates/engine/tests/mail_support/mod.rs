@@ -9,10 +9,10 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use futures::stream::BoxStream;
 
-use zeron_doc::{MessageRole, SessionMessageEntry};
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_harness::{Harness, HarnessError, RunControls};
-use zeron_proto::{
+use surya_doc::{MessageRole, SessionMessageEntry};
+use surya_engine::{EngineCore, HarnessRegistry};
+use surya_harness::{Harness, HarnessError, RunControls};
+use surya_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
     SessionStatus, SteeringMode,
 };
@@ -115,7 +115,7 @@ pub async fn wait_for<F>(mut predicate: F, what: &str)
 where
     F: FnMut() -> bool,
 {
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     while !predicate() {
         assert!(
             tokio::time::Instant::now() < deadline,
@@ -129,7 +129,7 @@ where
 #[macro_export]
 macro_rules! wait_until {
     ($what:expr, $cond:block) => {{
-        let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+        let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
         loop {
             if $cond {
                 break;
@@ -158,7 +158,7 @@ pub fn user_texts(core: &EngineCore, chat: &str) -> Vec<String> {
             e.parts
                 .iter()
                 .filter_map(|p| match p {
-                    zeron_doc::MessagePart::Text { text, .. } => Some(text.clone()),
+                    surya_doc::MessagePart::Text { text, .. } => Some(text.clone()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
