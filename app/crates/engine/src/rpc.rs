@@ -896,6 +896,13 @@ impl EngineRpc {
                             tracing::debug!(chat = %chat_id, error = %err, "deleteSpace interrupt skipped");
                         }
                         doc_host.purge_chat(&chat_id);
+                        // Last, because the interrupt above settles the run
+                        // and its Done re-creates the agent-state node. That
+                        // node is what the rail draws, and nothing here used
+                        // to drop it: the row outlived the chat, with no
+                        // title left to draw and nothing behind it to open
+                        // (E2E-NAV-02). DeleteChat has always done this.
+                        sessions.drop_chat(&chat_id);
                     }
                 });
                 Ok(())

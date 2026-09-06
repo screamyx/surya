@@ -5,6 +5,8 @@
 //! and rows sort needs-you, working, done, idle. Clicking a row emits
 //! [`SelectChat`]; the shell owns routing, not this pane.
 
+use std::collections::HashSet;
+
 use gpui::{Context, Entity, Render, SharedString, Task, Window, div, prelude::*, px};
 use surya_proto::{AgentStateRow, Chat};
 use surya_rpc::methods;
@@ -64,14 +66,40 @@ impl AgentsRail {
         self.chats = chats;
     }
 
+    /// The rows whose chat this client still has.
+    ///
+    /// A removed project takes its chats with it, and a row nobody can open
+    /// is worse than no row: with the chat gone there is no title left, so it
+    /// draws as "Untitled chat" under a heading that says it wants you, and
+    /// clicking it does nothing. The engine now drops these on its side too
+    /// (`deleteSpace` in `engine/src/rpc.rs`); this is the client half, so a
+    /// row cannot outlive its chat whatever the feed says.
+    ///
+    /// `chats` is the chat feed's own mirror, so "missing" means the chat is
+    /// really gone, not that the name is unknown - `agent_sections` still
+    /// falls back to "Untitled chat" for a chat it has no title for.
+    fn live_rows(&self) -> Vec<AgentStateRow> {
+        let known: HashSet<&str> = self.chats.iter().map(|chat| chat.id.as_str()).collect();
+        self.rows
+            .iter()
+            .filter(|row| known.contains(row.chat_id.as_str()))
+            .cloned()
+            .collect()
+    }
+
     pub fn sections(&self) -> Vec<AgentSection> {
-        agent_sections(&self.rows, &self.chats)
+        agent_sections(&self.live_rows(), &self.chats)
     }
 
     /// How many rows want the user, counting descendants once each — the
     /// number a collapsed workspace row shows (decision 15).
+    ///
+    /// Through [`Self::live_rows`] as well: `Stopped` counts as needs-you
+    /// (`AgentState::needs_you`), and a run the `deleteSpace` cascade
+    /// interrupted ends up exactly there, so a ghost row kept the badge red
+    /// as well as the rail.
     pub fn needs_you_count(&self) -> usize {
-        self.rows
+        self.live_rows()
             .iter()
             .filter(|row| row.state.needs_you())
             .count()
@@ -187,5 +215,48 @@ impl Render for AgentsRail {
                 el.child(empty_state(theme, "No agents yet."))
             })
             .children(groups)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use surya_proto::{AgentState, AgentStateRow};
+
+    use super::AgentsRail;
+    use crate::inbox::demo;
+
+    fn row(chat_id: &str) -> AgentStateRow {
+        AgentStateRow {
+            id: chat_id.into(),
+            chat_id: chat_id.into(),
+            parent_id: None,
+            label: None,
+            state: AgentState::Stopped,
+            rolled_up: AgentState::Stopped,
+            needs_you_children: 0,
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    /// E2E-NAV-02: a row whose chat is gone must not reach the rail. Removing
+    /// a project left one behind, drawn as "Untitled chat" under "Waiting for
+    /// you", with nothing to open and no way to dismiss it.
+    #[test]
+    fn a_row_whose_chat_is_gone_does_not_draw() {
+        let rail = AgentsRail::demo(vec![row("chat-removed")], demo::chats());
+        assert!(
+            rail.sections().is_empty(),
+            "a chat the client does not have must not draw: {:?}",
+            rail.sections()
+        );
+        // Stopped counts as needs-you, so the same ghost also kept the
+        // collapsed workspace row's badge red.
+        assert_eq!(rail.needs_you_count(), 0, "and it must not count either");
+    }
+
+    #[test]
+    fn rows_whose_chats_are_present_still_draw() {
+        let rail = AgentsRail::demo(demo::agent_states(), demo::chats());
+        assert!(!rail.sections().is_empty(), "the demo rail still draws");
     }
 }
