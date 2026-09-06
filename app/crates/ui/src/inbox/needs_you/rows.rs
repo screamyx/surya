@@ -104,7 +104,10 @@ impl NeedsYouPane {
                     .text_color(theme.text)
                     .child(SharedString::from(text)),
             )
-            .child(hint_chip(theme, "answer below"))
+            // "open to answer", not "answer below": the sheet is in the chat
+            // this row opens, and the click below is what puts it in front of
+            // the user. On the Needs you page nothing is below the row.
+            .child(hint_chip(theme, "open to answer"))
             // Tapping the row hands the user to the sheet it points at, so
             // the line is a way there and not just a label.
             //

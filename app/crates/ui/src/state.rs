@@ -3786,3 +3786,54 @@ mod tests {
         assert!(s.send_undelivered("c-remote", now));
     }
 }
+
+/// Test-only construction. A watch that survives a reconnect can only be
+/// proved by swapping the engine under a live pane, which needs a handle over
+/// a bare client and a way to put it on the state.
+#[cfg(test)]
+mod test_support {
+    use super::*;
+
+    /// A backend that is nothing but its client.
+    struct TestEngine(Arc<RpcClient>);
+
+    #[async_trait]
+    impl EngineBackend for TestEngine {
+        fn client(&self) -> &RpcClient {
+            &self.0
+        }
+        fn client_arc(&self) -> Arc<RpcClient> {
+            self.0.clone()
+        }
+        fn mode(&self) -> EngineMode {
+            EngineMode::Remote {
+                url: "test".to_string(),
+            }
+        }
+        async fn shutdown(&self) {}
+    }
+
+    impl EngineHandle {
+        /// `device_id` is how a test tells one engine from the next.
+        pub(crate) fn for_test(client: Arc<RpcClient>, device_id: &str) -> Self {
+            Self {
+                inner: Arc::new(TestEngine(client)),
+                engine_info: EngineInfo {
+                    device_id: device_id.to_string(),
+                    workspace_scope: zeron_proto::WorkspaceScope::Local,
+                    build: None,
+                },
+                deferred_state: None,
+                dialed_token: None,
+            }
+        }
+    }
+
+    impl AppState {
+        /// What a reconnect does to the state: a brand-new handle replaces the
+        /// old one.
+        pub(crate) fn set_engine_for_test(&mut self, handle: EngineHandle) {
+            self.engine = Some(handle);
+        }
+    }
+}

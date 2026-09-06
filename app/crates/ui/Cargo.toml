@@ -48,3 +48,6 @@ browser = ["dep:surya-browser"]
 
 [dev-dependencies]
 tempfile.workspace = true
+# The watch tests drive a real pane against a real RpcClient; both need
+# gpui's deterministic executor.
+gpui = { workspace = true, features = ["test-support"] }

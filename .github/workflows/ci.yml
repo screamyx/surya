@@ -54,10 +54,11 @@ env:
   CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
-  # One job, four steps, in the order that fails fastest. The six headless
+  # One job, five steps, in the order that fails fastest. The six headless
   # crates first (no gpui, the useful signal), then the whole-workspace check,
-  # then a2ui's tests (headless, but they pay the gpui build), then the smoke
-  # (one engine over the real websocket, driven by the binaries a user runs).
+  # then ui's tests and a2ui's, then the smoke (one engine over the real
+  # websocket, driven by the binaries a user runs). The gpui build is paid by
+  # the check step; every step after it is incremental on top.
   ci:
     name: ci
     runs-on: [self-hosted, surya-ci]
@@ -86,6 +87,16 @@ jobs:
 
       - name: cargo check (whole workspace)
         run: cargo check --workspace --all-targets
+
+      # crates/ui was the one crate nothing ran the tests of: the headless
+      # step skips it (gpui), and `cargo check` never runs a test - it stops
+      # at rmeta, so this step still codegens and links the ui test binary
+      # itself. It sits here for fail-fast order, not for reuse: a broken
+      # workspace should fail before anything spends time on a test binary.
+      # Measured cost, run 34001992513: 40s of a 6m51s run, for 659 tests
+      # that had never run in CI at all.
+      - name: cargo test -p zeron-ui
+        run: cargo test --jobs 6 -p zeron-ui
 
       - name: cargo test -p surya-a2ui
         run: cargo test --jobs 6 -p surya-a2ui
