@@ -1,9 +1,9 @@
 # Rename runbook: zeron -> surya
 
 Run this on frozen main, after the last feature PR merges.
-It touches 327 files, so nothing rebases across it.
+It touches 329 files, so nothing rebases across it.
 
-Dry-run source for every number below: main `0f4fbe77`, 2026-09-06 18:20, on
+Dry-run source for every number below: main `9a358f40`, 2026-09-06 19:25, on
 a throwaway clone. The counts grow as main grows - a small drift is normal, a
 sudden drop is not. Re-run the dry run and refresh this table whenever main
 has moved much; a runbook that disagrees with the script is worse than none.
@@ -38,14 +38,14 @@ that class of bug has now been found three times in this script.
 
 | Line | Expect | Meaning |
 | --- | --- | --- |
-| `files in scope` | 327 | grows with main; a sudden drop means the scope broke |
-| `files_changed` | 327 | first run |
+| `files in scope` | 329 | grows with main; a sudden drop means the scope broke |
+| `files_changed` | 329 | first run |
 | `paths_moved` | 6 | `apps/zeron`, three `dist/` assets, the ui logo, the theme-import bin |
 | `files_routed` | 8 | env reads sent through the compat alias |
 | `user_set_reads_still_direct` | 1 | `crates/rpc/tests/device_room.rs`, a test |
 | `compat_blocks_added` | 3 | links.rs, lib.rs, daemon.rs |
 | `cargo_update` | `ok` | the lock regenerated |
-| `zeron_hits_before / after` | 3034 / 339 | every remaining hit is listed below |
+| `zeron_hits_before / after` | 3050 / 340 | every remaining hit is listed below |
 | `missed` | 0 | the scope-drift guard found nothing |
 
 Second and third run: `files_changed=0 paths_moved=0 compat_blocks_added=0`,
@@ -58,23 +58,23 @@ and `files in scope` drops to 25 (the files that keep the old name on purpose).
 | `FATAL: expected hits=1 for the data dir adoption pair` | rustfmt reshaped the call, or it moved | fix the rule in `advance_data_dir_migration`, do not skip it |
 | `MISSED=n - files with the old name that no rule covers` | a new directory arrived outside the scope | add it to `in_scope_files`, re-run from a clean tree |
 | second run reports `files_changed` > 0 | a rule is rewriting its own output | find the file with `git diff`, mask or exclude it |
-| `cargo_update=failed` | no cargo, or the lock is conflicted | run `cd app && cargo update -w` by hand |
+| `cargo_update=failed` or `=skipped`, then `STOPPING` | no cargo, or the lock is conflicted | the script prints every counter, then stops with exit 1 and leaves the tree renamed. Run `cd app && cargo update -w`, then run the script again - it passes, because the check reads that run's result |
 
 The script edits in place.
 If anything above fires, `git checkout -- .` and start again - it is
 re-runnable on any clean main, and takes about three seconds.
 
-## The 339 hits it leaves, all deliberate
+## The 340 hits it leaves, all deliberate
 
 Counted the way the script counts: `rg` over `app deploy docs .github`.
-The eight rows sum to exactly 339.
+The eight rows sum to exactly 340 (`docs/` gained one as main moved).
 
 | Hits | Where | Why |
 | --- | --- | --- |
 | 250 | `apps/ios`, `edge/`, `apps/landing`, `apps/www-redirect` | out of scope, rows 13-15 |
 | 40 | `theme/src/{lib,builtins,vscode}.rs`, `ui/src/{theme,settings}.rs` | `zeron-dark` / `zeron-light` ids, family and display names are user state in `ui-settings.json` (row 19), down to the saved default and its test |
 | 15 | `crates/engine/src/data_dir.rs` | the module that adopts the old dir, excluded from the rename |
-| 14 | `docs/` | the rename plan, notes and this runbook, which have to name both words |
+| 15 | `docs/` | the rename plan, notes and this runbook, which have to name both words |
 | 7 | `ui/src/{markdown/parser,transcript}.rs`, `harness/{src/adapter_install,tests/managed_install*}.rs` | `zeronsh/comet` provenance links (rows 16-17) |
 | 6 | `app/docs/`, `app/README*.md` | same |
 | 4 | `apps/surya/src/{main,update_cli}.rs` | `zeron.sh` and `edge.zeron.sh`, the domain until surya has one (row 10) |
