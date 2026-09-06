@@ -7,9 +7,10 @@
 //! last answer per browser, maps it onto gpui's [`CursorStyle`], and hands
 //! the active tab's value to the surface, which applies it to the page
 //! hitbox alone (surface.rs). gpui applies a hitbox cursor only while that
-//! hitbox is hovered, so the pointer goes back to the shell's own the
-//! moment it leaves the page area; and a tab switch reads the new browser's
-//! value, arrow until its page has said otherwise.
+//! hitbox is hovered (gpui window.rs, `cursor_style`), so the pointer goes
+//! back to the shell's own the moment it leaves the page area, with no
+//! bookkeeping here; and a tab switch reads the new browser's value, arrow
+//! until its page has said otherwise.
 //!
 //! What has no gpui counterpart maps to the nearest shape, or the arrow:
 //! custom bitmap cursors, wait, help, zoom, and "none" (gpui cannot hide
@@ -18,7 +19,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use cef::sys::cef_cursor_type_t as Ct;
 use cef::CursorType;
@@ -28,6 +29,12 @@ use gpui::CursorStyle;
 static CURSORS: Mutex<Option<HashMap<i32, CursorStyle>>> = Mutex::new(None);
 /// Bumped on every change, so the idle pump knows to repaint (pump.rs).
 static SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// The map, poisoned or not: a panic elsewhere while it was held leaves a
+/// plain `HashMap` behind, and a pointer stuck on one shape is worse.
+fn cursors() -> MutexGuard<'static, Option<HashMap<i32, CursorStyle>>> {
+    CURSORS.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// gpui's shape for a CEF cursor type. `custom` is a bitmap cursor the
 /// page supplied; gpui has no way to show one, so it gets the arrow.
@@ -57,6 +64,7 @@ pub(crate) fn map(t: CursorType, custom: bool) -> CursorStyle {
         Ct::CT_GRAB
         | Ct::CT_MIDDLEPANNING
         | Ct::CT_MIDDLE_PANNING_VERTICAL
+        | Ct::CT_MIDDLE_PANNING_HORIZONTAL
         | Ct::CT_EASTPANNING
         | Ct::CT_NORTHPANNING
         | Ct::CT_NORTHEASTPANNING
@@ -76,13 +84,6 @@ pub(crate) fn map(t: CursorType, custom: bool) -> CursorStyle {
     }
 }
 
-/// The pointer the page area should show: the active browser's last
-/// request while the pointer is inside it, the arrow otherwise or until
-/// that browser has asked for anything.
-pub(crate) fn resolve(inside: bool, stored: Option<CursorStyle>) -> CursorStyle {
-    if inside { stored.unwrap_or(CursorStyle::Arrow) } else { CursorStyle::Arrow }
-}
-
 /// `browser` asked for `t`. CEF's UI thread, from the display handler.
 /// True when that is news: a page repeats its cursor on every move.
 pub(crate) fn changed(browser: i32, t: CursorType, custom: bool) -> bool {
@@ -90,10 +91,7 @@ pub(crate) fn changed(browser: i32, t: CursorType, custom: bool) -> bool {
         return false;
     }
     let style = map(t, custom);
-    let same = CURSORS
-        .lock()
-        .map(|mut g| g.get_or_insert_with(HashMap::new).insert(browser, style) == Some(style))
-        .unwrap_or(true);
+    let same = cursors().get_or_insert_with(HashMap::new).insert(browser, style) == Some(style);
     if same {
         return false;
     }
@@ -106,22 +104,22 @@ pub(crate) fn changed(browser: i32, t: CursorType, custom: bool) -> bool {
 
 /// The browser closed; its cursor goes with it.
 pub(crate) fn forget(browser: i32) {
-    if let Ok(mut g) = CURSORS.lock()
-        && let Some(map) = g.as_mut()
-    {
+    if let Some(map) = cursors().as_mut() {
         map.remove(&browser);
     }
 }
 
 /// What `browser` last asked for, if anything.
 pub(crate) fn of(browser: i32) -> Option<CursorStyle> {
-    CURSORS.lock().ok()?.as_ref()?.get(&browser).copied()
+    cursors().as_ref()?.get(&browser).copied()
 }
 
-/// The active tab's pointer, for the page hitbox. Arrow with no tab, and
-/// for a tab whose page has not asked for anything yet.
+/// The active tab's pointer, for the page hitbox: what its page last
+/// asked for, the arrow with no tab or before the page has asked for
+/// anything. Where it applies is the hitbox's business (surface.rs): off
+/// the page area gpui shows the shell's own pointer.
 pub fn active() -> CursorStyle {
-    resolve(crate::events::inside(), of(crate::tabs::active_browser()))
+    of(crate::tabs::active_browser()).unwrap_or(CursorStyle::Arrow)
 }
 
 /// Changes so far, for the idle pump's "anything new?" check.
@@ -170,21 +168,26 @@ mod tests {
         forget(902);
         changed(901, CursorType::HAND, false);
         assert_eq!(of(901), Some(CursorStyle::PointingHand));
-        // The other tab's page has not asked for anything: arrow.
-        assert_eq!(resolve(true, of(902)), CursorStyle::Arrow);
+        // The other tab's page has not asked for anything: arrow, which is
+        // what a switch to it shows.
+        assert_eq!(of(902).unwrap_or(CursorStyle::Arrow), CursorStyle::Arrow);
         changed(902, CursorType::IBEAM, false);
-        assert_eq!(resolve(true, of(902)), CursorStyle::IBeam);
-        assert_eq!(resolve(true, of(901)), CursorStyle::PointingHand);
+        assert_eq!(of(902), Some(CursorStyle::IBeam));
+        assert_eq!(of(901), Some(CursorStyle::PointingHand));
+        // Closed: gone, so a reused id starts from the arrow again.
         forget(901);
         assert_eq!(of(901), None);
         forget(902);
     }
 
     #[test]
-    fn leaving_the_page_area_is_the_arrow() {
-        assert_eq!(resolve(false, Some(CursorStyle::PointingHand)), CursorStyle::Arrow);
-        assert_eq!(resolve(false, None), CursorStyle::Arrow);
-        assert_eq!(resolve(true, Some(CursorStyle::PointingHand)), CursorStyle::PointingHand);
+    fn a_closed_browser_leaves_no_cursor_behind() {
+        forget(904);
+        changed(904, CursorType::WESTRESIZE, false);
+        assert_eq!(of(904), Some(CursorStyle::ResizeLeft));
+        forget(904);
+        assert_eq!(of(904), None);
+        assert_eq!(map(CursorType::MIDDLE_PANNING_HORIZONTAL, false), CursorStyle::OpenHand);
     }
 
     #[test]

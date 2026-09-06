@@ -28,6 +28,7 @@ pub mod emulation;
 mod clock;
 mod display;
 mod events;
+mod find;
 pub mod input;
 mod page;
 mod perf;
@@ -262,13 +263,13 @@ pub fn find(text: &str, forward: bool, find_next: bool) {
         stop_find(true);
         return;
     }
-    client::find(text, forward, find_next);
+    find::find(text, forward, find_next);
     pump::schedule_pump(0);
 }
 
 /// End the search; `clear_selection` also drops the highlight.
 pub fn stop_find(clear_selection: bool) {
-    client::stop_find(clear_selection);
+    find::stop_find(clear_selection);
     pump::schedule_pump(0);
 }
 
