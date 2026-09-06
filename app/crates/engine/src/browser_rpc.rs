@@ -169,14 +169,19 @@ impl BrowserRpc {
         }
     }
 
-    /// The app is here: it takes over as the one pane.
+    /// The app is here: it takes over as the one pane. A pane still on the
+    /// old watch is told (`{displaced}` is its stream's last item) so it
+    /// stops instead of taking the engine back two seconds later, which is
+    /// how two apps on one engine displaced each other 1690 times in an
+    /// hour (ENGINE-01).
     fn watch(&self) -> mpsc::Receiver<Value> {
         let (tx, rx) = mpsc::channel(WATCH_QUEUE);
-        if let Ok(mut s) = self.state.lock() {
-            let replaced = s.watcher.replace(tx).is_some();
-            if replaced {
-                tracing::info!("browser broker: a new app pane replaced the previous one");
-            }
+        if let Ok(mut s) = self.state.lock()
+            && let Some(old) = s.watcher.replace(tx)
+            && !old.is_closed()
+        {
+            let _ = old.try_send(json!({ "displaced": true }));
+            tracing::info!("browser broker: a new app pane replaced the previous one");
         }
         rx
     }
@@ -281,8 +286,11 @@ mod tests {
     #[tokio::test]
     async fn a_new_watcher_replaces_the_old_and_a_dropped_one_detaches() {
         let rpc = broker();
-        let old = rpc.watch();
+        let mut old = rpc.watch();
         let _new = rpc.watch();
+        // The displaced pane hears why, then its stream ends: no retry.
+        assert_eq!(old.recv().await.unwrap(), json!({ "displaced": true }));
+        assert!(old.recv().await.is_none());
         drop(old);
         assert!(rpc.attached());
         drop(_new);
