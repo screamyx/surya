@@ -92,7 +92,12 @@ impl BrowserPane {
         // "PaletteSearch" binds the text-editing keys only, so enter, escape
         // and shift-enter stay unbound and reach the pane's own key handler.
         let url = cx.new(|cx| {
-            ComposerInput::with_context("Search or type an address", "PaletteSearch", cx)
+            let mut input =
+                ComposerInput::with_context("Search or type an address", "PaletteSearch", cx);
+            // A click into the bar takes the whole address, so typing
+            // replaces it (E2E-BROWSER-01); a second click places the caret.
+            input.set_select_all_on_focus(true);
+            input
         });
         let find_input =
             cx.new(|cx| ComposerInput::with_context("Find in page", "PaletteSearch", cx));
