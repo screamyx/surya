@@ -36,12 +36,11 @@ fn cursors() -> MutexGuard<'static, Option<HashMap<i32, CursorStyle>>> {
     CURSORS.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// gpui's shape for a CEF cursor type. `custom` is a bitmap cursor the
-/// page supplied; gpui has no way to show one, so it gets the arrow.
-pub(crate) fn map(t: CursorType, custom: bool) -> CursorStyle {
-    if custom {
-        return CursorStyle::Arrow;
-    }
+/// gpui's shape for a CEF cursor type. A custom bitmap cursor (the
+/// `CT_CUSTOM` type; CEF hands the bitmap in the cursor info that comes
+/// with every callback, meaningful only then) gets the arrow: gpui has no
+/// way to show one.
+pub(crate) fn map(t: CursorType) -> CursorStyle {
     match *t.as_ref() {
         Ct::CT_HAND => CursorStyle::PointingHand,
         Ct::CT_IBEAM => CursorStyle::IBeam,
@@ -78,24 +77,26 @@ pub(crate) fn map(t: CursorType, custom: bool) -> CursorStyle {
         Ct::CT_ALIAS | Ct::CT_DND_LINK => CursorStyle::DragLink,
         Ct::CT_COPY | Ct::CT_DND_COPY => CursorStyle::DragCopy,
         Ct::CT_CONTEXTMENU => CursorStyle::ContextualMenu,
-        // Pointer, wait, progress, help, zoom, none, custom, dnd-none, and
-        // anything a newer CEF adds.
+        Ct::CT_CUSTOM => CursorStyle::Arrow,
+        // Pointer, wait, progress, help, zoom, none, dnd-none, and anything
+        // a newer CEF adds.
         _ => CursorStyle::Arrow,
     }
 }
 
 /// `browser` asked for `t`. CEF's UI thread, from the display handler.
 /// True when that is news: a page repeats its cursor on every move.
-pub(crate) fn changed(browser: i32, t: CursorType, custom: bool) -> bool {
+pub(crate) fn changed(browser: i32, t: CursorType) -> bool {
     if browser == 0 {
         return false;
     }
-    let style = map(t, custom);
+    let style = map(t);
     let same = cursors().get_or_insert_with(HashMap::new).insert(browser, style) == Some(style);
     if same {
         return false;
     }
-    SEQ.fetch_add(1, Ordering::Release);
+    let n = SEQ.fetch_add(1, Ordering::Release) + 1;
+    println!("browser: cursor browser={browser} {style:?} changes={n}");
     // gpui re-reads the cursor only from a fresh paint; wake the pump so
     // the surface paints and asks for the new one.
     crate::pump::schedule_pump(0);
@@ -133,45 +134,44 @@ mod tests {
 
     #[test]
     fn the_chrome_shapes_map_one_to_one() {
-        assert_eq!(map(CursorType::POINTER, false), CursorStyle::Arrow);
-        assert_eq!(map(CursorType::HAND, false), CursorStyle::PointingHand);
-        assert_eq!(map(CursorType::IBEAM, false), CursorStyle::IBeam);
-        assert_eq!(map(CursorType::CROSS, false), CursorStyle::Crosshair);
-        assert_eq!(map(CursorType::WESTRESIZE, false), CursorStyle::ResizeLeft);
-        assert_eq!(map(CursorType::NORTHSOUTHRESIZE, false), CursorStyle::ResizeUpDown);
-        assert_eq!(map(CursorType::NORTHWESTSOUTHEASTRESIZE, false), CursorStyle::ResizeUpLeftDownRight);
-        assert_eq!(map(CursorType::NORTHEASTRESIZE, false), CursorStyle::ResizeUpRightDownLeft);
-        assert_eq!(map(CursorType::COLUMNRESIZE, false), CursorStyle::ResizeColumn);
-        assert_eq!(map(CursorType::GRAB, false), CursorStyle::OpenHand);
-        assert_eq!(map(CursorType::GRABBING, false), CursorStyle::ClosedHand);
-        assert_eq!(map(CursorType::NOTALLOWED, false), CursorStyle::OperationNotAllowed);
-        assert_eq!(map(CursorType::ALIAS, false), CursorStyle::DragLink);
-        assert_eq!(map(CursorType::COPY, false), CursorStyle::DragCopy);
-        assert_eq!(map(CursorType::CONTEXTMENU, false), CursorStyle::ContextualMenu);
+        assert_eq!(map(CursorType::POINTER), CursorStyle::Arrow);
+        assert_eq!(map(CursorType::HAND), CursorStyle::PointingHand);
+        assert_eq!(map(CursorType::IBEAM), CursorStyle::IBeam);
+        assert_eq!(map(CursorType::CROSS), CursorStyle::Crosshair);
+        assert_eq!(map(CursorType::WESTRESIZE), CursorStyle::ResizeLeft);
+        assert_eq!(map(CursorType::NORTHSOUTHRESIZE), CursorStyle::ResizeUpDown);
+        assert_eq!(map(CursorType::NORTHWESTSOUTHEASTRESIZE), CursorStyle::ResizeUpLeftDownRight);
+        assert_eq!(map(CursorType::NORTHEASTRESIZE), CursorStyle::ResizeUpRightDownLeft);
+        assert_eq!(map(CursorType::COLUMNRESIZE), CursorStyle::ResizeColumn);
+        assert_eq!(map(CursorType::GRAB), CursorStyle::OpenHand);
+        assert_eq!(map(CursorType::GRABBING), CursorStyle::ClosedHand);
+        assert_eq!(map(CursorType::NOTALLOWED), CursorStyle::OperationNotAllowed);
+        assert_eq!(map(CursorType::ALIAS), CursorStyle::DragLink);
+        assert_eq!(map(CursorType::COPY), CursorStyle::DragCopy);
+        assert_eq!(map(CursorType::CONTEXTMENU), CursorStyle::ContextualMenu);
     }
 
     #[test]
     fn what_gpui_cannot_draw_is_the_arrow() {
-        assert_eq!(map(CursorType::WAIT, false), CursorStyle::Arrow);
-        assert_eq!(map(CursorType::PROGRESS, false), CursorStyle::Arrow);
-        assert_eq!(map(CursorType::HELP, false), CursorStyle::Arrow);
-        assert_eq!(map(CursorType::ZOOMIN, false), CursorStyle::Arrow);
-        assert_eq!(map(CursorType::NONE, false), CursorStyle::Arrow);
-        assert_eq!(map(CursorType::CUSTOM, false), CursorStyle::Arrow);
-        // A bitmap cursor is the arrow whatever type CEF sends with it.
-        assert_eq!(map(CursorType::HAND, true), CursorStyle::Arrow);
+        assert_eq!(map(CursorType::WAIT), CursorStyle::Arrow);
+        assert_eq!(map(CursorType::PROGRESS), CursorStyle::Arrow);
+        assert_eq!(map(CursorType::HELP), CursorStyle::Arrow);
+        assert_eq!(map(CursorType::ZOOMIN), CursorStyle::Arrow);
+        assert_eq!(map(CursorType::NONE), CursorStyle::Arrow);
+        // A bitmap cursor: gpui cannot show one.
+        assert_eq!(map(CursorType::CUSTOM), CursorStyle::Arrow);
     }
 
     #[test]
     fn each_browser_keeps_its_own_and_a_switch_reads_the_other() {
         forget(901);
         forget(902);
-        changed(901, CursorType::HAND, false);
+        changed(901, CursorType::HAND);
         assert_eq!(of(901), Some(CursorStyle::PointingHand));
         // The other tab's page has not asked for anything: arrow, which is
         // what a switch to it shows.
         assert_eq!(of(902).unwrap_or(CursorStyle::Arrow), CursorStyle::Arrow);
-        changed(902, CursorType::IBEAM, false);
+        changed(902, CursorType::IBEAM);
         assert_eq!(of(902), Some(CursorStyle::IBeam));
         assert_eq!(of(901), Some(CursorStyle::PointingHand));
         // Closed: gone, so a reused id starts from the arrow again.
@@ -183,21 +183,21 @@ mod tests {
     #[test]
     fn a_closed_browser_leaves_no_cursor_behind() {
         forget(904);
-        changed(904, CursorType::WESTRESIZE, false);
+        changed(904, CursorType::WESTRESIZE);
         assert_eq!(of(904), Some(CursorStyle::ResizeLeft));
         forget(904);
         assert_eq!(of(904), None);
-        assert_eq!(map(CursorType::MIDDLE_PANNING_HORIZONTAL, false), CursorStyle::OpenHand);
+        assert_eq!(map(CursorType::MIDDLE_PANNING_HORIZONTAL), CursorStyle::OpenHand);
     }
 
     #[test]
     fn a_repeat_does_not_count_as_a_change() {
         forget(903);
-        assert!(changed(903, CursorType::IBEAM, false));
-        assert!(!changed(903, CursorType::IBEAM, false));
-        assert!(changed(903, CursorType::HAND, false));
+        assert!(changed(903, CursorType::IBEAM));
+        assert!(!changed(903, CursorType::IBEAM));
+        assert!(changed(903, CursorType::HAND));
         // No browser, nothing to remember.
-        assert!(!changed(0, CursorType::HAND, false));
+        assert!(!changed(0, CursorType::HAND));
         forget(903);
     }
 }

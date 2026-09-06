@@ -359,15 +359,16 @@ wrap_display_handler! {
 
         /// The page wants another pointer shape; cursor.rs keeps it and the
         /// surface applies it. Handled here: offscreen, CEF has no window
-        /// of its own to set it on.
+        /// of its own to set it on. The cursor info comes with every call
+        /// (it is a bitmap only for `CT_CUSTOM`), so the type alone decides.
         fn on_cursor_change(
             &self,
             browser: Option<&mut Browser>,
             _cursor: CursorHandle,
             type_: CursorType,
-            custom_cursor_info: Option<&CursorInfo>,
+            _custom_cursor_info: Option<&CursorInfo>,
         ) -> ::std::os::raw::c_int {
-            crate::cursor::changed(id_of(browser), type_, custom_cursor_info.is_some());
+            crate::cursor::changed(id_of(browser), type_);
             1
         }
     }
