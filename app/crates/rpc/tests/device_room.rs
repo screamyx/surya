@@ -473,7 +473,10 @@ async fn sign_out_closes_cached_peer_links() {
             {
                 return;
             }
-            tokio::task::yield_now().await;
+            // Pace the retry. On a real regression this loop now runs for
+            // the full WAIT, and a bare yield_now would spend that minute
+            // hammering the runner with RPC calls.
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
     .await
