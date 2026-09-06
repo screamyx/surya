@@ -46,6 +46,34 @@ cd crates/browser && cargo test               # the browser crate is its own wor
 - Only the seven crates above run their tests in CI. Every other crate, `zeron-ui` included, only gets `cargo check`. Run their tests locally when you touch them.
 - CI has no `cargo fmt --check` because the upstream comet tree is not fmt-clean. Do not reformat files you did not otherwise change.
 
+## UI checks on Linux
+
+`scripts/tasks-pane-rig.sh` drives the Tasks pane with real clicks and real
+keystrokes under Xvfb and prints what the engine saw:
+
+```
+caret_and_typing=1   clicked the quick-add box, typed a title, it landed
+enter_created=1      pressed enter, the task reached the engine
+key_nav=1            clicked a card, pressed n, the New task sheet opened
+```
+
+Frames land beside the counters, one timestamped folder per run, nothing
+overwritten. `--hold` leaves the stack up and writes the display, port and pids
+to `rig.env` so you can drive it by hand with `xdotool`.
+
+This does not replace a dtry frame under decision 28. It is smoke: it catches a
+broken journey before anyone spends a slot on the Windows box, and it works
+when that box is busy.
+
+Needs `Xvfb`, `xdotool` and `ffmpeg`. Three things cost a session to learn:
+
+- Xvfb needs `+extension XTEST`. Without it `xdotool mousemove` is silently a
+  no-op and `getmouselocation` keeps reporting screen centre.
+- gpui logs `Found no xinput mouse pointers` on Xvfb. It is harmless; mouse and
+  keyboard both work.
+- The window does not paint until an event reaches it, so a screenshot taken
+  straight after startup is black. One pointer move fixes it.
+
 ## Rules
 
 - Every file 500 lines max (decision 13). Split before you cross it.
