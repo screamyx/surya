@@ -58,6 +58,7 @@ pub mod theme;
 pub mod theme_library;
 pub mod transcript;
 pub mod typography;
+pub mod yolo;
 
 use std::path::PathBuf;
 

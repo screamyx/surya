@@ -44,6 +44,7 @@ pub mod terminals;
 pub mod titles;
 pub mod uploads;
 pub mod workspace_host;
+pub mod yolo;
 
 pub use agent_accounts::{AgentAccounts, AgentAccountsConfig};
 pub use auth::{Auth, AuthConfig, AuthState, AuthUser, OrgMembership};
@@ -276,6 +277,10 @@ impl EngineCore {
         doc_host.set_workspace(workspace.clone());
         doc_host.set_sessions(sessions.clone());
         sessions.set_doc_host(doc_host.clone());
+        // Yolo mode follows the chat rows: another device's flip, and this
+        // engine's own state after a restart, arrive here rather than through
+        // an RPC nobody sent (crate::yolo).
+        crate::yolo::spawn_row_watch(sessions.clone(), workspace.watch_chats());
         match sessions.recover_stale() {
             Ok(0) => {}
             Ok(recovered) => tracing::info!(recovered, "stale sessions recovered on boot"),

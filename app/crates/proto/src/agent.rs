@@ -454,6 +454,13 @@ pub enum AgentEvent {
         /// something the user should have to infer.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
+        /// The chat's yolo mode answered this one, not a rule and not a
+        /// person. Its own field rather than a `rule` name: yolo is not in
+        /// the always-allow table, and naming a rule that does not exist
+        /// would both mislead the transcript and light the card's by-rule
+        /// slot. Additive + serde-defaulted for wire compat.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        yolo: bool,
     },
     #[serde(rename_all = "camelCase")]
     Steered {

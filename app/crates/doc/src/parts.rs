@@ -577,6 +577,7 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
             decision,
             rule,
             reason,
+            yolo,
         } => {
             // Mark the ask, if the user was asked. An auto-allowed tool
             // resolves without ever having been asked, so there is nothing
@@ -602,8 +603,9 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
             }
             // The chip above states the outcome, so a second line about the
             // same answer would say it twice. What is left for a notice is
-            // the case with no chip at all: a rule that allowed the tool
-            // without asking, which the user should still see happen.
+            // the case with no chip at all: a rule, or the chat's yolo mode,
+            // that allowed the tool without asking, which the user should
+            // still see happen.
             let text = if asked {
                 None
             } else {
@@ -616,6 +618,13 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                 }
                 (surya_proto::PermissionDecision::Deny, _, None) => {
                     Some("not allowed".to_string())
+                }
+                // Yolo answered it. The line names yolo rather than staying
+                // silent: the whole point of the mode is that tools run
+                // unasked, and a transcript that hides which ones did would
+                // be the one place the user cannot check what happened.
+                (surya_proto::PermissionDecision::Allow, None, _) if *yolo => {
+                    Some("allowed by yolo mode".to_string())
                 }
                 (surya_proto::PermissionDecision::Allow, None, _) => None,
                 }
@@ -879,6 +888,7 @@ mod tests {
                 decision: PermissionDecision::Deny,
                 rule: None,
                 reason: Some("you denied it".into()),
+                yolo: false,
             },
         );
         // One part still, now answered: the chip states the outcome, so the
@@ -911,6 +921,7 @@ mod tests {
                 decision: PermissionDecision::Deny,
                 rule: None,
                 reason: None,
+                yolo: false,
             },
         );
         assert!(matches!(
@@ -930,6 +941,7 @@ mod tests {
                 decision: PermissionDecision::Allow,
                 rule: Some("Bash php artisan migrate* in project-jag".into()),
                 reason: None,
+                yolo: false,
             },
         );
         assert!(matches!(
@@ -948,10 +960,35 @@ mod tests {
                 decision: PermissionDecision::Allow,
                 rule: None,
                 reason: None,
+                yolo: false,
             },
         );
         assert!(plain.is_empty());
     }
+
+    #[test]
+    fn yolo_says_so_where_a_plain_allow_says_nothing() {
+        use surya_proto::PermissionDecision;
+        let mut parts = Vec::new();
+        // Nobody was asked and no rule exists: the transcript is the only
+        // place the user can see that a tool ran unasked, so it says which
+        // mode ran it.
+        fold_event_into_parts(
+            &mut parts,
+            &AgentEvent::PermissionResolved {
+                request_id: "perm-5".into(),
+                decision: PermissionDecision::Allow,
+                rule: None,
+                reason: None,
+                yolo: true,
+            },
+        );
+        assert!(matches!(
+            &parts[0],
+            MessagePart::Notice { text, .. } if text == "allowed by yolo mode"
+        ));
+    }
+
     use super::*;
 
     /// A Card event appends a card part, breaks the text block like a tool

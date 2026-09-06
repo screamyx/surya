@@ -520,6 +520,7 @@ async fn chat_config_selects_the_run_harness() {
                 reasoning: None,
                 model_options: Default::default(),
                 sandbox: SandboxLevel::WorkspaceWrite,
+                auto_approve: false,
             }),
             None,
         )

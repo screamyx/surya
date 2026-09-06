@@ -4647,6 +4647,10 @@ impl Shell {
     /// floating titlebar - the needs-you list does. Keeping the padding then
     /// spends 44 px of the feed on nothing and crowds the first message.
     fn render_page_title(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
+        // Yolo mode is stated on the page, not only inside the composer: a
+        // chat that runs tools unasked should say so where the user reads
+        // which conversation they are in (crate::yolo).
+        let yolo = self.state.read(cx).yolo_header_note(&self.active_chat);
         let (title, sub) = {
             let state = self.state.read(cx);
             // Keyed off `active_chat`, like `current_space`, so title and
@@ -4683,12 +4687,25 @@ impl Shell {
                     .truncate()
                     .child(SharedString::from(title)),
             )
-            .when(!sub.is_empty(), |d| {
+            .when(!sub.is_empty() || yolo.text().is_some(), |d| {
                 d.child(
                     div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
                         .text_size(crate::typography::ui_rems(12.0))
                         .text_color(theme.text_muted)
-                        .child(SharedString::from(sub)),
+                        .when(!sub.is_empty(), |d| {
+                            d.child(div().child(SharedString::from(sub)))
+                        })
+                        .when_some(yolo.text(), |d, text| {
+                            d.child(
+                                div()
+                                    .text_color(theme.warning)
+                                    .child(SharedString::from(text)),
+                            )
+                        }),
                 )
             })
             .into_any_element()

@@ -11,6 +11,7 @@
 //! neighbour is the always-allow table in [`crate::rules`].
 
 mod derive;
+mod permissions;
 
 #[cfg(test)]
 mod tests;
@@ -23,11 +24,11 @@ use tokio::sync::{oneshot, watch};
 
 use surya_proto::{
     AgentEvent, AgentStateRow, AllowRule, DoneStatus, NeedsYouItem, PermissionDecision,
-    PermissionRequest, RememberRule, SessionStatus, UserInputQuestion, child_agent_id,
+    PermissionRequest, SessionStatus, UserInputQuestion, child_agent_id,
 };
 
-use crate::EngineError;
 use crate::rules::AllowRules;
+use crate::yolo::Yolo;
 
 /// What a caller must do after opening a permission request.
 #[derive(Debug)]
@@ -35,6 +36,9 @@ pub enum PermissionOpen {
     /// A rule answered before the user saw it. The caller allows the tool and
     /// writes `rule.transcript_line()` into the transcript.
     AutoAllowed(Box<AllowRule>),
+    /// The chat's yolo mode answered it. Same outcome as a rule, different
+    /// record: nothing was remembered, and the transcript says yolo.
+    Yolo,
     /// Parked in the inbox. The caller does nothing; the resolver fires when
     /// the user answers.
     Parked,
@@ -108,6 +112,7 @@ pub(super) struct Node {
 
 pub(super) struct Inner {
     rules: AllowRules,
+    yolo: Yolo,
     nodes: Mutex<HashMap<String, Node>>,
     permissions: Mutex<HashMap<String, PendingPermission>>,
     questions: Mutex<HashMap<String, PendingQuestions>>,
@@ -133,6 +138,7 @@ impl AgentStates {
         Self {
             inner: Arc::new(Inner {
                 rules,
+                yolo: Yolo::new(),
                 nodes: Mutex::new(HashMap::new()),
                 permissions: Mutex::new(HashMap::new()),
                 questions: Mutex::new(HashMap::new()),
@@ -145,6 +151,14 @@ impl AgentStates {
 
     pub fn rules(&self) -> &AllowRules {
         &self.inner.rules
+    }
+
+    /// The live yolo set (see [`crate::yolo`]). Flipping it is
+    /// [`crate::sessions::SessionsEngine::set_auto_approve`]'s job: a flip
+    /// has to answer what is already parked, and only the sessions engine can
+    /// reach the chat's event stream to say so.
+    pub fn yolo(&self) -> &Yolo {
+        &self.inner.yolo
     }
 
     /// Every agent row, worst state first. Re-sent on every change.
@@ -168,89 +182,6 @@ impl AgentStates {
 
     pub fn counters(&self) -> StateCounters {
         *lock(&self.inner.counters)
-    }
-
-    // ── permissions ────────────────────────────────────────────────────────
-
-    /// Gate one permission request. Either a rule answers it now, or it is
-    /// parked in the inbox until [`Self::resolve_permission`].
-    pub fn open_permission(
-        &self,
-        chat_id: &str,
-        agent_id: &str,
-        cwd: &str,
-        request: PermissionRequest,
-        responder: oneshot::Sender<PermissionDecision>,
-    ) -> PermissionOpen {
-        lock(&self.inner.counters).permissions_asked += 1;
-        if let Some(rule) = self.inner.rules.matching(&request, cwd) {
-            lock(&self.inner.counters).permissions_auto_allowed += 1;
-            let _ = responder.send(PermissionDecision::Allow);
-            return PermissionOpen::AutoAllowed(Box::new(rule));
-        }
-        lock(&self.inner.permissions).insert(
-            request.request_id.clone(),
-            PendingPermission {
-                agent_id: agent_id.to_string(),
-                chat_id: chat_id.to_string(),
-                cwd: cwd.to_string(),
-                request,
-                responder,
-                created_at: Utc::now(),
-            },
-        );
-        self.touch(agent_id, chat_id);
-        self.recompute();
-        PermissionOpen::Parked
-    }
-
-    /// Answer a parked permission, optionally turning the answer into a rule.
-    pub fn resolve_permission(
-        &self,
-        request_id: &str,
-        decision: PermissionDecision,
-        remember: Option<&RememberRule>,
-    ) -> Result<PermissionResolution, EngineError> {
-        // Build the rule BEFORE taking the request out of the inbox. A
-        // refused rule must leave the card exactly where it was: the user
-        // has not answered yet, and dropping the request here would drop its
-        // responder, which the gate reads as Deny — a decision nobody made.
-        let created_rule = {
-            let peek = lock(&self.inner.permissions);
-            let pending = peek
-                .get(request_id)
-                .ok_or_else(|| EngineError::Other(format!("no pending permission {request_id}")))?;
-            // The rule is created only for an Allow: "always allow" is the
-            // only shape decision 20 gives the card, and a remembered Deny
-            // would be a block-list nobody asked for.
-            match (remember, decision) {
-                (Some(remember), PermissionDecision::Allow) => {
-                    let rule = AllowRules::from_remember(remember, &pending.request, &pending.cwd)
-                        .map_err(|err| EngineError::Other(err.to_string()))?;
-                    drop(peek);
-                    Some(
-                        self.inner
-                            .rules
-                            .add(rule)
-                            .map_err(|err| EngineError::Other(err.to_string()))?,
-                    )
-                }
-                _ => None,
-            }
-        };
-        let pending = lock(&self.inner.permissions)
-            .remove(request_id)
-            .ok_or_else(|| EngineError::Other(format!("no pending permission {request_id}")))?;
-        lock(&self.inner.counters).permissions_answered += 1;
-        let _ = pending.responder.send(decision);
-        self.recompute();
-        Ok(PermissionResolution {
-            chat_id: pending.chat_id,
-            agent_id: pending.agent_id,
-            request: pending.request,
-            decision,
-            created_rule,
-        })
     }
 
     // ── questions ──────────────────────────────────────────────────────────
