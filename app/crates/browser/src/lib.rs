@@ -22,6 +22,7 @@ pub mod agent;
 mod cef_app;
 mod cef_thread;
 mod client;
+mod cursor;
 pub mod devtools;
 pub mod emulation;
 mod clock;
@@ -39,6 +40,7 @@ mod surface;
 pub mod tabs;
 mod zero_copy;
 
+pub use cursor::active as cursor;
 pub use events::counters as input_counters;
 pub use page::{navigate_to, FindState, Page};
 pub use tabs::{active_tab, page, set_zoom, tab_activate, tab_close, tab_open, tabs, zoom, TabId, TabInfo};

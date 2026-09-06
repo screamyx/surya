@@ -169,6 +169,11 @@ pub fn mouse_up(e: &MouseUpEvent) {
     }
 }
 
+/// Whether the last move left the pointer inside the page area.
+pub(crate) fn inside() -> bool {
+    INSIDE.load(Ordering::Acquire)
+}
+
 /// A pointer move. Delivered while inside the surface or while a button is
 /// held (a drag that leaves the pane keeps selecting); one move with
 /// `mouse_leave` set when the pointer leaves.

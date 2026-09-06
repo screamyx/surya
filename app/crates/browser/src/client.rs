@@ -254,6 +254,7 @@ wrap_life_span_handler! {
             if removed {
                 CLOSED.fetch_add(1, Ordering::Relaxed);
                 crate::render::forget(id);
+                crate::cursor::forget(id);
                 crate::tabs::detach(id);
             }
             crate::devtools::on_before_close(id);
@@ -347,6 +348,20 @@ wrap_display_handler! {
         fn on_title_change(&self, browser: Option<&mut Browser>, title: Option<&CefString>) {
             let title = title.map(|t| t.to_string()).unwrap_or_default();
             update_by_browser(id_of(browser), |p| p.title = title);
+        }
+
+        /// The page wants another pointer shape; cursor.rs keeps it and the
+        /// surface applies it. Handled here: offscreen, CEF has no window
+        /// of its own to set it on.
+        fn on_cursor_change(
+            &self,
+            browser: Option<&mut Browser>,
+            _cursor: CursorHandle,
+            type_: CursorType,
+            custom_cursor_info: Option<&CursorInfo>,
+        ) -> ::std::os::raw::c_int {
+            crate::cursor::changed(id_of(browser), type_, custom_cursor_info.is_some());
+            1
         }
     }
 }
