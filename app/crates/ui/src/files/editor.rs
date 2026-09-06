@@ -65,17 +65,14 @@ impl FileEditor {
 
     /// A click in the tree. A dirty buffer is never replaced without asking:
     /// the prompt goes up and the path waits behind it (`prompt`). The same
-    /// dirty file clicked again keeps its buffer, and takes any prompt down
-    /// with it: clicking the file you are on is choosing to stay.
+    /// dirty file clicked again keeps its buffer and takes any prompt down:
+    /// clicking the file you are on is choosing to stay. The rule and its
+    /// state change are `EditorDoc::click`, tested there.
     pub fn open(&mut self, path: String, cx: &mut Context<Self>) {
         let current = self.input.read(cx).text().to_string();
-        match self.doc.switch_to(&current, &path) {
+        match self.doc.click(&current, &path) {
             Switch::Load => self.load(path, cx),
-            Switch::Prompt => {
-                self.doc.ask_before_leaving(&path);
-                cx.notify();
-            }
-            Switch::Stay => self.keep_editing(cx),
+            Switch::Prompt | Switch::Stay => cx.notify(),
         }
     }
 
@@ -262,7 +259,7 @@ impl FileEditor {
     /// The unsaved-edits prompt, in the pane above the buffer. Three ways
     /// out, all explicit: nothing here is a native dialog.
     fn prompt(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<gpui::Div> {
-        let next = self.doc.pending_open.clone()?;
+        let next = self.doc.prompt_for(self.input.read(cx).text())?.to_string();
         let here = self.doc.path.clone().unwrap_or_default();
         Some(
             div()

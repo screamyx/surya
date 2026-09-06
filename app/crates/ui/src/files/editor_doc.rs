@@ -72,6 +72,9 @@ impl EditorDoc {
         self.conflict = None;
         self.note = None;
         self.saving = false;
+        // A prompt was about the buffer being replaced; it does not follow
+        // the next file.
+        self.pending_open = None;
     }
 
     /// A read answered. Returns the text to put in the buffer, if any.
@@ -124,6 +127,29 @@ impl EditorDoc {
         } else {
             Switch::Prompt
         }
+    }
+
+    /// A click, applied: the rule from `switch_to`, and its state change.
+    /// `Prompt` remembers the path behind the prompt; `Stay` takes any
+    /// prompt down (clicking the file you are on is choosing to stay);
+    /// `Load` is the caller's to do.
+    pub fn click(&mut self, current: &str, path: &str) -> Switch {
+        let switch = self.switch_to(current, path);
+        match switch {
+            Switch::Prompt => self.ask_before_leaving(path),
+            Switch::Stay => self.keep_editing(),
+            Switch::Load => {}
+        }
+        switch
+    }
+
+    /// Whether the prompt is up: a path waits, and the buffer is still
+    /// dirty. Edited back to clean, the question is moot and the bar goes.
+    pub fn prompt_for(&self, current: &str) -> Option<&str> {
+        if !self.is_dirty(current) {
+            return None;
+        }
+        self.pending_open.as_deref()
     }
 
     /// Remember the path the prompt is about.
@@ -336,6 +362,35 @@ mod tests {
         doc.loading("blob.bin");
         doc.opened("blob.bin", FileRead::Binary { size: 3 });
         assert_eq!(doc.switch_to("", "a.rs"), Switch::Load);
+    }
+
+    #[test]
+    fn the_prompt_lives_only_as_long_as_the_dirty_buffer() {
+        let mut doc = EditorDoc::default();
+        doc.loading("a.rs");
+        doc.opened("a.rs", text_read("one\n", "h1"));
+
+        // Dirty, click b: the prompt is up for b.
+        assert_eq!(doc.click("one!\n", "b.rs"), Switch::Prompt);
+        assert_eq!(doc.prompt_for("one!\n"), Some("b.rs"));
+        // Backspace to clean: the bar goes, though the path is still remembered.
+        assert_eq!(doc.prompt_for("one\n"), None);
+        // Clean, click c: it loads, and the stale path does not follow it.
+        assert_eq!(doc.click("one\n", "c.rs"), Switch::Load);
+        doc.loading("c.rs");
+        assert_eq!(doc.pending_open, None, "loading() clears the pending path");
+        doc.opened("c.rs", text_read("see\n", "h2"));
+        assert_eq!(doc.prompt_for("see!\n"), None, "dirty again, but nothing waits");
+
+        // Dirty, click b, then click c again while the prompt is up: the
+        // prompt moves to c. Click c itself (the file we are on): Stay takes
+        // the prompt down.
+        assert_eq!(doc.click("see!\n", "b.rs"), Switch::Prompt);
+        assert_eq!(doc.click("see!\n", "a.rs"), Switch::Prompt);
+        assert_eq!(doc.prompt_for("see!\n"), Some("a.rs"));
+        assert_eq!(doc.click("see!\n", "c.rs"), Switch::Stay);
+        assert_eq!(doc.pending_open, None, "Stay takes the prompt down");
+        assert_eq!(doc.prompt_for("see!\n"), None);
     }
 
     #[test]
