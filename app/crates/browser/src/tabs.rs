@@ -11,7 +11,7 @@
 //! into CEF or taking another lock; every `with` closure only touches the
 //! model.
 
-use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Mutex;
 
 use cef::ImplBrowserHost as _;
@@ -88,6 +88,19 @@ impl Tabs {
         Some(Closed { id: removed.id, browser: removed.browser, was_active, url: removed.page.url })
     }
 
+    /// Bind the browser CEF made for `tab`. False when the tab is gone
+    /// already (closed before `on_after_created`): the caller closes the
+    /// browser, which no tab will ever show.
+    fn attach(&mut self, tab: TabId, browser: i32) -> bool {
+        match self.index_of(tab) {
+            Some(i) => {
+                self.tabs[i].browser = browser;
+                true
+            }
+            None => false,
+        }
+    }
+
     fn index_of_browser(&self, browser: i32) -> Option<usize> {
         if browser == 0 {
             return None;
@@ -136,9 +149,6 @@ impl Tabs {
 }
 
 static TABS: Mutex<Tabs> = Mutex::new(Tabs { tabs: Vec::new(), active: 0, next: 0 });
-/// The tab whose browser CEF is creating right now: `on_after_created`
-/// fires inside `create_browser_sync`, before `open` returns the id.
-static PENDING: AtomicU32 = AtomicU32::new(0);
 /// The last address shown before every tab closed, for [`crate::reopen`].
 static LAST_URL: Mutex<String> = Mutex::new(String::new());
 static OPENED: AtomicI32 = AtomicI32::new(0);
@@ -167,35 +177,20 @@ pub fn tab_open(typed: &str) -> TabId {
     let id = with(|t| t.open(&url));
     OPENED.fetch_add(1, Ordering::Relaxed);
     if crate::has_cef() {
-        PENDING.store(id, Ordering::Release);
-        let browser = crate::client::open(&url);
-        PENDING.store(0, Ordering::Release);
-        if let Some(browser) = browser {
-            with(|t| {
-                if let Some(i) = t.index_of(id) {
-                    t.tabs[i].browser = browser;
-                }
-            });
-            crate::client::activate(browser);
-        }
+        // The client carries the tab id, so `on_after_created` binds the
+        // browser to THIS tab whether it lands inside `open` (inline mode)
+        // or later, in any order (threaded mode, several tabs opening).
+        crate::client::open(&url, id);
     }
     println!("browser: tab_open id={id} url={url} tabs={}", count());
     crate::pump::schedule_pump(0);
     id
 }
 
-/// CEF made the browser for the tab that is being opened. Called from
-/// `on_after_created`, before `open` has returned.
-pub(crate) fn attach_pending(browser: i32) {
-    let id = PENDING.load(Ordering::Acquire);
-    if id == 0 {
-        return;
-    }
-    with(|t| {
-        if let Some(i) = t.index_of(id) {
-            t.tabs[i].browser = browser;
-        }
-    });
+/// CEF made `browser` for `tab` (`on_after_created`). False when the tab
+/// was closed before the browser existed; the caller closes the orphan.
+pub(crate) fn attach_created(tab: TabId, browser: i32) -> bool {
+    with(|t| t.attach(tab, browser))
 }
 
 /// Close a tab. Its browser goes with it; the neighbour becomes active.
@@ -335,9 +330,12 @@ pub fn set_zoom(level: f64) {
             tab.zoom = level;
         }
     });
-    if let Some(host) = crate::client::host() {
-        host.set_zoom_level(level);
-    }
+    let id = active_browser();
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = crate::client::host_of(id) {
+            host.set_zoom_level(level);
+        }
+    });
 }
 
 pub fn zoom() -> f64 {

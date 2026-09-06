@@ -167,8 +167,11 @@ pub(crate) fn on_load_end(id: i32) {
 }
 
 /// Send one method to browser `id` and hand its reply to `done`. Returns
-/// the message id, or `None` when that browser is not open or CEF refused
-/// the message (then `done` was called with the error already).
+/// `None` only when that browser is not open (then `done` was called with
+/// the error already). Otherwise the message id comes back at once, and
+/// the message itself goes out on CEF's UI thread (`cef_thread::on_ui`):
+/// a message CEF refuses there reaches `done` as an error from that thread,
+/// not the return value, since the refusal is only known on that thread.
 pub(crate) fn send(
     browser: i32,
     method: &'static str,
@@ -176,10 +179,10 @@ pub(crate) fn send(
     done: Box<dyn FnOnce(Result<Value, String>) + Send>,
 ) -> Option<i32> {
     sweep();
-    let Some(host) = host_of(browser) else {
+    if self::browser(browser).is_none() {
         done(Err(format!("browser {browser} is not open in the pane")));
         return None;
-    };
+    }
     let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
     let message = json!({ "id": id, "method": method, "params": params }).to_string();
     if let Ok(mut guard) = PENDING.lock() {
@@ -188,14 +191,17 @@ pub(crate) fn send(
             .insert(id, Pending { since: Instant::now(), method, done });
     }
     ASKED.fetch_add(1, Ordering::Relaxed);
-    if host.send_dev_tools_message(Some(message.as_bytes())) == 0 {
-        // CEF took nothing; answer now rather than at the deadline.
-        if let Some(p) = take(id) {
-            FAILED.fetch_add(1, Ordering::Relaxed);
-            (p.done)(Err(format!("{method}: CEF refused the DevTools message")));
+    crate::cef_thread::on_ui(move || {
+        let taken = host_of(browser).is_some_and(|host| host.send_dev_tools_message(Some(message.as_bytes())) != 0);
+        if !taken {
+            // CEF took nothing (or the browser went away): answer now rather
+            // than at the deadline.
+            if let Some(p) = take(id) {
+                FAILED.fetch_add(1, Ordering::Relaxed);
+                (p.done)(Err(format!("{method}: CEF refused the DevTools message")));
+            }
         }
-        return None;
-    }
+    });
     Some(id)
 }
 

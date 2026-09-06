@@ -144,6 +144,33 @@ fn the_public_api_orders_open_close_detach_and_close_all() {
 }
 
 #[test]
+fn creates_that_land_out_of_order_bind_to_their_own_tabs() {
+    let mut t = Tabs::default();
+    let a = t.open("https://a");
+    let b = t.open("https://b");
+    let c = t.open("https://c");
+    // CEF answers c first, then a, then b.
+    assert!(t.attach(c, 30));
+    assert!(t.attach(a, 10));
+    assert!(t.attach(b, 20));
+    assert_eq!(t.tabs.iter().map(|t| (t.id, t.browser)).collect::<Vec<_>>(), vec![(a, 10), (b, 20), (c, 30)]);
+    assert_eq!(t.index_of_browser(20), Some(1));
+}
+
+#[test]
+fn a_create_for_a_tab_closed_meanwhile_is_refused() {
+    let mut t = Tabs::default();
+    let a = t.open("https://a");
+    let b = t.open("https://b");
+    assert!(t.close(b).is_some());
+    // b's browser lands after b closed: nobody owns it.
+    assert!(!t.attach(b, 20));
+    assert!(t.attach(a, 10));
+    assert_eq!(t.index_of_browser(20), None);
+    assert_eq!(t.tabs.len(), 1);
+}
+
+#[test]
 fn a_new_tab_never_opens_what_the_bar_refuses() {
     assert_eq!(tab_url(""), "about:blank");
     assert_eq!(tab_url("file:///etc/passwd"), "about:blank");

@@ -185,9 +185,11 @@ fn apply_and_reload(browser: i32) {
     for (method, params) in cdp_calls(device, &ua) {
         devtools::fire(browser, method, params);
     }
-    if let Some(b) = devtools::browser(browser) {
-        b.reload();
-    }
+    crate::cef_thread::on_ui(move || {
+        if let Some(b) = devtools::browser(browser) {
+            b.reload();
+        }
+    });
 }
 
 /// A main frame finished loading in browser `id`. Learns the default user
