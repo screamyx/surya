@@ -443,10 +443,6 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
         // bar); pressing it again dismisses.
         KeyBinding::new(&platform_combo("mod-k"), AddSpacePalette, None),
     ]);
-    // The editor's save chord goes AFTER the customizable shortcuts above:
-    // a context-less binding and one matched on the innermost context score
-    // the same depth, and the later-bound one wins (files::bind_save_keys).
-    crate::files::bind_save_keys(cx);
     // ⌘1..⌘9 open the sidebar's first nine rows. A slot left unbound (an empty
     // combo in a hand-edited file) binds nothing rather than falling back —
     // the user cleared it on purpose.
@@ -462,13 +458,20 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ))
     }));
-    // LAST of the binds, and it has to be: the browser pane binds ctrl-tab
-    // and cmd-w with no context, as the bindings above do, and gpui breaks a
-    // same-depth tie by insertion order. Bound earlier, the pane's tab switch
-    // would lose to NextSession. The pane's handlers only exist while it is
-    // focused, so these fall through to the bindings above whenever it is not.
+    // LAST of the context-less binds, and it has to be: the browser pane binds
+    // ctrl-tab and cmd-w with no context, as the bindings above do, and gpui
+    // breaks a same-depth tie by insertion order. Bound earlier, the pane's
+    // tab switch would lose to NextSession. The pane's handlers only exist
+    // while it is focused, so these fall through to the bindings above
+    // whenever it is not.
     #[cfg(feature = "browser")]
     crate::browser_pane::init(cx);
+    // The editor's save chord goes after EVERY chord a keymap can remap (the
+    // block above, the jump slots, the browser pane): a context-less binding
+    // and one matched on the innermost context score the same depth, and the
+    // later-bound one wins (files::bind_save_keys). Any shortcut remapped to
+    // mod-s still loses to save while the editor has focus.
+    crate::files::bind_save_keys(cx);
     // After every bind, so the probe reads the map that shipped.
     log_keymap_proof(cx, &toggle_terminal, &toggle_files);
 }

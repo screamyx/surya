@@ -35,7 +35,9 @@ pub fn init(cx: &mut gpui::App) {
 }
 
 /// Bind Cmd+S / Ctrl+S to [`SaveFile`] in the editor's context. Call AFTER
-/// the shell's customizable shortcuts, never before: gpui scores a binding
+/// every chord a keymap can remap (the shell's `apply_keymap` calls it last;
+/// an app that skips `apply_keymap`, like the files demo, calls it itself),
+/// never before: gpui scores a binding
 /// with no context at the full depth of the context stack, the same score a
 /// binding matched on the innermost context gets, and breaks that tie by
 /// binding order, later wins (gpui `keymap.rs`, `bindings_for_input` and

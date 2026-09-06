@@ -31,6 +31,9 @@ pub fn run_demo(checkout: PathBuf, data_dir: PathBuf, ipc_port: u16, edge_url: S
     app.run(move |cx: &mut App| {
         crate::demo_bootstrap::init_app(&data_dir, cx);
         super::init(cx);
+        // The demo never runs the shell's apply_keymap, which is where the
+        // app binds the save chord: bind it here or Ctrl+S does nothing.
+        super::bind_save_keys(cx);
 
         let boot = EngineBootConfig {
             data_dir: data_dir.clone(),
