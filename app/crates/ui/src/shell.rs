@@ -57,9 +57,11 @@ use crate::theme::Theme;
 use crate::transcript::{self, Transcript, TranscriptEvent};
 
 mod spaces;
+mod tab_press;
 mod tabs;
 
 use spaces::{AddSpaceFlow, RenameSpaceDialog};
+use tab_press::{PressOutcome, TAB_HOLD, TabPress};
 
 actions!(
     shell,
@@ -1239,6 +1241,10 @@ pub struct Shell {
     debug_open_pane: Option<String>,
     /// In-flight surface-tab drag (slide animation state).
     right_tab_drag: Option<RightTabDragState>,
+    /// Live left-button press on a surface tab. A chip carries a gpui drag
+    /// listener only once this says the hold elapsed, so a plain click can
+    /// never start a reorder (`shell::tab_press`).
+    right_tab_press: Option<TabPress>,
     /// Surface-tab strip scroll (the strip overflows horizontally, t3
     /// ScrollArea-style; drag drop-math reads the offset back out).
     right_tab_scroll: gpui::ScrollHandle,
@@ -1553,6 +1559,7 @@ impl Shell {
             inbox_shown: None,
             debug_open_pane: std::env::var("SURYA_OPEN_PANE").ok(),
             right_tab_drag: None,
+            right_tab_press: None,
             right_tab_scroll: gpui::ScrollHandle::new(),
             #[cfg(feature = "browser")]
             browser_pane: None,
@@ -2384,9 +2391,38 @@ impl Shell {
         }
     }
 
+    /// Left button down on a surface tab. The chip gets no drag listener yet;
+    /// a timer arms it once the button has been held for
+    /// [`tab_press::TAB_HOLD`], which is what keeps a plain click from
+    /// reordering the strip.
+    fn begin_right_tab_press(&mut self, tab: usize, cx: &mut Context<Self>) {
+        self.right_tab_press = Some(TabPress::new(tab, std::time::Instant::now()));
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(TAB_HOLD).await;
+            this.update(cx, |this, cx| {
+                // Re-check the press: a release, or a press on another chip,
+                // replaced it and this wake-up is stale.
+                let armed = this
+                    .right_tab_press
+                    .as_mut()
+                    .filter(|press| press.tab() == tab)
+                    .is_some_and(|press| press.arm(std::time::Instant::now()));
+                if armed {
+                    // Re-render so the chip picks up its drag listener.
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
     /// Track the hovered drop slot mid-drag (the terminal drawer's
     /// `update_drag_over`, ported: epoch bumps restart the slide tween).
     fn update_right_tab_drag_over(&mut self, from: usize, over: usize, cx: &mut Context<Self>) {
+        if let Some(press) = self.right_tab_press.as_mut() {
+            press.note_dragging();
+        }
         match &mut self.right_tab_drag {
             Some(drag) if drag.over != over => {
                 drag.prev_over = drag.over;
@@ -7440,9 +7476,12 @@ impl Shell {
         // Heal drag state if the pointer was released outside the strip.
         if self.right_tab_drag.is_some() && !cx.has_active_drag() {
             self.right_tab_drag = None;
+            // The drag ended without a drop, so its press is over too.
+            self.right_tab_press = None;
         }
         let rows = self.right_surface_rows(cx);
         let count = rows.len();
+        let panel_key = self.panel_key(cx);
         let active = self.resolved_right_active(cx);
         let drag = self
             .right_tab_drag
@@ -7471,6 +7510,23 @@ impl Shell {
             .min_w_0()
             .overflow_x_scroll()
             .track_scroll(&self.right_tab_scroll)
+            // THE STRIP, not the chips, carves this band out of the window's
+            // drag region. `shell/tabs.rs` wraps the whole titlebar in
+            // `titlebar_drag_region`, a `WindowControlArea::Drag`; on Windows
+            // gpui answers WM_NCHITTEST with HTCAPTION whenever that hitbox id
+            // is anywhere in `mouse_hit_test.ids` (gpui window.rs
+            // `on_hit_test_window_control`), and the OS then swallows the
+            // press: no click, and a few pixels of travel move the WHOLE
+            // WINDOW instead of the tab (a maximized window even restores down
+            // and follows the cursor). The chips used to carry
+            // `block_mouse_except_scroll`, which does NOT stop that walk —
+            // gpui's `hit_test` only breaks on `HitboxBehavior::BlockMouse`
+            // and keeps pushing the ids behind a BlockMouseExceptScroll
+            // hitbox. `occlude()` breaks it. It has to sit here rather than on
+            // each chip because this element IS the scroller: its own id is
+            // pushed before the break, so the wheel still reaches it and an
+            // overflowing strip still scrolls.
+            .occlude()
             .on_drag_move::<RightTabDrag>(cx.listener(
                 move |this, event: &gpui::DragMoveEvent<RightTabDrag>, _, cx| {
                     let payload = event.drag(cx);
@@ -7529,6 +7585,12 @@ impl Shell {
             // hovered (user request).
             let group: SharedString = format!("right-surface-tab-{ix}").into();
             let ghost_title = title.clone();
+            let drag_key = panel_key.clone();
+            // Only the chip whose press has passed the hold gets a drag
+            // listener this frame.
+            let hold_armed = self
+                .right_tab_press
+                .is_some_and(|press| press.armed_for(ix));
             let chip = div()
                 .id(("right-surface-tab", ix))
                 .group(group.clone())
@@ -7543,25 +7605,45 @@ impl Shell {
                 .items_center()
                 .gap(px(3.0))
                 .cursor_pointer()
-                // The old session-tab strip's solved carve-out: NOT
-                // `.occlude()` — a BlockMouse hitbox ends the hit test,
-                // so the scroll container behind the tabs never saw
-                // wheel events and an overflowing strip could not be
-                // scrolled (tabs tile the whole region). ExceptScroll
-                // keeps the titlebar drag-region carve-out and lets the
-                // strip scroll.
-                .block_mouse_except_scroll()
-                .on_mouse_down(gpui::MouseButton::Left, |_, window, _| {
-                    window.prevent_default()
-                })
+                // The chip no longer blocks the mouse itself: the strip
+                // occludes for the whole band (see there). A chip that carried
+                // `block_mouse_except_scroll` left the titlebar's drag hitbox
+                // in the hit-test ids, which is what handed every press to the
+                // Windows window-move.
+                .on_mouse_down(
+                    gpui::MouseButton::Left,
+                    cx.listener(move |this, _, window, cx| {
+                        window.prevent_default();
+                        this.begin_right_tab_press(ix, cx);
+                    }),
+                )
                 .when(is_active, |el| el.bg(crate::theme::wash(0.10)))
                 .when(!is_active, |el| {
                     el.hover(|s| s.bg(crate::theme::wash(0.06)))
                 })
                 .on_click(cx.listener(move |this, _, _, cx| {
                     cx.stop_propagation();
-                    this.set_right_active(surface, cx);
+                    // gpui suppresses the click once a drag took the press, so
+                    // reaching here already means no reorder happened; the
+                    // press only has to say which chip went down.
+                    let outcome = this
+                        .right_tab_press
+                        .take()
+                        .map_or(PressOutcome::Click, |press| press.release(ix));
+                    if outcome == PressOutcome::Click {
+                        this.set_right_active(surface, cx);
+                    }
                 }))
+                // A release that lands anywhere else ends the press with
+                // nothing activated and nothing reordered.
+                .on_mouse_up_out(
+                    gpui::MouseButton::Left,
+                    cx.listener(move |this, _, _, _| {
+                        if this.right_tab_press.is_some_and(|p| p.tab() == ix) {
+                            this.right_tab_press = None;
+                        }
+                    }),
+                )
                 // Middle-click closes, like every tab strip.
                 .on_mouse_down(
                     gpui::MouseButton::Middle,
@@ -7569,18 +7651,24 @@ impl Shell {
                         this.close_right_surface(surface, window, cx);
                     }),
                 )
-                .on_drag(
-                    RightTabDrag {
-                        panel_key: self.panel_key(cx),
-                        from: ix,
-                        title: ghost_title,
-                    },
-                    |payload, _point, _, cx| {
-                        let title = payload.title.clone();
-                        cx.stop_propagation();
-                        cx.new(|_| SurfaceTabGhost { title })
-                    },
-                )
+                // The reorder drag is handed to gpui only after the hold: gpui
+                // arms a drag on two pixels of travel, and an ordinary click
+                // clears two pixels. Without the listener there is nothing for
+                // it to arm, so a click stays a click.
+                .when(hold_armed, move |el| {
+                    el.on_drag(
+                        RightTabDrag {
+                            panel_key: drag_key,
+                            from: ix,
+                            title: ghost_title,
+                        },
+                        |payload, _point, _, cx| {
+                            let title = payload.title.clone();
+                            cx.stop_propagation();
+                            cx.new(|_| SurfaceTabGhost { title })
+                        },
+                    )
+                })
                 .child(
                     // Leading slot: icon normally, ✕ on tab hover — two
                     // stacked layers opacity-swapped by the group hover.
@@ -7706,7 +7794,8 @@ impl Shell {
                 crate::theme::wash(0.11),
             ))
             .on_hover(motion::hover_listener(plus_fade))
-            .block_mouse_except_scroll()
+            // No carve-out of its own: the `+` is a child of the strip, which
+            // occludes for the whole band.
             .on_mouse_down(
                 gpui::MouseButton::Left,
                 cx.listener(|this, _, window, _| {
@@ -8702,6 +8791,22 @@ impl Render for Shell {
             .on_drag_move(cx.listener(Self::on_sidebar_drag))
             .on_drag_move(cx.listener(Self::on_right_pane_drag))
             .on_drag_move(cx.listener(Self::on_terminal_drag))
+            // Escape aborts a surface-tab reorder and snaps the chip back:
+            // dropping `right_tab_drag` puts every slide offset at zero and
+            // the drop never runs, so the stored order is untouched. Capture
+            // phase, and only while a reorder is live, so nothing else that
+            // listens for Escape loses it.
+            .capture_key_down(cx.listener(
+                |this, event: &gpui::KeyDownEvent, window, cx| {
+                    if this.right_tab_drag.is_some() && event.keystroke.key == "escape" {
+                        this.right_tab_drag = None;
+                        this.right_tab_press = None;
+                        cx.stop_active_drag(window);
+                        cx.stop_propagation();
+                        cx.notify();
+                    }
+                },
+            ))
             // The panel shortcuts are chat-scoped chrome: in Settings they are
             // no-ops (surya __root.tsx gates the hotkey on `!isSettings`, and
             // the terminal panel is only mounted on session routes). The
