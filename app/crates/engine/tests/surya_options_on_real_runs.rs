@@ -103,13 +103,22 @@ async fn dispatched_request(prompt: &str) -> RunRequest {
         .await
         .expect("dispatch");
 
+    // Match on the prompt, not on arrival order: `dispatch` kicks the
+    // auto-titler off BEFORE it spawns drive_run, so the title run can be
+    // recorded first and this would read the wrong request.
     for _ in 0..200 {
-        if let Some(request) = seen.lock().expect("seen").first().cloned() {
+        let found = seen
+            .lock()
+            .expect("seen")
+            .iter()
+            .find(|r| r.prompt == prompt)
+            .cloned();
+        if let Some(request) = found {
             return request;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("the harness was never handed a request");
+    panic!("the harness was never handed the user's request");
 }
 
 #[tokio::test(flavor = "multi_thread")]

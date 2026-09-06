@@ -29,6 +29,9 @@ fn main() {
     let cwd = std::env::current_dir().unwrap();
     let files = surya_harness::claude::surya::prepare(&options, cwd.to_str().unwrap())
         .expect("surya-mcp resolves and both files are written");
-    println!("mcp-config={}", files.mcp_config.display());
+    match &files.mcp_config {
+        Some(path) => println!("mcp-config={}", path.display()),
+        None => println!("mcp-config=none (sidecar missing)"),
+    }
     println!("append={}", files.system_append.display());
 }

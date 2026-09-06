@@ -20,9 +20,11 @@ use crate::mail::MailIngressPaths;
 
 /// Where a run's shown cards are recorded for the app to read back.
 ///
-/// One file per chat under the data dir. There was no prior convention to
-/// follow - the app reads whatever path the options carry - so this is a
-/// choice, recorded in `docs/decisions.md` under decision 14.
+/// One file per chat under `~/.surya`, the same root the mail ingress
+/// resolves - NOT the headless engine's data dir, which is `SURYA_DATA_DIR`
+/// or `~/.local/share/surya-engine`. There was no prior convention to follow
+/// - the app reads whatever path the options carry - so this is a choice,
+/// recorded in `docs/decisions.md` under decision 14.
 fn card_store(chat_id: &str) -> PathBuf {
     crate::mail::surya_home_dir()
         .join("cards")
