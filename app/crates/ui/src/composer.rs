@@ -34,7 +34,7 @@ use surya_rpc::{RpcError, methods};
 use crate::attachments::{self, StagedAttachment};
 use crate::motion;
 use crate::pickers::Pickers;
-use crate::state::{AppState, Indicator};
+use crate::state::{AppState, EngineHandle, Indicator};
 use crate::theme::Theme;
 
 // ---------------------------------------------------------------------------
@@ -3594,6 +3594,24 @@ impl Composer {
             .filter(|(request_id, _, _)| !state.answered_requests.contains(request_id))
     }
 
+    /// The engine, or the "not connected" notice, for the two permission
+    /// paths that cannot do their work without one.
+    ///
+    /// The notice clears `failure_key` on purpose. Setting only
+    /// `self.failure` inherits whatever key the last failure left, and the
+    /// render filter hides a notice whose key names another chat: a failed
+    /// send in chat A would then swallow this one in chat B. Nothing to
+    /// connect to is a global fact, true under every chat, which is exactly
+    /// what `send` already does with "Engine not connected".
+    fn require_engine(&mut self, cx: &mut Context<Self>) -> Option<EngineHandle> {
+        let engine = self.state.read(cx).engine().cloned();
+        if engine.is_none() {
+            self.failure = Some("Not connected to an engine.".into());
+            self.failure_key = None;
+        }
+        engine
+    }
+
     /// Answer the blocked tool. An `answer` that remembers writes an
     /// always-allow rule for this workspace, which is what "Always allow"
     /// means everywhere else in the app.
@@ -3624,9 +3642,7 @@ impl Composer {
             // keeps it, `SetAutoApprove` never goes out, and the parked tool
             // stays parked. Say so here too, or this is the one card button
             // that fails in silence.
-            if self.state.read(cx).engine().is_none() {
-                self.failure = Some("Not connected to an engine.".into());
-            }
+            self.require_engine(cx);
             cx.notify();
             return;
         }
@@ -3646,8 +3662,7 @@ impl Composer {
         self.state.update(cx, |state, _| {
             state.answered_requests.insert(request_id.clone());
         });
-        let Some(engine) = self.state.read(cx).engine().cloned() else {
-            self.failure = Some("Not connected to an engine.".into());
+        let Some(engine) = self.require_engine(cx) else {
             cx.notify();
             return;
         };
