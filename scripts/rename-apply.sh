@@ -97,8 +97,9 @@ unmask() {
 # second, silently dropping the adoption this release exists for. The
 # ALREADY-ADVANCED pair is masked too, or a second run eats the surviving
 # `.zeron` and leaves `(".surya", ".surya")`, the same no-copy from the other
-# side. Matched on the two string arguments with `\s*` between, not the whole
-# line: rustfmt may wrap this call and a line literal would stop matching.
+# side. The counters do not catch that one - the double-run check below does.
+# Matched on the two string arguments with `\s*` between, not the whole line:
+# rustfmt may wrap this call and a line literal would stop matching.
 advance_data_dir_migration() {
   perl -0pe 's/"\.zeron",(\s*)"\.comet-native"/"\x01DATADIR\x01",$1"\x01DATADIRPREV\x01"/gs;
              s/"\.surya",(\s*)"\.zeron"/"\x01DATADIR\x01",$1"\x01DATADIRPREV\x01"/gs'
