@@ -1631,7 +1631,7 @@ impl ComposerInput {
         self.scroll_top = 0.0;
         self.follow_cursor = true;
         // Programmatic replacement (draft load, clear-on-submit) is a new
-        // document, not an edit — undo must not reach back past it.
+        // document, not an edit - undo must not reach back past it.
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.last_edit = None;
@@ -3594,9 +3594,9 @@ impl Composer {
             .filter(|(request_id, _, _)| !state.answered_requests.contains(request_id))
     }
 
-    /// Answer the blocked tool. `remember` writes an always-allow rule for
-    /// this workspace, which is what "Always allow" means everywhere else in
-    /// the app.
+    /// Answer the blocked tool. An `answer` that remembers writes an
+    /// always-allow rule for this workspace, which is what "Always allow"
+    /// means everywhere else in the app.
     fn answer_permission(
         &mut self,
         request_id: String,
@@ -3620,6 +3620,13 @@ impl Composer {
             });
             self.pickers
                 .update(cx, |pickers, cx| pickers.set_auto_approve(true, cx));
+            // With nothing connected the flip is local only: the chat row
+            // keeps it, `SetAutoApprove` never goes out, and the parked tool
+            // stays parked. Say so here too, or this is the one card button
+            // that fails in silence.
+            if self.state.read(cx).engine().is_none() {
+                self.failure = Some("Not connected to an engine.".into());
+            }
             cx.notify();
             return;
         }
