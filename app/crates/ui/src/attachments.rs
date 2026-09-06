@@ -198,17 +198,42 @@ impl StagedAttachment {
 
 /// Image formats the whole pipeline supports: intersection of gpui's decoders
 /// and the engine's `mime_by_ext` read-back jail.
+///
+/// One table, because two things read it: the check that decides whether a
+/// picked file is staged, and the notice that tells the user what he may
+/// attach. Written as a second literal, those two drift and the message starts
+/// lying about what the code takes.
+const BY_EXTENSION: &[(&str, ImageFormat)] = &[
+    ("png", ImageFormat::Png),
+    ("jpg", ImageFormat::Jpeg),
+    ("jpeg", ImageFormat::Jpeg),
+    ("gif", ImageFormat::Gif),
+    ("webp", ImageFormat::Webp),
+    ("svg", ImageFormat::Svg),
+    ("bmp", ImageFormat::Bmp),
+    ("tif", ImageFormat::Tiff),
+    ("tiff", ImageFormat::Tiff),
+];
+
 pub fn format_by_extension(path: &Path) -> Option<ImageFormat> {
-    match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
-        "png" => Some(ImageFormat::Png),
-        "jpg" | "jpeg" => Some(ImageFormat::Jpeg),
-        "gif" => Some(ImageFormat::Gif),
-        "webp" => Some(ImageFormat::Webp),
-        "svg" => Some(ImageFormat::Svg),
-        "bmp" => Some(ImageFormat::Bmp),
-        "tif" | "tiff" => Some(ImageFormat::Tiff),
-        _ => None,
-    }
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    BY_EXTENSION
+        .iter()
+        .find(|(candidate, _)| *candidate == ext)
+        .map(|(_, format)| *format)
+}
+
+/// The same extensions, spelled out for a message that has to name them.
+///
+/// Every accepted spelling is listed, `jpeg` beside `jpg` and `tiff` beside
+/// `tif`: someone holding a `.jpeg` should not have to guess whether the short
+/// form in a notice includes his file.
+pub fn supported_extensions() -> String {
+    BY_EXTENSION
+        .iter()
+        .map(|(ext, _)| *ext)
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// use-attachments.ts `ensureExtension`: pasted screenshots often arrive as a
@@ -236,6 +261,10 @@ pub fn stage_file(path: &Path) -> Result<StagedAttachment, String> {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "image".to_string());
+    // Unreachable from `add_paths`, which filters on the same table first and
+    // owns the wording of the refusal. Kept for the other callers and as the
+    // last line of defence: a check that lives only at the call site is one
+    // caller away from being no check at all.
     let Some(format) = format_by_extension(path) else {
         return Err(format!("{display_name} is not a supported image."));
     };
