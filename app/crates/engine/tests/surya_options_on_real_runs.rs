@@ -20,7 +20,7 @@ use surya_engine::{EngineCore, HarnessRegistry};
 use surya_harness::{Harness, HarnessError, RunControls};
 use surya_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SandboxLevel,
-    SteeringMode, SuryaOptions,
+    SteeringMode, SuryaOptions, ToolCall,
 };
 
 const CHAT: &str = "chat-surya-options";
@@ -175,4 +175,96 @@ async fn only_the_user_run_carries_it() {
         with.len()
     );
     assert_eq!(with[0].prompt, "write the thing");
+}
+
+/// The whole seam, against the REAL Claude Code CLI:
+///
+///     cargo test -p surya-engine --test surya_options_on_real_runs \
+///       -- --ignored --nocapture live_
+///
+/// `#[ignore]`d on purpose. It spends model quota, and a test that quietly
+/// passes when the binary is missing is worse than one that never ran - the
+/// bug this file exists for was exactly a feature that looked fine because
+/// nothing exercised it end to end.
+///
+/// Two assertions, because the block carries two promises:
+///   1. the agent can draw a card at all (the sidecar loaded), and
+///   2. Claude Code's own SendMessage is gone (decision 19's one mail
+///      channel is enforced, not just intended).
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn live_a_real_claude_run_gets_the_card_tool_and_loses_send_message() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let cwd = tmp.path().join("workspace");
+    std::fs::create_dir_all(&cwd).expect("workspace");
+
+    let registry = HarnessRegistry::new();
+    registry.register(Arc::new(surya_harness::ClaudeHarness::new()));
+    let core = EngineCore::assemble(
+        &tmp.path().join("data"),
+        Arc::new(registry),
+        HarnessId::ClaudeCode,
+        None,
+    )
+    .expect("engine core assembles");
+
+    let (_replay, mut events) = core.sessions.subscribe(CHAT, 0).expect("subscribe");
+
+    let mut request = run_request("Compare option A and option B in a table.");
+    request.harness = Some(HarnessId::ClaudeCode);
+    request.cwd = cwd.to_string_lossy().into_owned();
+    if core
+        .sessions
+        .dispatch(CHAT, HarnessId::ClaudeCode, request, None)
+        .await
+        .is_err()
+    {
+        eprintln!("SKIPPED: no usable claude CLI on this box");
+        return;
+    }
+
+    let mut tools: Option<Vec<String>> = None;
+    let mut card_calls = 0usize;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(180);
+    while tokio::time::Instant::now() < deadline {
+        let Ok(Ok(event)) = tokio::time::timeout(Duration::from_secs(30), events.recv()).await
+        else {
+            break;
+        };
+        match &event.event {
+            AgentEvent::SessionStarted { tools: t, .. } => tools = Some(t.clone()),
+            // The sidecar's tool arrives as an MCP call, server `surya`.
+            AgentEvent::ToolCall {
+                call: ToolCall::Mcp { tool, .. },
+                ..
+            } if tool.contains("show_card") => card_calls += 1,
+            AgentEvent::Done { .. } => break,
+            _ => {}
+        }
+    }
+
+    let Some(tools) = tools else {
+        eprintln!("SKIPPED: the run never started - no claude binary, or no quota");
+        return;
+    };
+
+    // 2. The denial is live. `--disallowed-tools SendMessage,ListAgents` is
+    //    inside the same `if let Some(options)` as everything else, so this
+    //    failing means the block did not reach the CLI at all.
+    let banned: Vec<&String> = tools
+        .iter()
+        .filter(|t| t.as_str() == "SendMessage" || t.as_str() == "ListAgents")
+        .collect();
+    assert!(
+        banned.is_empty(),
+        "denied tools still offered: {banned:?} - tools={tools:?}"
+    );
+
+    // 1. The sidecar loaded and the agent reached for a card.
+    let has_card_tool = tools.iter().any(|t| t.contains("show_card"));
+    assert!(
+        has_card_tool,
+        "show_card absent from the tool list - the sidecar did not load. tools={tools:?}"
+    );
+    eprintln!("show_card offered, SendMessage denied, show_card calls={card_calls}");
 }
