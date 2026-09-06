@@ -249,6 +249,64 @@ async fn a_run_on_a_yolo_chat_launches_with_the_flag() {
     );
 }
 
+/// A caller's per-run `auto_approve` must NOT become the chat's mode.
+///
+/// This is the shape `scripts/smoke.sh` drives: every turn it queues carries
+/// `autoApprove: true`, and section f then waits for the fake harness's
+/// permission request to appear in the needs-you inbox. When the run-config
+/// backfill copied that flag onto the row, the next read of the row turned
+/// yolo on, the gate answered the request, and the card the rig was waiting
+/// for never arrived (CI 34040834906).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_runs_own_auto_approve_is_not_the_chats_mode() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let core = assemble(
+        dir.path(),
+        vec![started(), asks_permission("perm-1", "run the migration"), done()],
+    );
+    let states = core.sessions.agent_states().clone();
+    // A chat with NO config row, exactly as `Mutate createChat` leaves it.
+    core.workspace
+        .create_space(SPACE, &core.device_id, "/tmp/yolo-space", None, false)
+        .expect("space");
+    core.workspace
+        .create_chat(
+            "chat-1",
+            Some(SPACE),
+            Some(&core.device_id),
+            None,
+            Some(CWD.to_string()),
+        )
+        .expect("chat");
+
+    let mut request = run_request("run the migration");
+    request.auto_approve = true; // what the smoke rig sends on every turn
+    core.sessions
+        .dispatch("chat-1", HarnessId::Mock, request, None)
+        .await
+        .expect("dispatch");
+
+    wait_for(|| !states.needs_you().is_empty(), "the ask to reach the inbox").await;
+    assert_eq!(
+        states.needs_you()[0].kind,
+        NeedsYouKind::Permission,
+        "a run that asked to bypass its CLI still parks what the CLI asks anyway"
+    );
+    assert!(
+        !core.sessions.auto_approve("chat-1"),
+        "the chat is not in yolo mode: nobody switched it on"
+    );
+    // The run-config backfill itself lives on the doc-command drain path
+    // (`doc_host`), which this direct dispatch does not go through; when it
+    // does run, the row it writes must not claim a mode either.
+    assert!(
+        core.workspace
+            .chat_config("chat-1")
+            .is_none_or(|config| !config.auto_approve),
+        "no row may come out of a run claiming the chat is in yolo mode"
+    );
+}
+
 /// The flag is on the chat ROW, so it survives the engine that was holding
 /// the live copy: a fresh engine over the same data dir reads it back.
 #[tokio::test(flavor = "multi_thread")]

@@ -3149,9 +3149,18 @@ impl DocHost {
                         reasoning: request.reasoning,
                         model_options: request.model_options.clone(),
                         sandbox: request.sandbox,
-                        // Backfill records what the run WAS dispatched with,
-                        // yolo included, so the row and the process agree.
-                        auto_approve: request.auto_approve,
+                        // NOT from the request. Harness, model and sandbox are
+                        // properties of the run and belong on the row; yolo is
+                        // a MODE the user owns, and the only things that set it
+                        // are the composer chip, the settings default a new
+                        // chat is created with, and `SetAutoApprove`. Copying
+                        // a caller's per-run `auto_approve` here would switch
+                        // a chat into yolo mode nobody asked for, persist it,
+                        // and sync it to their other devices - and it did:
+                        // every smoke turn dispatches `autoApprove: true`, so
+                        // the backfill turned the mode on and the engine then
+                        // answered the permission the rig was waiting to see.
+                        auto_approve: false,
                     };
                     if let Err(err) = ws.set_chat_config(chat_id, &config) {
                         tracing::warn!(chat = %chat_id, error = %err, "run-config backfill failed");
