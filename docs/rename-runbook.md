@@ -86,8 +86,9 @@ gap kept `crates/proto/build.rs` out of the rename until 2026-09-05, and is why
 the selector now matches `ZERON_` as well.
 
 `AGENTS.md` is in scope but outside these four roots, so the script's counter
-does not see its 3 remaining hits - all of them the masked bullet the operator
-deletes by hand. `sandbox/` comes out clean.
+never sees its 3 remaining hits: lines 8 and 72 are `zeronsh/comet`
+provenance, and line 55 is the masked bullet the operator deletes by hand.
+`sandbox/` comes out clean.
 
 `app/.github/` is not counted at all - `rg` skips dot directories, and the
 script never had it in scope. It holds 17 more, across `deploy.yml`,

@@ -23,15 +23,14 @@ RG=(rg --no-messages -g '!target' -g '!node_modules' -g '!.git' -g '!Cargo.lock'
 
 # Everything in scope. apps/ios, edge/, apps/landing, apps/www-redirect and
 # app/.github (comet's release pipeline, never fired from a subdirectory) are
-# out of scope per the plan (rows 13, 14, 15).
-#
-# This list grows: `deploy/` (09-05), `AGENTS.md` and `sandbox/` (09-06).
+# out of scope per the plan (rows 13, 14, 15). The in-scope list grows:
+# `deploy/` (09-05), `AGENTS.md` and `sandbox/` (09-06).
 # `ZERON_` is its own pattern: `[Zz]eron` does not match it.
 #
 # Two files are excluded outright, every hit in them the old name on purpose.
 # env_compat.rs is GENERATED here - rewriting it made its fallback read
 # `var_os("SURYA_")`, the compat dead and the tree still compiling. data_dir.rs
-# adopts the OLD dir - rewriting its fixtures made it adopt a dir from itself.
+# adopts the OLD dir; rewriting its fixtures made it self-adopt.
 EXCLUDE='app/crates/(proto/src/env_compat|engine/src/data_dir)\.rs'
 in_scope_files() {
   "${RG[@]}" -l -e '[Zz]eron' -e 'ZERON_' \
@@ -135,8 +134,8 @@ assert_data_dir_call_present() {
 
 rename_legacy_theme_fns() {
   # The sandbox generator names comet's builtins in a template literal. The
-  # global rule makes that `fn surya_${mode}()`, which EXISTS, so it would
-  # keep running on another theme's seeds.
+  # global rule makes that `fn surya_${mode}()`, which EXISTS - so it would
+  # keep running, on another theme's seeds.
   sed -e 's/\bzeron_dark\b/comet_dark/g' -e 's/\bzeron_light\b/comet_light/g' \
       -e 's/fn zeron_\${mode}/fn comet_${mode}/g'
 }
@@ -364,8 +363,7 @@ grep -q 'surya-proto' app/crates/mcp/Cargo.toml \
 # 3b. Route the user-set reads through it. Only the 16 names, outside tests.
 # This used to skip the whole of crates/mcp/ while claiming to exempt only
 # tasks.rs, leaving crates/mcp/src/browser.rs reading the environment direct.
-# tasks.rs takes its key as a closure argument so it never matched this regex
-# anyway. Dev and test knobs keep std::env: nothing outside this repo sets them.
+# tasks.rs passes its key as a closure argument, so it never matched anyway.
 # --------------------------------------------------------------------------
 ROUTED=0
 USER_SET='DATA_DIR|EDGE_URL|EDGE_TOKEN|ORG_ID|WORKOS_CLIENT_ID|WORKOS_API_BASE|IPC_PORT|BIND|IPC_TOKEN|CALLBACK_PORT|HARNESS|DEVICE_NAME|ENGINE|ENGINE_TOKEN|USER_ID|WORKTREES_DIR'
@@ -494,7 +492,9 @@ cat <<'TODO'
   2. AGENTS.md's "Crate names are mixed on purpose" bullet is masked, not
      rewritten: after the rename nothing is `zeron-*` and the bullet tells
      readers not to do what was just done. DELETE it by hand.
-  3. Dev and test knobs (`SURYA_MOCK_*`, `SURYA_DEMO_*`, `SURYA_ACP_*`, and
-     the rest) rename without an alias on purpose - nothing outside this repo
-     sets them.
+  3. `crates/mcp/src/tasks.rs` reads BIND, IPC_TOKEN, DATA_DIR and IPC_PORT
+     (lines 60, 64, 67, 76) through a closure, not a literal: it routes
+     nowhere, the counter is blind to it, and those four get NO ZERON_ fallback.
+  4. Dev and test knobs (`SURYA_MOCK_*`, `SURYA_DEMO_*`, `SURYA_ACP_*`) rename
+     without an alias on purpose - nothing outside this repo sets them.
 TODO
