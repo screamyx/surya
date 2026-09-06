@@ -67,7 +67,7 @@ pub fn notice(
         .child(
             div()
                 .flex()
-                .items_baseline()
+                .items_start()
                 .gap(px(6.0))
                 .min_w_0()
                 .child(
