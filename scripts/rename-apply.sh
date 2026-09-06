@@ -24,13 +24,11 @@ RG=(rg --no-messages -g '!target' -g '!node_modules' -g '!.git' -g '!Cargo.lock'
 # Everything in scope. apps/ios, edge/, apps/landing, apps/www-redirect and
 # app/.github (comet's release pipeline, never fired from a subdirectory) are
 # out of scope per the plan (rows 13, 14, 15). The in-scope list grows:
-# `deploy/` (09-05), `AGENTS.md` and `sandbox/` (09-06).
-# `ZERON_` is its own pattern: `[Zz]eron` does not match it.
-#
-# Two files are excluded outright, every hit in them the old name on purpose.
-# env_compat.rs is GENERATED here - rewriting it made its fallback read
-# `var_os("SURYA_")`, the compat dead and the tree still compiling. data_dir.rs
-# adopts the OLD dir; rewriting its fixtures made it self-adopt.
+# `deploy/` (09-05), `AGENTS.md` and `sandbox/` (09-06). `ZERON_` is its own
+# pattern: `[Zz]eron` does not match it.
+# Two files are excluded outright, every hit in them the old name on purpose:
+# env_compat.rs is GENERATED here (rewriting it killed the compat silently)
+# and data_dir.rs adopts the OLD dir (its fixtures made it self-adopt).
 EXCLUDE='app/crates/(proto/src/env_compat|engine/src/data_dir)\.rs'
 in_scope_files() {
   "${RG[@]}" -l -e '[Zz]eron' -e 'ZERON_' \
@@ -463,11 +461,13 @@ echo "zeron_hits_before=$BEFORE after=$(hits_of '[Zz]eron') files_changed=$CHANG
 # --------------------------------------------------------------------------
 # 5. Scope drift. The counters cannot see a directory the script was never
 # told about. This reads the WHOLE repo, subtracts the out-of-scope trees and
-# the masked hits, and fails on what is left.
+# the masked hits, then fails on the rest. Cargo.lock is excluded like RG
+# excludes it: generated, and with `cargo update -w` unrun it named the old
+# crates and made this report MISSED=42 of it. A stale lock fails the build.
 # --------------------------------------------------------------------------
 echo
 MISSED=$(grep -rnI --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules \
-    -e '[Zz]eron' . 2>/dev/null | sed 's|^\./||' \
+    --exclude=Cargo.lock -e '[Zz]eron' . 2>/dev/null | sed 's|^\./||' \
   | grep -vE '^(app/apps/ios|app/edge|app/apps/landing|app/apps/www-redirect|app/\.github|scripts/rename-(apply|dry-run)\.sh|docs/)' \
   | grep -vE "^$EXCLUDE:" \
   | sed -E 's/zeronsh//g; s/zeron\.sh//g; s/"?[Zz]eron[- ](Dark|dark|Light|light)"?//g;
