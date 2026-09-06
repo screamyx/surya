@@ -273,12 +273,17 @@ Remove-Item $zip -Force
 # one: --windowslogonpassword with an empty value fails, and prompting for a
 # password that does not exist is what stopped the first unattended install on
 # dtry. Anything else is a real account and does need one.
-$builtIn = @(
-    "LocalSystem", "NT AUTHORITY\SYSTEM",
-    "NT AUTHORITY\NETWORK SERVICE", "NETWORKSERVICE", "NT AUTHORITY\NETWORKSERVICE",
-    "NT AUTHORITY\LOCAL SERVICE", "LOCALSERVICE", "NT AUTHORITY\LOCALSERVICE"
-)
-$isBuiltIn = $builtIn -contains $LogonAccount.Trim()
+# These accounts are spelled a dozen ways: with or without the "NT
+# AUTHORITY\" domain, with or without the space in "Network Service", and
+# "SYSTEM" on its own. Listing every spelling is how one gets missed, so
+# normalise instead: drop the domain, drop the spaces, uppercase, compare.
+function Test-BuiltInAccount([string]$Account) {
+    $bare = $Account.Trim()
+    if ($bare -match '^\s*NT AUTHORITY\\(.+)$') { $bare = $Matches[1] }
+    $bare = ($bare -replace '\s', '').ToUpperInvariant()
+    return $bare -in @("SYSTEM", "LOCALSYSTEM", "NETWORKSERVICE", "LOCALSERVICE")
+}
+$isBuiltIn = Test-BuiltInAccount $LogonAccount
 
 $configArgs = @(
     "--unattended", "--replace",
@@ -336,6 +341,7 @@ if ($Ifeo) {
     Restart-Service $svc.Name -Force
     Start-Sleep -Seconds 5
 
+    $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
     # By path, not by name. dtry runs haktui's runner out of C:\gha-runner
     # with an executable of exactly this name, and -Name returns whichever
     # started first. Get-Process needs elevation to read Path for a process
@@ -344,7 +350,11 @@ if ($Ifeo) {
         Where-Object {
             $path = $null
             try { $path = $_.Path } catch { }
-            $path -and $path.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)
+            # The trailing separator matters. Without it, -Root
+            # E:\actions-runner-surya also matches a listener living in
+            # E:\actions-runner-surya-other, and the check would read the
+            # priority of the wrong runner.
+            $path -and $path.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)
         } | Select-Object -First 1
     if (-not $listener) {
         throw "no Runner.Listener running out of $Root after the restart. Other runners on this box are not this one; check `Get-Service $($svc.Name)`."
