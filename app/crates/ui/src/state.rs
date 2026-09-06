@@ -752,6 +752,15 @@ pub struct AppState {
     pub data_dir: Option<PathBuf>,
     engine: Option<EngineHandle>,
     watch_tasks: Vec<Task<()>>,
+    /// The browser pane's watch on the engine (`browser_agent`), started the
+    /// first time the Browser tab is shown and held from there; `None`
+    /// before that, and after a runtime replacement.
+    #[cfg_attr(not(feature = "browser"), allow(dead_code))]
+    browser_watch: Option<Task<()>>,
+    /// Whether this app has shown its Browser tab: the watch belongs to
+    /// apps with a pane, not to a chat-only session (ENGINE-01).
+    #[cfg_attr(not(feature = "browser"), allow(dead_code))]
+    browser_pane_shown: bool,
     /// The configuration the last bootstrap used; a lost remote connection
     /// re-bootstraps from it.
     boot_config: Option<EngineBootConfig>,
@@ -808,6 +817,8 @@ impl AppState {
             data_dir: None,
             engine: None,
             watch_tasks: Vec::new(),
+            browser_watch: None,
+            browser_pane_shown: false,
             boot_config: None,
             reconnect_task: None,
             reconnect_attempts: 0,
@@ -1496,12 +1507,39 @@ impl AppState {
         self.engine.as_ref()
     }
 
+    /// The shell showed its Browser tab: attach the pane to the engine if it
+    /// is not attached already. Called on every show, so a pane another app
+    /// displaced (`browser_agent::Ended::Displaced`) takes the engine back
+    /// the moment its owner looks at it again.
+    pub fn browser_pane_shown(&mut self, cx: &mut Context<Self>) {
+        self.browser_pane_shown = true;
+        #[cfg(feature = "browser")]
+        if !crate::browser_agent::attached() {
+            self.start_browser_watch(cx);
+        }
+        #[cfg(not(feature = "browser"))]
+        let _ = cx;
+    }
+
+    /// One watch loop at a time: the previous task, attached or backing
+    /// off, is dropped (its receiver drop cancels the stream) before the
+    /// next starts.
+    #[cfg(feature = "browser")]
+    fn start_browser_watch(&mut self, cx: &mut Context<Self>) {
+        if let Some(handle) = self.engine.clone() {
+            self.browser_watch = None;
+            self.browser_watch =
+                Some(crate::browser_agent::spawn(cx, handle, self.data_dir.clone()));
+        }
+    }
+
     /// Drop every account-scoped view and subscription after its runtime has
     /// stopped. The next bootstrap must never render rows from the previous
     /// account while the local profile is opening.
     pub fn prepare_runtime_replacement(&mut self, cx: &mut Context<Self>) {
         self.engine = None;
         self.watch_tasks.clear();
+        self.browser_watch = None;
         self.transcript_task = None;
         self.change_request_tasks.clear();
         self.change_requests = ChangeRequestClientState::default();
@@ -1585,9 +1623,14 @@ impl AppState {
         }
         self.engine = Some(handle.clone());
         self.reconnect_attempts = 0;
-        let mut watch_tasks = Vec::with_capacity(8);
+        // The reconnect path: a pane this app showed before re-attaches to
+        // the new connection; a session that never showed one stays out.
+        self.browser_watch = None;
         #[cfg(feature = "browser")]
-        watch_tasks.push(crate::browser_agent::spawn(cx, handle.clone(), self.data_dir.clone()));
+        if self.browser_pane_shown {
+            self.start_browser_watch(cx);
+        }
+        let mut watch_tasks = Vec::with_capacity(8);
         if let Some(task) = spawn_deferred_engine_watch(cx, handle.clone()) {
             watch_tasks.push(task);
         }

@@ -2486,8 +2486,11 @@ impl Shell {
             // The tab's feed (watch or snapshot) runs from open to close —
             // activation needs no revalidation.
             RightSurface::Subagent(_) => {}
+            // Every way of showing the pane ends here (picker row, titlebar
+            // globe, SURYA_OPEN_PANE, a tab click): the engine watch starts
+            // on the first show and comes back after another app took it.
             #[cfg(feature = "browser")]
-            RightSurface::Browser => {}
+            RightSurface::Browser => self.state.update(cx, |state, cx| state.browser_pane_shown(cx)),
             RightSurface::Files | RightSurface::Tasks => {}
             RightSurface::Picker => {}
         }
