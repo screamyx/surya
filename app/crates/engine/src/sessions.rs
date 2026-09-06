@@ -349,6 +349,14 @@ impl SessionsEngine {
             .get(chat_id)
             .map(|h| h.engine_tx.clone());
         self.inner.states.yolo().forget(chat_id);
+        // The last run's config goes too. `Mail::run_request_for` falls back
+        // to it (mail/delivery.rs:271), so a delivery queued for a cascaded
+        // agent would otherwise still find a runnable request - carrying the
+        // removed project's cwd - and dispatch would claim a chat row and, at
+        // that cwd, auto-create a space to hold it. Without this the fallback
+        // is `request_from_chat_row`, which needs a row the cascade removed,
+        // so mail holds instead.
+        lock(&self.inner.last_requests).remove(chat_id);
         for request_id in self.inner.states.drop_chat(chat_id) {
             let Some(engine_tx) = engine_tx.as_ref() else {
                 continue;

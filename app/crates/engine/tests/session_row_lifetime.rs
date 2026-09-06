@@ -215,16 +215,105 @@ async fn a_run_with_no_createchat_records_its_opening_working() {
         .await
         .expect("dispatch");
 
-    // Asserted at once, not waited for. `dispatch` claims and mirrors
-    // Working synchronously, so the row is there the moment it returns - and
-    // waiting instead would hide the bug: with the claim removed this still
-    // goes green after about 15 s, because `touch_session`'s 10 s throttle
-    // re-writes the entry once something else has claimed the chat. A
-    // deadline would have made the test pass for the wrong reason twice over.
+    // Asserted at once, not waited for. `dispatch` claims and mirrors the
+    // opening status synchronously, so the row is there the moment it
+    // returns - and waiting instead would hide the bug: with the claim
+    // removed this still goes green after about 15 s, because
+    // `touch_session`'s 10 s throttle re-writes the entry once something else
+    // has claimed the chat. A deadline would make it pass for the wrong
+    // reason twice over.
+    //
+    // Any status, not `Working` specifically. The run's own task is already
+    // spawned by now and its parked permission can turn the row
+    // `AwaitingInput` first. Either way the mirror reached the doc, which is
+    // the whole claim: without the claim there is no row here at all, since
+    // `note_message` claims only after `set_status` and writes no session row.
     let rows = core.workspace.read_sessions().unwrap_or_default();
     assert!(
-        rows.iter()
-            .any(|s| s.chat_id == "chat-claimed" && s.status == SessionStatus::Working),
-        "the opening Working mirror never reached the doc: {rows:?}"
+        rows.iter().any(|s| s.chat_id == "chat-claimed"),
+        "the opening status mirror never reached the doc: {rows:?}"
+    );
+}
+
+/// The whole chain, end to end: a project removed while one of its chats has
+/// a run behind it, then mail queued for that dead chat.
+///
+/// `Mail::run_request_for` (`mail/delivery.rs:271`) falls back to the
+/// sessions engine's last run configuration. That map outlived `drop_chat`,
+/// so the delivery still found a runnable request carrying the removed
+/// project's cwd - and dispatch would claim a chat row for it and, at that
+/// cwd, auto-create a space to hold it. A removed project growing a new
+/// project back is the worst shape this seam has.
+///
+/// With the map cleared the fallback is `request_from_chat_row`, which needs
+/// a row the cascade took, so mail holds instead.
+#[tokio::test(flavor = "multi_thread")]
+async fn mail_for_a_cascaded_chat_mints_no_project_and_no_chat() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let core = assemble(
+        dir.path(),
+        vec![started(), done(DoneStatus::Completed)],
+    );
+    let client = surya_rpc::memory_client(core.rpc_service());
+
+    client
+        .call(
+            methods::MUTATE,
+            serde_json::json!({
+                "op": "createSpace", "spaceId": "space-1",
+                "deviceId": core.device_id, "path": CWD
+            }),
+        )
+        .await
+        .expect("create space");
+    client
+        .call(
+            methods::MUTATE,
+            serde_json::json!({ "op": "createChat", "chatId": "chat-1", "spaceId": "space-1" }),
+        )
+        .await
+        .expect("create chat");
+
+    // A run, so the sessions engine holds a last request for this chat.
+    core.sessions
+        .dispatch("chat-1", HarnessId::Mock, run_request("first turn"), None)
+        .await
+        .expect("dispatch");
+    wait_for(
+        || core.sessions.last_request("chat-1").is_some(),
+        "the run configuration to be remembered",
+    )
+    .await;
+
+    client
+        .call(
+            methods::MUTATE,
+            serde_json::json!({ "op": "deleteSpace", "spaceId": "space-1" }),
+        )
+        .await
+        .expect("delete space");
+    wait_for(
+        || core.workspace.chat("chat-1").ok().flatten().is_none(),
+        "the chat row to go",
+    )
+    .await;
+
+    // Mail for an agent that no longer exists here. Accepted and queued:
+    // reserve-on-spawn means an unknown address is not an error.
+    core.mail
+        .send("someone", "chat-1", "are you still there", None)
+        .await
+        .expect("queued");
+    core.mail.deliver_pending().await.expect("deliver pass");
+
+    let spaces = core.workspace.read_spaces().unwrap_or_default();
+    let chats = core.workspace.read_chats().unwrap_or_default();
+    assert!(
+        spaces.is_empty(),
+        "a removed project grew a project back: {spaces:?}"
+    );
+    assert!(
+        chats.is_empty(),
+        "a removed project grew a chat back: {chats:?}"
     );
 }
