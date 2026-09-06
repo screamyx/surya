@@ -78,6 +78,21 @@ impl Tree {
         self.add("text", body)
     }
 
+    /// A table cell. The weight is what makes the row a set of columns: the
+    /// renderer wraps every weightless child of a horizontal container in
+    /// `flex_none`, so without it each cell is only as wide as its own text
+    /// and nothing lines up between rows. The hand-written reference table
+    /// carries the same `weight: 1` on every cell
+    /// (`a2ui/fixtures/02-table.json`).
+    fn cell(&mut self, text: &str, variant: &str) -> String {
+        let mut body = Map::new();
+        body.insert("component".into(), json!("Text"));
+        body.insert("text".into(), json!(text));
+        body.insert("variant".into(), json!(variant));
+        body.insert("weight".into(), json!(1));
+        self.add("text", body)
+    }
+
     fn column(&mut self, children: Vec<String>) -> String {
         let mut body = Map::new();
         body.insert("component".into(), json!("Column"));
@@ -209,9 +224,9 @@ fn table(tree: &mut Tree, card: &Value, body: &mut Vec<String>) {
     if !columns.is_empty() {
         let cells: Vec<String> = columns
             .iter()
-            .map(|c| tree.text(&scalar(c), "caption"))
+            .map(|c| tree.cell(&scalar(c), "caption"))
             .collect();
-        body.push(tree.row(cells, "spaceBetween"));
+        body.push(tree.row(cells, "start"));
         body.push(tree.divider());
     }
     for row in array_at(card, "rows") {
@@ -220,11 +235,11 @@ fn table(tree: &mut Tree, card: &Value, body: &mut Vec<String>) {
             .iter()
             .map(|cell| {
                 let text = scalar(cell);
-                tree.text(&text, "body")
+                tree.cell(&text, "body")
             })
             .collect();
         if !cells.is_empty() {
-            body.push(tree.row(cells, "spaceBetween"));
+            body.push(tree.row(cells, "start"));
         }
     }
     actions(tree, card, body);
@@ -382,6 +397,7 @@ fn actions(tree: &mut Tree, card: &Value, body: &mut Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
 
     fn root_of(components: &[Value]) -> &Value {
         components
@@ -453,6 +469,74 @@ mod tests {
             .filter_map(|c| c["text"].as_str())
             .collect();
         assert!(texts.contains(&"3"), "row cells are rendered: {texts:?}");
+
+        // Every cell shares the row, or the renderer wraps it `flex_none` and
+        // the columns drift row by row (E2E-CARD-03).
+        let by_id: HashMap<&str, &Value> = components
+            .iter()
+            .filter_map(|c| Some((c["id"].as_str()?, c)))
+            .collect();
+        let mut asked = 0;
+        let mut weighted = 0;
+        for row in components.iter().filter(|c| c["component"] == "Row") {
+            for child in row["children"].as_array().expect("a row has children") {
+                let id = child.as_str().expect("child ids are strings");
+                let cell = by_id.get(id).expect("a row child resolves");
+                asked += 1;
+                if cell["weight"] == json!(1) {
+                    weighted += 1;
+                }
+            }
+        }
+        assert_eq!((asked, weighted), (6, 6), "asked={asked} weighted={weighted}");
+    }
+
+    /// The hand-written reference table already had columns; the short form
+    /// did not. Read the fixture rather than restating its number, so the two
+    /// cannot drift apart in silence.
+    #[test]
+    fn short_form_cells_carry_the_same_weight_as_the_reference_fixture() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../a2ui/fixtures/02-table.json");
+        let fixture: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("the fixture is readable"))
+                .expect("the fixture is JSON");
+        let fixture_weights: Vec<&Value> = fixture
+            .as_array()
+            .expect("the fixture is a message array")
+            .iter()
+            .filter_map(|m| m["updateComponents"]["components"].as_array())
+            .flatten()
+            .filter(|c| c["component"] == "Text")
+            .filter_map(|c| c.get("weight"))
+            .collect();
+        assert!(
+            !fixture_weights.is_empty(),
+            "the fixture still weights its cells; if it stopped, this test is the wrong shape"
+        );
+        let reference = fixture_weights[0];
+        assert!(
+            fixture_weights.iter().all(|w| *w == reference),
+            "the fixture uses one weight for every cell: {fixture_weights:?}"
+        );
+
+        let (components, _) = expand(&json!({
+            "shape": "table", "columns": ["Lead"], "rows": [["Ada"]]
+        }))
+        .unwrap();
+        let mut asked = 0;
+        let mut matched = 0;
+        for cell in components.iter().filter(|c| c["component"] == "Text") {
+            asked += 1;
+            if cell["weight"] == *reference {
+                matched += 1;
+            }
+        }
+        assert_eq!(
+            (asked, matched),
+            (2, 2),
+            "asked={asked} matched={matched} against fixture weight {reference}"
+        );
     }
 
     #[test]
