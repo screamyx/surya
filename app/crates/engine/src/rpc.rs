@@ -890,17 +890,28 @@ impl EngineRpc {
                 let sessions = self.sessions.clone();
                 let doc_host = self.doc_host.clone();
                 let chat_ids = deleted.chat_ids;
+                // Drop NOW, before the teardown task, and again after it. The
+                // interrupt below is awaited and can take seconds, and until
+                // the drop lands the sessions engine still holds the chat's
+                // last run configuration - which `Mail::run_request_for`
+                // borrows, so a delivery arriving in that window would
+                // dispatch for a chat the cascade has already removed and
+                // mint a project back at its old cwd. Idempotent, so the
+                // second call is free.
+                for chat_id in &chat_ids {
+                    sessions.drop_chat(chat_id);
+                }
                 tokio::spawn(async move {
                     for chat_id in chat_ids {
                         if let Err(err) = sessions.interrupt(&chat_id).await {
                             tracing::debug!(chat = %chat_id, error = %err, "deleteSpace interrupt skipped");
                         }
                         doc_host.purge_chat(&chat_id);
-                        // Last, because the interrupt above settles the run
-                        // and its Done re-creates the agent-state node. That
-                        // node is what the rail draws, and nothing here used
-                        // to drop it: the row outlived the chat, with no
-                        // title left to draw and nothing behind it to open
+                        // Again, and last: the interrupt above settles the
+                        // run, and its Done re-creates the agent-state node.
+                        // That node is what the rail draws, and nothing here
+                        // used to drop it - the row outlived the chat, with
+                        // no title left to draw and nothing behind it to open
                         // (E2E-NAV-02). DeleteChat has always done this.
                         sessions.drop_chat(&chat_id);
                     }

@@ -953,6 +953,15 @@ impl RegistryDoc {
         Ok(true)
     }
 
+    /// Does the chat have a row? Presence only.
+    ///
+    /// [`Self::chat`] answers `None` for a row that is present but malformed
+    /// (`row_to` drops it), so it cannot be used to decide "this chat is
+    /// gone" - a live chat with one bad field would read as deleted.
+    pub fn chat_exists(&self, chat_id: &str) -> bool {
+        self.row_exists(KIND_CHATS, chat_id)
+    }
+
     pub fn chat(&self, chat_id: &str) -> Result<Option<Chat>, DocError> {
         Ok(self
             .overlay_row(KIND_CHATS, chat_id)

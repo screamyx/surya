@@ -349,6 +349,14 @@ impl SessionsEngine {
             .get(chat_id)
             .map(|h| h.engine_tx.clone());
         self.inner.states.yolo().forget(chat_id);
+        // The last run's config goes too. `Mail::run_request_for` falls back
+        // to it (mail/delivery.rs:271), so a delivery queued for a cascaded
+        // agent would otherwise still find a runnable request - carrying the
+        // removed project's cwd - and dispatch would claim a chat row and, at
+        // that cwd, auto-create a space to hold it. Without this the fallback
+        // is `request_from_chat_row`, which needs a row the cascade removed,
+        // so mail holds instead.
+        lock(&self.inner.last_requests).remove(chat_id);
         for request_id in self.inner.states.drop_chat(chat_id) {
             let Some(engine_tx) = engine_tx.as_ref() else {
                 continue;
@@ -638,6 +646,17 @@ impl SessionsEngine {
                 routed_steers: Arc::new(Mutex::new(std::collections::VecDeque::new())),
             },
         );
+        // Claim BEFORE the first status mirror. The command path claims in
+        // `DocHost::execute`, but mail delivery and the crash auto-resume
+        // reach here without going through it, and `record_session` refuses a
+        // status for a chat with no row - so on those paths the run's opening
+        // Working never reached the workspace doc. Idempotent: `claim_chat`
+        // is a no-op when the row is already there.
+        if let Some(ws) = self.inner.workspace()
+            && let Err(err) = ws.claim_chat(chat_id, Some(&request.cwd))
+        {
+            tracing::warn!(chat = %chat_id, error = %err, "claim before dispatch failed");
+        }
         self.set_status(chat_id, SessionStatus::Working, true);
         // AFTER Working (same causal-order guarantee as the steer path): the
         // lastMessageAt bump must never be observable ahead of the live run.

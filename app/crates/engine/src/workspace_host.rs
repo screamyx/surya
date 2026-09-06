@@ -828,9 +828,43 @@ impl WorkspaceHost {
 
     /// Session-status row upsert (sessions engine transitions land here too, in
     /// addition to the local watch channel).
+    ///
+    /// Refused when the chat has no row. The `deleteSpace` cascade tombstones
+    /// the chat row and the session row in one commit, then interrupts the
+    /// run it was hosting - and that interrupt settles into a status
+    /// transition that landed here and wrote the session row straight back.
+    /// Nothing clears it afterwards, because every later sweep is keyed on a
+    /// chat that is gone. A status about a chat nobody has is not a status,
+    /// so it does not get written.
+    ///
+    /// The check runs INSIDE the mutation, under one lock. Read-then-write
+    /// takes the registry lock twice ([`Self::read`] and [`Self::mutate`]),
+    /// and a cascade committing between the two leaks the row this guards
+    /// against.
+    ///
+    /// It asks whether the row is PRESENT, not whether it parses:
+    /// `RegistryDoc::chat` returns `None` for a malformed row too, and a live
+    /// chat with one bad field must not lose every status write.
+    ///
+    /// A guard, not the ordering. Every dispatch path claims the chat before
+    /// its first status mirror (`SessionsEngine::dispatch_with`), so a live
+    /// chat always has a row by the time a transition arrives here.
     pub fn record_session(&self, session: &Session) {
-        if let Err(err) = self.mutate(|doc| doc.upsert_session(session)) {
-            tracing::warn!(chat = %session.chat_id, error = %err, "registry session write failed");
+        let result = self.mutate(|doc| {
+            if !doc.chat_exists(&session.chat_id) {
+                return None;
+            }
+            Some(doc.upsert_session(session))
+        });
+        match result {
+            None => tracing::debug!(
+                chat = %session.chat_id,
+                "session row refused: the chat has no row"
+            ),
+            Some(Err(err)) => {
+                tracing::warn!(chat = %session.chat_id, error = %err, "registry session write failed")
+            }
+            Some(Ok(())) => {}
         }
     }
 
