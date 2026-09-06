@@ -157,10 +157,33 @@ Only the second apply catches the middle one, which is why the runbook makes
 that run mandatory.
 
 **A guard, so the next directory does not sit outside the counters.** After
-the substitution the script now reads the whole repo, subtracts the
+the substitution the script reads every tracked file, subtracts the
 out-of-scope trees and every hit the masks keep on purpose, and exits non-zero
 on what is left. Proved with a positive, not an absence: a planted
 `packaging/build.sh` containing `-p surya` printed `MISSED=1` and exited 1.
+
+**Tracked files, not a directory walk (2026-09-07).** The guard first used
+`grep -r`, which reads whatever is on disk. The rename itself runs through RG,
+which skips everything `.gitignore` names, so the two saw different file sets:
+the guard reported build output, logs and scratch files that no rule was ever
+going to touch, and two seats reading the same commit got different counts.
+`git ls-files` is the same set the rename edits, on every checkout.
+
+Measured on `b6c4a67`, one worktree, only the script changing. Two gitignored
+files planted to stand in for a working checkout: `build-2026-09-07.log`
+("starting zeron engine") and `app/ignore/notarize.sh` ("cargo build -p zeron
+--release"), both confirmed ignored by `git check-ignore -v`.
+
+| Checkout | `grep -r` walk | `git ls-files` |
+| --- | --- | --- |
+| clean | MISSED=3 | MISSED=3 |
+| with the two ignored files | MISSED=5 | MISSED=3 |
+
+The positive control still fires: a tracked `packaging/build.sh` carrying
+`-p zeron` gives `MISSED=4` and exit 1 under the new version.
+
+`xargs -r` is a GNU extension, so the guard is Linux-only tooling. That
+matches where it runs.
 
 **Measured on the unpatched script**, so the comparison is honest:
 `cargo check --workspace --all-targets` gives 0 errors and 21 warnings on the

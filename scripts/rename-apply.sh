@@ -450,18 +450,10 @@ echo
 echo "zeron_hits_before=$BEFORE after=$(hits_of '[Zz]eron') files_changed=$CHANGED paths_moved=$MOVED"
 
 # --------------------------------------------------------------------------
-# 5. Scope drift. The counters cannot see a directory the script was never
-# told about. This reads every TRACKED file, subtracts the out-of-scope trees
-# and the masked hits, then fails on the rest. Cargo.lock is excluded like RG
-# excludes it: generated, and unrewritten it made this report MISSED=42 of it.
-#
-# The file list is `git ls-files`, not a `grep -r` walk of the directory.
-# The rename itself runs through RG, which skips everything .gitignore
-# names, so a walk reported files the rename was never going to touch: any
-# build output, log or scratch file an agent left in a working checkout that
-# happened to contain the old name. Two seats reading the same commit got
-# different counts. Tracked files are the same set the rename edits and the
-# same set on every checkout, so the count is now a fact about the commit.
+# 5. Scope drift. The counters cannot see a directory the script was never told about.
+# This reads every TRACKED file (why tracked and not a walk: docs/rename-apply-notes.md),
+# subtracts the out-of-scope trees and the masked hits, then fails on the rest.
+# Cargo.lock is excluded like RG excludes it: generated, and unrewritten it made MISSED=42.
 # --------------------------------------------------------------------------
 echo
 MISSED=$(git ls-files -z ':!:Cargo.lock' ':!:*/Cargo.lock' \
