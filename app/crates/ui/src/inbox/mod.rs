@@ -15,6 +15,7 @@ pub mod demo_run;
 pub mod model;
 pub mod needs_you;
 pub mod rules;
+pub(crate) mod watch;
 
 pub use agents::{AgentsRail, SelectChat};
 pub use needs_you::{NeedsYouPane, OpenChat};

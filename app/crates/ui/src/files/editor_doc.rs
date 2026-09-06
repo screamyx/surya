@@ -28,6 +28,17 @@ pub enum SaveOutcome {
     Refused,
 }
 
+/// What a click on a tree path does to the buffer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Switch {
+    /// Replace the buffer with the path's read.
+    Load,
+    /// The buffer holds edits for another path: ask before anything moves.
+    Prompt,
+    /// The same dirty file was clicked again: nothing to do.
+    Stay,
+}
+
 /// Pure editor state: haktui `editor.rs::Tab` without the entity.
 #[derive(Debug, Default)]
 pub struct EditorDoc {
@@ -43,6 +54,8 @@ pub struct EditorDoc {
     pub saves_asked: u32,
     pub saved: u32,
     pub refused: u32,
+    /// A path waiting behind the unsaved-edits prompt.
+    pub pending_open: Option<String>,
 }
 
 impl Default for Body {
@@ -59,6 +72,9 @@ impl EditorDoc {
         self.conflict = None;
         self.note = None;
         self.saving = false;
+        // A prompt was about the buffer being replaced; it does not follow
+        // the next file.
+        self.pending_open = None;
     }
 
     /// A read answered. Returns the text to put in the buffer, if any.
@@ -86,6 +102,7 @@ impl EditorDoc {
 
     pub fn failed(&mut self, why: String) {
         self.saving = false;
+        self.pending_open = None;
         if self.body == Body::Loading {
             self.body = Body::Error(why);
         } else {
@@ -95,6 +112,60 @@ impl EditorDoc {
 
     pub fn is_dirty(&self, current: &str) -> bool {
         self.body == Body::Text && current != self.saved_text
+    }
+
+    /// The rule for a click on `path` while the buffer holds `current`:
+    /// a dirty buffer is never replaced without asking, and the same dirty
+    /// file clicked again is left alone. A clean buffer loads, the same path
+    /// included (a re-click is a refresh from disk).
+    pub fn switch_to(&self, current: &str, path: &str) -> Switch {
+        if !self.is_dirty(current) {
+            return Switch::Load;
+        }
+        if self.path.as_deref() == Some(path) {
+            Switch::Stay
+        } else {
+            Switch::Prompt
+        }
+    }
+
+    /// A click, applied: the rule from `switch_to`, and its state change.
+    /// `Prompt` remembers the path behind the prompt; `Stay` takes any
+    /// prompt down (clicking the file you are on is choosing to stay);
+    /// `Load` is the caller's to do.
+    pub fn click(&mut self, current: &str, path: &str) -> Switch {
+        let switch = self.switch_to(current, path);
+        match switch {
+            Switch::Prompt => self.ask_before_leaving(path),
+            Switch::Stay => self.keep_editing(),
+            Switch::Load => {}
+        }
+        switch
+    }
+
+    /// Whether the prompt is up: a path waits, and the buffer is still
+    /// dirty. Edited back to clean, the question is moot and the bar goes.
+    pub fn prompt_for(&self, current: &str) -> Option<&str> {
+        if !self.is_dirty(current) {
+            return None;
+        }
+        self.pending_open.as_deref()
+    }
+
+    /// Remember the path the prompt is about.
+    pub fn ask_before_leaving(&mut self, path: &str) {
+        self.pending_open = Some(path.to_string());
+    }
+
+    /// The prompt's Discard, or the save that the prompt's Save asked for
+    /// just landed: the waiting path, to load now.
+    pub fn take_pending_open(&mut self) -> Option<String> {
+        self.pending_open.take()
+    }
+
+    /// The prompt's Keep editing: nothing moves.
+    pub fn keep_editing(&mut self) {
+        self.pending_open = None;
     }
 
     /// Whether a save may go now, and with which expected hash. Nothing goes
@@ -127,6 +198,10 @@ impl EditorDoc {
             FileWrite::Refused { reason, text, hash } => {
                 self.conflict = Some(Conflict { reason, text, hash });
                 self.refused += 1;
+                // The conflict banner takes over; the file the owner was
+                // going to is not opened behind their back. They click it
+                // again once the conflict is settled.
+                self.pending_open = None;
                 SaveOutcome::Refused
             }
         }
@@ -239,6 +314,83 @@ mod tests {
             doc.saves_asked, doc.saved, doc.refused
         );
         assert_eq!((doc.saves_asked, doc.saved, doc.refused), (3, 2, 1));
+    }
+
+    #[test]
+    fn a_dirty_buffer_is_never_replaced_without_asking() {
+        let mut doc = EditorDoc::default();
+        assert_eq!(doc.switch_to("", "a.rs"), Switch::Load, "nothing open: load");
+        doc.loading("a.rs");
+        doc.opened("a.rs", text_read("one\n", "h1"));
+        assert_eq!(doc.switch_to("one\n", "b.rs"), Switch::Load, "clean: load");
+        assert_eq!(doc.switch_to("one\n", "a.rs"), Switch::Load, "clean re-click: refresh");
+        assert_eq!(doc.switch_to("one two\n", "b.rs"), Switch::Prompt, "dirty, other file: ask");
+        assert_eq!(doc.switch_to("one two\n", "a.rs"), Switch::Stay, "dirty, same file: nothing");
+
+        // Discard: the waiting path loads, the edit is gone with it.
+        doc.ask_before_leaving("b.rs");
+        assert_eq!(doc.take_pending_open().as_deref(), Some("b.rs"));
+        assert_eq!(doc.take_pending_open(), None, "taken once");
+
+        // Keep editing: nothing waits any more.
+        doc.ask_before_leaving("b.rs");
+        doc.keep_editing();
+        assert_eq!(doc.take_pending_open(), None);
+
+        // Save then open: the write lands, the waiting path is still there.
+        doc.ask_before_leaving("b.rs");
+        let _ = doc.save_request("one two\n").expect("save allowed");
+        assert_eq!(
+            doc.write_answered(FileWrite::Saved { hash: "h2".into(), size: 8 }, "one two\n".into()),
+            SaveOutcome::Saved
+        );
+        assert_eq!(doc.take_pending_open().as_deref(), Some("b.rs"));
+
+        // Save refused: the conflict banner takes over and nothing opens.
+        doc.ask_before_leaving("b.rs");
+        let _ = doc.save_request("one three\n").expect("save allowed");
+        assert_eq!(
+            doc.write_answered(
+                FileWrite::Refused { reason: "changed".into(), text: None, hash: None },
+                "one three\n".into()
+            ),
+            SaveOutcome::Refused
+        );
+        assert_eq!(doc.take_pending_open(), None, "a refused save does not open the next file");
+
+        // A placeholder body is never dirty, so a binary file switches freely.
+        doc.loading("blob.bin");
+        doc.opened("blob.bin", FileRead::Binary { size: 3 });
+        assert_eq!(doc.switch_to("", "a.rs"), Switch::Load);
+    }
+
+    #[test]
+    fn the_prompt_lives_only_as_long_as_the_dirty_buffer() {
+        let mut doc = EditorDoc::default();
+        doc.loading("a.rs");
+        doc.opened("a.rs", text_read("one\n", "h1"));
+
+        // Dirty, click b: the prompt is up for b.
+        assert_eq!(doc.click("one!\n", "b.rs"), Switch::Prompt);
+        assert_eq!(doc.prompt_for("one!\n"), Some("b.rs"));
+        // Backspace to clean: the bar goes, though the path is still remembered.
+        assert_eq!(doc.prompt_for("one\n"), None);
+        // Clean, click c: it loads, and the stale path does not follow it.
+        assert_eq!(doc.click("one\n", "c.rs"), Switch::Load);
+        doc.loading("c.rs");
+        assert_eq!(doc.pending_open, None, "loading() clears the pending path");
+        doc.opened("c.rs", text_read("see\n", "h2"));
+        assert_eq!(doc.prompt_for("see!\n"), None, "dirty again, but nothing waits");
+
+        // Dirty, click b, then click c again while the prompt is up: the
+        // prompt moves to c. Click c itself (the file we are on): Stay takes
+        // the prompt down.
+        assert_eq!(doc.click("see!\n", "b.rs"), Switch::Prompt);
+        assert_eq!(doc.click("see!\n", "a.rs"), Switch::Prompt);
+        assert_eq!(doc.prompt_for("see!\n"), Some("a.rs"));
+        assert_eq!(doc.click("see!\n", "c.rs"), Switch::Stay);
+        assert_eq!(doc.pending_open, None, "Stay takes the prompt down");
+        assert_eq!(doc.prompt_for("see!\n"), None);
     }
 
     #[test]

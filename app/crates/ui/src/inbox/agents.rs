@@ -11,6 +11,7 @@ use zeron_rpc::methods;
 
 use crate::inbox::chrome::{badge, dot, empty_state, heading, state_color};
 use crate::inbox::model::{AgentRow, AgentSection, agent_sections};
+use crate::inbox::watch::spawn_engine_watch;
 use crate::state::AppState;
 use crate::theme::Theme;
 use crate::typography::ui_rems;
@@ -81,70 +82,28 @@ impl AgentsRail {
     }
 
     fn start_watches(&mut self, cx: &mut Context<Self>) {
-        let Some(engine) = self
-            .state
-            .as_ref()
-            .and_then(|state| state.read(cx).engine().cloned())
-        else {
+        // `None` in the demo and in tests: no engine to watch.
+        let Some(state) = self.state.clone() else {
             return;
         };
-        let states = engine.clone();
-        self._watch = Some(cx.spawn(async move |this, cx| {
-            const RETRY: std::time::Duration = std::time::Duration::from_secs(2);
-            loop {
-                if let Ok(mut rx) = states
-                    .client()
-                    .subscribe(methods::WATCH_AGENT_STATES, serde_json::json!({}))
-                    .await
-                {
-                    while let Some(value) = rx.recv().await {
-                        let Ok(rows) = serde_json::from_value::<Vec<AgentStateRow>>(value) else {
-                            tracing::warn!("dropping malformed agent-states frame");
-                            continue;
-                        };
-                        let alive = this.update(cx, |rail, cx| {
-                            rail.rows = rows;
-                            cx.notify();
-                        });
-                        if alive.is_err() {
-                            return;
-                        }
-                    }
-                }
-                if this.update(cx, |_, _| {}).is_err() {
-                    return;
-                }
-                cx.background_executor().timer(RETRY).await;
-            }
-        }));
-
-        self._chats_watch = Some(cx.spawn(async move |this, cx| {
-            const RETRY: std::time::Duration = std::time::Duration::from_secs(2);
-            loop {
-                if let Ok(mut rx) = engine
-                    .client()
-                    .subscribe(methods::WATCH_CHATS, serde_json::json!({}))
-                    .await
-                {
-                    while let Some(value) = rx.recv().await {
-                        let Ok(chats) = serde_json::from_value::<Vec<Chat>>(value) else {
-                            continue;
-                        };
-                        let alive = this.update(cx, |rail, cx| {
-                            rail.chats = chats;
-                            cx.notify();
-                        });
-                        if alive.is_err() {
-                            return;
-                        }
-                    }
-                }
-                if this.update(cx, |_, _| {}).is_err() {
-                    return;
-                }
-                cx.background_executor().timer(RETRY).await;
-            }
-        }));
+        self._watch = Some(spawn_engine_watch(
+            cx,
+            state.clone(),
+            methods::WATCH_AGENT_STATES,
+            |rail: &mut Self, rows: Vec<AgentStateRow>, cx| {
+                rail.rows = rows;
+                cx.notify();
+            },
+        ));
+        self._chats_watch = Some(spawn_engine_watch(
+            cx,
+            state,
+            methods::WATCH_CHATS,
+            |rail: &mut Self, chats: Vec<Chat>, cx| {
+                rail.chats = chats;
+                cx.notify();
+            },
+        ));
     }
 
     fn render_row(&self, row: &AgentRow, cx: &mut Context<Self>) -> gpui::AnyElement {

@@ -19,6 +19,7 @@ use crate::inbox::model::{
     AlwaysAllowScope, InboxRow, inbox_rows, remember_for, respond_input_params,
     respond_permission_params, split_question_id,
 };
+use crate::inbox::watch::spawn_engine_watch;
 use crate::state::AppState;
 use crate::theme::Theme;
 use crate::typography::ui_rems;
@@ -102,77 +103,31 @@ impl NeedsYouPane {
     }
 
     fn start_watches(&mut self, cx: &mut Context<Self>) {
-        let Some(engine) = self
-            .state
-            .as_ref()
-            .and_then(|state| state.read(cx).engine().cloned())
-        else {
+        // `None` in the demo and in tests: no engine to watch.
+        let Some(state) = self.state.clone() else {
             return;
         };
-        let needs_you = engine.clone();
-        self._watch = Some(cx.spawn(async move |this, cx| {
-            // Resubscribe loop, same contract as the chats watch: a daemon
-            // restart ends the stream, and returning here would freeze the
-            // inbox until the app restarts.
-            const RETRY: std::time::Duration = std::time::Duration::from_secs(2);
-            loop {
-                if let Ok(mut rx) = needs_you
-                    .client()
-                    .subscribe(methods::WATCH_NEEDS_YOU, serde_json::json!({}))
-                    .await
-                {
-                    while let Some(value) = rx.recv().await {
-                        let Ok(items) = serde_json::from_value::<Vec<NeedsYouItem>>(value) else {
-                            tracing::warn!("dropping malformed needs-you frame");
-                            continue;
-                        };
-                        let alive = this.update(cx, |pane, cx| {
-                            // Anything the engine no longer lists has been
-                            // answered; stop holding its row disabled.
-                            pane.answering
-                                .retain(|id| items.iter().any(|i| &i.id == id));
-                            pane.items = items;
-                            cx.notify();
-                        });
-                        if alive.is_err() {
-                            return;
-                        }
-                    }
-                }
-                if this.update(cx, |_, _| {}).is_err() {
-                    return;
-                }
-                cx.background_executor().timer(RETRY).await;
-            }
-        }));
-
-        self._chats_watch = Some(cx.spawn(async move |this, cx| {
-            const RETRY: std::time::Duration = std::time::Duration::from_secs(2);
-            loop {
-                if let Ok(mut rx) = engine
-                    .client()
-                    .subscribe(methods::WATCH_CHATS, serde_json::json!({}))
-                    .await
-                {
-                    while let Some(value) = rx.recv().await {
-                        let Ok(chats) = serde_json::from_value::<Vec<Chat>>(value) else {
-                            continue;
-                        };
-                        let alive = this.update(cx, |pane, cx| {
-                            pane.chats = chats;
-                            cx.notify();
-                        });
-                        if alive.is_err() {
-                            return;
-                        }
-                    }
-                }
-                if this.update(cx, |_, _| {}).is_err() {
-                    return;
-                }
-                cx.background_executor().timer(RETRY).await;
-            }
-        }));
+        self._watch = Some(spawn_engine_watch(
+            cx,
+            state.clone(),
+            methods::WATCH_NEEDS_YOU,
+            |pane: &mut Self, items: Vec<NeedsYouItem>, cx| {
+                // Anything the engine no longer lists has been answered; stop
+                // holding its row disabled.
+                pane.answering.retain(|id| items.iter().any(|i| &i.id == id));
+                pane.items = items;
+                cx.notify();
+            },
+        ));
+        self._chats_watch = Some(spawn_engine_watch(
+            cx,
+            state,
+            methods::WATCH_CHATS,
+            |pane: &mut Self, chats: Vec<Chat>, cx| {
+                pane.chats = chats;
+                cx.notify();
+            },
+        ));
     }
 
     fn scope_for(&self, row_id: &str) -> AlwaysAllowScope {
