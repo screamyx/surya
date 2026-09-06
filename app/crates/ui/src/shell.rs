@@ -7474,10 +7474,16 @@ impl Shell {
 
         let theme = Theme::of(cx).clone();
         // Heal drag state if the pointer was released outside the strip.
-        if self.right_tab_drag.is_some() && !cx.has_active_drag() {
+        if !cx.has_active_drag() {
             self.right_tab_drag = None;
-            // The drag ended without a drop, so its press is over too.
-            self.right_tab_press = None;
+            // A press that got as far as dragging is dead once the drag is,
+            // however it ended. The second net behind the drop's own clear:
+            // an armed press left behind would put an ungated `on_drag` back
+            // on that slot, and the next plain click there could arm on two
+            // pixels before the mouse-down re-render lands.
+            if self.right_tab_press.is_some_and(|press| press.dragged()) {
+                self.right_tab_press = None;
+            }
         }
         let rows = self.right_surface_rows(cx);
         let count = rows.len();
@@ -7519,7 +7525,7 @@ impl Shell {
             // press: no click, and a few pixels of travel move the WHOLE
             // WINDOW instead of the tab (a maximized window even restores down
             // and follows the cursor). The chips used to carry
-            // `block_mouse_except_scroll`, which does NOT stop that walk —
+            // `block_mouse_except_scroll`, which does NOT stop that walk:
             // gpui's `hit_test` only breaks on `HitboxBehavior::BlockMouse`
             // and keeps pushing the ids behind a BlockMouseExceptScroll
             // hitbox. `occlude()` breaks it. It has to sit here rather than on
@@ -7542,6 +7548,12 @@ impl Shell {
                 },
             ))
             .on_drop::<RightTabDrag>(cx.listener(move |this, payload: &RightTabDrag, _, cx| {
+                // The drop ends the press. Nothing else does: the render heal
+                // below only runs while `right_tab_drag` is still set, and the
+                // source chip renders as a placeholder for the whole drag, so
+                // its `on_mouse_up_out` never gets painted. A press left armed
+                // here would put an ungated `on_drag` back on that slot.
+                this.right_tab_press = None;
                 if payload.panel_key != this.panel_key(cx) {
                     this.right_tab_drag = None;
                     cx.notify();

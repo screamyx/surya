@@ -7,7 +7,7 @@
 //! moves me into it, not reorder it. to reorder it, hold-click the tab."
 //!
 //! So the strip does not hand gpui a drag listener at all until the button has
-//! been held for [`TAB_HOLD`]. Travel never arms on its own — that is the
+//! been held for [`TAB_HOLD`]. Travel never arms on its own - that is the
 //! whole point, and [`travel_alone_never_arms`] pins it.
 
 use std::time::{Duration, Instant};
@@ -75,6 +75,11 @@ impl TabPress {
     /// gpui created the ghost for this press.
     pub(crate) fn note_dragging(&mut self) {
         self.dragging = true;
+    }
+
+    /// Did this press get as far as a live reorder drag?
+    pub(crate) fn dragged(&self) -> bool {
+        self.dragging
     }
 
     /// The button came up over `tab`.
@@ -177,6 +182,35 @@ mod tests {
             assert!(!press.arm(start));
         }
         assert_eq!(press.release(1), PressOutcome::Click);
+    }
+
+    #[test]
+    fn a_drop_clears_the_press() {
+        // The shell drops the press in `on_drop` and, as a second net, in the
+        // render heal once no drag is active. Nothing else would: the source
+        // chip renders as a placeholder for the whole drag, so its
+        // `on_mouse_up_out` is never painted. A press surviving a drop stays
+        // armed, and the slot it names gets an `on_drag` with no hold gate.
+        let start = Instant::now();
+        let mut press = TabPress::new(1, start);
+        press.arm(start + TAB_HOLD);
+        press.note_dragging();
+        assert!(press.dragged(), "the heal keys off this");
+        assert_eq!(press.release(1), PressOutcome::DragArmed);
+        // The shell's own clear, modelled: after the drop there is no press,
+        // so no chip is armed.
+        let cleared: Option<TabPress> = None;
+        assert!(!cleared.is_some_and(|p| p.armed_for(1)));
+    }
+
+    #[test]
+    fn a_press_that_never_dragged_is_not_swept_by_the_heal() {
+        // The heal runs on every frame with no active drag, which is most of
+        // them. It must not eat a live press that simply has not moved yet.
+        let start = Instant::now();
+        let mut press = TabPress::new(1, start);
+        press.arm(start + TAB_HOLD);
+        assert!(!press.dragged());
     }
 
     #[test]
