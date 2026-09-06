@@ -22,11 +22,13 @@ pub mod agent;
 mod cef_app;
 mod cef_thread;
 mod client;
+mod cursor;
 pub mod devtools;
 pub mod emulation;
 mod clock;
 mod display;
 mod events;
+mod find;
 pub mod input;
 mod page;
 mod perf;
@@ -39,6 +41,7 @@ mod surface;
 pub mod tabs;
 mod zero_copy;
 
+pub use cursor::active as cursor;
 pub use events::counters as input_counters;
 pub use page::{navigate_to, FindState, Page};
 pub use tabs::{active_tab, page, set_zoom, tab_activate, tab_close, tab_open, tabs, zoom, TabId, TabInfo};
@@ -260,13 +263,13 @@ pub fn find(text: &str, forward: bool, find_next: bool) {
         stop_find(true);
         return;
     }
-    client::find(text, forward, find_next);
+    find::find(text, forward, find_next);
     pump::schedule_pump(0);
 }
 
 /// End the search; `clear_selection` also drops the highlight.
 pub fn stop_find(clear_selection: bool) {
-    client::stop_find(clear_selection);
+    find::stop_find(clear_selection);
     pump::schedule_pump(0);
 }
 

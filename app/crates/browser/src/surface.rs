@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use cef::ImplBrowserHost as _;
-use gpui::{canvas, div, prelude::*, px, Corners, RenderImage, Window};
+use gpui::{canvas, div, prelude::*, px, Corners, HitboxBehavior, RenderImage, Window};
 
 use crate::render::{FrameSource, SCALE, VIEW_H, VIEW_W};
 
@@ -107,9 +107,12 @@ pub fn surface() -> gpui::AnyElement {
             .into_any_element();
     }
     canvas(
-        |_, _, _| (),
-        |bounds, _, window: &mut Window, _cx: &mut gpui::App| {
+        // The page area as a hitbox, so the page's own pointer shape applies
+        // there and nowhere else: off it, gpui shows the shell's.
+        |bounds, window: &mut Window, _| window.insert_hitbox(bounds, HitboxBehavior::Normal),
+        |bounds, hitbox, window: &mut Window, _cx: &mut gpui::App| {
             UIPAINTS.fetch_add(1, Ordering::Relaxed);
+            window.set_cursor_style(crate::cursor::active(), &hitbox);
             let w = (f32::from(bounds.size.width).round() as i32).max(1);
             let h = (f32::from(bounds.size.height).round() as i32).max(1);
             let sf = (window.scale_factor() * 1000.0).round() as u32;

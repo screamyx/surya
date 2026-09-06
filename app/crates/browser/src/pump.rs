@@ -88,6 +88,7 @@ pub(crate) fn install(cx: &mut gpui::App) {
     cx.spawn(async move |cx: &mut gpui::AsyncApp| {
         let mut wait = base;
         let mut seen_frames = crate::render::frames();
+        let mut seen_cursor = crate::cursor::seq();
         let mut seen = (INPUT_SEQ.load(Ordering::Relaxed), PUMP_ASKS.load(Ordering::Relaxed));
         loop {
             IDLE_ARMED.fetch_add(1, Ordering::Relaxed);
@@ -109,11 +110,15 @@ pub(crate) fn install(cx: &mut gpui::App) {
             crate::tabs::selftest_tick();
             let now = (INPUT_SEQ.load(Ordering::Relaxed), PUMP_ASKS.load(Ordering::Relaxed));
             let frames = crate::render::frames();
-            let quiet = now == seen && frames == seen_frames;
+            let cursor = crate::cursor::seq();
+            let quiet = now == seen && frames == seen_frames && cursor == seen_cursor;
             seen = now;
             wait = if quiet { (wait * 2).min(max) } else { base };
-            if frames != seen_frames {
+            // A new frame, or a new pointer shape: gpui learns either only
+            // from a paint.
+            if frames != seen_frames || cursor != seen_cursor {
                 seen_frames = frames;
+                seen_cursor = cursor;
                 IDLE_REFRESH.fetch_add(1, Ordering::Relaxed);
                 cx.refresh();
             }
@@ -140,7 +145,7 @@ pub fn counters() -> String {
     let (w, h) = crate::render::last_size();
     format!(
         "renders={} work_did={} pump_asks={} timer_armed={} timer_fired={} idle_armed={} idle_ran={} \
-         idle_refresh={} inputs={} frames={} size={w}x{h} {} {} \
+         idle_refresh={} inputs={} frames={} cursor={} size={w}x{h} {} {} \
          copy_ms n={cn} last={clast:.2} avg={cavg:.2} max={cmax:.2} \
          upload_ms n={n} last={last:.2} avg={avg:.2} max={max:.2}",
         RENDERS.load(Ordering::Relaxed),
@@ -153,6 +158,7 @@ pub fn counters() -> String {
         IDLE_REFRESH.load(Ordering::Relaxed),
         INPUT_SEQ.load(Ordering::Relaxed),
         crate::render::frames(),
+        crate::cursor::seq(),
         crate::client::lifecycle_counters(),
         crate::tabs::counters(),
     ) + &format!(

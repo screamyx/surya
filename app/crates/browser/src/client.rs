@@ -1,6 +1,7 @@
 //! The browsers (one per tab) and the CEF client that owns their callbacks:
-//! lifetime, loads, find results, and what each tab's address bar shows.
-//! Every callback names its browser; `tabs.rs` maps that to a tab.
+//! lifetime, loads, cursor, and what each tab's address bar shows. Find in
+//! page is `find.rs`. Every callback names its browser; `tabs.rs` maps
+//! that to a tab.
 //!
 //! Which browser is "the active one" has one source: the tab model
 //! (`tabs::active_browser`). This module never keeps its own pointer.
@@ -154,8 +155,14 @@ pub(crate) fn host_of(id: i32) -> Option<BrowserHost> {
     browser_of(id).and_then(|b| b.host())
 }
 
+/// The cursor handle `on_cursor_change` passes. cef 151.8.1 spells the
+/// alias out in its Windows (HCURSOR) and Linux (c_ulong) bindings and
+/// omits it from the darwin ones, where the callback takes a raw pointer.
+#[cfg(target_os = "macos")]
+type CursorHandle = *mut u8;
+
 /// CEF's identifier for `browser`, 0 for none.
-fn id_of(browser: Option<&mut Browser>) -> i32 {
+pub(crate) fn id_of(browser: Option<&mut Browser>) -> i32 {
     browser.map(|b| b.identifier()).unwrap_or(0)
 }
 
@@ -254,6 +261,7 @@ wrap_life_span_handler! {
             if removed {
                 CLOSED.fetch_add(1, Ordering::Relaxed);
                 crate::render::forget(id);
+                crate::cursor::forget(id);
                 crate::tabs::detach(id);
             }
             crate::devtools::on_before_close(id);
@@ -348,52 +356,22 @@ wrap_display_handler! {
             let title = title.map(|t| t.to_string()).unwrap_or_default();
             update_by_browser(id_of(browser), |p| p.title = title);
         }
-    }
-}
 
-wrap_find_handler! {
-    struct Find;
-    impl FindHandler {
-        fn on_find_result(
+        /// The page wants another pointer shape; cursor.rs keeps it and the
+        /// surface applies it. Handled here: offscreen, CEF has no window
+        /// of its own to set it on. The cursor info comes with every call
+        /// (it is a bitmap only for `CT_CUSTOM`), so the type alone decides.
+        fn on_cursor_change(
             &self,
             browser: Option<&mut Browser>,
-            _identifier: ::std::os::raw::c_int,
-            count: ::std::os::raw::c_int,
-            _selection_rect: Option<&Rect>,
-            active_match_ordinal: ::std::os::raw::c_int,
-            final_update: ::std::os::raw::c_int,
-        ) {
-            update_by_browser(id_of(browser), |p| {
-                p.find = Some(crate::page::FindState {
-                    current: active_match_ordinal.max(0) as u32,
-                    total: count.max(0) as u32,
-                    final_update: final_update != 0,
-                });
-            });
+            _cursor: CursorHandle,
+            type_: CursorType,
+            _custom_cursor_info: Option<&CursorInfo>,
+        ) -> ::std::os::raw::c_int {
+            crate::cursor::changed(id_of(browser), type_);
+            1
         }
     }
-}
-
-/// Find in the active tab. `find_next` continues the current search;
-/// otherwise a new one starts. Results arrive in `Page::find`.
-pub(crate) fn find(text: &str, forward: bool, find_next: bool) {
-    let id = crate::tabs::active_browser();
-    let text = text.to_string();
-    crate::cef_thread::on_ui(move || {
-        if let Some(host) = host_of(id) {
-            host.find(Some(&CefString::from(text.as_str())), i32::from(forward), 0, i32::from(find_next));
-        }
-    });
-}
-
-pub(crate) fn stop_find(clear_selection: bool) {
-    let id = crate::tabs::active_browser();
-    crate::cef_thread::on_ui(move || {
-        if let Some(host) = host_of(id) {
-            host.stop_finding(i32::from(clear_selection));
-        }
-    });
-    crate::tabs::update_active(|p| p.find = None);
 }
 
 wrap_client! {
@@ -405,7 +383,7 @@ wrap_client! {
             Some(crate::render::render_handler())
         }
         fn find_handler(&self) -> Option<FindHandler> {
-            Some(Find::new())
+            Some(crate::find::handler())
         }
         fn display_handler(&self) -> Option<DisplayHandler> {
             Some(Display::new())
