@@ -11,11 +11,18 @@ uses (decision 28: Windows is the product, Linux is a test bench).
   gh api -X POST /repos/screamyx/surya/actions/runners/registration-token --jq .token
 
   # 2. run this, from an ADMINISTRATOR PowerShell on dtry:
-  powershell -ExecutionPolicy Bypass -File deploy\windows\install-runner.ps1 -Token <token from step 1>
+  pwsh -ExecutionPolicy Bypass -File deploy\windows\install-runner.ps1 -Token <token from step 1>
 
-It will ask for the owner's Windows password once, at the prompt, so the
-service logs on as him. Nothing is stored on disk by this script except the
-runner's own configuration, which the runner encrypts.
+  # unattended, as a built-in account, which is how dtry runs it:
+  pwsh -ExecutionPolicy Bypass -File deploy\windows\install-runner.ps1 `
+    -Token <token> -LogonAccount "NT AUTHORITY\SYSTEM"
+
+For a real user account it asks for the Windows password once, at the
+prompt, so the service can log on as them. For a built-in account
+(LocalSystem, NetworkService, LocalService) there is no password and no
+prompt, so the whole thing runs unattended. Nothing is stored on disk by
+this script except the runner's own configuration, which the runner
+encrypts.
 
   ... -Root E:\actions-runner-surya   where the runner lives. Default is on
                                       E:, not C:, so neither the runner nor
@@ -25,11 +32,33 @@ runner's own configuration, which the runner encrypts.
   ... -Priority Idle                  or BelowNormal. See the note below.
   ... -Version 2.337.0                pin the runner version.
   ... -ExpectedSha256 <hash>          fail unless the download matches.
+  ... -Ifeo                           also pin the priority machine-wide
+                                      through the registry. OFF by default,
+                                      and read the note below before you
+                                      turn it on: it applies to every
+                                      GitHub Actions runner on the box, not
+                                      just this one.
   ... -Uninstall                      stop, unconfigure and remove it.
 
-Needs: administrator, and the same tools build.ps1 needs (Rust with the MSVC
-toolchain, Visual Studio Build Tools with the C++ workload, CMake, Ninja).
-This script does not install those. It does not run cargo.
+WHAT KEEPS THE BUILD AT IDLE PRIORITY
+
+The primary mechanism is not in this script. It is one line in the CI job,
+`(Get-Process -Id $PID).PriorityClass = "Idle"`, which runs inside every
+build step. Windows gives a child process its parent's priority class, so
+that line covers cargo, rustc and link.exe. It is scoped to surya's own job
+and it cannot affect anything else on the machine.
+
+-Ifeo is the optional second belt and it is off for a reason. See the note
+further down.
+
+Needs:
+  - administrator
+  - PowerShell 7 (`pwsh`) on PATH. The CI job's steps all run `shell: pwsh`.
+    Windows PowerShell 5.1 is not it. This script checks.
+  - the same tools build.ps1 needs: Rust with the MSVC toolchain, Visual
+    Studio Build Tools with the C++ workload, CMake, Ninja, and CEF already
+    extracted at the CEF_PATH the workflow passes.
+This script installs none of those. It does not run cargo.
 #>
 param(
     [string]$Token = "",
@@ -42,6 +71,7 @@ param(
     [string]$Priority = "Idle",
     [string]$Version = "",
     [string]$ExpectedSha256 = "",
+    [switch]$Ifeo,
     [switch]$Uninstall
 )
 $ErrorActionPreference = "Stop"
@@ -56,35 +86,62 @@ $admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
          ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw "run this from an administrator PowerShell: it installs a service" }
 
+# Every step of the CI job declares `shell: pwsh`. If PowerShell 7 is not on
+# PATH the runner registers, takes the job, and then fails every single step
+# with "pwsh: command not found" after the checkout has already run. That is
+# what happened on the first live install on dtry, so the check is here
+# rather than in a comment.
+# No ?. or any other PowerShell 7 syntax in this check, and none above it.
+# The whole point is that this script may be started from Windows PowerShell
+# 5.1 on a box that has no pwsh yet, and a 7-only operator anywhere in the
+# file makes 5.1 fail to PARSE it, so the reader gets a syntax error instead
+# of the message below.
+$pwshCmd = Get-Command pwsh -ErrorAction SilentlyContinue
+if (-not $pwshCmd) {
+    throw @'
+PowerShell 7 (pwsh) is not on PATH, and every step of the CI job runs with
+"shell: pwsh". Windows PowerShell 5.1, which you are probably in now, is a
+different thing. Install it and run this again:
+
+  winget install --id Microsoft.PowerShell --source winget
+
+Then open a new administrator PowerShell so PATH is refreshed.
+'@
+}
+Write-Host "== pwsh at $($pwshCmd.Source)"
+
 # ---------------------------------------------------------------------------
-# Why the priority is set through the registry and not with sc.exe
+# -Ifeo: the optional registry belt, and why it is off by default
 #
 # The Windows service manager has no priority setting. A service's priority
-# is the priority of the process it starts, so the setting has to attach to
-# the image. The documented way to do that is the Image File Execution
-# Options key, PerfOptions\CpuPriorityClass, which the kernel reads when it
-# creates a process from that image:
+# is the priority of the process it starts, so a machine-wide setting has to
+# attach to the image, through Image File Execution Options:
 #
 #   HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\
 #     Runner.Listener.exe\PerfOptions   CpuPriorityClass = 1   (Idle)
 #     Runner.Worker.exe\PerfOptions     CpuPriorityClass = 1
 #
-# Both images, because the listener starts the worker and the worker starts
-# the job's shell. A process with no entry of its own inherits its parent's
-# class, so setting the two runner executables carries down to cargo, rustc
-# and link.exe.
+# THAT KEY IS PER IMAGE NAME, NOT PER SERVICE. Every GitHub Actions runner on
+# the machine ships executables with these exact names. dtry already runs
+# haktui's runner out of C:\gha-runner, and writing this key would drop that
+# one to Idle too, on its next restart, silently. Nobody asked for that. So
+# -Ifeo is opt-in, and the primary mechanism is the line inside surya's own
+# CI job, which cannot touch anything else:
+#
+#   (Get-Process -Id $PID).PriorityClass = "Idle"
+#
+# Windows gives a child its parent's priority class, so that one line carries
+# down to cargo, rustc and link.exe for surya's build and no one else's.
+#
+# Both images are set when -Ifeo is on, because the listener starts the
+# worker and the worker starts the job's shell.
 #
 # The numbers below are a registry contract, not something this script can
-# read back from an API. So it does not trust them: after the service is
-# running, the script reads the live process priority with Get-Process and
-# throws if it is not what was asked for. If the mapping is ever wrong, the
-# install fails on the box with the value it actually got, rather than the
-# owner's machine quietly building at normal priority.
-#
-# ci.yml sets the same priority again inside the job
-# ((Get-Process -Id $PID).PriorityClass = "Idle"). That is deliberate
-# duplication: the workflow's line survives a service reinstall that forgets
-# this one, and this one covers the runner's own housekeeping between jobs.
+# read back from an API. So it does not trust them: with -Ifeo the script
+# restarts the service, finds THIS runner's listener by its path, reads the
+# live priority and throws if it is not what was asked for. Finding it by
+# path matters: `Get-Process -Name Runner.Listener` on dtry returns haktui's
+# listener first, at Normal, and the check would fail on the wrong process.
 # ---------------------------------------------------------------------------
 $priorityValue = @{ "Idle" = 1; "BelowNormal" = 5 }[$Priority]
 $ifeo = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options"
@@ -144,7 +201,14 @@ if ($Uninstall) {
         .\config.cmd remove --token $Token
         if ($LASTEXITCODE -ne 0) { throw "config.cmd remove failed with exit $LASTEXITCODE" }
     } finally { Pop-Location }
-    Remove-ImagePriority
+    if ($Ifeo) {
+        # Only with -Ifeo, and only the one value. Another runner on this box
+        # may have set CpuPriorityClass for its own reasons; removing a key
+        # this run did not write is not this script's business.
+        Remove-ImagePriority
+    } else {
+        Write-Host "  no -Ifeo, leaving the registry alone (pass -Ifeo to undo an -Ifeo install)"
+    }
     Write-Host "== done. $Root is still on disk; delete it by hand when you are sure."
     exit 0
 }
@@ -205,60 +269,102 @@ Write-Host "== unpacking into $Root"
 Expand-Archive -Path $zip -DestinationPath $Root -Force
 Remove-Item $zip -Force
 
-# The service needs the owner's password to log on as him. Read it at the
-# prompt into a SecureString, hand it to config.cmd, and drop it. It is never
-# written to disk, never put in an environment variable, and never printed.
+# A built-in service account has no password and config.cmd must not be given
+# one: --windowslogonpassword with an empty value fails, and prompting for a
+# password that does not exist is what stopped the first unattended install on
+# dtry. Anything else is a real account and does need one.
+$builtIn = @(
+    "LocalSystem", "NT AUTHORITY\SYSTEM",
+    "NT AUTHORITY\NETWORK SERVICE", "NETWORKSERVICE", "NT AUTHORITY\NETWORKSERVICE",
+    "NT AUTHORITY\LOCAL SERVICE", "LOCALSERVICE", "NT AUTHORITY\LOCALSERVICE"
+)
+$isBuiltIn = $builtIn -contains $LogonAccount.Trim()
+
+$configArgs = @(
+    "--unattended", "--replace",
+    "--url", $Url,
+    "--token", $Token,
+    "--name", $Name,
+    "--labels", $Labels,
+    "--work", "_work",
+    "--runasservice",
+    "--windowslogonaccount", $LogonAccount
+)
+
 Write-Host ""
 Write-Host "The service will log on as $LogonAccount."
-$secure = Read-Host -Prompt "Windows password for $LogonAccount" -AsSecureString
-$bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-try {
-    $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-
+if ($isBuiltIn) {
+    Write-Host "That is a built-in account: no password, nothing to prompt for."
     Write-Host "== configuring, label $Labels"
     Push-Location $Root
     try {
-        .\config.cmd --unattended --replace `
-            --url $Url `
-            --token $Token `
-            --name $Name `
-            --labels $Labels `
-            --work "_work" `
-            --runasservice `
-            --windowslogonaccount $LogonAccount `
-            --windowslogonpassword $plain
+        .\config.cmd @configArgs
         if ($LASTEXITCODE -ne 0) { throw "config.cmd failed with exit $LASTEXITCODE" }
     } finally { Pop-Location }
-} finally {
-    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-    Remove-Variable plain -ErrorAction SilentlyContinue
+} else {
+    # Read the password at the prompt into a SecureString, hand it to
+    # config.cmd, and drop it. It is never written to disk, never put in an
+    # environment variable, and never printed.
+    $secure = Read-Host -Prompt "Windows password for $LogonAccount" -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try {
+        $plain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+        Write-Host "== configuring, label $Labels"
+        Push-Location $Root
+        try {
+            .\config.cmd @configArgs --windowslogonpassword $plain
+            if ($LASTEXITCODE -ne 0) { throw "config.cmd failed with exit $LASTEXITCODE" }
+        } finally { Pop-Location }
+    } finally {
+        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        Remove-Variable plain -ErrorAction SilentlyContinue
+    }
 }
 
-Write-Host "== setting the CPU priority of the runner images"
-Set-ImagePriority
-
-# config.cmd started the service before the registry entries existed, so the
-# listener is running at normal priority right now. Restart it so the kernel
-# reads the key, then check what actually happened.
 $svc = Get-RunnerService
 if (-not $svc) { throw "config.cmd did not leave an actions.runner.* service behind" }
-Write-Host "== restarting $($svc.Name) so the priority takes effect"
-Restart-Service $svc.Name -Force
-Start-Sleep -Seconds 5
 
-$listener = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue
-if (-not $listener) { throw "$($svc.Name) is not running a Runner.Listener process after the restart" }
-$actual = $listener.PriorityClass
-Write-Host "== Runner.Listener priority is $actual"
-if ("$actual" -ne $Priority) {
-    throw "asked for $Priority, got $actual. The CpuPriorityClass value $priorityValue is wrong for $Priority on this Windows build; fix the map at the top of this script before trusting the runner."
+if ($Ifeo) {
+    Write-Host "== -Ifeo: setting CpuPriorityClass on the runner images, MACHINE WIDE"
+    Write-Host "   every Actions runner on this box is affected, not just $Name"
+    Set-ImagePriority
+
+    # config.cmd started the service before the registry entries existed, so
+    # the listener is running at normal priority right now. Restart it so the
+    # kernel reads the key, then check what actually happened.
+    Write-Host "== restarting $($svc.Name) so the priority takes effect"
+    Restart-Service $svc.Name -Force
+    Start-Sleep -Seconds 5
+
+    # By path, not by name. dtry runs haktui's runner out of C:\gha-runner
+    # with an executable of exactly this name, and -Name returns whichever
+    # started first. Get-Process needs elevation to read Path for a process
+    # owned by another account, which this script has.
+    $listener = Get-Process -Name "Runner.Listener" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $path = $null
+            try { $path = $_.Path } catch { }
+            $path -and $path.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)
+        } | Select-Object -First 1
+    if (-not $listener) {
+        throw "no Runner.Listener running out of $Root after the restart. Other runners on this box are not this one; check `Get-Service $($svc.Name)`."
+    }
+    $actual = $listener.PriorityClass
+    Write-Host "== this runner's listener (pid $($listener.Id), $($listener.Path)) is at $actual"
+    if ("$actual" -ne $Priority) {
+        throw "asked for $Priority, got $actual. The CpuPriorityClass value $priorityValue is wrong for $Priority on this Windows build; fix the map at the top of this script before trusting -Ifeo."
+    }
+} else {
+    Write-Host "== no -Ifeo, so nothing machine-wide was changed."
+    Write-Host "   The build runs at $Priority because ci.yml sets it inside the job."
 }
 
 Write-Host ""
 Write-Host "== done"
-Write-Host "  service: $($svc.Name), logs on as $LogonAccount, priority $actual"
+Write-Host "  service: $($svc.Name), logs on as $LogonAccount"
 Write-Host "  runner:  $Name, labels $Labels, at $Root"
 Write-Host "  ci.yml windows job targets [self-hosted, $Labels]"
+Write-Host "  priority: set per step by ci.yml$(if ($Ifeo) { ", and machine-wide by -Ifeo" })"
 Write-Host ""
 Write-Host "  check it registered:  gh api /repos/screamyx/surya/actions/runners"
-Write-Host "  remove it again:      powershell -ExecutionPolicy Bypass -File deploy\windows\install-runner.ps1 -Uninstall -Token <remove token>"
+Write-Host "  remove it again:      pwsh -File deploy\windows\install-runner.ps1 -Uninstall -Token <remove token>"

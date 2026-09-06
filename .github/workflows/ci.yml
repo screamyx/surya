@@ -305,12 +305,17 @@ jobs:
           # which is the cost this step exists to avoid.
           Set-Content -Path $stamp -Value (Get-Date -Format o)
 
-      # PRIORITY. Windows gives a new process its parent's priority class
-      # unless the parent asks otherwise, so dropping this shell to Idle
-      # drops cargo, rustc and link.exe with it. Idle yields to everything,
-      # including a game. The runner service is installed at idle priority
-      # too (deploy/windows/install-runner.ps1); this line is the second belt
-      # and it is the one that survives a service reinstall.
+      # PRIORITY, and this line is the whole of it. Windows gives a new
+      # process its parent's priority class unless the parent asks
+      # otherwise, so dropping this shell to Idle drops cargo, rustc and
+      # link.exe with it. Idle yields to everything, including a game.
+      #
+      # deploy/windows/install-runner.ps1 can also pin the priority in the
+      # registry, but that is opt-in (-Ifeo) and off by default: the registry
+      # key is keyed on the executable NAME, and dtry runs a second Actions
+      # runner (haktui's, out of C:\gha-runner) whose executables are called
+      # the same thing. Setting it there would quietly re-prioritise someone
+      # else's runner. This line only ever touches surya's own job.
       #
       # The build itself is build.ps1 and nothing else. -Browser needs
       # CEF_PATH, seeded once on the box; without it build.ps1 throws rather
