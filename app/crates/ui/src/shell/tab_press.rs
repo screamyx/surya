@@ -10,8 +10,10 @@
 //! been held for [`TAB_HOLD`]. Travel never arms on its own - that is the
 //! whole point, and `travel_alone_never_arms` pins it.
 //!
-//! The shell calls [`TabPress::arm`] from its mouse-move handler, not from a
-//! timer. A timer has to be trusted or re-checked against the clock, and a
+//! The shell calls [`TabPress::arm`] from two mouse-move handlers, the strip's
+//! and the shell root's, not from a timer. Two because the strip occludes: it
+//! ends gpui's hit-test walk, so the root never sees a move made over the
+//! strip, which is exactly where a hold-drag starts. A timer has to be trusted or re-checked against the clock, and a
 //! re-check against a timer that fires a millisecond early arms nothing and
 //! never retries - the reorder simply stops working, which is what the first
 //! build of this fix did on Windows.

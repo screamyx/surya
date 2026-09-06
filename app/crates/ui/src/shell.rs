@@ -7541,6 +7541,14 @@ impl Shell {
             // pushed before the break, so the wheel still reaches it and an
             // overflowing strip still scrolls.
             .occlude()
+            // The hold arms HERE, not only on the shell root. `occlude()` above
+            // ends gpui's hit-test walk at this element, so the root's hitbox
+            // is not in `mouse_hit_test.ids` while the pointer is over the
+            // strip, and `on_mouse_move` only fires for a hovered hitbox
+            // (gpui div.rs). The root listener would miss the one region a
+            // hold-drag actually lives in. The root keeps its copy for the
+            // moves that leave the strip before the hold is up.
+            .on_mouse_move(cx.listener(Self::arm_right_tab_press))
             .on_drag_move::<RightTabDrag>(cx.listener(
                 move |this, event: &gpui::DragMoveEvent<RightTabDrag>, _, cx| {
                     let payload = event.drag(cx);
@@ -8811,9 +8819,11 @@ impl Render for Shell {
             .on_drag_move(cx.listener(Self::on_sidebar_drag))
             .on_drag_move(cx.listener(Self::on_right_pane_drag))
             .on_drag_move(cx.listener(Self::on_terminal_drag))
-            // A held surface tab arms its reorder here, on the first move past
-            // the hold. Cheap: it returns on the button check for every move
-            // that is not a live press.
+            // The off-strip half of the surface-tab hold arm: a press whose
+            // pointer has already left the occluding strip still arms here.
+            // The strip carries the same listener for the region this one
+            // cannot see. Cheap either way: it returns on the button check for
+            // every move that is not a live press.
             .on_mouse_move(cx.listener(Self::arm_right_tab_press))
             // Escape aborts a surface-tab reorder and snaps the chip back:
             // dropping `right_tab_drag` puts every slide offset at zero and
