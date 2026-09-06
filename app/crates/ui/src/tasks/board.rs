@@ -379,7 +379,13 @@ impl Render for TasksPane {
                 }),
             )
             .on_click(cx.listener(|this, _, window, cx| {
-                window.focus(&this.focus_handle, cx);
+                // Only when focus is not already inside the pane. A click on
+                // the quick-add input focuses the input on the press and then
+                // bubbles up to here, so an unconditional focus took it
+                // straight back and the box never got a caret.
+                if !this.focus_handle.contains_focused(window, cx) {
+                    window.focus(&this.focus_handle, cx);
+                }
             }))
             .size_full()
             .flex()
