@@ -19,7 +19,7 @@ use surya_rpc::methods;
 
 pub use super::editor_doc::{Body, Conflict, EditorDoc, SaveOutcome, Switch};
 use super::SaveFile;
-use super::notice::{Tone, notice};
+use super::notice::{Tone, notice, prompt_text, refused_text};
 use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::state::EngineHandle;
 use crate::theme::Theme;
@@ -225,11 +225,12 @@ impl FileEditor {
     /// danger variant.
     fn banner(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<gpui::Div> {
         let conflict = self.doc.conflict.as_ref()?;
+        let (lead, detail) = refused_text(&conflict.reason);
         Some(notice(
             theme,
             Tone::Refused,
-            "Save refused.",
-            conflict.reason.clone(),
+            lead,
+            detail,
             vec![
                 crate::popover::btn_ghost(theme, "Reload from disk", "files-editor-reload")
                     .id("files-editor-reload")
@@ -248,11 +249,12 @@ impl FileEditor {
     fn prompt(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<gpui::Div> {
         let next = self.doc.prompt_for(self.input.read(cx).text())?.to_string();
         let here = self.doc.path.clone().unwrap_or_default();
+        let (lead, detail) = prompt_text(&here, &next);
         Some(notice(
             theme,
             Tone::Ask,
-            "Unsaved changes.",
-            format!("Save or discard {here} before opening {next}?"),
+            lead,
+            detail,
             vec![
                 crate::popover::btn_ghost(theme, "Keep editing", "files-editor-keep")
                     .id("files-editor-keep")
