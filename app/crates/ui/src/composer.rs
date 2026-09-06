@@ -3600,8 +3600,7 @@ impl Composer {
     fn answer_permission(
         &mut self,
         request_id: String,
-        decision: surya_proto::PermissionDecision,
-        remember: bool,
+        answer: crate::permission_options::PermissionAnswer,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -3609,6 +3608,25 @@ impl Composer {
         // dies with the panel and the next keystroke goes nowhere.
         let input_focus = self.input.read(cx).focus_handle.clone();
         window.focus(&input_focus, cx);
+        // "Allow, and stop asking in this chat": the flip IS the answer. It
+        // goes through the same path as the composer's Yolo chip - the chat
+        // row write plus SetAutoApprove - and the engine allows everything
+        // this chat has parked as part of switching on, this request
+        // included. Sending a decision as well would arrive to find nothing
+        // pending and report a failure for an answer that worked.
+        if answer.stops_asking() {
+            self.state.update(cx, |state, _| {
+                state.answered_requests.insert(request_id);
+            });
+            self.pickers
+                .update(cx, |pickers, cx| pickers.set_auto_approve(true, cx));
+            cx.notify();
+            return;
+        }
+        let Some(decision) = answer.decision() else {
+            return;
+        };
+        let remember = answer.remembers();
         let rule = remember.then(|| surya_proto::RememberRule {
             scope: surya_proto::RuleScope::Workspace,
             pattern: String::new(),
@@ -5816,14 +5834,15 @@ impl Composer {
         // would write a permanent always-allow rule the user never asked for.
         let bare = !event.keystroke.modifiers.modified();
         let answer = match key {
-            "1" if bare => Some((surya_proto::PermissionDecision::Allow, false)),
-            "2" if bare => Some((surya_proto::PermissionDecision::Allow, true)),
-            "3" if bare => Some((surya_proto::PermissionDecision::Deny, false)),
-            "escape" => Some((surya_proto::PermissionDecision::Deny, false)),
+            "escape" => Some(crate::permission_options::PermissionAnswer::Deny),
+            digit if bare => digit
+                .parse::<usize>()
+                .ok()
+                .and_then(crate::permission_options::for_digit),
             _ => None,
         };
-        if let Some((decision, remember)) = answer {
-            self.answer_permission(request_id, decision, remember, window, cx);
+        if let Some(answer) = answer {
+            self.answer_permission(request_id, answer, window, cx);
             cx.stop_propagation();
         }
     }
@@ -5844,19 +5863,11 @@ impl Composer {
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         let theme = Theme::of(cx).clone();
-        let options: Vec<(&'static str, surya_proto::PermissionDecision, bool)> = vec![
-            ("Allow", surya_proto::PermissionDecision::Allow, false),
-            (
-                "Always allow in this project",
-                surya_proto::PermissionDecision::Allow,
-                true,
-            ),
-            ("Deny", surya_proto::PermissionDecision::Deny, false),
-        ];
-        let rows = options
+        let rows = crate::permission_options::ROWS
             .into_iter()
             .enumerate()
-            .map(|(ix, (label, decision, remember))| {
+            .map(|(ix, answer)| {
+                let label = answer.label();
                 let request_id = request_id.clone();
                 div()
                     .id(("permission-option", ix))
@@ -5877,7 +5888,7 @@ impl Composer {
                     .on_hover(motion::hover_listener(format!("permission-option-{ix}")))
                     .cursor_pointer()
                     .on_click(cx.listener(move |this, _, window, cx| {
-                        this.answer_permission(request_id.clone(), decision, remember, window, cx);
+                        this.answer_permission(request_id.clone(), answer, window, cx);
                     }))
                     .child(
                         div()
