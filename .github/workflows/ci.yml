@@ -124,22 +124,43 @@ jobs:
             libvulkan-dev pkg-config cmake
 
       - name: rust toolchain (app/rust-toolchain.toml)
-        run: rustup show active-toolchain || rustup toolchain install
+        id: toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          echo "rustc=$(rustc -V | tr ' ' '-')" >> "$GITHUB_OUTPUT"
 
       # The pc-ajim runners cached by building into one persistent
       # CARGO_TARGET_DIR that survived between runs. A hosted runner is a
       # fresh machine every time, so the cache has to be uploaded and
-      # downloaded. rust-cache rather than actions/cache because it already
-      # knows the three things a hand-written actions/cache entry has to be
-      # taught and kept correct: it keys on Cargo.lock AND the exact rustc
-      # version (a toolchain bump otherwise restores objects rustc will not
-      # reuse), it drops this workspace's own crates from the saved artifact
-      # (they change every commit and would only be dead weight), and it
-      # prunes the registry so the cache stays inside the 10 GB a repository
-      # gets before GitHub starts evicting.
-      - uses: Swatinem/rust-cache@v2
+      # downloaded.
+      #
+      # actions/cache and not Swatinem/rust-cache, which is the usual choice
+      # and the better one on its merits: it prunes the registry and drops
+      # this workspace's own crates before saving, which is exactly the size
+      # management written by hand below. It is not an option here. This
+      # repository's Actions policy is `allowed_actions: selected` with
+      # `patterns_allowed: ["actions/*"]`, and Swatinem is not a GitHub
+      # Marketplace verified creator, so a workflow referencing it is
+      # rejected before any job starts. Run 34056837293 on this branch is
+      # that rejection: startup_failure, zero jobs. If the owner ever adds
+      # `Swatinem/rust-cache@*` to the allowed patterns, this step and the
+      # comment above it become four lines.
+      #
+      # The key carries the rustc version as well as Cargo.lock: a toolchain
+      # bump leaves object files the new rustc will not reuse, and a key that
+      # ignored it would restore them every run.
+      - uses: actions/cache@v4
         with:
-          workspaces: app
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            app/target
+          key: cargo-${{ runner.os }}-${{ steps.toolchain.outputs.rustc }}-${{ hashFiles('app/Cargo.lock') }}
+          # A miss on Cargo.lock still restores the previous build's objects
+          # for every dependency that did not change.
+          restore-keys: |
+            cargo-${{ runner.os }}-${{ steps.toolchain.outputs.rustc }}-
 
       # A GitHub-hosted ubuntu-latest runner is 4 cores and 16 GB. --jobs 4
       # matches the cores. The old --jobs 6 was tuned for a 16-thread box
