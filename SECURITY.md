@@ -5,6 +5,9 @@
 Report privately through GitHub, at https://github.com/screamyx/surya/security/advisories/new.
 Do not open a public issue for a security problem.
 
+If that page is not available, open an issue that says only that you have a security report and asks for a private channel.
+Put no detail in it.
+
 Say what you did, what happened, and what you expected.
 A proof of concept helps.
 Expect a first reply within a week.

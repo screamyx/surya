@@ -6,6 +6,24 @@ The owner rules on every row before anything is changed.
 
 Scope: every tracked file under `docs/`, plus the code and workflow lines that carry the same details, plus all 185 images under `docs/`.
 
+## Item 0: rotate the engine token, before anything else
+
+Confirmed by two readers against the image itself.
+
+`docs/quickstart.md:78` embeds `images/quickstart-servers-add.png`, which shows the Add server dialog with a fully legible 64-character engine token.
+`docs/images/dtry-r4-servers-add-dark.png` shows the same value.
+
+The token is not live.
+remote2 compared it against the only two engines on the box, and it belongs to a pre-rename zeron engine.
+No rotation is needed.
+
+| Owner | Action | When |
+|---|---|---|
+| Whoever reshoots | Reshoot both images with the token blurred, or with an obviously fake value | Before any public flip |
+
+No seat edits these two images on its own. The reshoot is ordered, not improvised.
+The detail behind this item is in "Fix before public under either option" below.
+
 ## Two options for the owner
 
 ### Option A: redact in place
@@ -45,10 +63,12 @@ Three lines above the image, `docs/quickstart.md:34` tells the reader: "Keep tha
 `docs/quickstart.md:30` deliberately truncates the token in the sample output as `Token: 3f9c...  (64 characters)`.
 The text follows the rule and the picture on the same page breaks it.
 
+Checked after the fact: remote2 compared the pictured value against the only two engines on the box and it is a pre-rename zeron engine's token, so it is not live.
+That does not change the fix.
+
 | Action | Detail |
 |---|---|
-| redact | Reshoot both images with an obviously fake token, or blur the field. |
-| rotate | Run `surya-engine token` and rotate the engine token on the box before the repository is public, whether or not this value is live. |
+| redact | Reshoot both images with the token blurred, or with an obviously fake value. |
 
 ### 2. Another person's name, private repositories and private work titles are legible in screenshots
 
@@ -75,7 +95,7 @@ Three more images leak private repositories.
 Decision 18 says it plainly: "No real email, hostname, or agent id in the repo."
 A real display name and a private repository name are further over that line than a hostname.
 
-Action: redact. Reshoot or crop these eight images, or drop them.
+Action: replace or remove. Reshoot, crop or drop these eight images. The owner rules on which.
 
 A ninth, `docs/images/a2ui-dtry-r4-cards-1-2.png`, shows a session list entry reading "Downloads @ pc-ajim" over a chat titled "**Local Environment Configurati...".
 The title is cut off, so nothing private is actually readable. Action: keep.
@@ -167,6 +187,48 @@ decisions.md already says "the owner" throughout with no name, which is what dec
 | `docs/research/synthesis.md` | 16 | keep |
 | `docs/research/orca.md` | 4 | keep |
 | `docs/research/claude-code-desktop.md` | 4 | keep |
+
+## Repository settings, and the one hazard in the flip
+
+Applied on 2026-09-07 with `gh-axi`, on branch `chore/public-readiness`.
+
+| Setting | Before | After |
+|---|---|---|
+| Description | "Web harness for Claude Code: code, live preview with pins, task board, persistent agents" | "surya: a native desktop app for Claude Code with a browser, editor and task board (Windows first)" |
+| Topics | none | claude-code, desktop, gpui, rust, windows |
+| Dependabot vulnerability alerts | disabled, `GET vulnerability-alerts` returned 404 | enabled, returns 204 |
+| Actions `allowed_actions` | `all` | `selected`, with GitHub-owned and verified creators allowed plus the pattern `actions/*` |
+
+The workflows use only `actions/checkout@v4` and `actions/upload-artifact@v4`, so the narrowed list cannot break CI.
+
+### Branch protection: there is none
+
+`GET /repos/screamyx/surya/branches/main/protection` returns FORBIDDEN with this token, and so does `GET /rulesets`.
+`GET /repos/screamyx/surya/branches/main` is readable and returns `protected: false`.
+
+So `main` has no protection at all today.
+The owner should set, before the flip: require a pull request, require the `ci` check to pass, and block force pushes.
+
+### The hazard: the fork approval gate cannot be set while the repository is private
+
+`.github/workflows/ci.yml:30-31` triggers on `pull_request`, and line 64 is `runs-on: [self-hosted, surya-ci]`.
+Both runners live on pc-ajim.
+On a public repository that means a stranger's fork pull request can run their code on that machine once a run is approved.
+
+The setting that guards this is `PUT /repos/{owner}/{repo}/actions/permissions/fork-pr-contributor-approval`.
+Reading it today returns: "Fork PR approval is not allowed for private repositories."
+It cannot be set until after the flip.
+
+That makes the flip an ordered operation, not a single click:
+
+1. Before the flip, take the `pull_request` trigger off the self-hosted runners, or move pull request runs to GitHub-hosted runners.
+2. Flip the repository to public.
+3. Immediately set fork pull request approval to require approval for all outside collaborators, in Settings, Actions, General, or through the endpoint above.
+4. Set branch protection on `main`.
+5. Turn on private vulnerability reporting, which is what `SECURITY.md` points at. `PUT /repos/screamyx/surya/private-vulnerability-reporting` returns 404 today, because the feature does not exist on a private repository.
+6. Only then put the `pull_request` trigger back on the self-hosted runners, if that is still wanted.
+
+`GET /repos/screamyx/surya/actions/permissions/fork-pr-workflows-private-repos` currently reads `run_workflows_from_fork_pull_requests: false`, and `GET /actions/permissions/access` reads `access_level: none`, so nothing is exposed while the repository stays private.
 
 ## What was checked and found clean
 
