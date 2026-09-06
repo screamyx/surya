@@ -47,7 +47,11 @@ pub const SERVER_NAME: &str = "surya";
 
 /// The generated paths, ready to hand to the CLI.
 pub struct SuryaFiles {
-    pub mcp_config: PathBuf,
+    /// `None` when the sidecar is not installed here. The run still gets the
+    /// prompt append and the denied built-ins: neither needs the binary, and
+    /// dropping them would hand the agent back Claude Code's own SendMessage
+    /// (decision 19) over a missing file.
+    pub mcp_config: Option<PathBuf>,
     pub system_append: PathBuf,
     /// A one-skill plugin directory. Claude Code loads it with `--plugin-dir`
     /// and the agent sees `surya:surya-cards` - measured against 2.1.261, the
@@ -203,28 +207,53 @@ pub fn prepare(options: &SuryaOptions, cwd: &str) -> Option<SuryaFiles> {
 /// [`prepare`], with the root named. Tests point it at a temp dir so they
 /// never touch a path another user on the box may own.
 pub fn prepare_in(root: &Path, options: &SuryaOptions, cwd: &str) -> Option<SuryaFiles> {
-    let binary = match resolve_mcp_binary(options) {
-        Some(binary) => binary,
-        None => {
-            tracing::warn!(
-                "surya-mcp not found beside the executable, on PATH, or at \
-                 SURYA_MCP_EXECUTABLE; this agent runs without show_card and send_message"
-            );
-            return None;
-        }
-    };
+    prepare_with(root, options, cwd, resolve_mcp_binary(options))
+}
+
+/// [`prepare_in`], with the binary already resolved.
+///
+/// Resolution reads `SURYA_MCP_EXECUTABLE`, PATH and the directory beside the
+/// running executable - none of which a test can clear without racing every
+/// other test in the process. Splitting it out lets the missing-sidecar tests
+/// say "no binary" and mean it, on a box where one happens to be installed.
+pub fn prepare_with(
+    root: &Path,
+    options: &SuryaOptions,
+    cwd: &str,
+    binary: Option<PathBuf>,
+) -> Option<SuryaFiles> {
+    // A missing sidecar costs the card tools. It must not cost the prompt
+    // append or the denial - measured 2026-09-06, a real run with the binary
+    // absent came back with the ambient user config and SendMessage live.
+    if binary.is_none() {
+        tracing::warn!(
+            searched_option = ?options.mcp_binary,
+            searched_env = ?std::env::var_os("SURYA_MCP_EXECUTABLE"),
+            searched_beside = ?std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)),
+            "surya-mcp not found; this run gets the prompt append and the \
+             denied built-ins but no show_card"
+        );
+    }
     let dir = run_dir(root, &options.agent_id);
     if let Err(error) = create_private_dir(&dir) {
         tracing::warn!("could not create {dir:?} for the surya MCP config: {error}");
         return None;
     }
-    let mcp_config_path = dir.join("mcp.json");
     let system_append_path = dir.join("system-append.md");
-    let config = mcp_config(&binary, options, cwd);
-    if let Err(error) = std::fs::write(&mcp_config_path, config.to_string()) {
-        tracing::warn!("could not write {mcp_config_path:?}: {error}");
-        return None;
-    }
+    let mcp_config_path = match &binary {
+        Some(binary) => {
+            let path = dir.join("mcp.json");
+            let config = mcp_config(binary, options, cwd);
+            match std::fs::write(&path, config.to_string()) {
+                Ok(()) => Some(path),
+                Err(error) => {
+                    tracing::warn!("could not write {path:?}: {error}");
+                    None
+                }
+            }
+        }
+        None => None,
+    };
     if let Err(error) = std::fs::write(&system_append_path, SYSTEM_APPEND) {
         tracing::warn!("could not write {system_append_path:?}: {error}");
         return None;
@@ -235,11 +264,14 @@ pub fn prepare_in(root: &Path, options: &SuryaOptions, cwd: &str) -> Option<Sury
     // built-in messaging tools with it - so a missing skill would silently
     // hand the agent back Claude Code's own SendMessage, which decision 19
     // exists to deny.
-    let plugin_dir = write_cards_plugin(&dir)
-        .inspect_err(|error| {
-            tracing::warn!("could not write the surya cards plugin: {error}");
-        })
-        .ok();
+    // The skill documents show_card, so it is pointless without it.
+    let plugin_dir = mcp_config_path.as_ref().and_then(|_| {
+        write_cards_plugin(&dir)
+            .inspect_err(|error| {
+                tracing::warn!("could not write the surya cards plugin: {error}");
+            })
+            .ok()
+    });
     Some(SuryaFiles {
         mcp_config: mcp_config_path,
         system_append: system_append_path,
@@ -410,7 +442,8 @@ mod tests {
         std::fs::write(&binary, "").unwrap();
         let root = dir.path().join("root");
         let files = prepare_in(&root, &options(&binary), "").expect("both files are written");
-        let mode = std::fs::metadata(files.mcp_config.parent().unwrap())
+        let mcp_config = files.mcp_config.as_ref().expect("the sidecar exists in this test");
+        let mode = std::fs::metadata(mcp_config.parent().unwrap())
             .unwrap()
             .permissions()
             .mode()
@@ -447,7 +480,10 @@ mod tests {
         let files = prepare_in(&dir.path().join("root"), &options(&binary), dir.path().to_str().unwrap())
             .expect("the binary exists, so both files are written");
         let config: Value =
-            serde_json::from_str(&std::fs::read_to_string(&files.mcp_config).unwrap()).unwrap();
+            serde_json::from_str(
+                &std::fs::read_to_string(files.mcp_config.as_ref().expect("config")).unwrap(),
+            )
+            .unwrap();
         assert!(config["mcpServers"]["surya"].is_object());
         let append = std::fs::read_to_string(&files.system_append).unwrap();
         assert!(append.contains("show_card"), "the append teaches show_card");
@@ -488,23 +524,16 @@ mod tests {
         let files = prepare_in(&root, &options(&binary), "")
             .expect("the run still gets its config and its append");
         assert!(files.plugin_dir.is_none(), "the skill is the only casualty");
-        assert!(files.mcp_config.exists(), "the MCP config still lands");
+        assert!(
+            files.mcp_config.as_ref().is_some_and(|p| p.exists()),
+            "the MCP config still lands"
+        );
         assert!(
             std::fs::read_to_string(&files.system_append)
                 .unwrap()
                 .contains("show_card"),
             "and so does the append"
         );
-    }
-
-    #[test]
-    fn a_missing_binary_skips_the_wiring_instead_of_failing() {
-        let mut options = options(Path::new("/nonexistent/surya-mcp"));
-        options.mcp_binary = Some("/nonexistent/surya-mcp".into());
-        // SURYA_MCP_EXECUTABLE and PATH are not ours to clear inside a test
-        // process, so this only asserts the explicit option does not panic.
-        let dir = tempfile::tempdir().unwrap();
-        let _ = prepare_in(dir.path(), &options, "");
     }
 
     #[test]
@@ -585,5 +614,62 @@ mod tests {
         std::fs::write(&path, body).unwrap();
         assert!(read_card(&path, "toolu_old").is_none(), "pushed out of the window");
         assert!(read_card(&path, "t").is_some(), "the recent ones are still found");
+    }
+}
+
+#[cfg(test)]
+mod missing_sidecar_tests {
+    use super::*;
+
+    fn options_with(binary: &str) -> SuryaOptions {
+        SuryaOptions {
+            agent_id: "seat-1".into(),
+            workspace: "demo".into(),
+            mcp_binary: Some(binary.to_string()),
+            card_store: None,
+            mail_socket: None,
+            catalog_id: None,
+        }
+    }
+
+    /// A sidecar that is not installed costs `show_card`. It must not cost the
+    /// prompt append or the denied built-ins: measured on 2026-09-06, a real
+    /// run with the binary absent came back holding Claude Code's own
+    /// `SendMessage` and `ListAgents`, because `prepare` returned `None` and
+    /// the whole block was skipped at the call site.
+    #[test]
+    fn a_missing_binary_keeps_the_append_and_the_denial() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = prepare_with(
+            &dir.path().join("root"),
+            &options_with("/nowhere/surya-mcp"),
+            dir.path().to_str().unwrap(),
+            None,
+        )
+        .expect("a missing binary must NOT collapse the block");
+
+        assert_eq!(files.mcp_config, None, "no tools without the sidecar");
+        assert_eq!(files.plugin_dir, None, "the skill documents a tool that is absent");
+        assert!(
+            files.system_append.exists(),
+            "the prompt append does not need the binary"
+        );
+    }
+
+    /// The normal case still gets all four.
+    #[test]
+    fn an_installed_binary_gets_the_tools_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("surya-mcp");
+        std::fs::write(&binary, "").unwrap();
+        let files = prepare_with(
+            &dir.path().join("root"),
+            &options_with(binary.to_str().unwrap()),
+            dir.path().to_str().unwrap(),
+            Some(binary.clone()),
+        )
+        .expect("installed");
+        assert!(files.mcp_config.is_some(), "the sidecar is here, so the tools are");
+        assert!(files.system_append.exists());
     }
 }

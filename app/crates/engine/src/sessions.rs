@@ -652,6 +652,15 @@ impl SessionsEngine {
             titles.maybe_generate(chat_id, harness_id, &request.prompt, &request.cwd);
         }
 
+        // surya's own abilities, on every real run (decision 5). This is the
+        // only place a user-facing run is spawned, so filling it here is what
+        // makes the sidecar, the prompt append, the cards skill and the
+        // SendMessage denial reach an actual agent. Title runs never come
+        // through here - `titles.rs` calls the harness directly, and a title
+        // run must not get tools.
+        let mut request = request;
+        request.surya = Some(crate::surya_run::options_for(chat_id, &request.cwd));
+
         tokio::spawn(drive_run(
             self.inner.clone(),
             chat_id.to_string(),
@@ -1481,7 +1490,9 @@ async fn drive_run(
     // re-injects the stored resume id). Option so the retry branch (inside
     // the event loop) can take ownership.
     let mut retry_request = Some(RunRequest {
-        surya: None,
+        // Keep the surya block: a startup-crash retry is the same user entry,
+        // and dropping it here would silently hand the agent a second attempt
+        // with no card tool and no mail denial.
         resume: None,
         ..request.clone()
     });

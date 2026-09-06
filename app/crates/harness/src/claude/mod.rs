@@ -244,8 +244,13 @@ impl ClaudeHarness {
         if let Some(options) = &request.surya
             && let Some(files) = surya::prepare(options, &request.cwd)
         {
-            cmd.arg("--mcp-config");
-            cmd.arg(&files.mcp_config);
+            // The tools are conditional on the sidecar being installed; the
+            // prompt append and the denial below are NOT. A missing binary
+            // costs show_card, never decision 19's single mail channel.
+            if let Some(mcp_config) = &files.mcp_config {
+                cmd.arg("--mcp-config");
+                cmd.arg(mcp_config);
+            }
             cmd.arg("--append-system-prompt-file");
             cmd.arg(&files.system_append);
             // The cards skill, as a one-skill plugin. Without this the agent

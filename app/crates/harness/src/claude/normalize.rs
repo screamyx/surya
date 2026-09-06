@@ -306,16 +306,23 @@ impl Normalizer {
     fn resolve_tool_result(&mut self, tool_use_id: &str, is_error: bool) -> Vec<AgentEvent> {
         let mut out = Vec::new();
         if let Some(held) = self.take_card_call(tool_use_id) {
-            // With a store CONFIGURED, its record is the only truth: falling
-            // back to the call's input turns a short-form card (whose input
-            // holds no A2UI) into a zero-component card, so the user reads
-            // "no components" instead of seeing the tool fail. The input lift
-            // is for runs that have no store at all.
+            // The store record wins, then the call's input.
+            //
+            // This used to be an either/or on whether a store was CONFIGURED,
+            // because a configured store meant the sidecar was recording, so a
+            // missing record meant the card genuinely failed. Since the engine
+            // fills SuryaOptions on every run, EVERY run has a store path -
+            // including runs whose card never goes through the sidecar at all
+            // (raw A2UI in the tool input, `scripts/smoke.sh` section e). The
+            // either/or refused those, and the smoke went to cards drawn=0.
+            //
+            // Falling back is safe because `from_input` is already `None`
+            // unless the input lifts to a drawable card (`card_tool_use` ->
+            // `lifts_to_a_drawable_card`). A short-form card, whose input
+            // holds no A2UI, still gets its chip rather than a zero-component
+            // card - which is the rule this ordering has to keep.
             let card = (!is_error)
-                .then(|| match self.card_store.is_some() {
-                    true => self.card_for(tool_use_id),
-                    false => held.from_input,
-                })
+                .then(|| self.card_for(tool_use_id).or(held.from_input))
                 .flatten();
             if let Some(card) = card {
                 out.push(card);
@@ -872,6 +879,34 @@ mod tests {
 
     /// A `browser_screenshot` call keeps its chip, and the picture the
     /// sidecar recorded follows as its own card row under `<id>:shot`.
+    /// Every run carries a store path now (the engine fills `SuryaOptions` on
+    /// every dispatch), so "a store is configured" no longer means "the
+    /// sidecar recorded this". A card whose A2UI rides in the tool input and
+    /// never touches the sidecar must still draw - `scripts/smoke.sh` section
+    /// e is exactly that, and it went to `cards drawn=0` when this was an
+    /// either/or on the store being configured.
+    #[test]
+    fn raw_a2ui_in_the_input_draws_even_when_the_configured_store_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("cards.jsonl");
+        std::fs::write(&store, "").unwrap();
+        let mut norm = Normalizer::new().with_card_store(Some(store));
+        let ev: Vec<AgentEvent> = [
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_raw","name":"mcp__surya__show_card","input":{"surfaceId":"s1","components":[{"id":"root","component":"Text","text":"hi"}]}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_raw","is_error":false}]}}"#,
+        ]
+        .iter()
+        .flat_map(|raw| {
+            let frame = crate::claude::wire::parse_frame(raw).expect("frame parses");
+            norm.normalize(frame, false)
+        })
+        .collect();
+        assert!(
+            ev.iter().any(|e| matches!(e, AgentEvent::Card { .. })),
+            "raw A2UI must draw with an empty store: {ev:?}"
+        );
+    }
+
     #[test]
     fn browser_screenshot_keeps_its_chip_and_adds_a_card_row() {
         let dir = tempfile::tempdir().unwrap();
