@@ -155,8 +155,17 @@ impl BrowserPane {
         self.url.update(cx, |input, cx| input.set_text(text, cx));
     }
 
+    /// Focus the address field. Taking the focus also takes the whole
+    /// address, as in any browser, so what is typed next replaces it. A
+    /// click inside the text itself is the input's own press (it selects
+    /// on the focusing press by `set_select_all_on_focus`); this is the
+    /// padding around it and the keyboard route.
     pub(super) fn focus_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        window.focus(&self.url.focus_handle(cx), cx);
+        let handle = self.url.focus_handle(cx);
+        if !handle.is_focused(window) {
+            window.focus(&handle, cx);
+            self.url.update(cx, |input, cx| input.select_all_text(cx));
+        }
         // The bar has the keyboard now, not the page.
         super::backend::set_page_focus(false);
     }

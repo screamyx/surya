@@ -199,9 +199,12 @@ impl PressIntent {
 
 /// Read the intent from the press. Two clicks or more take the whole field,
 /// and every further click keeps it, so holding the button through a third
-/// click does not change what is selected.
-fn press_intent(click_count: usize, shift: bool) -> PressIntent {
-    if click_count >= 2 {
+/// click does not change what is selected. `take_all_on_focus` is the
+/// address-bar rule: the press that gives the field focus takes it whole,
+/// as a click into any browser's address bar does, so typing replaces the
+/// address; the next press places the caret as usual.
+fn press_intent(click_count: usize, shift: bool, take_all_on_focus: bool) -> PressIntent {
+    if click_count >= 2 || take_all_on_focus {
         PressIntent::SelectAll
     } else if shift {
         PressIntent::ExtendSelection
@@ -1338,6 +1341,9 @@ pub struct ComposerInput {
     selected_range: Range<usize>,
     selection_reversed: bool,
     marked_range: Option<Range<usize>>,
+    /// The press that focuses the field selects everything in it (an
+    /// address bar). Off for the composer and the palette filters.
+    select_all_on_focus: bool,
     is_selecting: bool,
     drag_position: Option<Point<Pixels>>,
     drag_generation: u64,
@@ -1418,6 +1424,7 @@ impl ComposerInput {
             selected_range: 0..0,
             selection_reversed: false,
             marked_range: None,
+            select_all_on_focus: false,
             is_selecting: false,
             drag_position: None,
             drag_generation: 0,
@@ -2029,8 +2036,20 @@ impl ComposerInput {
     }
 
     fn select_all(&mut self, _: &SelectAll, _: &mut Window, cx: &mut Context<Self>) {
+        self.select_all_text(cx);
+    }
+
+    /// Select everything in the field, as ctrl-a does.
+    pub fn select_all_text(&mut self, cx: &mut Context<Self>) {
         self.move_to(0, cx);
         self.select_to(self.content.len(), cx);
+    }
+
+    /// Make the press that focuses the field select all of it, the way a
+    /// browser's address bar behaves; a press while focused places the
+    /// caret as before.
+    pub fn set_select_all_on_focus(&mut self, on: bool) {
+        self.select_all_on_focus = on;
     }
 
     fn home(&mut self, _: &Home, _: &mut Window, cx: &mut Context<Self>) {
@@ -2347,8 +2366,13 @@ impl ComposerInput {
         cx: &mut Context<Self>,
     ) {
         self.invalidate_mention_tooltip();
+        let takes_focus = !self.focus_handle.is_focused(window);
         window.focus(&self.focus_handle, cx);
-        let intent = press_intent(event.click_count, event.modifiers.shift);
+        let intent = press_intent(
+            event.click_count,
+            event.modifiers.shift,
+            self.select_all_on_focus && takes_focus,
+        );
         self.is_selecting = intent.arms_drag();
         self.drag_position = intent.arms_drag().then_some(event.position);
         self.drag_generation = self.drag_generation.wrapping_add(1);
@@ -6876,20 +6900,36 @@ mod tests {
     /// collapses under the pointer.
     #[test]
     fn a_press_of_two_or_more_clicks_takes_the_whole_field_and_leaves_the_drag_disarmed() {
-        assert_eq!(press_intent(1, false), PressIntent::PlaceCaret);
-        assert_eq!(press_intent(1, true), PressIntent::ExtendSelection);
-        assert_eq!(press_intent(2, false), PressIntent::SelectAll);
+        assert_eq!(press_intent(1, false, false), PressIntent::PlaceCaret);
+        assert_eq!(press_intent(1, true, false), PressIntent::ExtendSelection);
+        assert_eq!(press_intent(2, false, false), PressIntent::SelectAll);
         // A triple click keeps the whole field, so holding the button down
         // through a third click does not change what is selected.
-        assert_eq!(press_intent(3, false), PressIntent::SelectAll);
+        assert_eq!(press_intent(3, false, false), PressIntent::SelectAll);
         // The whole field wins over the shift modifier: shift has nothing
         // left to extend once everything is selected.
-        assert_eq!(press_intent(2, true), PressIntent::SelectAll);
+        assert_eq!(press_intent(2, true, false), PressIntent::SelectAll);
         // Only a caret press arms the drag. A select-all that armed it would
         // collapse to a drag selection on the next mouse move.
-        assert!(press_intent(1, false).arms_drag());
-        assert!(press_intent(1, true).arms_drag());
-        assert!(!press_intent(2, false).arms_drag());
+        assert!(press_intent(1, false, false).arms_drag());
+        assert!(press_intent(1, true, false).arms_drag());
+        assert!(!press_intent(2, false, false).arms_drag());
+    }
+
+    /// The address bar (e2e E2E-BROWSER-01): one click into the bar holding
+    /// `https://example.net/` and typing `ZZZ` gave `https://example.net/ZZZ`.
+    /// The press that focuses the bar takes the whole address, so typing
+    /// replaces it; a press while focused places the caret as anywhere else.
+    #[test]
+    fn the_press_that_focuses_an_address_bar_takes_the_whole_address() {
+        assert_eq!(press_intent(1, false, true), PressIntent::SelectAll);
+        // Shift on that first press has nothing to extend either.
+        assert_eq!(press_intent(1, true, true), PressIntent::SelectAll);
+        // Already focused: the ordinary rules, so a second click edits.
+        assert_eq!(press_intent(1, false, false), PressIntent::PlaceCaret);
+        // The focusing press must not arm a drag, or the first mouse move
+        // shrinks the selection to a drag from the press position.
+        assert!(!press_intent(1, false, true).arms_drag());
     }
 
     #[test]
