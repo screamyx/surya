@@ -837,24 +837,34 @@ impl WorkspaceHost {
     /// chat that is gone. A status about a chat nobody has is not a status,
     /// so it does not get written.
     ///
-    /// This is a guard, not the ordering: the run's own claim
-    /// ([`Self::claim_chat`]) creates the row on the first command, so a live
-    /// chat always has one by the time a transition arrives here.
+    /// The check runs INSIDE the mutation, under one lock. Read-then-write
+    /// takes the registry lock twice ([`Self::read`] and [`Self::mutate`]),
+    /// and a cascade committing between the two leaks the row this guards
+    /// against.
+    ///
+    /// It asks whether the row is PRESENT, not whether it parses:
+    /// `RegistryDoc::chat` returns `None` for a malformed row too, and a live
+    /// chat with one bad field must not lose every status write.
+    ///
+    /// A guard, not the ordering. Every dispatch path claims the chat before
+    /// its first status mirror (`SessionsEngine::dispatch_with`), so a live
+    /// chat always has a row by the time a transition arrives here.
     pub fn record_session(&self, session: &Session) {
-        match self.read(|doc| doc.chat(&session.chat_id)) {
-            Ok(None) => {
-                tracing::debug!(
-                    chat = %session.chat_id,
-                    "session row refused: the chat is gone"
-                );
-                return;
+        let result = self.mutate(|doc| {
+            if !doc.chat_exists(&session.chat_id) {
+                return None;
             }
-            // A read failure is not evidence the chat is gone. Write, as
-            // before: dropping a live run's status is the worse of the two.
-            Ok(Some(_)) | Err(_) => {}
-        }
-        if let Err(err) = self.mutate(|doc| doc.upsert_session(session)) {
-            tracing::warn!(chat = %session.chat_id, error = %err, "registry session write failed");
+            Some(doc.upsert_session(session))
+        });
+        match result {
+            None => tracing::debug!(
+                chat = %session.chat_id,
+                "session row refused: the chat has no row"
+            ),
+            Some(Err(err)) => {
+                tracing::warn!(chat = %session.chat_id, error = %err, "registry session write failed")
+            }
+            Some(Ok(())) => {}
         }
     }
 

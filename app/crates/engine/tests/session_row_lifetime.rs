@@ -187,25 +187,44 @@ async fn a_status_for_an_unknown_chat_writes_nothing() {
     );
 }
 
-/// And a live run still gets its row: the run's own claim creates the chat on
-/// the first command, so the guard never sees a live chat as missing.
+/// The guard must not cost a live run its OPENING status.
+///
+/// This is the one thing the change could plausibly have broken, so it
+/// asserts the Working mirror specifically, not "a row shows up eventually".
+/// An earlier version asserted the latter and passed for the wrong reason:
+/// the Working write was refused, and the row only appeared later at
+/// Done -> Idle, after `note_message` had claimed the chat. The dispatch path
+/// now claims before its first `set_status`, and that is what this pins.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_run_with_no_createchat_still_records_its_session() {
+async fn a_run_with_no_createchat_records_its_opening_working() {
     let dir = tempfile::tempdir().expect("tempdir");
-    let core = assemble(dir.path(), vec![started(), done(DoneStatus::Completed)]);
+    // Parks on the gate, so the run sits in its opening state and the only
+    // status that can have been written is the Working one.
+    let core = assemble(
+        dir.path(),
+        vec![
+            started(),
+            asks_permission("perm-1", "php artisan migrate"),
+            done(DoneStatus::Completed),
+        ],
+    );
+    // No createChat: the dispatch path's own claim is the only thing that
+    // gives this chat a row.
     core.sessions
         .dispatch("chat-claimed", HarnessId::Mock, run_request("hello"), None)
         .await
         .expect("dispatch");
-    wait_for(
-        || {
-            core.workspace
-                .read_sessions()
-                .unwrap_or_default()
-                .iter()
-                .any(|s| s.chat_id == "chat-claimed")
-        },
-        "the claimed chat's session row",
-    )
-    .await;
+
+    // Asserted at once, not waited for. `dispatch` claims and mirrors
+    // Working synchronously, so the row is there the moment it returns - and
+    // waiting instead would hide the bug: with the claim removed this still
+    // goes green after about 15 s, because `touch_session`'s 10 s throttle
+    // re-writes the entry once something else has claimed the chat. A
+    // deadline would have made the test pass for the wrong reason twice over.
+    let rows = core.workspace.read_sessions().unwrap_or_default();
+    assert!(
+        rows.iter()
+            .any(|s| s.chat_id == "chat-claimed" && s.status == SessionStatus::Working),
+        "the opening Working mirror never reached the doc: {rows:?}"
+    );
 }
