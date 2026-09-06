@@ -392,8 +392,8 @@ fn a_child_s_question_keeps_its_buttons_in_the_parent_chat() {
     ));
 }
 
-/// The collapsed row says "answer below", so prove something IS below: the
-/// same transcript the shell hands the composer must yield this row's
+/// The collapsed row says "open to answer", so prove opening it DOES answer:
+/// the same transcript the shell hands the composer must yield this row's
 /// request. This is the pairing the row promises, checked end to end rather
 /// than restated.
 #[test]
