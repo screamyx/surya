@@ -450,14 +450,14 @@ echo
 echo "zeron_hits_before=$BEFORE after=$(hits_of '[Zz]eron') files_changed=$CHANGED paths_moved=$MOVED"
 
 # --------------------------------------------------------------------------
-# 5. Scope drift. The counters cannot see a directory the script was never
-# told about. This reads the WHOLE repo, subtracts the out-of-scope trees and
-# the masked hits, then fails on the rest. Cargo.lock is excluded like RG
-# excludes it: generated, and unrewritten it made this report MISSED=42 of it.
+# 5. Scope drift. The counters cannot see a directory the script was never told about.
+# This reads every TRACKED file (why tracked and not a walk: docs/rename-apply-notes.md),
+# subtracts the out-of-scope trees and the masked hits, then fails on the rest.
+# Cargo.lock is excluded like RG excludes it: generated, and unrewritten it made MISSED=42.
 # --------------------------------------------------------------------------
 echo
-MISSED=$(grep -rnI --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules \
-    --exclude=Cargo.lock -e '[Zz]eron' . 2>/dev/null | sed 's|^\./||' \
+MISSED=$(git ls-files -z ':!:Cargo.lock' ':!:*/Cargo.lock' \
+  | xargs -0 -r grep -HnI -e '[Zz]eron' -- 2>/dev/null \
   | grep -vE '^(app/apps/ios|app/edge|app/apps/landing|app/apps/www-redirect|app/\.github|scripts/rename-(apply|dry-run)\.sh|docs/)' \
   | grep -vE "^$EXCLUDE:" \
   | sed -E 's/zeronsh//g; s/zeron\.sh//g; s/"?[Zz]eron[- ](Dark|dark|Light|light)"?//g;
