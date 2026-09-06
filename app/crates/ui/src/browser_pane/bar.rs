@@ -173,7 +173,11 @@ impl BrowserPane {
     /// Enter in the address field. A scheme-less address gets `https://`
     /// and plain words go to a search; both happen inside the crate's
     /// `navigate_to`, which also refuses `file://` and `chrome://`.
-    pub(super) fn submit_url(&mut self, cx: &mut Context<Self>) {
+    /// A load hands the keyboard to the page, as Enter in Chrome's bar
+    /// does; the next click into the bar is then a focusing click and
+    /// takes the whole address (E2E-BROWSER-01). A refusal keeps the
+    /// keyboard in the bar, with the text there to be corrected.
+    pub(super) fn submit_url(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let typed = self.url.read(cx).text().trim().to_string();
         if typed.is_empty() {
             return;
@@ -193,6 +197,8 @@ impl BrowserPane {
         super::backend::navigate(&typed);
         super::keys::navigated();
         self.url_editing = false;
+        window.focus(&self.page_focus, cx);
+        super::backend::set_page_focus(true);
         super::keys::report(&format!("navigate {resolved}"));
         cx.notify();
     }

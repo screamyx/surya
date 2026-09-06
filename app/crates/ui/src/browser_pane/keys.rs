@@ -218,7 +218,7 @@ impl BrowserPane {
         key_seen();
         match (key, find_focused) {
             ("enter", true) => self.step_find(!event.keystroke.modifiers.shift, cx),
-            ("enter", false) => self.submit_url(cx),
+            ("enter", false) => self.submit_url(window, cx),
             ("escape", true) => self.close_find(window, cx),
             ("escape", false) => self.restore_url(cx),
             _ => return,
