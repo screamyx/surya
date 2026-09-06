@@ -50,7 +50,7 @@ Same page both runs: a CSS spinner plus a `requestAnimationFrame` counter, serve
 | element cost per paint, avg | upload 0.07 ms | 0 (the renderer opens the handle; the heartbeat's `upload_ms` stays at 0 with the flag on, the zero-copy numbers follow it as `zero_copy=on ...`) |
 | gpui renders | 3118 in 50 s | 2764 in 45 s |
 | visible part copied | | 518x786 of a 518x786 pooled texture (`visible_rect`) |
-| page on screen | `docs/images/browser-zero-copy-off.png` | `docs/images/browser-zero-copy-on.png` |
+| page on screen | shot removed; the page painted | shot removed; the page painted, frame counter running |
 
 The earlier run at the pre-review code (50 s, accel=3120 copied=3120 failed=0, avg 1.45 ms, max 11.29 ms) is where the split and probe tables below come from; the numbers did not move with the fixes.
 

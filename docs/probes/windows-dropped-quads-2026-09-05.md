@@ -44,8 +44,8 @@ Shots: `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` of the surya window from a
 
 | Build | What changed | exe time | Shot |
 | --- | --- | --- | --- |
-| A | `cargo build -p surya` (debug), nothing patched | 11:20:41 | `docs/images/dtry-r5-A-unpatched-hlsl.png` |
-| B | same tree, only the vendored `shaders.hlsl` in `E:\surya-cef-cargo\git\checkouts\zed-d032abea1bc23d84\e2ddcc6\crates\gpui_windows\src\` patched by `E:\surya-cef-hlsl-patch.ps1` (adds `struct EdgeFadeParams` at line 88, `EdgeFadeParams fade;` at 516 in `Quad` and at 1224 in `PolychromeSprite`), then `cargo clean -p gpui_windows` and `cargo build -p surya` | 11:23:40 | `docs/images/dtry-r5-B-hlsl-fade-field.png` |
+| A | `cargo build -p surya` (debug), nothing patched | 11:20:41 | shot removed, see the element table below |
+| B | same tree, only the vendored `shaders.hlsl` in `E:\surya-cef-cargo\git\checkouts\zed-d032abea1bc23d84\e2ddcc6\crates\gpui_windows\src\` patched by `E:\surya-cef-hlsl-patch.ps1` (adds `struct EdgeFadeParams` at line 88, `EdgeFadeParams fade;` at 516 in `Quad` and at 1224 in `PolychromeSprite`), then `cargo clean -p gpui_windows` and `cargo build -p surya` | 11:23:40 | shot removed, see the element table below |
 
 Same window size (1336x888), same chat, same scroll position. Elements checked: asked=5.
 
@@ -67,7 +67,7 @@ Left on dtry: `E:\surya-cef`, `E:\surya-cef-cargo`, `E:\surya-cef-target`, `E:\s
 ## Fixed in RC1 (12:35, release build)
 
 PR #56 pins `screamyx/gpui-surya` f910653 (the three struct lines plus `edge_fade_alpha` ported into both fragments); it is in RC1 main e116422.
-surya-remote's RC1 release exe (`E:\surya-remote-target\release\surya.exe`, built 12:18:57 from e116422) on the same chat and window as the A/B above, PrintWindow shot `docs/images/dtry-r5-C-rc1-release-e116422.png`: the "reply" and "reply with the single word mango" bubbles, the transcript container card, the "L" avatar circle and the "Thought process" chip all paint.
+surya-remote's RC1 release exe (`E:\surya-remote-target\release\surya.exe`, built 12:18:57 from e116422) on the same chat and window as the A/B above, PrintWindow shot, since removed: the "reply" and "reply with the single word mango" bubbles, the transcript container card, the "L" avatar circle and the "Thought process" chip all paint.
 Checked elements asked=5, dropped seen=0.
 
 ## Fix as shipped (PR #56) and the earlier candidate
@@ -104,7 +104,7 @@ Evidence, all from this round:
 | `a2ui-dtry-r4-cards-3-5.png` | "Save follow-up" (form card) paints as a white pill. "Approve" (approval card) and "Open PR" (diff card) are dim text, no pill. |
 | `a2ui-dtry-r4-cards-1-2.png` | Same chat after one wheel scroll: "Save follow-up" is now dim text, no pill. "Set follow-ups" (table card) dim too. |
 | `a2ui-dtry-r4-cards-5-6.png` | "Approve" and "Open PR" dim. The secondary "Change it first" and the metric card tabs paint fine. |
-| `quickstart-servers-add.png` | The dialog's "Add" button paints. In the same frame the Name and Port fields have their underline and the Host and Token fields do not. |
+| Add server dialog, shot removed | The dialog's "Add" button paints. In the same frame the Name and Port fields have their underline and the Host and Token fields do not. |
 | `quickstart-servers.png` (light) and `dtry-r4-servers-dark.png` | Page-level "Add server" is dim text, no pill, in both themes, same as before the theme PR. |
 | `dtry-r4-appearance-light.png` | Right after switching to Light: the System and Light preview cards are only partly drawn, "Add theme" is dim text, the accent swatches and the Glass control are half painted. |
 | `dtry-r4-chat-dark.png`, `dtry-r4-chat-light.png` | The transcript in both themes. |

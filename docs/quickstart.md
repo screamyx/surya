@@ -75,7 +75,7 @@ In the app: **Settings -> Servers -> Add server**.
 | Port | `27700` |
 | Token | the Token line from the installer |
 
-![Add server dialog](images/quickstart-servers-add.png)
+The dialog holds those four fields in that order, with Add and Cancel at the bottom.
 
 Press **Add**, then **Connect** on the new row.
 The status line on that page says `Connected to build box (ws://...)` when it worked.
@@ -96,7 +96,7 @@ Two other ways to point the app at a server:
 
 The agent runs on the Linux box in that folder. The reply streams back to Windows.
 
-![A chat running on the Linux box](images/quickstart-chat.png)
+The chat window then shows your message and the agent's reply, with the session listed in the sidebar under the server's name.
 
 ## If something is off
 

@@ -1,32 +1,57 @@
 # Public redaction plan, 2026-09-07
 
-A proposal, not a redaction.
-Nothing in `docs/` was edited to produce this file.
-The owner rules on every row before anything is changed.
+The owner ruled on this plan at 02:00 on 2026-09-07: "delete images and referenct to it, move the logs to a private folder".
+
+The image half is done in the same pull request as this file.
+Twenty images are deleted and every reference to them is rewritten.
+The log half is scripted, not done, because the handoff log is still being written every few minutes until the RC ships.
+`scripts/move-logs.sh` runs right before the flip.
+
+What follows is the plan as it was written, with the ruling folded into each part.
 
 Scope: every tracked file under `docs/`, plus the code and workflow lines that carry the same details, plus all 185 images under `docs/`.
 
-## Item 0: rotate the engine token, before anything else
+## Item 0: the engine token in a screenshot. Resolved by deletion.
 
-Confirmed by two readers against the image itself.
-
-`docs/quickstart.md:78` embeds `images/quickstart-servers-add.png`, which shows the Add server dialog with a fully legible 64-character engine token.
-`docs/images/dtry-r4-servers-add-dark.png` shows the same value.
+`docs/quickstart.md:78` used to embed `images/quickstart-servers-add.png`, which showed the Add server dialog with a fully legible 64-character engine token.
+`docs/images/dtry-r4-servers-add-dark.png` showed the same value.
+Three lines above, `docs/quickstart.md:34` tells the reader "Keep that token private. Anyone who has it can run agents as you on that box", and line 30 truncates the token in the sample output.
 
 The token is not live.
-remote2 compared it against the only two engines on the box, and it belongs to a pre-rename zeron engine.
+remote2 compared it against the only two engines on the box and it belongs to a pre-rename zeron engine.
 No rotation is needed.
 
-| Owner | Action | When |
-|---|---|---|
-| Whoever reshoots | Reshoot both images with the token blurred, or with an obviously fake value | Before any public flip |
+Both images are deleted in this pull request and the embed in `quickstart.md` is replaced by a sentence describing the dialog.
+Nothing is left to reshoot.
 
-No seat edits these two images on its own. The reshoot is ordered, not improvised.
-The detail behind this item is in "Fix before public under either option" below.
+## The logs: Option B, on a script
 
-## Two options for the owner
+The owner chose to move the logs.
+`scripts/move-logs.sh` does it, and it runs once, right before the flip.
 
-### Option A: redact in place
+| Property | Behaviour |
+|---|---|
+| Default | Dry run. It prints every step and changes nothing. |
+| `--apply` | Does it. |
+| Refuses to start | If the working tree is dirty. |
+| Idempotent | A second run finds nothing tracked and exits saying so. |
+| Order | Creates `screamyx/surya-private` if it is missing, copies the files under `logs/`, commits and pushes there, compares every file byte for byte, and only then deletes them here. |
+| Safety | If any file is missing or different in the private clone, it refuses to delete anything. |
+| Pointer | Appends one line to `docs/decisions.md` naming the private repository. |
+
+What it moves, read from the index, so no untracked stray is ever picked up:
+
+- `docs/handoff-*.md`
+- everything under `docs/acceptance/`
+
+Deleting these leaves them in this repository's git history.
+No history rewrite is planned and none is needed: the research over all 1692 commits found no secret, key or credential ever committed, and the one token visible in a screenshot was checked afterwards and is not live.
+
+The two options below are the analysis that led to that choice, kept for the record.
+
+## The two options that were weighed
+
+### Option A: redact in place (not chosen)
 
 Rewrite the offending lines in the current files.
 The handoff log keeps its history and its links, and the repository stays one piece.
@@ -34,7 +59,7 @@ The handoff log keeps its history and its links, and the repository stays one pi
 The cost is that `docs/handoff-2026-09-05.md` carries 215 machine lines and 165 fleet lines out of 861.
 Redacting it line by line is most of a rewrite, and the result reads worse than the original.
 
-### Option B: move the operational logs to a private repository
+### Option B: move the operational logs to a private repository (chosen)
 
 Move `docs/handoff-2026-09-05.md` and `docs/acceptance/` to a private repository.
 Keep `docs/decisions.md` after a light pass, because it is the product record and the thing a reader actually wants.
@@ -46,9 +71,10 @@ Almost every finding in the tables below sits in the two files Option B removes,
 Option B does not cover the code fixtures or the images.
 Those need fixing under either option.
 
-## Fix before public under either option
+## The two findings behind the ruling, and what was done
 
-Two findings are not "operational noise" and do not go away by moving a log file.
+Two findings were not operational noise and would not have gone away by moving a log file.
+Both are fixed in this pull request by deleting the images.
 
 ### 1. An engine token is legible in a screenshot the quickstart embeds
 
@@ -63,12 +89,10 @@ Three lines above the image, `docs/quickstart.md:34` tells the reader: "Keep tha
 `docs/quickstart.md:30` deliberately truncates the token in the sample output as `Token: 3f9c...  (64 characters)`.
 The text follows the rule and the picture on the same page breaks it.
 
-Checked after the fact: remote2 compared the pictured value against the only two engines on the box and it is a pre-rename zeron engine's token, so it is not live.
-That does not change the fix.
+remote2 compared the pictured value against the only two engines on the box: it is a pre-rename zeron engine's token, so it is not live.
+That did not change the fix.
 
-| Action | Detail |
-|---|---|
-| redact | Reshoot both images with the token blurred, or with an obviously fake value. |
+Done: both images are deleted, and `docs/quickstart.md:78` now carries one sentence describing the dialog instead of the picture.
 
 ### 2. Another person's name, private repositories and private work titles are legible in screenshots
 
@@ -95,7 +119,7 @@ Three more images leak private repositories.
 Decision 18 says it plainly: "No real email, hostname, or agent id in the repo."
 A real display name and a private repository name are further over that line than a hostname.
 
-Action: replace or remove. Reshoot, crop or drop these eight images. The owner rules on which.
+Done: all eight are deleted. `docs/research/codex.md` keeps its findings, with each `Source:` line naming the screen instead of a file, and a note at the top saying the screenshots were removed and why.
 
 A ninth, `docs/images/a2ui-dtry-r4-cards-1-2.png`, shows a session list entry reading "Downloads @ pc-ajim" over a chat titled "**Local Environment Configurati...".
 The title is cut off, so nothing private is actually readable. Action: keep.
@@ -115,6 +139,9 @@ Method: four images at a time. The first twenty-one were opened at full size one
 | Host name only, in window chrome | about 90 | most of `critique/shots/`, `design/`, `proof/`, `shots/` |
 | Nothing outside the app window | 185 | every image. No desktop, no taskbar, no wallpaper, no second application, no notification. |
 
+The first four rows overlap: `browser-zero-copy-{on,off}.png` carries both a private repository URL and a tailnet IP.
+Counting each file once, **20 images are deleted** in this pull request, and 13 references across 6 files are rewritten.
+
 No image shows the owner's desktop.
 Every capture is a window capture, which is what the shot rig is built to do.
 The leaks are all inside the app window, in its own text.
@@ -123,6 +150,7 @@ A note on the third-party set: `docs/research/shots/` holds 50 screenshots of th
 Four of them embed video thumbnails showing identifiable people.
 That is a copyright and likeness question, not a privacy one.
 Recommendation: keep, but add a line to `docs/research/` stating that these are vendor screenshots used for comparison, and replace them with links if the owner prefers.
+The five Codex captures are not in that set. They were the owner's own app, and they are deleted.
 
 ## Code and configuration, outside docs/
 
@@ -144,7 +172,9 @@ They use the generic suffix `.ts.net` and the made-up host `tail123`, so: keep.
 
 ## docs/, file by file
 
-Legend: `move` = goes private under Option B, `redact` = rewrite the line, `keep` = fine as it is.
+Legend: `move` = `scripts/move-logs.sh` takes it, `redact` = rewrite the line, `keep` = fine as it is.
+
+The `move` rows also cover `docs/acceptance/e2e-2026-09-06-evidence.tsv` and the two `-processes-{before,after}.txt` files, which the script picks up from the `docs/acceptance/` glob.
 
 ### The two operational logs
 
@@ -156,6 +186,10 @@ Legend: `move` = goes private under Option B, `redact` = rewrite the line, `keep
 On line 573 of the handoff: it records the two browser findings in plain text, including "Browser.Call/Watch unauthenticated on the open loopback socket" and "browser_eval = unrestricted JS by design".
 Both are now covered honestly in `SECURITY.md`, so publishing them is no longer a disclosure problem.
 It is the surrounding operational detail that argues for moving the file, not those two lines.
+
+One reference to a deleted image was deliberately left in place: `docs/handoff-2026-09-05.md:253` names `docs/shots/tasks-pane-2026-09-05.png` in an 08:45 log entry.
+The handoff log is appended to every few minutes while the RC is in flight, so editing an old line in it invites a conflict for no gain.
+The whole file leaves for the private repository at the flip, and the reference leaves with it.
 
 ### decisions.md
 
