@@ -8,5 +8,6 @@ mod chips;
 pub mod demo;
 mod edit;
 pub mod model;
+mod quick_add;
 
 pub use board::TasksPane;
