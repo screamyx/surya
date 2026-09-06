@@ -34,6 +34,17 @@ pub const SETTLE_BOUND: Duration = Duration::from_secs(3);
 /// The script that reads the page; see the file for the line format.
 const SNAPSHOT_JS: &str = include_str!("snapshot.js");
 
+/// Run `f` against `browser`'s host on CEF's UI thread (the shell-side
+/// seam, `cef_thread::on_ui`): the host is looked up there, since a
+/// `BrowserHost` is not `Send`. A browser that closed meanwhile is skipped.
+fn on_host(browser: i32, f: impl FnOnce(&cef::BrowserHost) + Send + 'static) {
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = devtools::browser(browser).and_then(|b| b.host()) {
+            f(&host);
+        }
+    });
+}
+
 static LOAD_WAITERS: Mutex<Vec<(i32, oneshot::Sender<()>)>> = Mutex::new(Vec::new());
 
 /// Resolves on the next main-frame load end of browser `id`. Take it
@@ -255,18 +266,25 @@ async fn click(browser: i32, id: u64) -> Result<Value, String> {
     if evaluate(browser, &arm).await? != Value::Bool(true) {
         return Err(format!("no element with id {id}; call browser_snapshot again"));
     }
-    let Some(host) = devtools::browser(browser).and_then(|b| b.host()) else {
+    if devtools::browser(browser).is_none() {
         return Err(format!("browser {browser} is not open in the pane"));
-    };
-    let event = MouseEvent { x: x.round() as i32, y: y.round() as i32, modifiers: 0 };
+    }
+    // Plain ints cross to CEF's UI thread; a `MouseEvent` is built there.
+    let (px, py) = (x.round() as i32, y.round() as i32);
     crate::pump::mark_input();
-    host.send_mouse_move_event(Some(&event), 0);
-    let pressed = MouseEvent { modifiers: crate::input::flags::LEFT_MOUSE_BUTTON, ..event };
-    host.send_mouse_click_event(Some(&pressed), MouseButtonType::LEFT, 0, 1);
+    on_host(browser, move |host| {
+        let event = MouseEvent { x: px, y: py, modifiers: 0 };
+        host.send_mouse_move_event(Some(&event), 0);
+        let pressed = MouseEvent { modifiers: crate::input::flags::LEFT_MOUSE_BUTTON, ..event };
+        host.send_mouse_click_event(Some(&pressed), MouseButtonType::LEFT, 0, 1);
+    });
     // The renderer runs script and input on one thread, in order: when this
     // answers, the press has been handled.
     let _ = evaluate(browser, "1").await;
-    host.send_mouse_click_event(Some(&event), MouseButtonType::LEFT, 1, 1);
+    on_host(browser, move |host| {
+        let event = MouseEvent { x: px, y: py, modifiers: 0 };
+        host.send_mouse_click_event(Some(&event), MouseButtonType::LEFT, 1, 1);
+    });
     let landed = evaluate(browser, "window.__suryaClicked === true")
         .await
         .unwrap_or(Value::Bool(false));
@@ -282,8 +300,8 @@ async fn click(browser: i32, id: u64) -> Result<Value, String> {
         }
         "dom"
     };
-    println!("agent: click id={id} at {},{} via={via} browser={browser}", event.x, event.y);
-    Ok(json!({ "clicked": id, "x": event.x, "y": event.y, "via": via }))
+    println!("agent: click id={id} at {px},{py} via={via} browser={browser}");
+    Ok(json!({ "clicked": id, "x": px, "y": py, "via": via }))
 }
 
 /// Focus the element, select what it holds, and insert the text over it.
@@ -325,9 +343,7 @@ async fn screenshot(browser: i32) -> Result<Value, String> {
         "Runtime.evaluate",
         json!({ "expression": SHOT_NUDGE_JS, "returnByValue": true }),
     );
-    if let Some(host) = devtools::browser(browser).and_then(|b| b.host()) {
-        host.invalidate(cef::PaintElementType::VIEW);
-    }
+    on_host(browser, |host| host.invalidate(cef::PaintElementType::VIEW));
     let capture = || devtools::call(browser, "Page.captureScreenshot", json!({ "format": "png" }));
     let result = match capture().await {
         // The click before this one started a navigation CEF had not
