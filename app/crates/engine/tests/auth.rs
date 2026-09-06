@@ -231,6 +231,22 @@ async fn handle(mut stream: tokio::net::TcpStream, state: Arc<StubState>) {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Wait until the stub edge has served at least `n` refreshes.
+///
+/// Polls the counter instead of sleeping a fixed span: the deadline only stops
+/// a hung test, it is not an assertion about how fast the loop runs.
+async fn wait_for_refreshes(state: &Arc<StubState>, n: usize) {
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
+    while state.refreshes.load(Ordering::SeqCst) < n {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "stub edge served {} refreshes, wanted {n}",
+            state.refreshes.load(Ordering::SeqCst)
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
 fn workos_config(edge_url: &str, data_dir: &std::path::Path) -> AuthConfig {
     let mut config = AuthConfig::new(edge_url, data_dir);
     config.workos_client_id = Some("client_test".into());
@@ -451,6 +467,15 @@ async fn offline_refresh_loop_backs_off_without_revoking_session() {
     let auth = Auth::new(workos_config(&edge.url(), dir.path()));
 
     let refresh_loop = auth.spawn_refresh_loop();
+    // Wait on the attempt landing, not on the clock. The old fixed 200 ms sleep
+    // asserted the loop had already reached the edge, and on a loaded runner it
+    // had not: the test read 0 refreshes and failed while being correct.
+    wait_for_refreshes(&edge.state, 1).await;
+    // Quiet window: the retry pause after a failed refresh is 30 s
+    // (`spawn_refresh_loop`, crates/engine/src/auth.rs), so a second attempt
+    // inside 200 ms would mean the loop is spinning instead of backing off.
+    // This one stays a fixed sleep on purpose - it asserts that nothing
+    // arrives, so a longer deadline would only slow the suite down.
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     assert_eq!(

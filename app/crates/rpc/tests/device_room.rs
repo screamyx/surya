@@ -309,14 +309,21 @@ impl RpcService for TestService {
     }
 }
 
+/// Poll `check` until it holds. The deadline is `surya_test_deadlines::WAIT`,
+/// not a hand-picked span: it exists to stop a hung test, not to assert speed.
 async fn wait_until(mut check: impl FnMut() -> bool) {
-    for _ in 0..500 {
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
+    loop {
         if check() {
             return;
         }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "condition not reached within {:?}",
+            surya_test_deadlines::WAIT
+        );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("condition not reached within 5s");
 }
 
 fn relay_config(edge_url: &str, retry_ms: u64) -> HostRelayConfig {
@@ -454,7 +461,10 @@ async fn sign_out_closes_cached_peer_links() {
 
     token.clear();
 
-    tokio::time::timeout(Duration::from_secs(5), async {
+    // The close is an expected event, so wait for it on the shared deadline. The
+    // old 5 s ceiling was the only thing failing here on a loaded runner
+    // (main run 34055129484: "cached peer link survived sign-out: Elapsed(())").
+    tokio::time::timeout(surya_test_deadlines::WAIT, async {
         loop {
             if client
                 .call("Echo", serde_json::json!({ "after": "sign-out" }))
@@ -463,7 +473,10 @@ async fn sign_out_closes_cached_peer_links() {
             {
                 return;
             }
-            tokio::task::yield_now().await;
+            // Pace the retry. On a real regression this loop now runs for
+            // the full WAIT, and a bare yield_now would spend that minute
+            // hammering the runner with RPC calls.
+            tokio::time::sleep(Duration::from_millis(10)).await;
         }
     })
     .await
@@ -682,7 +695,7 @@ async fn nudges_reach_the_host_callback() {
     relay.wait_host_connected().await;
 
     relay.nudge("chat-42");
-    let got = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+    let got = tokio::time::timeout(surya_test_deadlines::WAIT, rx.recv())
         .await
         .expect("nudge delivered")
         .expect("channel open");

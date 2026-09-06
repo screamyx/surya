@@ -7007,6 +7007,7 @@ dependencies = [
  "surya-doc",
  "surya-proto",
  "surya-sync",
+ "surya-test-deadlines",
  "thiserror 2.0.20",
  "tokio",
  "tokio-tungstenite",
