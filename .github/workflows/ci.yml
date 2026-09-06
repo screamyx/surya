@@ -345,6 +345,12 @@ jobs:
           name: surya-windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist/surya-windows-*.zip
           retention-days: 14
+          # The file is already a zip. upload-artifact deflates whatever it
+          # is given before uploading, and deflating a compressed archive
+          # burns CPU on the owner's machine to save almost nothing. 0 is
+          # store-only. Measured on the first green run (34058787311):
+          # build.ps1 2m16s, this upload 11m28s for about 207 MB.
+          compression-level: 0
           if-no-files-found: error
 
       # SPACE. `dist` is the packed folder plus a 207 MB zip, per run. The
