@@ -828,7 +828,31 @@ impl WorkspaceHost {
 
     /// Session-status row upsert (sessions engine transitions land here too, in
     /// addition to the local watch channel).
+    ///
+    /// Refused when the chat has no row. The `deleteSpace` cascade tombstones
+    /// the chat row and the session row in one commit, then interrupts the
+    /// run it was hosting - and that interrupt settles into a status
+    /// transition that landed here and wrote the session row straight back.
+    /// Nothing clears it afterwards, because every later sweep is keyed on a
+    /// chat that is gone. A status about a chat nobody has is not a status,
+    /// so it does not get written.
+    ///
+    /// This is a guard, not the ordering: the run's own claim
+    /// ([`Self::claim_chat`]) creates the row on the first command, so a live
+    /// chat always has one by the time a transition arrives here.
     pub fn record_session(&self, session: &Session) {
+        match self.read(|doc| doc.chat(&session.chat_id)) {
+            Ok(None) => {
+                tracing::debug!(
+                    chat = %session.chat_id,
+                    "session row refused: the chat is gone"
+                );
+                return;
+            }
+            // A read failure is not evidence the chat is gone. Write, as
+            // before: dropping a live run's status is the worse of the two.
+            Ok(Some(_)) | Err(_) => {}
+        }
         if let Err(err) = self.mutate(|doc| doc.upsert_session(session)) {
             tracing::warn!(chat = %session.chat_id, error = %err, "registry session write failed");
         }
