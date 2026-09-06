@@ -11,6 +11,7 @@ pub mod demo;
 pub mod editor;
 pub mod editor_doc;
 pub mod model;
+pub mod notice;
 pub mod tree;
 
 use gpui::{
