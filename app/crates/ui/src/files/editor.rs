@@ -19,6 +19,7 @@ use surya_rpc::methods;
 
 pub use super::editor_doc::{Body, Conflict, EditorDoc, SaveOutcome, Switch};
 use super::SaveFile;
+use super::notice::{Tone, notice};
 use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::state::EngineHandle;
 use crate::theme::Theme;
@@ -218,77 +219,55 @@ impl FileEditor {
             })
     }
 
+    /// The save-refused banner: the reason, and the two ways out. Both lose
+    /// something (Reload drops the buffer's edits, Overwrite drops the other
+    /// writer's bytes), so the one that destroys what is on disk wears the
+    /// danger variant.
     fn banner(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<gpui::Div> {
         let conflict = self.doc.conflict.as_ref()?;
-        let button = |label: &'static str, theme: &Theme| {
-            div()
-                .px(px(8.0))
-                .py(px(2.0))
-                .rounded(px(4.0))
-                .bg(theme.surface_raised)
-                .hover(|d| d.bg(theme.element_hover))
-                .cursor_pointer()
-                .child(label)
-        };
-        Some(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .px(px(10.0))
-                .py(px(6.0))
-                .bg(theme.danger_muted) // TOKEN: surya.banner.conflict
-                .text_size(px(12.0))
-                .text_color(theme.text)
-                .child(format!("Save refused: {}", conflict.reason))
-                .child(div().flex_1())
-                .child(button("Reload from disk", theme).on_mouse_down(
-                    gpui::MouseButton::Left,
-                    cx.listener(|this, _, _, cx| this.reload_from_disk(cx)),
-                ))
-                .child(button("Overwrite", theme).on_mouse_down(
-                    gpui::MouseButton::Left,
-                    cx.listener(|this, _, _, cx| this.overwrite(cx)),
-                )),
-        )
+        Some(notice(
+            theme,
+            Tone::Refused,
+            "Save refused.",
+            conflict.reason.clone(),
+            vec![
+                crate::popover::btn_ghost(theme, "Reload from disk", "files-editor-reload")
+                    .id("files-editor-reload")
+                    .on_click(cx.listener(|this, _, _, cx| this.reload_from_disk(cx)))
+                    .into_any_element(),
+                crate::popover::btn_danger(theme, "Overwrite")
+                    .id("files-editor-overwrite")
+                    .on_click(cx.listener(|this, _, _, cx| this.overwrite(cx)))
+                    .into_any_element(),
+            ],
+        ))
     }
 
-    /// The unsaved-edits prompt, in the pane above the buffer. Three ways
-    /// out, all explicit: nothing here is a native dialog.
+    /// The unsaved-edits prompt, above the buffer. Three ways out, all
+    /// explicit: nothing here is a native dialog.
     fn prompt(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<gpui::Div> {
         let next = self.doc.prompt_for(self.input.read(cx).text())?.to_string();
         let here = self.doc.path.clone().unwrap_or_default();
-        Some(
-            div()
-                .flex()
-                .flex_wrap()
-                .items_center()
-                .gap(px(8.0))
-                .px(px(10.0))
-                .py(px(6.0))
-                .bg(theme.surface_raised) // TOKEN: surya.banner.ask
-                .border_b_1()
-                .border_color(theme.border)
-                .text_size(px(12.0))
-                .text_color(theme.text)
-                .child(format!("{here} has unsaved changes. Save or discard them before opening {next}?"))
-                .child(div().flex_1())
-                .child(
-                    crate::popover::btn_ghost(theme, "Keep editing", "files-editor-keep")
-                        .id("files-editor-keep")
-                        .on_click(cx.listener(|this, _, _, cx| this.keep_editing(cx))),
-                )
-                .child(
-                    crate::popover::btn_danger(theme, "Discard")
-                        .id("files-editor-discard")
-                        .on_click(cx.listener(|this, _, _, cx| this.discard_then_open(cx))),
-                )
-                .child(
-                    crate::popover::btn_primary(theme, "Save")
-                        .id("files-editor-save-then-open")
-                        .on_click(cx.listener(|this, _, _, cx| this.save_then_open(cx))),
-                ),
-        )
+        Some(notice(
+            theme,
+            Tone::Ask,
+            "Unsaved changes.",
+            format!("Save or discard {here} before opening {next}?"),
+            vec![
+                crate::popover::btn_ghost(theme, "Keep editing", "files-editor-keep")
+                    .id("files-editor-keep")
+                    .on_click(cx.listener(|this, _, _, cx| this.keep_editing(cx)))
+                    .into_any_element(),
+                crate::popover::btn_danger(theme, "Discard")
+                    .id("files-editor-discard")
+                    .on_click(cx.listener(|this, _, _, cx| this.discard_then_open(cx)))
+                    .into_any_element(),
+                crate::popover::btn_primary(theme, "Save")
+                    .id("files-editor-save-then-open")
+                    .on_click(cx.listener(|this, _, _, cx| this.save_then_open(cx)))
+                    .into_any_element(),
+            ],
+        ))
     }
 
     fn placeholder(&self, theme: &Theme) -> Option<gpui::Div> {
