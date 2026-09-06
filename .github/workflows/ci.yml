@@ -93,8 +93,14 @@ jobs:
       # at rmeta, so this step still codegens and links the ui test binary
       # itself. It sits here for fail-fast order, not for reuse: a broken
       # workspace should fail before anything spends time on a test binary.
-      # Measured cost, run 34001992513: 40s of a 6m51s run, for 659 tests
-      # that had never run in CI at all.
+      # Cost, measured twice, because the runner is the swarm's build box and
+      # the two numbers are not close:
+      #   run 34001992513, quiet:  40s of a 6m51s run
+      #   run 34021004960, loaded: 875s of a 52m51s run
+      # Codegen and linking contend worst, so this step stretches further
+      # under load than the run does (22x against the run's 8x). Worth it for
+      # 659 tests that had never run in CI at all - but that is the trade, and
+      # the quiet number alone would have hidden it.
       - name: cargo test -p zeron-ui
         run: cargo test --jobs 6 -p zeron-ui
 
