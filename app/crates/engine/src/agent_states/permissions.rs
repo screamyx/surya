@@ -111,8 +111,8 @@ impl AgentStates {
     ///
     /// This is what makes yolo work on a RUNNING session: the tool that is
     /// blocked right now is unblocked by the same flip that covers the ones
-    /// after it. Shaped like [`Self::drop_chat`], with the opposite answer —
-    /// there the responder is dropped and the gate reads Deny; here it is
+    /// after it. Shaped like [`Self::drop_chat`] with the opposite answer:
+    /// there the responder is dropped and the gate reads Deny, here it is
     /// sent Allow.
     pub fn allow_pending_for_chat(&self, chat_id: &str) -> Vec<PermissionRequest> {
         let flushed: Vec<PermissionRequest> = {

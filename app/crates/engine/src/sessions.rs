@@ -293,7 +293,7 @@ impl SessionsEngine {
     ///
     /// ON answers everything this chat has parked and everything it asks
     /// afterwards. The CLI keeps whatever permission mode it was launched
-    /// with, so a run that started outside yolo still ASKS — the engine just
+    /// with, so a run that started outside yolo still ASKS. The engine just
     /// answers for the user instead of waking them. The next run launches
     /// with the bypass flag and stops asking at all.
     ///
@@ -459,8 +459,8 @@ impl SessionsEngine {
         //
         // The live set wins over a row that says off: the RPC flip is the
         // newer signal when a remote client's `setChatConfig` has not landed
-        // in the doc yet, and the direction that errs — asking when the user
-        // said don't — is the one that annoys rather than the one that runs
+        // in the doc yet, and the direction that errs (asking when the user
+        // said don't) is the one that annoys rather than the one that runs
         // something unasked.
         if self.inner.states.yolo().is_on(chat_id) || self.inner.chat_wants_yolo(chat_id) {
             request.auto_approve = true;

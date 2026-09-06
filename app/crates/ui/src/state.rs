@@ -689,10 +689,11 @@ pub struct AppState {
     /// Sorted (see [`sort_chats`]); includes archived rows — views filter.
     pub chats: Vec<Chat>,
     pub sessions: Vec<Session>,
-    /// Chat id -> the start time of the run that was bypassing when the user
-    /// switched yolo off. View state, not doc state: it only decides which of
-    /// two true sentences the header shows, and only for that one run.
-    pub yolo_pending_off: std::collections::HashMap<String, DateTime<Utc>>,
+    /// Chats whose yolo mode was switched off while their agent was mid-run
+    /// and therefore still bypassing. Cleared when that session settles.
+    /// View state, not doc state: it only decides which of two true
+    /// sentences the header shows.
+    pub yolo_pending_off: std::collections::HashSet<String>,
     /// The project the new-session canvas mints into. Healed by
     /// [`Self::apply_spaces`] when the row vanishes; selecting a chat implies
     /// its project.
@@ -794,7 +795,7 @@ impl AppState {
             spaces: Vec::new(),
             chats: Vec::new(),
             sessions: Vec::new(),
-            yolo_pending_off: std::collections::HashMap::new(),
+            yolo_pending_off: std::collections::HashSet::new(),
             selected_space: None,
             no_project: false,
             selected_device: None,
@@ -877,7 +878,7 @@ impl AppState {
         // A deleted chat takes its header note with it.
         if !self.yolo_pending_off.is_empty() {
             self.yolo_pending_off
-                .retain(|chat_id, _| self.chats.iter().any(|c| &c.id == chat_id));
+                .retain(|chat_id| self.chats.iter().any(|c| &c.id == chat_id));
         }
         if let Some(selected) = &self.selected_chat
             && !self.chats.iter().any(|c| &c.id == selected)
@@ -892,6 +893,20 @@ impl AppState {
 
     pub fn apply_sessions(&mut self, sessions: Vec<Session>) {
         self.sessions = sessions;
+        // A settled session is a dead child process: whatever permission mode
+        // it launched with died with it, so the "prompts return next run"
+        // note has nothing left to warn about.
+        if !self.yolo_pending_off.is_empty() {
+            let settled: Vec<String> = self
+                .yolo_pending_off
+                .iter()
+                .filter(|chat_id| !self.run_unsettled(chat_id))
+                .cloned()
+                .collect();
+            for chat_id in settled {
+                self.yolo_pending_off.remove(&chat_id);
+            }
+        }
     }
 
     pub fn apply_spaces(&mut self, mut spaces: Vec<Space>) {
@@ -1461,40 +1476,34 @@ impl AppState {
         self.sessions.iter().find(|s| s.chat_id == chat_id)
     }
 
-    /// Remember that yolo mode was switched OFF while THIS run was in flight,
-    /// so the header can say prompts come back on the next run rather than
-    /// claiming they are back already: a run launched with the CLI's bypass
-    /// flag keeps bypassing until it ends.
+    /// Remember that yolo mode was switched OFF while the agent was mid-run
+    /// and therefore still bypassing, so the header can say prompts come back
+    /// on the next run rather than claiming they are back already: a run
+    /// launched with the CLI's bypass flag keeps bypassing until it ends.
     ///
-    /// The run is pinned by its start time, and the note only ever applies to
-    /// that one run. Remembering the chat alone made every later run of it
-    /// wear the note, including a run launched with prompts ON that is
-    /// prompting perfectly normally — the honesty rule stood on its head.
-    /// Switching yolo back on clears the note, and so does the run ending.
+    /// The note lasts until that session SETTLES, which is the same lifetime
+    /// as the process that holds the bypass flag. It is deliberately not
+    /// pinned to `Session.started_at`: that field is the elapsed-timer base
+    /// and means "this turn", so a steer restamps it inside the very same
+    /// child process and the note would vanish while the bypass was still on.
+    /// Switching yolo back on clears the note too.
     pub fn note_yolo_pending_off(&mut self, chat_id: &str, on: bool) {
-        if on {
+        if on || !self.run_unsettled(chat_id) {
+            // Nothing is bypassing: yolo went back on, or the flip happened
+            // between runs, and the next run reads the flag afresh.
             self.yolo_pending_off.remove(chat_id);
             return;
         }
-        // Nothing is bypassing unless a run is actually in flight; a flip made
-        // between runs needs no note at all.
-        match self.bypassing_run_start(chat_id) {
-            Some(started_at) => {
-                self.yolo_pending_off
-                    .insert(chat_id.to_string(), started_at);
-            }
-            None => {
-                self.yolo_pending_off.remove(chat_id);
-            }
-        }
+        self.yolo_pending_off.insert(chat_id.to_string());
     }
 
-    /// The start time of the chat's live working run, if it has one.
-    fn bypassing_run_start(&self, chat_id: &str) -> Option<DateTime<Utc>> {
-        let session = self.session_for(chat_id)?;
-        (session.status == surya_proto::SessionStatus::Working)
-            .then_some(session.started_at)
-            .flatten()
+    /// Is a run still in flight for this chat? `AwaitingInput` counts: the
+    /// child process is alive and still holds whatever permission mode it
+    /// launched with.
+    fn run_unsettled(&self, chat_id: &str) -> bool {
+        use surya_proto::SessionStatus as S;
+        self.session_for(chat_id)
+            .is_some_and(|s| matches!(s.status, S::Working | S::AwaitingInput))
     }
 
     /// What the chat header says about yolo mode (see [`crate::yolo`]).
@@ -1505,16 +1514,7 @@ impl AppState {
             .find(|c| c.id == chat_id)
             .and_then(|c| c.config.as_ref())
             .is_some_and(|config| config.auto_approve);
-        // The SAME run has to still be live: a new run means a new launch,
-        // and a new launch reads the flag afresh.
-        let bypassing_run_live = match (
-            self.yolo_pending_off.get(chat_id),
-            self.bypassing_run_start(chat_id),
-        ) {
-            (Some(pinned), Some(live)) => *pinned == live,
-            _ => false,
-        };
-        crate::yolo::header_note(on, bypassing_run_live)
+        crate::yolo::header_note(on, self.yolo_pending_off.contains(chat_id))
     }
 
     /// Staleness-checked status dot for a chat row. A send in flight reads as
@@ -3351,44 +3351,59 @@ mod tests {
     }
 
     #[test]
-    fn yolo_note_belongs_to_one_run_only() {
+    fn yolo_note_lasts_exactly_as_long_as_the_bypassing_run() {
         use crate::yolo::HeaderNote;
         let now = Utc::now();
-        let started = now - TimeDelta::minutes(2);
         let mut state = AppState::new();
         state.apply_chats(vec![chat("a", 0, None)]);
         let working = Session {
             chat_id: "a".into(),
             device_id: "dev".into(),
             status: SessionStatus::Working,
-            started_at: Some(started),
+            started_at: Some(now - TimeDelta::minutes(2)),
             updated_at: now,
         };
-        state.sessions = vec![working.clone()];
+        state.apply_sessions(vec![working.clone()]);
 
         // Switched off mid-run: that run is still bypassing, so the header
         // says when prompts come back.
         state.note_yolo_pending_off("a", false);
         assert_eq!(state.yolo_header_note("a"), HeaderNote::OffNextRun);
 
-        // A LATER run of the same chat launched with prompts on. It is
-        // prompting normally, and the header must not claim otherwise.
-        state.sessions = vec![Session {
+        // A STEER restamps started_at inside the very same child process
+        // (sessions.rs: the base means "this turn"). The bypass is still on,
+        // so the note has to survive it.
+        state.apply_sessions(vec![Session {
             started_at: Some(now),
             ..working.clone()
-        }];
+        }]);
+        assert_eq!(
+            state.yolo_header_note("a"),
+            HeaderNote::OffNextRun,
+            "a steer is the same process; the flag it launched with is unchanged"
+        );
+
+        // A question mid-run keeps the process alive too.
+        state.apply_sessions(vec![Session {
+            status: SessionStatus::AwaitingInput,
+            ..working.clone()
+        }]);
+        assert_eq!(state.yolo_header_note("a"), HeaderNote::OffNextRun);
+
+        // The run settling is the process dying: nothing is bypassing now.
+        state.apply_sessions(vec![Session {
+            status: SessionStatus::Idle,
+            ..working.clone()
+        }]);
+        assert_eq!(state.yolo_header_note("a"), HeaderNote::None);
+
+        // And a fresh run afterwards wears nothing: it read the flag itself.
+        state.apply_sessions(vec![working]);
         assert_eq!(
             state.yolo_header_note("a"),
             HeaderNote::None,
-            "a fresh run reads the flag afresh; the note was about the old one"
+            "a new launch reads the flag afresh"
         );
-
-        // The run ending clears it too.
-        state.sessions = vec![Session {
-            status: SessionStatus::Idle,
-            ..working
-        }];
-        assert_eq!(state.yolo_header_note("a"), HeaderNote::None);
     }
 
     #[test]
@@ -3407,13 +3422,13 @@ mod tests {
         let now = Utc::now();
         let mut state = AppState::new();
         state.apply_chats(vec![chat("a", 0, None)]);
-        state.sessions = vec![Session {
+        state.apply_sessions(vec![Session {
             chat_id: "a".into(),
             device_id: "dev".into(),
             status: SessionStatus::Working,
             started_at: Some(now),
             updated_at: now,
-        }];
+        }]);
         state.note_yolo_pending_off("a", false);
         assert!(!state.yolo_pending_off.is_empty());
         state.apply_chats(Vec::new());

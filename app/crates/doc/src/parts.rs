@@ -603,8 +603,8 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
             }
             // The chip above states the outcome, so a second line about the
             // same answer would say it twice. What is left for a notice is
-            // the case with no chip at all: a rule — or the chat's yolo mode
-            // — that allowed the tool without asking, which the user should
+            // the case with no chip at all: a rule, or the chat's yolo mode,
+            // that allowed the tool without asking, which the user should
             // still see happen.
             let text = if asked {
                 None

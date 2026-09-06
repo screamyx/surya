@@ -225,7 +225,7 @@ async fn a_later_ask_never_reaches_the_inbox() {
 }
 
 /// A new run on a chat whose ROW says yolo carries the flag even when the
-/// caller sent false — the composer, a queued command and the crash-resume
+/// caller sent false: the composer, a queued command and the crash-resume
 /// rebuild all go through this one stamp.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_run_on_a_yolo_chat_launches_with_the_flag() {

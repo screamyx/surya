@@ -96,7 +96,7 @@ pub enum HeaderNote {
     On,
     /// The user switched it off while THE run that is still going was
     /// bypassing. That run was launched with the CLI's own bypass flag and
-    /// goes on bypassing until it ends — there is no way to tell a running
+    /// goes on bypassing until it ends. There is no way to tell a running
     /// agent to start asking again, so the header says when prompts come back
     /// instead of claiming they already have.
     OffNextRun,
@@ -132,7 +132,7 @@ pub fn header_note(on: bool, bypassing_run_live: bool) -> HeaderNote {
 pub fn chip(state: YoloState, theme: &Theme) -> gpui::Stateful<gpui::Div> {
     // Same ghost pill as the model chip (surya composer/styles.tsx `pill`):
     // h-8, rounded-lg, 12px medium, hover wash, no border. On reads in the
-    // warning family — amber is the app's "this needs your attention" tone
+    // warning family: amber is the app's "this needs your attention" tone
     // and running tools unasked is exactly that, without being an error.
     let id = "picker-yolo";
     let (text, wash) = match state {
