@@ -15,6 +15,7 @@ use gpui::{App, Global, Task};
 use serde::{Deserialize, Serialize};
 
 pub mod accounts;
+pub mod agent_labels;
 pub mod appearance;
 pub mod archived;
 pub mod composer;
@@ -24,6 +25,7 @@ pub mod notifications;
 pub mod servers;
 pub mod shortcuts;
 pub mod widgets;
+pub mod yolo_default;
 
 /// Sidebar drag-resize bounds (px).
 pub const SIDEBAR_MIN: f32 = 208.0;
@@ -308,6 +310,12 @@ pub struct UiSettings {
     /// loopback port, else embed).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_server: Option<String>,
+    /// Yolo mode for NEW sessions: they start with tool prompts off. Existing
+    /// chats carry their own flag on the row, so changing this never touches
+    /// a conversation that is already running. Device-local, like every other
+    /// preference in this file.
+    #[serde(default)]
+    pub yolo_default: bool,
     /// Browser pane zoom, in percent, per host. 100% is the default and is
     /// never written, so the map holds only the sites read at another size.
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
@@ -418,6 +426,7 @@ impl Default for UiSettings {
             legacy_accent_color: None,
             servers: Vec::new(),
             active_server: None,
+            yolo_default: false,
             browser_zoom: std::collections::HashMap::new(),
         }
     }
@@ -940,6 +949,7 @@ mod tests {
     fn round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let settings = UiSettings {
+            yolo_default: true,
             sidebar_width: 300.0,
             sidebar_collapsed: true,
             sidebar_grouped: true,

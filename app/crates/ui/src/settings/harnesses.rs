@@ -30,40 +30,11 @@ use surya_rpc::methods;
 
 use crate::pickers::visible_harnesses;
 use crate::popover::{self, Loadable};
+use crate::settings::agent_labels::{blurb, cli_name};
+use crate::settings::SavePolicy;
 use crate::settings::widgets;
 use crate::state::AppState;
 use crate::theme::Theme;
-
-/// One-line blurb per agent (the t3code models page pairs every toggle row
-/// with a description; the catalog descriptor doesn't carry one).
-pub fn blurb(harness: HarnessId) -> &'static str {
-    match harness {
-        HarnessId::ClaudeCode => "Anthropic's coding agent, driven through the Claude Code CLI.",
-        HarnessId::Codex => "OpenAI's coding agent, driven through the Codex CLI.",
-        HarnessId::Cursor => "Cursor's coding agent, driven through the cursor-agent CLI.",
-        HarnessId::Devin => "Cognition's Devin agent (devin CLI).",
-        HarnessId::Grok => "xAI's Grok Build agent (grok CLI).",
-        HarnessId::Hermes => "Nous Research's Hermes Agent (hermes CLI).",
-        HarnessId::Pi => "The pi coding agent (pi CLI).",
-        HarnessId::Opencode => "SST's opencode agent (opencode CLI).",
-        HarnessId::Mock => "Scripted test harness.",
-    }
-}
-
-/// The CLI named in the not-installed hint.
-pub fn cli_name(harness: HarnessId) -> &'static str {
-    match harness {
-        HarnessId::ClaudeCode => "claude",
-        HarnessId::Codex => "codex",
-        HarnessId::Cursor => "cursor-agent",
-        HarnessId::Devin => "devin",
-        HarnessId::Grok => "grok",
-        HarnessId::Hermes => "hermes",
-        HarnessId::Pi => "pi",
-        HarnessId::Opencode => "opencode",
-        HarnessId::Mock => "mock",
-    }
-}
 
 pub struct HarnessesPage {
     state: Entity<AppState>,
@@ -499,7 +470,18 @@ impl Render for HarnessesPage {
                         .line_height(px(20.0)),
                     )
                     .children(error)
-                    .child(body),
+                    .child(body)
+                    .child(crate::settings::yolo_default::section(
+                        &theme,
+                        crate::settings::current(cx).yolo_default,
+                        cx.listener(|_, _, _, cx| {
+                            let on = crate::settings::current(cx).yolo_default;
+                            crate::settings::update(SavePolicy::Debounced, cx, |settings| {
+                                settings.yolo_default = !on
+                            });
+                            cx.notify();
+                        }),
+                    )),
             )
     }
 }

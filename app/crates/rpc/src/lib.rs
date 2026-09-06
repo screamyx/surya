@@ -98,6 +98,12 @@ pub mod methods {
     /// remember?: {scope, pattern, name?}}`; `remember` turns the answer into
     /// an always-allow rule in the same breath.
     pub const RESPOND_PERMISSION: &str = "RespondPermission";
+    /// Turn yolo mode on or off for one chat, live. Params `{chatId, on}`.
+    /// ON also answers everything that chat has parked. The durable copy of
+    /// the flag is `ChatConfig.autoApprove` on the chat row (a `Mutate
+    /// setChatConfig` write); this is the immediate path to the engine that
+    /// is running the agent.
+    pub const SET_AUTO_APPROVE: &str = "SetAutoApprove";
     /// The device's always-allow rules (`AllowRule[]`). No params.
     pub const LIST_ALLOW_RULES: &str = "ListAllowRules";
     /// Add one always-allow rule from Settings. Params `{name?, scope,

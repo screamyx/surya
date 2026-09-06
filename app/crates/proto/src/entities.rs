@@ -81,6 +81,14 @@ pub struct ChatConfig {
     #[serde(default)]
     pub model_options: serde_json::Map<String, serde_json::Value>,
     pub sandbox: SandboxLevel,
+    /// Yolo mode: run this chat's agent without permission prompts.
+    ///
+    /// Per chat and persisted on the row, so it survives a restart, syncs to
+    /// the user's other devices, and is readable by the engine that actually
+    /// launches the run. Additive + serde-defaulted: a row written before
+    /// this field reads as `false`, which is the behaviour it had.
+    #[serde(default)]
+    pub auto_approve: bool,
 }
 
 /// Immutable-at-run-start repository context owned by one conversation.

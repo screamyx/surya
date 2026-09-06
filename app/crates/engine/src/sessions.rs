@@ -282,9 +282,62 @@ impl SessionsEngine {
                 rule: resolved.created_rule.as_ref().map(|r| r.name.clone()),
                 reason: (decision == PermissionDecision::Deny)
                     .then(|| "you denied it".to_string()),
+                yolo: false,
             });
         }
         Ok(())
+    }
+
+    /// Turn yolo mode on or off for one chat, now, on a session that may
+    /// already be running (the owner's request).
+    ///
+    /// ON answers everything this chat has parked and everything it asks
+    /// afterwards. The CLI keeps whatever permission mode it was launched
+    /// with, so a run that started outside yolo still ASKS — the engine just
+    /// answers for the user instead of waking them. The next run launches
+    /// with the bypass flag and stops asking at all.
+    ///
+    /// OFF stops the engine answering. A run launched with the bypass flag
+    /// goes on bypassing inside the CLI until it ends; there is no way to
+    /// tell a running claude to start prompting again, and pretending
+    /// otherwise would be a lie the UI then has to tell. The UI says
+    /// "prompts return on the next run" instead.
+    ///
+    /// Idempotent: two feeds reach it (the RPC and the chat-row watch) and
+    /// they are expected to report the same flip.
+    pub fn set_auto_approve(&self, chat_id: &str, on: bool) {
+        if !self.inner.states.yolo().set(chat_id, on) {
+            return;
+        }
+        if !on {
+            return;
+        }
+        let flushed = self.inner.states.allow_pending_for_chat(chat_id);
+        if flushed.is_empty() {
+            return;
+        }
+        // Same reason respond_permission emits: a second client watching this
+        // chat has the same cards on screen and has to drop them too.
+        let engine_tx = lock(&self.inner.runs)
+            .get(chat_id)
+            .map(|h| h.engine_tx.clone());
+        let Some(engine_tx) = engine_tx else {
+            return;
+        };
+        for request in flushed {
+            let _ = engine_tx.send(AgentEvent::PermissionResolved {
+                request_id: request.request_id,
+                decision: PermissionDecision::Allow,
+                rule: None,
+                reason: None,
+                yolo: true,
+            });
+        }
+    }
+
+    /// Is this chat in yolo mode right now?
+    pub fn auto_approve(&self, chat_id: &str) -> bool {
+        self.inner.states.yolo().is_on(chat_id)
     }
 
     /// A chat is gone: forget its agent rows and refuse anything still parked
@@ -295,6 +348,7 @@ impl SessionsEngine {
         let engine_tx = lock(&self.inner.runs)
             .get(chat_id)
             .map(|h| h.engine_tx.clone());
+        self.inner.states.yolo().forget(chat_id);
         for request_id in self.inner.states.drop_chat(chat_id) {
             let Some(engine_tx) = engine_tx.as_ref() else {
                 continue;
@@ -304,6 +358,7 @@ impl SessionsEngine {
                 decision: PermissionDecision::Deny,
                 rule: None,
                 reason: Some("the chat was closed before anyone answered".to_string()),
+                yolo: false,
             });
         }
     }
@@ -396,6 +451,21 @@ impl SessionsEngine {
         // Project-less chats store cwd `~` (the creating device can't know the
         // host's home); expand it here, on the host, where the run spawns.
         request.cwd = expand_home(&request.cwd);
+        // Yolo mode belongs to the CHAT, not to whoever built this request:
+        // the composer, the crash-resume rebuild and a queued command drained
+        // after a restart all produce Runs, and every one of them has to
+        // launch with the flag the row carries. Reading it here, once, is
+        // what makes "the CLI never prompts" true no matter who dispatched.
+        //
+        // The live set wins over a row that says off: the RPC flip is the
+        // newer signal when a remote client's `setChatConfig` has not landed
+        // in the doc yet, and the direction that errs — asking when the user
+        // said don't — is the one that annoys rather than the one that runs
+        // something unasked.
+        if self.inner.states.yolo().is_on(chat_id) || self.inner.chat_wants_yolo(chat_id) {
+            request.auto_approve = true;
+            self.inner.states.yolo().set(chat_id, true);
+        }
         // Every dispatched prompt is a turn — routed steer or fresh run alike.
         self.note_turn_start(chat_id, &request.cwd);
         let routed = lock(&self.inner.runs).get(chat_id).map(|h| {
@@ -522,6 +592,16 @@ impl SessionsEngine {
                             decision: PermissionDecision::Allow,
                             rule: Some(rule.name),
                             reason: None,
+                            yolo: false,
+                        });
+                    }
+                    PermissionOpen::Yolo => {
+                        let _ = engine_tx.send(AgentEvent::PermissionResolved {
+                            request_id: request.request_id,
+                            decision: PermissionDecision::Allow,
+                            rule: None,
+                            reason: None,
+                            yolo: true,
                         });
                     }
                     PermissionOpen::Parked => {
@@ -988,6 +1068,15 @@ impl Inner {
 
     fn workspace(&self) -> Option<crate::workspace_host::WorkspaceHost> {
         self.doc_host().and_then(|host| host.workspace().cloned())
+    }
+
+    /// The chat row's persisted yolo flag. `false` without a workspace host
+    /// or a row: a chat nobody can read a setting for is not one to run
+    /// unattended.
+    fn chat_wants_yolo(&self, chat_id: &str) -> bool {
+        self.workspace()
+            .and_then(|ws| ws.chat_config(chat_id))
+            .is_some_and(|config| config.auto_approve)
     }
 
     /// Sidebar freshness: push a message-persist preview into the chat's workspace row.

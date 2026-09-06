@@ -5465,7 +5465,11 @@ impl Composer {
                             model_options: resolved.model_options.clone(),
                             cwd,
                             sandbox: SandboxLevel::WorkspaceWrite,
-                            auto_approve: false,
+                            // Yolo mode rides the run so the CLI itself never
+                            // prompts. The engine stamps it from the chat row
+                            // too, so a queued or resumed run agrees with what
+                            // the composer showed.
+                            auto_approve: resolved.auto_approve,
                             resume: None,
                             attachments: attachment_paths,
                             worktree: run_worktree,

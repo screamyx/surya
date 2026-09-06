@@ -83,6 +83,10 @@ pub struct DraftConfig {
     pub reasoning: Option<ReasoningLevel>,
     /// option id → choice id (only non-defaults are meaningful).
     pub model_options: serde_json::Map<String, serde_json::Value>,
+    /// Yolo mode for this draft. `None` = follow the global default in
+    /// Settings; the chip writes `Some` once the user has an opinion about
+    /// THIS chat.
+    pub auto_approve: Option<bool>,
     /// The picked ref (base branch in NewWorktree mode; a worktree's branch
     /// when reusing one). `None` = the repo's current branch.
     pub branch: Option<String>,
@@ -127,6 +131,8 @@ pub struct ResolvedRunConfig {
     pub model: Option<String>,
     pub reasoning: Option<ReasoningLevel>,
     pub model_options: serde_json::Map<String, serde_json::Value>,
+    /// Yolo mode: run this chat's tools without asking (crate::yolo).
+    pub auto_approve: bool,
 }
 
 impl ResolvedRunConfig {
@@ -138,6 +144,7 @@ impl ResolvedRunConfig {
             reasoning: self.reasoning,
             model_options: self.model_options.clone(),
             sandbox: SandboxLevel::WorkspaceWrite,
+            auto_approve: self.auto_approve,
         })
     }
 }
@@ -489,6 +496,7 @@ pub struct Pickers {
     /// Last mid-session switch failure (shown in the ref popover).
     switch_error: Option<String>,
     mutate_task: Option<Task<()>>,
+    auto_approve_task: Option<Task<()>>,
     _search_events: Subscription,
     _state_observe: Subscription,
     _catalog_observe: Subscription,
@@ -634,6 +642,7 @@ impl Pickers {
             switch_task: None,
             switch_error: None,
             mutate_task: None,
+            auto_approve_task: None,
             _search_events: search_events,
             _state_observe: state_observe,
             _catalog_observe: catalog_observe,
@@ -802,7 +811,61 @@ impl Pickers {
                 .or_else(|| self.effective_model_id(cx).map(str::to_string)),
             reasoning: self.effective_reasoning(cx),
             model_options: self.explicit_options(cx),
+            auto_approve: self.effective_auto_approve(cx),
         }
+    }
+
+    /// Yolo mode for what the composer would send right now: the chat row
+    /// when a chat is selected, else this draft's pick, else the global
+    /// default from Settings.
+    pub fn effective_auto_approve(&self, cx: &App) -> bool {
+        if let Some(config) = self
+            .state
+            .read(cx)
+            .selected_chat_row()
+            .and_then(|c| c.config.as_ref())
+        {
+            return config.auto_approve;
+        }
+        self.config
+            .auto_approve
+            .unwrap_or_else(|| crate::settings::current(cx).yolo_default)
+    }
+
+    /// Flip yolo mode. On a chat that exists this is a persisted row write
+    /// plus the live RPC (the engine has to answer what is parked RIGHT NOW,
+    /// which the doc write alone would only reach on its next pass); on the
+    /// new-chat canvas it is the draft plus the sticky global default, the
+    /// same shape as picking a model.
+    fn set_auto_approve(&mut self, on: bool, cx: &mut Context<Self>) {
+        let selected = self.state.read(cx).selected_chat.clone();
+        match selected {
+            Some(chat_id) => {
+                self.update_chat_config(cx, move |config| config.auto_approve = on);
+                self.state.update(cx, |state, _| {
+                    state.note_yolo_pending_off(&chat_id, on);
+                });
+                if let Some(engine) = self.engine(cx) {
+                    self.auto_approve_task = Some(cx.spawn(async move |_, _| {
+                        let params = serde_json::json!({ "chatId": chat_id, "on": on });
+                        if let Err(err) =
+                            engine.client().call(methods::SET_AUTO_APPROVE, params).await
+                        {
+                            // The row write above still lands, so the next run
+                            // honours the flip; only the live flush is lost.
+                            tracing::warn!(error = %err, "SetAutoApprove failed");
+                        }
+                    }));
+                }
+            }
+            None => {
+                self.config.auto_approve = Some(on);
+                crate::settings::update(crate::settings::SavePolicy::Debounced, cx, |s| {
+                    s.yolo_default = on;
+                });
+            }
+        }
+        cx.notify();
     }
 
     // ---- open/close ----
@@ -4048,6 +4111,19 @@ impl Render for Pickers {
                 traits_active.then(|| theme.text.opacity(0.85)),
             )
         });
+        // Yolo chip, left of the run identity: it says how the run behaves,
+        // the model chip says who runs it (crate::yolo owns the three states).
+        let yolo_state = crate::yolo::state_for(
+            self.effective_harness(cx),
+            self.effective_auto_approve(cx),
+        );
+        let yolo_chip = crate::yolo::chip(yolo_state, &theme).when(
+            yolo_state.is_toggle(),
+            |el| {
+                let on = yolo_state != crate::yolo::YoloState::On;
+                el.on_click(cx.listener(move |this, _, _, cx| this.set_auto_approve(on, cx)))
+            },
+        );
         let model_chip = self.trigger_chip(
             PickerKind::HarnessModel,
             model_label,
@@ -4072,6 +4148,7 @@ impl Render for Pickers {
             .gap(px(4.0))
             // End-anchored: the menu's right edge sits flush with the chip's
             // right edge (user request), same as the footer's ref popover.
+            .child(yolo_chip)
             .child(attach_overlay_end(
                 model_chip,
                 &mut overlay,

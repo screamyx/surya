@@ -93,6 +93,13 @@ struct RespondPermissionParams {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SetAutoApproveParams {
+    chat_id: String,
+    on: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct RuleIdParams {
     rule_id: String,
 }
@@ -1432,6 +1439,11 @@ impl RpcService for EngineRpc {
                 self.sessions
                     .respond_permission(&p.request_id, p.decision, p.remember.as_ref())
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
+                RpcReply::value(&serde_json::json!({ "ok": true }))
+            }
+            methods::SET_AUTO_APPROVE => {
+                let p: SetAutoApproveParams = parse_params(params)?;
+                self.sessions.set_auto_approve(&p.chat_id, p.on);
                 RpcReply::value(&serde_json::json!({ "ok": true }))
             }
             methods::LIST_ALLOW_RULES => {

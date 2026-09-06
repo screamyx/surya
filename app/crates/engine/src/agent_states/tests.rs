@@ -4,7 +4,7 @@
 use super::*;
 // Named here rather than in the parent: the parent only mentions these
 // two in `derive.rs`, so importing them there would read as unused.
-use surya_proto::{AgentState, NeedsYouKind, RuleScope};
+use surya_proto::{AgentState, NeedsYouKind, RememberRule, RuleScope};
 
 fn states() -> AgentStates {
     AgentStates::new(AllowRules::open(

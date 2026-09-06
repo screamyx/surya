@@ -3149,6 +3149,9 @@ impl DocHost {
                         reasoning: request.reasoning,
                         model_options: request.model_options.clone(),
                         sandbox: request.sandbox,
+                        // Backfill records what the run WAS dispatched with,
+                        // yolo included, so the row and the process agree.
+                        auto_approve: request.auto_approve,
                     };
                     if let Err(err) = ws.set_chat_config(chat_id, &config) {
                         tracing::warn!(chat = %chat_id, error = %err, "run-config backfill failed");
@@ -3413,7 +3416,7 @@ impl DocHost {
                 .as_ref()
                 .map(|c| c.sandbox)
                 .unwrap_or(surya_proto::SandboxLevel::WorkspaceWrite),
-            auto_approve: false,
+            auto_approve: config.as_ref().is_some_and(|c| c.auto_approve),
             attachments: Vec::new(),
             resume: None,
             worktree: None,

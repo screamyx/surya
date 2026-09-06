@@ -689,6 +689,10 @@ pub struct AppState {
     /// Sorted (see [`sort_chats`]); includes archived rows — views filter.
     pub chats: Vec<Chat>,
     pub sessions: Vec<Session>,
+    /// Chats whose yolo mode was switched off while a run was in flight.
+    /// View state, not doc state: it only decides which of two true sentences
+    /// the header shows.
+    pub yolo_pending_off: std::collections::HashSet<String>,
     /// The project the new-session canvas mints into. Healed by
     /// [`Self::apply_spaces`] when the row vanishes; selecting a chat implies
     /// its project.
@@ -790,6 +794,7 @@ impl AppState {
             spaces: Vec::new(),
             chats: Vec::new(),
             sessions: Vec::new(),
+            yolo_pending_off: std::collections::HashSet::new(),
             selected_space: None,
             no_project: false,
             selected_device: None,
@@ -1449,6 +1454,32 @@ impl AppState {
 
     pub fn session_for(&self, chat_id: &str) -> Option<&Session> {
         self.sessions.iter().find(|s| s.chat_id == chat_id)
+    }
+
+    /// Remember that yolo mode was switched OFF on this chat, so the header
+    /// can say prompts come back on the next run rather than claiming they
+    /// are back already: a run launched with the CLI's bypass flag keeps
+    /// bypassing until it ends. Switching it back ON clears the note.
+    pub fn note_yolo_pending_off(&mut self, chat_id: &str, on: bool) {
+        if on {
+            self.yolo_pending_off.remove(chat_id);
+        } else {
+            self.yolo_pending_off.insert(chat_id.to_string());
+        }
+    }
+
+    /// What the chat header says about yolo mode (see [`crate::yolo`]).
+    pub fn yolo_header_note(&self, chat_id: &str) -> crate::yolo::HeaderNote {
+        let on = self
+            .chats
+            .iter()
+            .find(|c| c.id == chat_id)
+            .and_then(|c| c.config.as_ref())
+            .is_some_and(|config| config.auto_approve);
+        let working = self
+            .session_for(chat_id)
+            .is_some_and(|s| s.status == surya_proto::SessionStatus::Working);
+        crate::yolo::header_note(on, self.yolo_pending_off.contains(chat_id), working)
     }
 
     /// Staleness-checked status dot for a chat row. A send in flight reads as
@@ -3308,6 +3339,7 @@ mod tests {
             reasoning: Some(surya_proto::ReasoningLevel::XHigh),
             model_options: serde_json::Map::new(),
             sandbox: surya_proto::SandboxLevel::WorkspaceWrite,
+            auto_approve: false,
         };
         state.apply_chat_config("a", config.clone());
         assert_eq!(
@@ -3332,6 +3364,7 @@ mod tests {
                 reasoning: None,
                 model_options: serde_json::Map::new(),
                 sandbox: surya_proto::SandboxLevel::WorkspaceWrite,
+                auto_approve: false,
             },
         );
     }
