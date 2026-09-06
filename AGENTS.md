@@ -25,12 +25,13 @@ Start from the newest `## STATE AT` block near its end.
 ## Build and test
 
 Run from `app/`, in your own worktree.
-CI runs these four commands.
+CI runs these five commands.
 `.github/workflows/ci.yml` holds the job split and adds `--jobs N` for the shared runner.
 
 ```
 cargo test -p zeron-proto -p zeron-doc -p zeron-rpc -p zeron-engine -p zeron-harness -p surya-mcp
 cargo check --workspace --all-targets
+cargo test -p zeron-ui
 cargo test -p surya-a2ui
 SURYA_SMOKE_CARGO=cargo scripts/smoke.sh
 ```
@@ -43,7 +44,7 @@ cd crates/browser && cargo test               # the browser crate is its own wor
 ```
 
 - `crates/browser` is a path dependency, not a workspace member. Its build script downloads the CEF binary, and `cargo check --workspace` must never pull it (`app/Cargo.toml`).
-- Only the seven crates above run their tests in CI. Every other crate, `zeron-ui` included, only gets `cargo check`. Run their tests locally when you touch them.
+- Only the eight crates above run their tests in CI. Every other crate only gets `cargo check`. Run their tests locally when you touch them.
 - CI has no `cargo fmt --check` because the upstream comet tree is not fmt-clean. Do not reformat files you did not otherwise change.
 
 ## Rules
