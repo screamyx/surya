@@ -61,7 +61,7 @@ mod tab_press;
 mod tabs;
 
 use spaces::{AddSpaceFlow, RenameSpaceDialog};
-use tab_press::{PressOutcome, TAB_HOLD, TabPress};
+use tab_press::{PressOutcome, TabPress};
 
 actions!(
     shell,
@@ -2391,30 +2391,38 @@ impl Shell {
         }
     }
 
-    /// Left button down on a surface tab. The chip gets no drag listener yet;
-    /// a timer arms it once the button has been held for
-    /// [`tab_press::TAB_HOLD`], which is what keeps a plain click from
-    /// reordering the strip.
+    /// Left button down on a surface tab. The chip gets no drag listener yet:
+    /// [`Self::arm_right_tab_press`] adds one on the first move after the hold.
     fn begin_right_tab_press(&mut self, tab: usize, cx: &mut Context<Self>) {
         self.right_tab_press = Some(TabPress::new(tab, std::time::Instant::now()));
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(TAB_HOLD).await;
-            this.update(cx, |this, cx| {
-                // Re-check the press: a release, or a press on another chip,
-                // replaced it and this wake-up is stale.
-                let armed = this
-                    .right_tab_press
-                    .as_mut()
-                    .filter(|press| press.tab() == tab)
-                    .is_some_and(|press| press.arm(std::time::Instant::now()));
-                if armed {
-                    // Re-render so the chip picks up its drag listener.
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
+        cx.notify();
+    }
+
+    /// Every mouse move with the left button down, from the shell root. Once a
+    /// tab press is older than [`tab_press::TAB_HOLD`] the chip is re-rendered
+    /// with a gpui drag listener, and the move after that starts the reorder.
+    ///
+    /// The clock is read here rather than on a timer on purpose. A timer has to
+    /// be trusted or re-checked, and a re-check against a timer that fires even
+    /// a millisecond early arms nothing at all and never retries: the reorder
+    /// just stops working, which is what the first build of this fix did on
+    /// Windows. A move is the event a reorder needs anyway.
+    fn arm_right_tab_press(
+        &mut self,
+        event: &gpui::MouseMoveEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if event.pressed_button != Some(MouseButton::Left) {
+            return;
+        }
+        let armed = self
+            .right_tab_press
+            .as_mut()
+            .is_some_and(|press| press.arm(std::time::Instant::now()));
+        if armed {
+            cx.notify();
+        }
     }
 
     /// Track the hovered drop slot mid-drag (the terminal drawer's
@@ -8803,6 +8811,10 @@ impl Render for Shell {
             .on_drag_move(cx.listener(Self::on_sidebar_drag))
             .on_drag_move(cx.listener(Self::on_right_pane_drag))
             .on_drag_move(cx.listener(Self::on_terminal_drag))
+            // A held surface tab arms its reorder here, on the first move past
+            // the hold. Cheap: it returns on the button check for every move
+            // that is not a live press.
+            .on_mouse_move(cx.listener(Self::arm_right_tab_press))
             // Escape aborts a surface-tab reorder and snaps the chip back:
             // dropping `right_tab_drag` puts every slide offset at zero and
             // the drop never runs, so the stored order is untouched. Capture

@@ -8,7 +8,13 @@
 //!
 //! So the strip does not hand gpui a drag listener at all until the button has
 //! been held for [`TAB_HOLD`]. Travel never arms on its own - that is the
-//! whole point, and [`travel_alone_never_arms`] pins it.
+//! whole point, and `travel_alone_never_arms` pins it.
+//!
+//! The shell calls [`TabPress::arm`] from its mouse-move handler, not from a
+//! timer. A timer has to be trusted or re-checked against the clock, and a
+//! re-check against a timer that fires a millisecond early arms nothing and
+//! never retries - the reorder simply stops working, which is what the first
+//! build of this fix did on Windows.
 
 use std::time::{Duration, Instant};
 
@@ -185,22 +191,20 @@ mod tests {
     }
 
     #[test]
-    fn a_drop_clears_the_press() {
+    fn a_dragged_press_reports_itself_for_the_drop_clear() {
         // The shell drops the press in `on_drop` and, as a second net, in the
-        // render heal once no drag is active. Nothing else would: the source
-        // chip renders as a placeholder for the whole drag, so its
-        // `on_mouse_up_out` is never painted. A press surviving a drop stays
-        // armed, and the slot it names gets an `on_drag` with no hold gate.
+        // render heal once no drag is active; the heal keys off `dragged()`.
+        // Nothing else would clear it: the source chip renders as a
+        // placeholder for the whole drag, so its `on_mouse_up_out` is never
+        // painted. A press surviving a drop stays armed, and the slot it names
+        // gets an `on_drag` with no hold gate. This side of it is what a unit
+        // test can reach; the two clears themselves are shell code.
         let start = Instant::now();
         let mut press = TabPress::new(1, start);
         press.arm(start + TAB_HOLD);
         press.note_dragging();
-        assert!(press.dragged(), "the heal keys off this");
+        assert!(press.dragged());
         assert_eq!(press.release(1), PressOutcome::DragArmed);
-        // The shell's own clear, modelled: after the drop there is no press,
-        // so no chip is armed.
-        let cleared: Option<TabPress> = None;
-        assert!(!cleared.is_some_and(|p| p.armed_for(1)));
     }
 
     #[test]
@@ -211,6 +215,20 @@ mod tests {
         let mut press = TabPress::new(1, start);
         press.arm(start + TAB_HOLD);
         assert!(!press.dragged());
+    }
+
+    #[test]
+    fn the_first_move_past_the_hold_arms_it() {
+        // How the shell drives this: `arm` on every move with the button down.
+        // Moves before the hold do nothing, the first one after it arms, and
+        // gpui starts the drag on the move after that.
+        let start = Instant::now();
+        let mut press = TabPress::new(0, start);
+        for ms in [10, 60, 120, 200, 249] {
+            assert!(!press.arm(start + Duration::from_millis(ms)), "armed at {ms}ms");
+        }
+        assert!(press.arm(start + Duration::from_millis(260)));
+        assert!(press.armed_for(0));
     }
 
     #[test]
