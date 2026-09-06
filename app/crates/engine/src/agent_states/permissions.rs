@@ -16,7 +16,6 @@ use crate::EngineError;
 use crate::rules::AllowRules;
 
 impl AgentStates {
-
     /// Gate one permission request. Either a rule answers it now, or it is
     /// parked in the inbox until [`Self::resolve_permission`].
     pub fn open_permission(

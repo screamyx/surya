@@ -41,11 +41,11 @@ impl YoloState {
         self != YoloState::Always
     }
 
-    pub fn label(self) -> &'static str {
-        match self {
-            YoloState::Off | YoloState::On => "Yolo",
-            YoloState::Always => "Yolo",
-        }
+    /// The chip's first tone. The state is carried by [`Self::suffix`] beside
+    /// it, the same two-tone shape the model chip uses for its traits, so the
+    /// name itself never changes.
+    pub fn name(self) -> &'static str {
+        "Yolo"
     }
 
     /// The muted second tone on the chip, if any.
@@ -94,11 +94,11 @@ pub enum HeaderNote {
     None,
     /// The mode is on for this chat.
     On,
-    /// The user switched it off while a run was in flight. That run was
-    /// launched with the CLI's own bypass flag and goes on bypassing until it
-    /// ends — there is no way to tell a running agent to start asking again,
-    /// so the header says when prompts come back instead of claiming they
-    /// already have.
+    /// The user switched it off while THE run that is still going was
+    /// bypassing. That run was launched with the CLI's own bypass flag and
+    /// goes on bypassing until it ends — there is no way to tell a running
+    /// agent to start asking again, so the header says when prompts come back
+    /// instead of claiming they already have.
     OffNextRun,
 }
 
@@ -112,11 +112,15 @@ impl HeaderNote {
     }
 }
 
-pub fn header_note(on: bool, off_pending: bool, working: bool) -> HeaderNote {
+/// `bypassing_run_live`: the run that was in flight when the user switched
+/// yolo off is STILL the live run. Not "a run is working": a later run
+/// launched with prompts on is prompting normally, and telling that user
+/// prompts come back next run would be the honesty rule stood on its head.
+pub fn header_note(on: bool, bypassing_run_live: bool) -> HeaderNote {
     if on {
         return HeaderNote::On;
     }
-    if off_pending && working {
+    if bypassing_run_live {
         return HeaderNote::OffNextRun;
     }
     HeaderNote::None
@@ -168,7 +172,7 @@ pub fn chip(state: YoloState, theme: &Theme) -> gpui::Stateful<gpui::Div> {
                 .size(px(16.0))
                 .text_color(text),
         )
-        .child(div().child(SharedString::from(state.label())))
+        .child(div().child(SharedString::from(state.name())))
         .when_some(state.suffix(), |el, suffix| {
             el.child(
                 div()
@@ -225,14 +229,13 @@ mod tests {
 
     #[test]
     fn the_header_never_claims_prompts_are_back_before_they_are() {
-        assert_eq!(header_note(true, false, true), HeaderNote::On);
-        assert_eq!(header_note(true, true, true), HeaderNote::On);
-        assert_eq!(header_note(false, true, true), HeaderNote::OffNextRun);
+        assert_eq!(header_note(true, false), HeaderNote::On);
+        assert_eq!(header_note(true, true), HeaderNote::On);
+        assert_eq!(header_note(false, true), HeaderNote::OffNextRun);
         assert_eq!(
-            header_note(false, true, false),
+            header_note(false, false),
             HeaderNote::None,
-            "the run ended, so prompts really are back"
+            "no bypassing run left: prompts really are back"
         );
-        assert_eq!(header_note(false, false, true), HeaderNote::None);
     }
 }

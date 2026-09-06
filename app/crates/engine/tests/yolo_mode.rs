@@ -149,10 +149,6 @@ async fn switching_on_allows_what_is_already_parked() {
     )
     .await;
     let c = states.counters();
-    println!(
-        "asked={} auto_allowed={} answered={}",
-        c.permissions_asked, c.permissions_auto_allowed, c.permissions_answered
-    );
     assert!(
         states.needs_you().is_empty(),
         "the card is gone: nobody has to answer it now"
