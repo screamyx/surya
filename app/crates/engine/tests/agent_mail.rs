@@ -12,8 +12,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mail_support::{CHAT_A, CHAT_B, EchoHarness, SPACE, request, settled, user_texts, wait_for};
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_proto::HarnessId;
+use surya_engine::{EngineCore, HarnessRegistry};
+use surya_proto::HarnessId;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {

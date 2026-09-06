@@ -5,10 +5,10 @@
 use serde::{Deserialize, Serialize};
 
 /// Short git sha of the checkout, or `unknown` for a build outside git that
-/// did not pass `ZERON_BUILD_SHA`.
-pub const SHA: &str = env!("ZERON_BUILD_SHA");
+/// did not pass `SURYA_BUILD_SHA`.
+pub const SHA: &str = env!("SURYA_BUILD_SHA");
 /// Commit time as unix seconds, `0` when unknown.
-pub const COMMIT_TIME: &str = env!("ZERON_BUILD_COMMIT_TIME");
+pub const COMMIT_TIME: &str = env!("SURYA_BUILD_COMMIT_TIME");
 /// What to do about an older engine, in every message that names one.
 pub const UPDATE_HINT: &str = "update it with deploy/install-engine.sh";
 

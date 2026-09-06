@@ -246,8 +246,8 @@ Three knobs let a person, or a script, put cards on screen with no Claude Code r
 
 | Knob | What it does | Source |
 | --- | --- | --- |
-| `ZERON_DEMO_CARDS=<dir>` | Seeds a chat named "A2UI cards demo" with one turn per `*.json` in the folder. Seeds once; clicking another chat keeps that chat (PR #34). | `app/crates/ui/src/shell.rs:1342` |
-| `ZERON_MOCK_CARDS=<dir>` with `ZERON_HARNESS=mock` | The mock agent streams the folder's cards through the real engine path after any typed prompt. | `app/crates/harness/src/mock.rs:184` |
+| `SURYA_DEMO_CARDS=<dir>` | Seeds a chat named "A2UI cards demo" with one turn per `*.json` in the folder. Seeds once; clicking another chat keeps that chat (PR #34). | `app/crates/ui/src/shell.rs:1342` |
+| `SURYA_MOCK_CARDS=<dir>` with `SURYA_HARNESS=mock` | The mock agent streams the folder's cards through the real engine path after any typed prompt. | `app/crates/harness/src/mock.rs:184` |
 | `SURYA_CARD_STATS=1` | Prints one log line per card row: `card rows synced asked= built=`, `card rendered`, `card measured width= height=`. | `app/crates/ui/src/cards.rs:32` |
 
 The six sample cards live in `app/crates/a2ui/fixtures/01-vehicle.json` to `06-metric.json`.
@@ -256,11 +256,11 @@ A run that draws them all reads `card rows synced asked=6 built=6` in its log.
 The recipe used for every screenshot on this page:
 
 ```
-ZERON_DEMO_CARDS=app/crates/a2ui/fixtures ZERON_HARNESS=mock \
-RUST_LOG=info,surya_a2ui=info ZERON_WORKOS_CLIENT_ID= ZERON_IPC_PORT=27992 zeron
+SURYA_DEMO_CARDS=app/crates/a2ui/fixtures SURYA_HARNESS=mock \
+RUST_LOG=info,surya_a2ui=info SURYA_WORKOS_CLIENT_ID= SURYA_IPC_PORT=27992 surya
 ```
 
-Give every proof run its own `ZERON_IPC_PORT`.
+Give every proof run its own `SURYA_IPC_PORT`.
 The default port attaches the app to whatever engine is already running on the box.
 
 ## Where things live

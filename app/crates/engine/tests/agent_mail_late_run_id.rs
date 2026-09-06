@@ -1,6 +1,6 @@
 //! One test, one binary, one env knob.
 //!
-//! `ZERON_MAIL_SET_RUN_DELAY_MS` is process-global, and CI runs
+//! `SURYA_MAIL_SET_RUN_DELAY_MS` is process-global, and CI runs
 //! `cargo test --jobs 2` - sibling tests in the same binary run as threads in
 //! one process, so setting and unsetting the knob around a test would change
 //! delivery timing under whichever test happened to be running beside it.
@@ -13,8 +13,8 @@ use std::sync::{Arc, Once};
 use std::time::Duration;
 
 use mail_support::{CHAT_B, EchoHarness, request, settled, wait_for};
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_proto::HarnessId;
+use surya_engine::{EngineCore, HarnessRegistry};
+use surya_proto::HarnessId;
 
 /// How far the run id lags `dispatch` returning, in this process.
 const SET_RUN_DELAY_MS: u64 = 400;
@@ -25,7 +25,7 @@ fn init_delay_env() {
         // SAFETY: called before any engine (and thus any reader of the var)
         // exists in this test process; the one value holds for every test here.
         unsafe {
-            std::env::set_var("ZERON_MAIL_SET_RUN_DELAY_MS", SET_RUN_DELAY_MS.to_string())
+            std::env::set_var("SURYA_MAIL_SET_RUN_DELAY_MS", SET_RUN_DELAY_MS.to_string())
         };
     });
 }

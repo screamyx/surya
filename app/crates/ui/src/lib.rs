@@ -1,4 +1,4 @@
-//! zeron-ui — the gpui viewport. Shell, sidebar, conversation, composer, terminal,
+//! surya-ui — the gpui viewport. Shell, sidebar, conversation, composer, terminal,
 //! diff pane.
 //!
 //! Design: ARCHITECTURE.md §4; animation catalog docs/research/feature-inventory.md
@@ -6,11 +6,11 @@
 //!
 //! M3a foundation:
 //! - [`theme`] — always-dark monochrome theme (oklch-derived neutrals), a gpui Global;
-//! - [`motion`] — the zeron animation catalog over gpui `Animation` + cubic-bezier;
+//! - [`motion`] — the surya animation catalog over gpui `Animation` + cubic-bezier;
 //! - [`state`] — `AppState` entity + `EngineHandle` (connect-or-embed engine);
 //! - [`settings`] — persisted pane widths/collapse flags;
 //! - [`shell`] — sidebar + main panel + right-pane scaffold + gate;
-//! - [`loaders`] — zeron pulse loader, gradient spinner, boot splash.
+//! - [`loaders`] — surya pulse loader, gradient spinner, boot splash.
 
 pub mod app_menus;
 pub mod appearance;
@@ -65,10 +65,10 @@ use futures::StreamExt as _;
 use gpui::{App, AppContext as _, Bounds, TitlebarOptions, WindowBounds, WindowOptions, px, size};
 
 pub use state::{EngineBootConfig, RemoteEngineTarget};
-pub use zeron_proto::HarnessId;
+pub use surya_proto::HarnessId;
 
 /// Everything the headed binary passes in (config/env resolution lives in
-/// `apps/zeron`, not here).
+/// `apps/surya`, not here).
 #[derive(Debug, Clone)]
 pub struct UiConfig {
     /// Data directory — engine stores + `ui-settings.json`.
@@ -203,7 +203,9 @@ pub fn run_app(config: UiConfig) {
                 surya_browser::ColorScheme::Light
             },
         );
-        cx.register_url_scheme("zeron").detach();
+        cx.register_url_scheme("surya").detach();
+        // One release: the OS still routes links minted before the rename.
+        cx.register_url_scheme("zeron").detach(); // surya-rename: legacy
 
         let state = cx.new(|_| state::AppState::new());
         let url_state = state.clone();
@@ -241,10 +243,10 @@ pub fn run_app(config: UiConfig) {
         .detach();
         #[cfg(feature = "browser")]
         browser_proof::install(cx);
-        // `ZERON_QUIT_AFTER=<seconds>`: a clean quit on a timer, for proofs
+        // `SURYA_QUIT_AFTER=<seconds>`: a clean quit on a timer, for proofs
         // with no keyboard (the helper-count check after exit).
         #[cfg(feature = "browser")]
-        if let Some(secs) = std::env::var("ZERON_QUIT_AFTER")
+        if let Some(secs) = std::env::var("SURYA_QUIT_AFTER")
             .ok()
             .and_then(|v| v.trim().parse::<u64>().ok())
         {
@@ -278,14 +280,14 @@ pub fn run_app(config: UiConfig) {
 /// root view. Called at boot and again from `on_reopen` if the dock icon is
 /// clicked after ⌘W closed the window.
 fn open_main_window(state: gpui::Entity<state::AppState>, boot: EngineBootConfig, cx: &mut App) {
-    // zeron window geometry: 1320×880, min 900×600 (feature-inventory §1.1).
+    // surya window geometry: 1320×880, min 900×600 (feature-inventory §1.1).
     //
-    // `ZERON_WINDOW_SIZE=1100x700` overrides it. A capture knob, in the same
-    // family as `ZERON_OPEN_DIALOG` and `ZERON_MOTION_SCALE`: a floating-panel
+    // `SURYA_WINDOW_SIZE=1100x700` overrides it. A capture knob, in the same
+    // family as `SURYA_OPEN_DIALOG` and `SURYA_MOTION_SCALE`: a floating-panel
     // layout fails at the SMALL end, where the margins and seams eat the
     // content, and there is no other way to photograph that. Ignored unless it
     // parses; never read outside boot.
-    let (w, h) = std::env::var("ZERON_WINDOW_SIZE")
+    let (w, h) = std::env::var("SURYA_WINDOW_SIZE")
         .ok()
         .and_then(|value| {
             let (w, h) = value.split_once(['x', 'X'])?;
@@ -323,7 +325,7 @@ fn open_main_window(state: gpui::Entity<state::AppState>, boot: EngineBootConfig
             // Drag + start_window_move) — mark the content view app-owned
             // so AppKit neither dead-zones the strip nor delays clicks.
             app_owns_titlebar_drag: true,
-            // Linux: request client-side decorations — zeron draws its own
+            // Linux: request client-side decorations — surya draws its own
             // unified titlebar and (under CSD) its own caption buttons
             // (shell.rs `render_linux_caption_controls`). Leaving this unset
             // requests SERVER decorations, which stacked a compositor
@@ -343,7 +345,7 @@ fn open_main_window(state: gpui::Entity<state::AppState>, boot: EngineBootConfig
             // — if these two ever disagree, vibrancy dies on the first theme
             // change and never comes back.
             window_background: theme::Theme::of(cx).window_background_appearance(),
-            app_id: Some("zeron".into()),
+            app_id: Some("surya".into()),
             ..Default::default()
         },
         move |window, cx| {

@@ -8,13 +8,13 @@ use std::time::Duration;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
-use zeron_engine::{
+use surya_engine::{
     EngineCore, HarnessRegistry, Repos, Terminals, capture_commit_diff, capture_diff,
     capture_diff_against, capture_turn_diff, merge_base, read_diff_file_text, snapshot_tree,
     working_diff_base,
 };
-use zeron_proto::{GitHistoryRefKind, TerminalEvent};
-use zeron_rpc::methods;
+use surya_proto::{GitHistoryRefKind, TerminalEvent};
+use surya_rpc::methods;
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -73,7 +73,7 @@ fn assemble(dir: &Path) -> EngineCore {
     EngineCore::assemble(
         dir,
         Arc::new(HarnessRegistry::new()),
-        zeron_proto::HarnessId::Mock,
+        surya_proto::HarnessId::Mock,
         None,
     )
     .expect("engine assembles")
@@ -96,7 +96,7 @@ async fn drain_until(
     events: &mut Vec<TerminalEvent>,
     predicate: impl Fn(&[TerminalEvent]) -> bool,
 ) {
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     while !predicate(events) {
         let event = tokio::time::timeout_at(deadline, rx.recv())
             .await
@@ -148,13 +148,13 @@ async fn repos_round_trip_add_branches_worktrees() {
     assert_eq!(branches[0], "main", "default branch first: {branches:?}");
     assert!(branches.contains(&"feature/x".to_string()));
 
-    // Worktree add: zeron/<name> branch, isolated dir under the test root.
+    // Worktree add: surya/<name> branch, isolated dir under the test root.
     let worktree = repos
         .create_worktree(&repo_dir, "main")
         .await
         .expect("worktree");
     assert!(
-        worktree.branch.starts_with("zeron/"),
+        worktree.branch.starts_with("surya/"),
         "branch: {}",
         worktree.branch
     );
@@ -172,7 +172,7 @@ async fn repos_round_trip_add_branches_worktrees() {
     assert!(branches.contains(&worktree.branch));
 
     // Refs carry checkout state: `main` is current (main folder), the
-    // worktree's zeron/<name> branch maps to its linked-checkout path, and
+    // worktree's surya/<name> branch maps to its linked-checkout path, and
     // a plain branch has neither.
     let refs = repos.refs(&repo_dir).await.expect("refs");
     let by_name = |name: &str| refs.iter().find(|r| r.name == name).expect("ref row");
@@ -207,7 +207,7 @@ async fn repos_round_trip_add_branches_worktrees() {
         .expect("wt identity");
     assert_ne!(main_identity.id, wt_identity.id);
 
-    // Delete: dir removed, zeron branch removed, refs pruned.
+    // Delete: dir removed, surya branch removed, refs pruned.
     repos
         .delete_worktree(&repo_dir, Path::new(&worktree.path))
         .await
@@ -219,7 +219,7 @@ async fn repos_round_trip_add_branches_worktrees() {
         .expect("branches after delete");
     assert!(
         !branches.contains(&worktree.branch),
-        "zeron branch deleted: {branches:?}"
+        "surya branch deleted: {branches:?}"
     );
 
     // CreateRepo: sanitized name, initialized on main.
@@ -551,7 +551,7 @@ async fn diff_file_text_returns_both_checked_sources() {
     assert!(!pair.binary);
     assert!(!pair.truncated);
 
-    let escape = zeron_proto::DiffFileSummary {
+    let escape = surya_proto::DiffFileSummary {
         path: "../outside.txt".into(),
         old_path: None,
         status: "modified".into(),
@@ -661,7 +661,7 @@ async fn diff_capture_truncates_at_patch_cap() {
     let snapshot = capture_diff(&repos, &repo_dir).await.expect("capture");
     assert!(snapshot.truncated, "patch cap hit");
     assert!(snapshot.patch.len() <= 3 * 1024 * 1024 + 64);
-    assert!(snapshot.patch.contains("# Zeron diff truncated"));
+    assert!(snapshot.patch.contains("# Surya diff truncated"));
 }
 
 // ---------------------------------------------------------------------------
@@ -688,7 +688,7 @@ async fn spaces_sync_stamps_git_presence_and_reacts_to_git_init() {
     core.spaces_sync.reconcile_now().await;
 
     let mut spaces_rx = core.workspace.watch_spaces();
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     let space = loop {
         {
             let spaces = spaces_rx.borrow().clone();
@@ -710,7 +710,7 @@ async fn spaces_sync_stamps_git_presence_and_reacts_to_git_init() {
     // `git init` later flips the stamp (watcher and/or explicit recheck).
     git(&folder, &["init", "-b", "main"]).await;
     core.spaces_sync.reconcile_now().await;
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     let space = loop {
         {
             let spaces = spaces_rx.borrow().clone();
@@ -791,7 +791,7 @@ async fn diff_sync_publishes_without_rewriting_chat_branch() {
 
     // Initial snapshot lands after the debounce; poll the watch.
     let mut diffs_rx = core.diff_sync.watch_diffs();
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     let diff = loop {
         {
             let diffs = diffs_rx.borrow().clone();
@@ -862,7 +862,7 @@ async fn checkout_file_diff_text_rpc_fits_the_default_worker_stack() {
     let snapshot = capture_diff(&core.repos, &repo_dir)
         .await
         .expect("diff snapshot");
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = surya_rpc::memory_client(core.rpc_service());
 
     let response = client
         .call(
@@ -877,7 +877,7 @@ async fn checkout_file_diff_text_rpc_fits_the_default_worker_stack() {
         )
         .await
         .expect("GetCheckoutFileDiffText");
-    let response: zeron_proto::CheckoutFileDiffText =
+    let response: surya_proto::CheckoutFileDiffText =
         serde_json::from_value(response).expect("typed response");
     assert_eq!(response.old_text.as_deref(), Some("one\ntwo\n"));
     assert_eq!(response.new_text.as_deref(), Some("one\ntwo edited\n"));
@@ -909,7 +909,7 @@ async fn checkout_file_diff_text_rpc_reads_pinned_commit_sources() {
     let snapshot = capture_commit_diff(&core.repos, &repo_dir, &sha)
         .await
         .expect("commit snapshot");
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = surya_rpc::memory_client(core.rpc_service());
 
     let response = client
         .call(
@@ -925,7 +925,7 @@ async fn checkout_file_diff_text_rpc_reads_pinned_commit_sources() {
         )
         .await
         .expect("GetCheckoutFileDiffText");
-    let response: zeron_proto::CheckoutFileDiffText =
+    let response: surya_proto::CheckoutFileDiffText =
         serde_json::from_value(response).expect("typed response");
     assert_eq!(response.old_text.as_deref(), Some("one\ntwo\n"));
     assert_eq!(
@@ -1070,9 +1070,9 @@ async fn rpc_dispatch_for_m5_methods() {
     let tmp = tempfile::tempdir().expect("tempdir");
     // EngineCore's Repos resolves the worktree root from the env; keep test
     // worktrees out of $HOME. (Process-global — this is the only test that sets it.)
-    unsafe { std::env::set_var("ZERON_WORKTREES_DIR", tmp.path().join("worktrees")) };
+    unsafe { std::env::set_var("SURYA_WORKTREES_DIR", tmp.path().join("worktrees")) };
     let core = assemble(&tmp.path().join("data"));
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = surya_rpc::memory_client(core.rpc_service());
 
     // CreateRepo → ListRepos.
     let created = client
@@ -1200,7 +1200,7 @@ async fn rpc_dispatch_for_m5_methods() {
         worktree["branch"]
             .as_str()
             .expect("branch")
-            .starts_with("zeron/")
+            .starts_with("surya/")
     );
     assert!(worktree["checkoutId"].is_string());
     let deleted = client
@@ -1218,7 +1218,7 @@ async fn rpc_dispatch_for_m5_methods() {
         .subscribe(methods::WATCH_CHECKOUT_DIFFS, serde_json::Value::Null)
         .await
         .expect("WatchCheckoutDiffs");
-    let first = tokio::time::timeout(zeron_test_deadlines::WAIT, diffs_stream.recv())
+    let first = tokio::time::timeout(surya_test_deadlines::WAIT, diffs_stream.recv())
         .await
         .expect("first diffs item")
         .expect("stream alive");
@@ -1276,7 +1276,7 @@ async fn rpc_dispatch_for_m5_methods() {
         )
         .await
         .expect("WriteTerminal");
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     let mut transcript = Vec::new();
     loop {
         let item = tokio::time::timeout_at(deadline, stream.recv())

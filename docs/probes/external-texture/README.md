@@ -19,7 +19,7 @@ paths were `E:\surya-gpufork`, `E:\surya-gpufork-cargo`, and
 
 | Check | Actual output |
 | --- | --- |
-| Full app with browser feature | `cargo check --locked -p zeron --features browser`, `exit=0` in [browser-check.log](browser-check.log) |
+| Full app with browser feature | `cargo check --locked -p surya --features browser`, `exit=0` in [browser-check.log](browser-check.log) |
 | Windows standalone check/build | `check_exit=0`, `exit=0` in [build.log](build.log) |
 | GPUI external surface submissions | `asked=59 frames=59 clipped=0 dropped=0` in [run.log](run.log) |
 | Scoped renderer tests | `5 passed; 0 failed` in [test.log](test.log) |

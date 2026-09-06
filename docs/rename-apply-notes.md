@@ -1,7 +1,7 @@
 # rename-apply.sh: what it does, what it found, what it leaves
 
 `scripts/rename-dry-run.sh` counts. `scripts/rename-apply.sh` edits.
-It is the mechanical half of `docs/rename-zeron-to-surya.md`, re-runnable on
+It is the mechanical half of `docs/rename-surya-to-surya.md`, re-runnable on
 any main, and it was tested by running it - not by reading it.
 
 ## Measured on a throwaway clone of main `e0855e8`
@@ -10,7 +10,7 @@ Historic. The current numbers, on main `77048b0` with the fixes below,
 are in `docs/rename-runbook.md`.
 
 ```
-zeron_hits_before=2640  after=297  files_changed=274  paths_moved=6
+surya_hits_before=2640  after=297  files_changed=274  paths_moved=6
 ```
 
 Second run on the same tree: `files_changed=0 paths_moved=0`. It is idempotent.
@@ -22,9 +22,9 @@ The 297 that remain are all deliberate:
 | 229 | `apps/ios`, `edge/`, `apps/landing`, `apps/www-redirect` | out of scope, rows 13-15 |
 | 38 | `zeron.sh` | the domain stays until surya has one, row 10 |
 | 22 | `zeronsh/comet` | the fork's provenance, rows 16-17 |
-| 8 | `zeron-dark`, `zeron-light` and their family and display names | user state in `ui-settings.json`, row 19 |
+| 8 | `surya-dark`, `surya-light` and their family and display names | user state in `ui-settings.json`, row 19 |
 
-`ZERON_*` is down to 2 hits, both inside `edge/` (out of scope) plus the
+`SURYA_*` is down to 2 hits, both inside `edge/` (out of scope) plus the
 generated compat module that names the old prefix on purpose.
 
 ## Proof on the renamed tree
@@ -74,7 +74,7 @@ error[E0428]: the name `surya_dark` is defined multiple times
 ```
 
 `builtins.rs` already has `surya_light`/`surya_dark` - the new surya theme from
-PR #2 - so renaming comet's `zeron_light`/`zeron_dark` onto those names
+PR #2 - so renaming comet's `comet_light`/`comet_dark` onto those names
 redefines them. The script renames comet's two to `comet_light`/`comet_dark`,
 which is what they are, and keeps their ids, family and display names as user
 state. Their display names matter as much as their ids: rewriting "Zeron Dark"
@@ -85,7 +85,7 @@ This is the reason to run the script rather than review it.
 ## The compat the script does write
 
 **The env alias, routed.** `app/crates/proto/src/env_compat.rs` reads
-`SURYA_<name>`, falls back to `ZERON_<name>`, and warns once per variable per
+`SURYA_<name>`, falls back to `SURYA_<name>`, and warns once per variable per
 process. It lives in proto because that is what everything already depends on,
 and its signatures mirror `std::env` exactly - `var` returns the same
 `Result`, `var_os` the same `Option` - so every call site keeps its `.ok()`,
@@ -103,9 +103,9 @@ directly - nothing outside this repo sets them, so they need no alias.
 
 | Block | Why |
 | --- | --- |
-| `links.rs` parses `zeron://` as well as `surya://` | deep links live in chats people already have |
+| `links.rs` parses `surya://` as well as `surya://` | deep links live in chats people already have |
 | `lib.rs` registers both schemes | the OS has to route the old one |
-| `daemon.rs` disables and removes `zeron.service` on install | two enabled units race for one IPC port |
+| `daemon.rs` disables and removes `surya.service` on install | two enabled units race for one IPC port |
 
 **`cargo update -w`** runs when cargo is on PATH (`cargo_update=ok`) and is
 skipped with a note when it is not, so the script still works without a
@@ -113,11 +113,11 @@ toolchain.
 
 ## What it still does not do
 
-1. **Data dir.** Ruled: **copy** `~/.zeron` to `~/.surya` on first start, never
+1. **Data dir.** Ruled: **copy** `~/.surya` to `~/.surya` on first start, never
    rename, because a copy keeps a rollback. That is a real migration at the
    point the data dir is resolved, with its own test - not a substitution, so
    it is not in this script.
-2. **Bundle ids** (`sh.zeron.app`, the notify id, the conversation URL type)
+2. **Bundle ids** (`sh.surya.app`, the notify id, the conversation URL type)
    wait on the owner picking a domain.
 
 ## How to run it
@@ -133,18 +133,18 @@ The dry run was run on a throwaway clone, end to end, for the first time since
 `deploy/` and the tasks-demo scripts landed. It found three breaks.
 
 **`deploy/` was never in scope.** `install-engine.sh` builds
-`cargo build --release -p zeron` and installs `target/release/zeron`;
-`surya-engine.service` runs `ExecStart=%h/.local/bin/zeron headless`;
-`windows/build.ps1` builds `-p zeron` and copies `release\zeron.exe`. After
+`cargo build --release -p surya` and installs `target/release/surya`;
+`surya-engine.service` runs `ExecStart=%h/.local/bin/surya headless`;
+`windows/build.ps1` builds `-p surya` and copies `release\surya.exe`. After
 the rename none of that exists. The installer and the Windows packager both
 fail. 17 lines across four files, now in scope.
 
-**The selector missed all-caps.** `[Zz]eron` does not match `ZERON_`, so
+**The selector missed all-caps.** `[Zz]eron` does not match `SURYA_`, so
 `crates/proto/build.rs` and `crates/proto/src/build.rs` were never selected
-and kept `ZERON_BUILD_SHA`. Both sides agreed, so nothing broke - but only by
-luck. The selector now matches `ZERON_` too.
+and kept `SURYA_BUILD_SHA`. Both sides agreed, so nothing broke - but only by
+luck. The selector now matches `SURYA_` too.
 
-**Fixing that broke two files that must keep the old name.** With `ZERON_` in
+**Fixing that broke two files that must keep the old name.** With `SURYA_` in
 the pattern, the GENERATED `env_compat.rs` went in scope on the SECOND run and
 its fallback became `var_os("SURYA_{name}")` - the alias reading the new name
 twice, the compat dead, the tree still compiling. And
@@ -160,7 +160,7 @@ that run mandatory.
 the substitution the script now reads the whole repo, subtracts the
 out-of-scope trees and every hit the masks keep on purpose, and exits non-zero
 on what is left. Proved with a positive, not an absence: a planted
-`packaging/build.sh` containing `-p zeron` printed `MISSED=1` and exited 1.
+`packaging/build.sh` containing `-p surya` printed `MISSED=1` and exited 1.
 
 **Measured on the unpatched script**, so the comparison is honest:
 `cargo check --workspace --all-targets` gives 0 errors and 21 warnings on the
@@ -174,7 +174,7 @@ ignored`, and all five `data_dir` tests are green.
 ## Not fixable here: comet's release workflow
 
 `app/.github/workflows/release.yml` line 134 asserts
-`ls dist/ | grep -q "zeron-$ver-"`, while the renamed `package-linux.sh`
+`ls dist/ | grep -q "surya-$ver-"`, while the renamed `package-linux.sh`
 writes `surya-$ver-linux-$arch`. That workflow is comet's own and GitHub never
 fires it from a subdirectory, so it is dead in this repo - but it is wrong the
 moment anyone revives it. Owner call, not a script rule.

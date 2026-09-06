@@ -7,7 +7,7 @@ They talk directly over your own network (LAN, VPN or tailnet). No account, no c
 Windows machine                         Linux box
 +-------------------+   ws://host:27700  +------------------------+
 | surya app         | -----------------> | surya engine           |
-| (zeron.exe)       |   + shared token   | runs Claude Code, git, |
+| (surya.exe)       |   + shared token   | runs Claude Code, git, |
 |                   | <----------------- | terminals, files       |
 +-------------------+   streams back     +------------------------+
 ```

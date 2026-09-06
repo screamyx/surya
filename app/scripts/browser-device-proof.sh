@@ -29,7 +29,7 @@ sleep 1
 URL="http://127.0.0.1:$PORT/index.html"
 echo "serving $URL, device switch at ${AT}s of ${WAIT}s"
 PROOF_OUT="$OUT/run" SURYA_PROOF_DEVICE="$AT" "$HERE/browser-xvfb-proof.sh" "$URL" "$WAIT" > "$OUT/run.log" 2>&1
-grep -E "^emulation:|^devtools:|^proof: device" "$OUT/run/zeron.log" | tail -8
-LINE=$(grep -E "^proof: device" "$OUT/run/zeron.log" | tail -1)
-echo "${LINE:-proof: device asked=2 matched=0 (no proof line; see $OUT/run/zeron.log)} window=$OUT/run/window.png"
+grep -E "^emulation:|^devtools:|^proof: device" "$OUT/run/surya.log" | tail -8
+LINE=$(grep -E "^proof: device" "$OUT/run/surya.log" | tail -1)
+echo "${LINE:-proof: device asked=2 matched=0 (no proof line; see $OUT/run/surya.log)} window=$OUT/run/window.png"
 grep -q "matched=2" <<<"$LINE"

@@ -4,7 +4,7 @@
 #
 #   deploy/install-engine.sh                 # bind to this box's tailnet IPv4
 #   deploy/install-engine.sh --bind 0.0.0.0  # every interface (LAN / VPN)
-#   deploy/install-engine.sh --no-build      # reuse target/release/zeron
+#   deploy/install-engine.sh --no-build      # reuse target/release/surya
 #
 # Re-running is safe: it rebuilds, reinstalls the binary, rewrites the env
 # file and the unit, restarts the service, and keeps the existing token.
@@ -51,15 +51,15 @@ TARGET_DIR="${CARGO_TARGET_DIR:-$APP/target}"
 if [ "$BUILD" = 1 ]; then
   command -v "${CARGO%% *}" >/dev/null 2>&1 || die "cargo not found; install Rust from https://rustup.rs then re-run"
   say "building the engine (release, this takes a while the first time)"
-  (cd "$APP" && $CARGO build --release -p zeron)
+  (cd "$APP" && $CARGO build --release -p surya)
 fi
-[ -x "$TARGET_DIR/release/zeron" ] || die "no binary at $TARGET_DIR/release/zeron (run without --no-build)"
+[ -x "$TARGET_DIR/release/surya" ] || die "no binary at $TARGET_DIR/release/surya (run without --no-build)"
 
 # 3. Install the binary and the helper.
 say "installing to $BIN_DIR"
 install -d "$BIN_DIR"
-install -m755 "$TARGET_DIR/release/zeron" "$BIN_DIR/zeron.new"
-mv -f "$BIN_DIR/zeron.new" "$BIN_DIR/zeron"
+install -m755 "$TARGET_DIR/release/surya" "$BIN_DIR/surya.new"
+mv -f "$BIN_DIR/surya.new" "$BIN_DIR/surya"
 cat > "$BIN_DIR/surya-engine" <<'HELPER'
 #!/usr/bin/env bash
 # surya-engine status|token|logs|restart|stop|start - manage the engine service.
@@ -68,9 +68,9 @@ ENV_FILE="$HOME/.config/surya/engine.env"
 [ -f "$ENV_FILE" ] || { echo "not installed: run deploy/install-engine.sh" >&2; exit 1; }
 set -a; . "$ENV_FILE"; set +a
 case "${1:-status}" in
-  status) systemctl --user --no-pager status surya-engine || true; "$HOME/.local/bin/zeron" status || true ;;
-  token) cat "$ZERON_DATA_DIR/ipc-token" 2>/dev/null || { echo "no token yet: is the service running?" >&2; exit 1; } ;;
-  dial) echo "ws://$ZERON_BIND:$ZERON_IPC_PORT" ;;
+  status) systemctl --user --no-pager status surya-engine || true; "$HOME/.local/bin/surya" status || true ;;
+  token) cat "$SURYA_DATA_DIR/ipc-token" 2>/dev/null || { echo "no token yet: is the service running?" >&2; exit 1; } ;;
+  dial) echo "ws://$SURYA_BIND:$SURYA_IPC_PORT" ;;
   logs) journalctl --user -u surya-engine -n "${2:-50}" --no-pager ;;
   restart|stop|start) systemctl --user "$1" surya-engine ;;
   *) echo "usage: surya-engine status|token|dial|logs [n]|restart|stop|start" >&2; exit 1 ;;
@@ -85,9 +85,9 @@ ENV_FILE="$CONF_DIR/engine.env"
 umask 077
 cat > "$ENV_FILE" <<ENVF
 # surya engine settings, read by ~/.config/systemd/user/surya-engine.service
-ZERON_BIND=$BIND
-ZERON_IPC_PORT=$PORT
-ZERON_DATA_DIR=$DATA_DIR
+SURYA_BIND=$BIND
+SURYA_IPC_PORT=$PORT
+SURYA_DATA_DIR=$DATA_DIR
 PATH=$HOME/.local/bin:$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 RUST_LOG=info
 ENVF

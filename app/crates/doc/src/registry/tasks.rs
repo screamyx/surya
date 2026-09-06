@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use zeron_proto::{Task, TaskStatus, sort_tasks};
+use surya_proto::{Task, TaskStatus, sort_tasks};
 
 use super::{KIND_TASKS, OpKind, RegistryDoc, fields, opt_str, row_to};
 use crate::schema::DocError;

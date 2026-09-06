@@ -14,8 +14,8 @@ use gpui::{
     Context, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, Render, Subscription,
     Task, Window, div, prelude::*, px,
 };
-use zeron_proto::files::{FileRead, FileWrite, LineRange};
-use zeron_rpc::methods;
+use surya_proto::files::{FileRead, FileWrite, LineRange};
+use surya_rpc::methods;
 
 pub use super::editor_doc::{Body, Conflict, EditorDoc, SaveOutcome, Switch};
 use super::SaveFile;
@@ -120,7 +120,7 @@ impl FileEditor {
             let _ = this.update(cx, |this, cx| {
                 match result.and_then(|v| {
                     serde_json::from_value::<FileRead>(v)
-                        .map_err(|e| zeron_rpc::RpcError::Failed(e.to_string()))
+                        .map_err(|e| surya_rpc::RpcError::Failed(e.to_string()))
                 }) {
                     Ok(read) => {
                         if let Some(text) = this.doc.opened(&path, read) {
@@ -152,7 +152,7 @@ impl FileEditor {
             let _ = this.update(cx, |this, cx| {
                 match result.and_then(|v| {
                     serde_json::from_value::<FileWrite>(v)
-                        .map_err(|e| zeron_rpc::RpcError::Failed(e.to_string()))
+                        .map_err(|e| surya_rpc::RpcError::Failed(e.to_string()))
                 }) {
                     Ok(write) => {
                         if this.doc.write_answered(write, text) == SaveOutcome::Saved {

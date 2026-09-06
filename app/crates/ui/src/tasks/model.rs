@@ -5,7 +5,7 @@
 
 use std::time::{Duration, Instant};
 
-use zeron_proto::{Task, TaskStatus, sort_tasks};
+use surya_proto::{Task, TaskStatus, sort_tasks};
 
 /// Column order on the board (brief: Queued, Running, Done, Blocked).
 pub const COLUMNS: [TaskStatus; 4] = [

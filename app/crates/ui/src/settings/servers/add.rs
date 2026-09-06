@@ -115,7 +115,7 @@ impl AddDialog {
         let name = field("Name (optional)".into(), cx);
         let host = field("Host, e.g. 100.64.0.9 or build-box".into(), cx);
         let port = field(format!("Port (default {})", super::DEFAULT_PORT).into(), cx);
-        let token = field("Token from `zeron status` on that machine".into(), cx);
+        let token = field("Token from `surya status` on that machine".into(), cx);
         window.focus(&host.focus_handle(cx), cx);
         AddDialog {
             name,
@@ -148,8 +148,8 @@ pub(super) fn render(
         .child(popover::dialog_title(&theme, "Add server"))
         .child(div().mt(px(6.0)).child(popover::dialog_body(
             &theme,
-            "The other machine runs `zeron headless --bind <its address>`. \
-                 `zeron status` there prints the token.",
+            "The other machine runs `surya headless --bind <its address>`. \
+                 `surya status` there prints the token.",
         )))
         .child(field("Name", dialog.name.clone()))
         .child(field("Host", dialog.host.clone()))

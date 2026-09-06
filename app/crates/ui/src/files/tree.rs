@@ -16,9 +16,9 @@ use gpui::{
     Render, ScrollStrategy, Subscription, Task, UniformListScrollHandle, Window, div, prelude::*,
     px,
 };
-use zeron_proto::FileSearchMatch;
-use zeron_proto::files::{FileKind, FileTree, FileWatchBatch};
-use zeron_rpc::methods;
+use surya_proto::FileSearchMatch;
+use surya_proto::files::{FileKind, FileTree, FileWatchBatch};
+use surya_rpc::methods;
 
 use super::model::{Row, TreeModel};
 use crate::composer::{ComposerInput, ComposerInputEvent};
@@ -94,7 +94,7 @@ impl FileTreeView {
                 this.loads_answered += 1;
                 if let Ok(tree) = result.and_then(|v| {
                     serde_json::from_value::<FileTree>(v)
-                        .map_err(|e| zeron_rpc::RpcError::Failed(e.to_string()))
+                        .map_err(|e| surya_rpc::RpcError::Failed(e.to_string()))
                 }) {
                     this.model.apply_tree(&tree);
                 }

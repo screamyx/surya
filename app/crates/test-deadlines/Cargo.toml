@@ -1,5 +1,5 @@
 [package]
-name = "zeron-test-deadlines"
+name = "surya-test-deadlines"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

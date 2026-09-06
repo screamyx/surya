@@ -1,4 +1,4 @@
-//! Blanket dropped-reply settle (`ZERON_ACP_QUIET_SETTLE_MS`), tested with
+//! Blanket dropped-reply settle (`SURYA_ACP_QUIET_SETTLE_MS`), tested with
 //! the GROK spec so no adapter-specific evidence (Claude's cost frame,
 //! `noRunningTurn` steering reasons) is in play — this is the path every ACP
 //! agent gets. Own test binary: the env knob is process-global, and every
@@ -11,8 +11,8 @@ use std::time::Duration;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 
-use zeron_harness::{AcpHarness, CancellationToken, Harness, RunControls, SteerMessage};
-use zeron_proto::{
+use surya_harness::{AcpHarness, CancellationToken, Harness, RunControls, SteerMessage};
+use surya_proto::{
     AgentEvent, DoneStatus, RunRequest, SandboxLevel, UserInputAnswer, UserInputQuestion,
 };
 
@@ -23,7 +23,7 @@ fn init_env() {
     ONCE.call_once(|| {
         // SAFETY: set before any harness runs in this test process; all
         // tests in this binary share the one value.
-        unsafe { std::env::set_var("ZERON_ACP_QUIET_SETTLE_MS", QUIET_MS.to_string()) };
+        unsafe { std::env::set_var("SURYA_ACP_QUIET_SETTLE_MS", QUIET_MS.to_string()) };
     });
 }
 
@@ -75,7 +75,7 @@ fn controls() -> (RunControls, mpsc::Sender<SteerMessage>, CancellationToken) {
         }),
         steering: steer_rx,
         interrupt: token.clone(),
-        permission: zeron_harness::permission::PermissionGate::auto_allow(),
+        permission: surya_harness::permission::PermissionGate::auto_allow(),
     };
     (controls, steer_tx, token)
 }
@@ -123,7 +123,7 @@ async fn generic_dropped_reply_settles_off_the_quiet_window() {
     let events = run_and_collect(
         AcpHarness::grok(),
         "scenario:quiet-starve",
-        zeron_test_deadlines::WAIT,
+        surya_test_deadlines::WAIT,
     )
     .await;
     assert_eq!(
@@ -155,7 +155,7 @@ async fn open_tool_call_holds_the_quiet_settle_off() {
     let events = run_and_collect(
         AcpHarness::grok(),
         "scenario:quiet-tool-guard",
-        zeron_test_deadlines::WAIT,
+        surya_test_deadlines::WAIT,
     )
     .await;
     assert_eq!(

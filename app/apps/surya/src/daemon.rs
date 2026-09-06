@@ -1,44 +1,44 @@
-//! `zeron daemon …` — install/manage `zeron headless` as a background service:
+//! `surya daemon …` — install/manage `surya headless` as a background service:
 //! a systemd **user** unit on Linux (the VPS deployment target), a launchd
 //! LaunchAgent on macOS. The unit runs the current executable with the
-//! `ZERON_*` environment captured at install time, so
-//! `ZERON_EDGE_URL=… zeron daemon install` bakes that override in.
+//! `SURYA_*` environment captured at install time, so
+//! `SURYA_EDGE_URL=… surya daemon install` bakes that override in.
 //!
 //! Auth is decoupled: without a saved session the service remains up on the
-//! local-only profile. `zeron login` and a service restart opt into sync.
+//! local-only profile. `surya login` and a service restart opt into sync.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, bail};
 
-const LAUNCHD_LABEL: &str = "sh.zeron.app";
+const LAUNCHD_LABEL: &str = "sh.surya.app";
 /// Same unit name the curl|sh installer (`edge/src/install.sh`) writes, so
-/// `zeron daemon …` manages that installation rather than a competing copy.
-const SYSTEMD_UNIT: &str = "zeron.service";
+/// `surya daemon …` manages that installation rather than a competing copy.
+const SYSTEMD_UNIT: &str = "surya.service";
 
 /// Environment captured into the unit file. `PATH` is always included (the
 /// engine spawns harness CLIs like `claude`, which service managers' minimal
-/// default PATH won't find); the `ZERON_*`/logging vars only when set.
+/// default PATH won't find); the `SURYA_*`/logging vars only when set.
 const CAPTURED_ENV: &[&str] = &[
     "PATH",
-    "ZERON_DATA_DIR",
-    "ZERON_EDGE_URL",
-    "ZERON_EDGE_TOKEN",
-    "ZERON_ORG_ID",
-    "ZERON_WORKOS_CLIENT_ID",
-    "ZERON_WORKOS_API_BASE",
-    "ZERON_IPC_PORT",
-    "ZERON_BIND",
-    "ZERON_IPC_TOKEN",
-    "ZERON_CALLBACK_PORT",
-    "ZERON_HARNESS",
-    "ZERON_DEVICE_NAME",
+    "SURYA_DATA_DIR",
+    "SURYA_EDGE_URL",
+    "SURYA_EDGE_TOKEN",
+    "SURYA_ORG_ID",
+    "SURYA_WORKOS_CLIENT_ID",
+    "SURYA_WORKOS_API_BASE",
+    "SURYA_IPC_PORT",
+    "SURYA_BIND",
+    "SURYA_IPC_TOKEN",
+    "SURYA_CALLBACK_PORT",
+    "SURYA_HARNESS",
+    "SURYA_DEVICE_NAME",
     "RUST_LOG",
 ];
 
 pub fn install(data_dir: &Path) -> anyhow::Result<()> {
-    let exe = std::env::current_exe().context("resolving the zeron executable path")?;
+    let exe = std::env::current_exe().context("resolving the surya executable path")?;
     let env = captured_env();
     if cfg!(target_os = "macos") {
         let plist = launchd_plist_path()?;
@@ -63,13 +63,14 @@ pub fn install(data_dir: &Path) -> anyhow::Result<()> {
         std::fs::create_dir_all(unit.parent().expect("systemd user dir"))?;
         std::fs::write(&unit, render_systemd_unit(&exe, &env))?;
         run("systemctl", &["--user", "daemon-reload"])?;
+        retire_legacy_unit();
         run("systemctl", &["--user", "enable", "--now", SYSTEMD_UNIT])?;
         println!("Installed and started {SYSTEMD_UNIT} ({}).", unit.display());
         println!(
             "For start-at-boot without an active login session (VPS): loginctl enable-linger $USER"
         );
     } else {
-        bail!("zeron daemon is only supported on macOS (launchd) and Linux (systemd)");
+        bail!("surya daemon is only supported on macOS (launchd) and Linux (systemd)");
     }
     println!(
         "Without a saved account the engine stays local-only; sign-in and restart are optional for sync."
@@ -110,7 +111,7 @@ pub fn uninstall() -> anyhow::Result<()> {
             Err(err) => return Err(err.into()),
         }
     } else {
-        bail!("zeron daemon is only supported on macOS (launchd) and Linux (systemd)");
+        bail!("surya daemon is only supported on macOS (launchd) and Linux (systemd)");
     }
     Ok(())
 }
@@ -119,7 +120,7 @@ pub fn start() -> anyhow::Result<()> {
     if cfg!(target_os = "macos") {
         let plist = launchd_plist_path()?;
         if !plist.exists() {
-            bail!("not installed — run `zeron daemon install` first");
+            bail!("not installed — run `surya daemon install` first");
         }
         // `stop` boots the job out of the domain, so start = bootstrap; already
         // loaded is fine, then kickstart guarantees a running process either way.
@@ -131,7 +132,7 @@ pub fn start() -> anyhow::Result<()> {
     } else if cfg!(target_os = "linux") {
         run("systemctl", &["--user", "start", SYSTEMD_UNIT])?;
     } else {
-        bail!("zeron daemon is only supported on macOS (launchd) and Linux (systemd)");
+        bail!("surya daemon is only supported on macOS (launchd) and Linux (systemd)");
     }
     println!("Started.");
     Ok(())
@@ -144,7 +145,7 @@ pub fn stop() -> anyhow::Result<()> {
     } else if cfg!(target_os = "linux") {
         run("systemctl", &["--user", "stop", SYSTEMD_UNIT])?;
     } else {
-        bail!("zeron daemon is only supported on macOS (launchd) and Linux (systemd)");
+        bail!("surya daemon is only supported on macOS (launchd) and Linux (systemd)");
     }
     println!("Stopped.");
     Ok(())
@@ -168,7 +169,7 @@ pub fn restart() -> anyhow::Result<()> {
         println!("Restarted.");
         Ok(())
     } else {
-        bail!("zeron daemon is only supported on macOS (launchd) and Linux (systemd)");
+        bail!("surya daemon is only supported on macOS (launchd) and Linux (systemd)");
     }
 }
 
@@ -182,9 +183,9 @@ pub fn status() -> anyhow::Result<()> {
             println!(
                 "{LAUNCHD_LABEL}: not loaded{}",
                 if launchd_plist_path()?.exists() {
-                    " (installed — `zeron daemon start`)"
+                    " (installed — `surya daemon start`)"
                 } else {
-                    " (not installed — `zeron daemon install`)"
+                    " (not installed — `surya daemon install`)"
                 }
             );
             return Ok(());
@@ -211,7 +212,7 @@ pub fn status() -> anyhow::Result<()> {
             .context("running systemctl")?;
         Ok(())
     } else {
-        bail!("zeron daemon is only supported on macOS (launchd) and Linux (systemd)");
+        bail!("surya daemon is only supported on macOS (launchd) and Linux (systemd)");
     }
 }
 
@@ -228,7 +229,7 @@ fn captured_env() -> Vec<(String, String)> {
 
 fn render_systemd_unit(exe: &Path, env: &[(String, String)]) -> String {
     let mut unit = String::from(
-        "[Unit]\nDescription=Zeron headless engine\nAfter=network-online.target\nStartLimitIntervalSec=60\nStartLimitBurst=5\n\n[Service]\n",
+        "[Unit]\nDescription=Surya headless engine\nAfter=network-online.target\nStartLimitIntervalSec=60\nStartLimitBurst=5\n\n[Service]\n",
     );
     for (key, value) in env {
         // systemd unquotes the value; escape the characters it treats specially.
@@ -236,13 +237,13 @@ fn render_systemd_unit(exe: &Path, env: &[(String, String)]) -> String {
         unit.push_str(&format!("Environment=\"{key}={value}\"\n"));
     }
     unit.push_str(&format!(
-        "ExecStart={} headless\nRestart=on-failure\nRestartSec=5\nEnvironmentFile=-%h/.zeron/env\n\n[Install]\nWantedBy=default.target\n",
+        "ExecStart={} headless\nRestart=on-failure\nRestartSec=5\nEnvironmentFile=-%h/.surya/env\n\n[Install]\nWantedBy=default.target\n",
         systemd_exec_path(exe)
     ));
     unit
 }
 
-/// The ExecStart binary path. An exe under `~/.zeron/app/` came from the
+/// The ExecStart binary path. An exe under `~/.surya/app/` came from the
 /// curl|sh installer, whose upgrades relink `app/current` — point the unit at
 /// the symlink (as the installer's own unit does) so it never pins one version.
 /// (`current_exe` resolves symlinks, so the versioned dir is what we see here.)
@@ -252,10 +253,10 @@ fn systemd_exec_path(exe: &Path) -> String {
 
 fn exec_path_for(exe: &Path, home: Option<&Path>) -> String {
     let installed = home
-        .map(|home| home.join(".zeron/app"))
+        .map(|home| home.join(".surya/app"))
         .is_some_and(|app_root| exe.starts_with(app_root));
     if installed {
-        "%h/.zeron/app/current/zeron".to_string()
+        "%h/.surya/app/current/surya".to_string()
     } else {
         format!("{}", exe.display())
     }
@@ -382,24 +383,24 @@ mod tests {
     #[test]
     fn systemd_unit_shape() {
         let unit = render_systemd_unit(
-            Path::new("/usr/local/bin/zeron"),
+            Path::new("/usr/local/bin/surya"),
             &[
                 ("PATH".into(), "/usr/bin:/bin".into()),
-                ("ZERON_EDGE_URL".into(), "https://edge.example".into()),
-                ("RUST_LOG".into(), "info,zeron=\"debug\"".into()),
+                ("SURYA_EDGE_URL".into(), "https://edge.example".into()),
+                ("RUST_LOG".into(), "info,surya=\"debug\"".into()),
             ],
         );
-        assert!(unit.contains("ExecStart=/usr/local/bin/zeron headless\n"));
+        assert!(unit.contains("ExecStart=/usr/local/bin/surya headless\n"));
         assert!(unit.contains("Environment=\"PATH=/usr/bin:/bin\"\n"));
-        assert!(unit.contains("Environment=\"ZERON_EDGE_URL=https://edge.example\"\n"));
+        assert!(unit.contains("Environment=\"SURYA_EDGE_URL=https://edge.example\"\n"));
         // Inner quotes escaped so systemd re-parses the value verbatim.
-        assert!(unit.contains("Environment=\"RUST_LOG=info,zeron=\\\"debug\\\"\"\n"));
+        assert!(unit.contains("Environment=\"RUST_LOG=info,surya=\\\"debug\\\"\"\n"));
         assert!(unit.contains("StartLimitIntervalSec=60\n"));
         assert!(unit.contains("StartLimitBurst=5\n"));
         assert!(unit.contains("Restart=on-failure"));
         assert!(!unit.contains("session.json"));
         assert!(!unit.contains("ConditionPathExists"));
-        assert!(unit.contains("EnvironmentFile=-%h/.zeron/env"));
+        assert!(unit.contains("EnvironmentFile=-%h/.surya/env"));
         assert!(unit.contains("WantedBy=default.target"));
     }
 
@@ -409,8 +410,8 @@ mod tests {
         assert!(!installer.contains("session.json"));
         assert!(installer.contains("StartLimitIntervalSec=60\n"));
         assert!(installer.contains("StartLimitBurst=5\n"));
-        assert!(installer.contains("systemctl --user enable zeron"));
-        assert!(installer.contains("systemctl --user restart zeron"));
+        assert!(installer.contains("systemctl --user enable surya"));
+        assert!(installer.contains("systemctl --user restart surya"));
     }
 
     #[test]
@@ -419,36 +420,58 @@ mod tests {
         // the versioned dir): the unit must point back at the symlink.
         assert_eq!(
             exec_path_for(
-                Path::new("/home/u/.zeron/app/0.3.0/zeron"),
+                Path::new("/home/u/.surya/app/0.3.0/surya"),
                 Some(Path::new("/home/u")),
             ),
-            "%h/.zeron/app/current/zeron"
+            "%h/.surya/app/current/surya"
         );
         // Source build: literal path.
         assert_eq!(
             exec_path_for(
-                Path::new("/src/target/debug/zeron"),
+                Path::new("/src/target/debug/surya"),
                 Some(Path::new("/home/u"))
             ),
-            "/src/target/debug/zeron"
+            "/src/target/debug/surya"
         );
     }
 
     #[test]
     fn launchd_plist_shape() {
         let plist = render_launchd_plist(
-            Path::new("/Users/x/zeron & co/zeron"),
-            &[("ZERON_EDGE_URL".into(), "https://e?a=1&b=2".into())],
-            Path::new("/Users/x/.zeron/daemon.log"),
+            Path::new("/Users/x/surya & co/surya"),
+            &[("SURYA_EDGE_URL".into(), "https://e?a=1&b=2".into())],
+            Path::new("/Users/x/.surya/daemon.log"),
         );
-        assert!(plist.contains("<key>Label</key><string>sh.zeron.app</string>"));
+        assert!(plist.contains("<key>Label</key><string>sh.surya.app</string>"));
         // XML-escaped exe path and env value.
-        assert!(plist.contains("<string>/Users/x/zeron &amp; co/zeron</string>"));
+        assert!(plist.contains("<string>/Users/x/surya &amp; co/surya</string>"));
         assert!(plist.contains("<string>https://e?a=1&amp;b=2</string>"));
         assert!(plist.contains("<string>headless</string>"));
         assert!(plist.contains("<key>SuccessfulExit</key><false/>"));
         assert!(
-            plist.contains("<key>StandardOutPath</key><string>/Users/x/.zeron/daemon.log</string>")
+            plist.contains("<key>StandardOutPath</key><string>/Users/x/.surya/daemon.log</string>")
         );
     }
+}
+
+/// The pre-rename unit, disabled and removed on install.
+///
+/// Leaving it enabled means two daemons start on boot and race for one IPC
+/// port. Best-effort on purpose: a machine that never had the old unit must
+/// still install cleanly, so every step here ignores its own failure.
+fn retire_legacy_unit() {
+    const LEGACY_UNIT: &str = "zeron.service";
+    let _ = run_quiet("systemctl", &["--user", "disable", "--now", LEGACY_UNIT]);
+    // Same resolution as `systemd_unit_path`, with the old unit name.
+    let config = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| home_dir().ok().map(|home| home.join(".config")));
+    if let Some(config) = config {
+        let legacy = config.join("systemd/user").join(LEGACY_UNIT);
+        if legacy.exists() {
+            let _ = std::fs::remove_file(&legacy);
+            println!("Removed the pre-rename unit ({}).", legacy.display());
+        }
+    }
+    let _ = run_quiet("systemctl", &["--user", "daemon-reload"]);
 }

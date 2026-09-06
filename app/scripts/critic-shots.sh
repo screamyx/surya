@@ -3,7 +3,7 @@
 # project (this clone), one chat streaming a paced mock run, then the headed
 # shell on the shared headless Xorg (:7), light and dark, two window sizes.
 #
-#   scripts/critic-shots.sh <out_dir> [path/to/zeron] [project_dir]
+#   scripts/critic-shots.sh <out_dir> [path/to/surya] [project_dir]
 # Writes <out_dir>/shell-{light,dark}-{1440x900,1100x700}.png and prints one
 # `shot=1 bytes=N` line per frame.
 #
@@ -23,10 +23,10 @@
 # they check to be checkable: with no Pillow the black test cannot run and the
 # frame is reported UNVERIFIED.
 set -euo pipefail
-OUT=${1:?out dir}; ZERON=${2:-${CARGO_TARGET_DIR:-target}/debug/zeron}
+OUT=${1:?out dir}; ZERON=${2:-${CARGO_TARGET_DIR:-target}/debug/surya}
 PROJECT=${3:-$(cd "$(dirname "$0")/../.." && pwd)}
 DISPLAY_NO=${SURYA_SHOT_DISPLAY:-:7}
-[ -x "$ZERON" ] || { echo "no zeron binary at $ZERON" >&2; exit 2; }
+[ -x "$ZERON" ] || { echo "no surya binary at $ZERON" >&2; exit 2; }
 mkdir -p "$OUT"
 WORK=$(mktemp -d /tmp/critic-shots-XXXXXX)
 PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
@@ -34,9 +34,9 @@ trap 'kill $ENGINE ${APP:-} 2>/dev/null || true; cp "$WORK"/app-*.log "$OUT"/ 2>
 
 # Mock harness, paced so the chat is still Running when the frame is taken;
 # tables and code blocks so the transcript shows every row kind.
-ZERON_DATA_DIR="$WORK/engine" ZERON_IPC_PORT=$PORT ZERON_HARNESS=mock \
-ZERON_MOCK_DELAY_MS=600 ZERON_MOCK_REPEAT=6 ZERON_MOCK_TABLE=1 ZERON_MOCK_CODE=1 \
-  env ${ZERON_MOCK_CARDS:+ZERON_MOCK_CARDS="$ZERON_MOCK_CARDS"} "$ZERON" headless > "$WORK/engine.log" 2>&1 &
+SURYA_DATA_DIR="$WORK/engine" SURYA_IPC_PORT=$PORT SURYA_HARNESS=mock \
+SURYA_MOCK_DELAY_MS=600 SURYA_MOCK_REPEAT=6 SURYA_MOCK_TABLE=1 SURYA_MOCK_CODE=1 \
+  env ${SURYA_MOCK_CARDS:+SURYA_MOCK_CARDS="$SURYA_MOCK_CARDS"} "$ZERON" headless > "$WORK/engine.log" 2>&1 &
 ENGINE=$!
 # Assembly takes ~13 s on a loaded box (mail ingress + stores); give it 90 s
 # and fail loudly with the engine log instead of letting the seed step guess.
@@ -63,7 +63,7 @@ ws.onopen = async () => {
     ["t-1", "Wire the Tasks pane into the shell", "running", { owner: "surya-tasks" }],
     ["t-2", "Theme tokens for cards and chips", "running", { owner: "surya-theme" }],
     ["t-3", "Browser pane behind a URL bar", "queued", {}],
-    ["t-4", "Rename zeron to surya", "blocked", { notes: "last change before the RC" }],
+    ["t-4", "Rename surya to surya", "blocked", { notes: "last change before the RC" }],
   ]) await call("Mutate", { op: "createTask", taskId: tid, spaceId: "space-surya", title, status, ...extra });
   await call("QueueCommand", { chatId: "chat-critic", command: { kind: "run", messageId: "m-1",
     request: { prompt: "Mount the Tasks pane in the shell rail and make the composer pill float over the feed.",
@@ -74,11 +74,11 @@ ws.onerror = (e) => { console.error("seed failed", e.message || e); process.exit
 JS
 
 # SURYA_SHOT_PANES="files tasks" (default): also open each right-pane surface
-# through the shell's `ZERON_OPEN_PANE` knob and take shell-<pane>-<mode>.png at
+# through the shell's `SURYA_OPEN_PANE` knob and take shell-<pane>-<mode>.png at
 # 1440x900. Add `browser` (needs a `--features browser` build): the Browser
 # surface on https://example.com; CEF needs ~25 s and two Expose kicks before
 # its first paint. SURYA_SHOT_PANES="" skips the pane frames.
-# `ZERON_OPEN_BROWSER` is gone since PR #30: only `ZERON_OPEN_PANE` opens a pane.
+# `SURYA_OPEN_BROWSER` is gone since PR #30: only `SURYA_OPEN_PANE` opens a pane.
 GEOMS="${SURYA_SHOT_GEOMS-1440x900 1100x700}" # "" skips the plain shell frames
 # How many pngs are on disk. A failure line that said frames=0 after six good
 # frames would send the reader hunting for a rig that never ran.
@@ -87,7 +87,7 @@ shoot() { # shoot <name> <mode> <geom> <extra env...>
   local name=$1 mode=$2 geom=$3; shift 3
   local UI="$WORK/ui-$name"; mkdir -p "$UI"
   printf '{"appearance":"%s","openTabs":["chat-critic"],"lastSpaceId":"space-surya"}\n' "$mode" > "$UI/ui-settings.json"
-  env ZERON_DATA_DIR="$UI" ZERON_IPC_PORT=$PORT ZERON_WINDOW_SIZE=$geom DISPLAY=$DISPLAY_NO "$@" \
+  env SURYA_DATA_DIR="$UI" SURYA_IPC_PORT=$PORT SURYA_WINDOW_SIZE=$geom DISPLAY=$DISPLAY_NO "$@" \
     "$ZERON" > "$WORK/app-$name.log" 2>&1 &
   APP=$!
   sleep "${SHOT_WAIT:-24}"
@@ -139,7 +139,7 @@ shoot() { # shoot <name> <mode> <geom> <extra env...>
   FRAMES=$((FRAMES + 1))
   echo "shot=1 frames=$FRAMES bytes=$(stat -c %s "$OUT/$name.png") colours=$colours panics=$panics out=$OUT/$name.png"
   case "$name" in *browser*) grep -E "browser: (on_paint #1|load_end|LOAD ERROR)" "$WORK/app-$name.log" | head -3 || true;; esac
-  grep -E "ZERON_OPEN_PANE" "$WORK/app-$name.log" | head -1 || true
+  grep -E "SURYA_OPEN_PANE" "$WORK/app-$name.log" | head -1 || true
 }
 
 # The display lock wraps only launch + xrefresh + grab (rule 10:12). Wait a
@@ -162,9 +162,9 @@ for pane in ${SURYA_SHOT_PANES-files tasks}; do
         # SURYA_SHOT_BROWSER_CLICK=129,69 to open the pane from the globe instead.
         SHOT_WAIT="${SHOT_WAIT:-28}" SHOT_CLICK="${SURYA_SHOT_BROWSER_CLICK:-}" \
           shoot "shell-browser-$mode" "$mode" 1440x900 \
-          ZERON_OPEN_PANE=browser SURYA_BROWSER_URL="${SURYA_BROWSER_URL:-https://example.com}" \
+          SURYA_OPEN_PANE=browser SURYA_BROWSER_URL="${SURYA_BROWSER_URL:-https://example.com}" \
           SURYA_CEF_CACHE="$WORK/cef-$mode" RUST_LOG=info ;;
-      *) shoot "shell-$pane-$mode" "$mode" 1440x900 ZERON_OPEN_PANE="$pane" ;;
+      *) shoot "shell-$pane-$mode" "$mode" 1440x900 SURYA_OPEN_PANE="$pane" ;;
     esac
   done
 done

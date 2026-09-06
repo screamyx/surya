@@ -2,7 +2,7 @@
 //! who may write the file, and what survives a restart.
 
 use super::*;
-use zeron_proto::AllowRule;
+use surya_proto::AllowRule;
 
 fn request(tool: &str, command: &str) -> PermissionRequest {
     PermissionRequest {

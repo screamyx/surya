@@ -1,4 +1,4 @@
-//! Zeron's source-neutral theme domain model.
+//! Surya's source-neutral theme domain model.
 //!
 //! Runtime code consumes complete [`ThemeVariant`] values. Import formats such
 //! as VS Code are deliberately isolated in [`vscode`], so a component never
@@ -276,7 +276,7 @@ pub struct ColorParseError;
 #[serde(rename_all = "camelCase")]
 pub enum AccentPreset {
     #[default]
-    Zeron,
+    Surya,
     Orange,
     Amber,
     Green,
@@ -287,7 +287,7 @@ pub enum AccentPreset {
 
 impl AccentPreset {
     pub const ALL: [Self; 7] = [
-        Self::Zeron,
+        Self::Surya,
         Self::Orange,
         Self::Amber,
         Self::Green,
@@ -298,7 +298,7 @@ impl AccentPreset {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Zeron => "Zeron",
+            Self::Surya => "Surya",
             Self::Orange => "Orange",
             Self::Amber => "Amber",
             Self::Green => "Green",
@@ -310,7 +310,7 @@ impl AccentPreset {
 
     pub fn color(self, appearance: Appearance) -> Color {
         let (dark, light) = match self {
-            Self::Zeron => ("#8b7cf6", "#5b43e8"),
+            Self::Surya => ("#8b7cf6", "#5b43e8"),
             Self::Orange => ("#fb923c", "#c2410c"),
             Self::Amber => ("#fbbf24", "#a16207"),
             Self::Green => ("#4ade80", "#15803d"),
@@ -559,7 +559,7 @@ impl ThemeRegistry {
                     "zeron-light"
                 })
             })
-            .expect("the built-in registry always contains both Zeron variants")
+            .expect("the built-in registry always contains both Surya variants")
     }
 
     pub fn validate(&self) -> Vec<ValidationIssue> {
@@ -823,11 +823,11 @@ mod tests {
     }
 
     /// Comet's own pair is the shipped default again (owner order, 2026-09-05
-    /// 19:25: "just revert back the gui to how zeron's comet look"). The surya
+    /// 19:25: "just revert back the gui to how surya's comet look"). The surya
     /// pair stays in the registry and stays selectable, so a revert of this
     /// revert is one line.
     #[test]
-    fn zeron_is_the_default_pair() {
+    fn surya_is_the_default_pair() {
         let registry = ThemeRegistry::builtin();
         let selection = ThemeSelection::default();
         assert_eq!(selection.light, "zeron-light");
@@ -860,7 +860,7 @@ mod tests {
         // recorded here rather than raised, so the next person to touch the
         // palette sees the number instead of discovering it.
         for id in ["zeron-light", "zeron-dark"] {
-            let variant = registry.variant(id).expect("zeron variant is built in");
+            let variant = registry.variant(id).expect("surya variant is built in");
             let colors = &variant.colors;
             for (plane, surface) in [
                 ("panel", colors.background),

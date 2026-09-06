@@ -5,7 +5,7 @@
 #   docs/perf/dtry/run.sh scroll-pool 40 SURYA_PUMP_TIMER=pool SURYA_SELFTEST_SCROLL=15
 #
 # Needs: ssh dtry (PowerShell on the far side), the tree at E:\surya-perf,
-# a release zeron.exe from build.ps1, and the dtry GUI slot (ask surya-remote
+# a release surya.exe from build.ps1, and the dtry GUI slot (ask surya-remote
 # over agb first; one seat at a time; say GUI FREE after).
 set -u
 name="$1"; secs="$2"; shift 2

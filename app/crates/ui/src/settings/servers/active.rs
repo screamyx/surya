@@ -2,7 +2,7 @@
 //! list. Pure functions so the rules are testable without a window.
 //!
 //! The decision starts from what the app was asked to dial (`--engine`,
-//! `ZERON_ENGINE`, or the saved active server), not from the engine's
+//! `SURYA_ENGINE`, or the saved active server), not from the engine's
 //! transport: the loopback daemon is also reached over a websocket, and
 //! reading the transport put the badge on a bogus "Command line" row for it
 //! (review of PR #68, 2026-09-05).

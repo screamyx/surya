@@ -15,7 +15,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TARGET="${CARGO_TARGET_DIR:-$(cd "$HERE/.." && pwd)/target}"
-BIN="$TARGET/debug/zeron"
+BIN="$TARGET/debug/surya"
 OUT="${PROOF_OUT:-/store/agent-worktrees/surya-browser-ui/bar-follows}"
 PY="${SURYA_XTEST_PYTHON:-python3}"
 W=1440; H=900
@@ -24,11 +24,11 @@ SWITCH_AFTER=45
 [ -n "${DISPLAY:-}" ] || { echo "no DISPLAY"; exit 2; }
 rm -rf "$OUT"; mkdir -p "$OUT/data"
 printf '{"appearance":"light"}\n' > "$OUT/data/ui-settings.json"
-LOG="$OUT/zeron.log"
+LOG="$OUT/surya.log"
 PORT=$(( 20000 + RANDOM % 20000 ))
 
-export ZERON_DATA_DIR="$OUT/data" ZERON_IPC_PORT=$PORT SURYA_CEF_CACHE="$OUT/data/cef" \
-       ZERON_OPEN_PANE=browser RUST_LOG=info \
+export SURYA_DATA_DIR="$OUT/data" SURYA_IPC_PORT=$PORT SURYA_CEF_CACHE="$OUT/data/cef" \
+       SURYA_OPEN_PANE=browser RUST_LOG=info \
        SURYA_BROWSER_URL="https://example.com" \
        SURYA_BROWSER_URLS="https://example.net" \
        SURYA_SELFTEST_TABS="$SWITCH_AFTER"

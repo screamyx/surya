@@ -8,7 +8,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use zeron_proto::files::{FileEntry, FileEventKind, FileKind, FileTree, FileWatchBatch};
+use surya_proto::files::{FileEntry, FileEventKind, FileKind, FileTree, FileWatchBatch};
 
 /// One drawable row.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -329,7 +329,7 @@ impl EdgeExt for FileEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zeron_proto::files::FileEvent;
+    use surya_proto::files::FileEvent;
 
     fn entry(path: &str, kind: FileKind, edge: bool) -> FileEntry {
         FileEntry {

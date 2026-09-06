@@ -30,8 +30,8 @@ Release build with the browser feature, one run at a time, GUI slot from surya-r
 Each run is one self-test and one switch set:
 
 ```
-$env:SURYA_SELFTEST_SCROLL=8; .\zeron.exe > scroll-clock.log
-$env:SURYA_PUMP_TIMER='pool'; $env:SURYA_SELFTEST_SCROLL=8; .\zeron.exe > scroll-pool.log
+$env:SURYA_SELFTEST_SCROLL=8; .\surya.exe > scroll-clock.log
+$env:SURYA_PUMP_TIMER='pool'; $env:SURYA_SELFTEST_SCROLL=8; .\surya.exe > scroll-pool.log
 ```
 
 Then `Select-String 'selftest:' *.log`.

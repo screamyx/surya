@@ -8,10 +8,10 @@ use std::time::Duration;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 
-use zeron_harness::{
+use surya_harness::{
     CancellationToken, CodexHarness, Harness, HarnessError, RunControls, SteerMessage,
 };
-use zeron_proto::{
+use surya_proto::{
     AgentEvent, DoneStatus, HarnessId, ReasoningLevel, RunRequest, SandboxLevel, TodoItem,
     ToolCall, UserInputAnswer, UserInputQuestion,
 };
@@ -71,7 +71,7 @@ fn controls(
         }),
         steering: steer_rx,
         interrupt: token.clone(),
-        permission: zeron_harness::permission::PermissionGate::auto_allow(),
+        permission: surya_harness::permission::PermissionGate::auto_allow(),
     };
     (controls, steer_tx, token)
 }
@@ -83,7 +83,7 @@ async fn run_to_end(
 ) -> Vec<AgentEvent> {
     let stream = harness.run(req, controls).await.expect("run starts");
     tokio::time::timeout(
-        zeron_test_deadlines::WAIT,
+        surya_test_deadlines::WAIT,
         stream.map(|r| r.expect("stream event")).collect::<Vec<_>>(),
     )
     .await
@@ -391,7 +391,7 @@ async fn approvals_round_trip_as_input_requests() {
         }),
         steering: steer_rx,
         interrupt: token.clone(),
-        permission: zeron_harness::permission::PermissionGate::auto_allow(),
+        permission: surya_harness::permission::PermissionGate::auto_allow(),
     };
     let mut req = request("scenario:approve");
     req.auto_approve = false;
@@ -452,7 +452,7 @@ async fn interrupt_sends_turn_interrupt_and_maps_aborted() {
         .await
         .expect("run starts");
 
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");
@@ -488,7 +488,7 @@ async fn unresponsive_child_is_reaped_with_interrupted_done() {
         .await
         .expect("run starts");
 
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");
@@ -751,7 +751,7 @@ async fn child_thread_routing_tags_and_never_settles_parent() {
 
 /// Live smoke against the REAL codex app-server (0.146.x, installed + authed):
 /// one trivial turn, ending on turn/completed.
-/// `cargo test -p zeron-harness --test codex -- --ignored`.
+/// `cargo test -p surya-harness --test codex -- --ignored`.
 #[tokio::test]
 #[ignore = "spawns the real codex app-server; needs install + auth + network"]
 async fn live_real_app_server_single_turn() {
@@ -817,7 +817,7 @@ async fn commands_come_from_skills_list() {
     assert_eq!(h.commands().await.expect("cache hit"), commands);
 }
 
-/// Live smoke against the real CLI: `cargo test -p zeron-harness --test
+/// Live smoke against the real CLI: `cargo test -p surya-harness --test
 /// codex -- --ignored live_commands`.
 #[tokio::test]
 #[ignore]

@@ -24,7 +24,7 @@
 //!   labelled fallback box for anything else.
 //!
 //! The wire form of a button press (`[card:<id>] <action> <payload>`) lives
-//! in `zeron-proto` ([`zeron_proto::CardAction`]) so the engine and harness
+//! in `surya-proto` ([`surya_proto::CardAction`]) so the engine and harness
 //! share it without depending on this crate.
 
 pub mod budget;
@@ -45,4 +45,4 @@ pub use images::{ImageDecision, ImagePolicy};
 pub use render::Renderer;
 pub use state::{Binding, CardEvent, CardState};
 pub use theme::CardTheme;
-pub use zeron_proto::CardAction;
+pub use surya_proto::CardAction;

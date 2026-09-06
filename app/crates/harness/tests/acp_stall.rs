@@ -1,4 +1,4 @@
-//! Prompt-stall watchdog (`ZERON_ACP_PROMPT_STALL_MS`): a grok-spec agent
+//! Prompt-stall watchdog (`SURYA_ACP_PROMPT_STALL_MS`): a grok-spec agent
 //! that goes TOTALLY silent after the prompt — the wedged-shared-leader
 //! signature from the field — must surface a visible error and an errored
 //! Done instead of indefinite Working. Own test binary: the env knob is
@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 
-use zeron_harness::{AcpHarness, CancellationToken, Harness, RunControls};
-use zeron_proto::{AgentEvent, DoneStatus, RunRequest, SandboxLevel};
+use surya_harness::{AcpHarness, CancellationToken, Harness, RunControls};
+use surya_proto::{AgentEvent, DoneStatus, RunRequest, SandboxLevel};
 
 fn fixture_path() -> PathBuf {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -29,7 +29,7 @@ fn fixture_path() -> PathBuf {
 async fn silent_agent_errors_via_the_prompt_stall_watchdog() {
     // SAFETY: single-test binary — nothing else reads env concurrently.
     unsafe {
-        std::env::set_var("ZERON_ACP_PROMPT_STALL_MS", "700");
+        std::env::set_var("SURYA_ACP_PROMPT_STALL_MS", "700");
     }
     let (_steer_tx, steer_rx) = mpsc::channel(8);
     let token = CancellationToken::new();
@@ -41,7 +41,7 @@ async fn silent_agent_errors_via_the_prompt_stall_watchdog() {
         }),
         steering: steer_rx,
         interrupt: token.clone(),
-        permission: zeron_harness::permission::PermissionGate::auto_allow(),
+        permission: surya_harness::permission::PermissionGate::auto_allow(),
     };
     let request = RunRequest {
         surya: None,
@@ -60,7 +60,7 @@ async fn silent_agent_errors_via_the_prompt_stall_watchdog() {
     let harness = AcpHarness::grok().with_executable(fixture_path());
     let stream = harness.run(request, controls).await.expect("run starts");
     let events = tokio::time::timeout(
-        zeron_test_deadlines::WAIT,
+        surya_test_deadlines::WAIT,
         stream.map(|r| r.expect("stream event")).collect::<Vec<_>>(),
     )
     .await

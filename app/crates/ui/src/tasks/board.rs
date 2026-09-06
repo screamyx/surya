@@ -12,8 +12,8 @@ use gpui::{
     SharedString, Subscription, Task, Window, div, prelude::*, px,
 };
 
-use zeron_proto::{Task as BoardTask, TaskStatus};
-use zeron_rpc::{RpcClient, methods};
+use surya_proto::{Task as BoardTask, TaskStatus};
+use surya_rpc::{RpcClient, methods};
 
 use super::card::CardDrag;
 use super::chips::count_chip;

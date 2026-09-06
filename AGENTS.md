@@ -29,9 +29,9 @@ CI runs these five commands.
 `.github/workflows/ci.yml` holds the job split and adds `--jobs N` for the shared runner.
 
 ```
-cargo test -p zeron-proto -p zeron-doc -p zeron-rpc -p zeron-engine -p zeron-harness -p surya-mcp
+cargo test -p surya-proto -p surya-doc -p surya-rpc -p surya-engine -p surya-harness -p surya-mcp
 cargo check --workspace --all-targets
-cargo test -p zeron-ui
+cargo test -p surya-ui
 cargo test -p surya-a2ui
 SURYA_SMOKE_CARGO=cargo scripts/smoke.sh
 ```
@@ -39,7 +39,7 @@ SURYA_SMOKE_CARGO=cargo scripts/smoke.sh
 Outside CI:
 
 ```
-cargo build -p zeron --features browser      # browser pane, off by default
+cargo build -p surya --features browser      # browser pane, off by default
 cd crates/browser && cargo test               # the browser crate is its own workspace root
 ```
 
@@ -53,7 +53,6 @@ cd crates/browser && cargo test               # the browser crate is its own wor
 - Never run cargo in a checkout another agent shares. Build and test in your own git worktree. The shared checkout is docs-only.
 - Windows is the product, Mac is next, Linux is a test bench (decision 28). A Linux run is smoke, never RC proof.
 - The look is comet's own and the features are ours (decision 26). New panes use comet's tokens.
-- Crate names are mixed on purpose: upstream crates stay `zeron-*`, new ones are `surya-*`. The rename lands last, on frozen main, from `docs/rename-runbook.md`. Do not rename piecemeal.
 - No emoji anywhere: UI, code, docs, commit messages. `python3 scripts/check_no_emoji.py` checks this file, the skills, and the kit's specs.
 
 ## Pull requests

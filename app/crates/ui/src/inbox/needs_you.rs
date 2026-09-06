@@ -11,8 +11,8 @@ mod rows;
 use std::collections::HashSet;
 
 use gpui::{Context, Entity, Render, SharedString, Task, Window, div, prelude::*, px};
-use zeron_proto::{Chat, NeedsYouItem, PermissionDecision, UserInputAnswer};
-use zeron_rpc::methods;
+use surya_proto::{Chat, NeedsYouItem, PermissionDecision, UserInputAnswer};
+use surya_rpc::methods;
 
 use crate::inbox::chrome::empty_state;
 use crate::inbox::model::{

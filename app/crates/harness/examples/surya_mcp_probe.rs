@@ -3,13 +3,13 @@
 //! paths, and let a real `claude -p` run against them.
 //!
 //! ```text
-//! cargo run -p zeron-harness --example surya_mcp_probe -- \
+//! cargo run -p surya-harness --example surya_mcp_probe -- \
 //!     <path to surya-mcp> <card store>
 //! ```
 //!
 //! Prints two lines, `mcp-config=<path>` and `append=<path>`.
 
-use zeron_proto::SuryaOptions;
+use surya_proto::SuryaOptions;
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -27,7 +27,7 @@ fn main() {
         catalog_id: None,
     };
     let cwd = std::env::current_dir().unwrap();
-    let files = zeron_harness::claude::surya::prepare(&options, cwd.to_str().unwrap())
+    let files = surya_harness::claude::surya::prepare(&options, cwd.to_str().unwrap())
         .expect("surya-mcp resolves and both files are written");
     println!("mcp-config={}", files.mcp_config.display());
     println!("append={}", files.system_append.display());

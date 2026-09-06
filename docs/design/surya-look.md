@@ -1,11 +1,11 @@
 # The surya look
 
 > **Superseded 2026-09-05.**
-> The owner reversed this at 19:25: "just revert back the gui to how zeron's
+> The owner reversed this at 19:25: "just revert back the gui to how surya's
 > comet look", then "i mean only the theme, not functionality, features", then
-> at 19:32 "the new gui should look like zeron's comet, but with our feature
+> at 19:32 "the new gui should look like surya's comet, but with our feature
 > built in".
-> The app ships comet's own `zeron-light` / `zeron-dark` again and comet's flat
+> The app ships comet's own `surya-light` / `surya-dark` again and comet's flat
 > chrome. See [comet-look-restore.md](comet-look-restore.md).
 > Nothing below was deleted. `surya-light` and `surya-dark` are still built in
 > and still pickable in Appearance, and `crates/ui/src/surya.rs` still holds
@@ -149,7 +149,7 @@ The dominant colours are the tokens themselves: `#fdfcfa` panel over `#eae5dc` c
 Capture recipe, for anyone repeating it:
 
 ```
-DISPLAY=:7 ZERON_WINDOW_SIZE=1100x700 ZERON_DATA_DIR=<dir> zeron &
+DISPLAY=:7 SURYA_WINDOW_SIZE=1100x700 SURYA_DATA_DIR=<dir> surya &
 sleep 12; DISPLAY=:7 xrefresh; sleep 4
 DISPLAY=:7 ffmpeg -f x11grab -video_size 1100x700 -i :7+<x>,<y> -frames:v 1 out.png
 ```
@@ -157,7 +157,7 @@ DISPLAY=:7 ffmpeg -f x11grab -video_size 1100x700 -i :7+<x>,<y> -frames:v 1 out.
 `:7` is shared and other windows linger on it, so crop to your own window
 rather than grabbing the root. Find it with `xwininfo -root -tree`.
 
-`ZERON_WINDOW_SIZE` is a capture knob added for this: the window was hard
+`SURYA_WINDOW_SIZE` is a capture knob added for this: the window was hard
 coded to 1320x880, and a floating-panel layout fails at the small end where
 the margins and the seam eat the content.
 

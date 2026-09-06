@@ -10,7 +10,7 @@
 # test harness: the pane sees what a person's keyboard sends. Set
 # SURYA_XTEST_PYTHON to a python with python-xlib.
 #
-# Needs: ffmpeg (x11grab), a `zeron` built with --features browser, and an X
+# Needs: ffmpeg (x11grab), a `surya` built with --features browser, and an X
 # display that actually paints (the headless Xorg on the GPU, :7).
 set -u
 APPEARANCE="${1:-light}"
@@ -18,7 +18,7 @@ APPEARANCE="${1:-light}"
 WAIT="${2:-90}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TARGET="${CARGO_TARGET_DIR:-$(cd "$HERE/.." && pwd)/target}"
-BIN="$TARGET/debug/zeron"
+BIN="$TARGET/debug/surya"
 OUT="${PROOF_OUT:-/tmp/surya-browser-ui-proof}/$APPEARANCE"
 PY="${SURYA_XTEST_PYTHON:-python3}"
 
@@ -42,20 +42,20 @@ W=1440; H=900
 rm -rf "$OUT"; mkdir -p "$OUT"
 DATA="$OUT/data"; mkdir -p "$DATA"
 printf '{"appearance":"%s"}\n' "$APPEARANCE" > "$DATA/ui-settings.json"
-LOG="$OUT/zeron.log"
+LOG="$OUT/surya.log"
 SHOT="$OUT/browser-$APPEARANCE.png"
 REFUSED_SHOT="$OUT/browser-$APPEARANCE-refused.png"
 
-if [ -z "${ZERON_IPC_PORT:-}" ]; then
+if [ -z "${SURYA_IPC_PORT:-}" ]; then
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    ZERON_IPC_PORT=$(( 20000 + RANDOM % 20000 ))
-    ss -Hltn 2>/dev/null | grep -q ":$ZERON_IPC_PORT " || break
+    SURYA_IPC_PORT=$(( 20000 + RANDOM % 20000 ))
+    ss -Hltn 2>/dev/null | grep -q ":$SURYA_IPC_PORT " || break
   done
 fi
-echo "proof: appearance=$APPEARANCE port=$ZERON_IPC_PORT display=$DISPLAY"
+echo "proof: appearance=$APPEARANCE port=$SURYA_IPC_PORT display=$DISPLAY"
 
-export ZERON_DATA_DIR="$DATA" ZERON_IPC_PORT SURYA_CEF_CACHE="$DATA/cef" \
-       ZERON_OPEN_PANE=browser SURYA_BROWSER_URL="https://example.com" \
+export SURYA_DATA_DIR="$DATA" SURYA_IPC_PORT SURYA_CEF_CACHE="$DATA/cef" \
+       SURYA_OPEN_PANE=browser SURYA_BROWSER_URL="https://example.com" \
        SURYA_CEF_LOG="$OUT/cef.log" RUST_LOG=info
 "$BIN" > "$LOG" 2>&1 &
 APP=$!

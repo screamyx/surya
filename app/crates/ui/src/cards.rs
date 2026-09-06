@@ -11,18 +11,18 @@ use surya_a2ui::{Card, CardTheme, ImagePolicy};
 use crate::state::AppState;
 use crate::theme::Theme;
 
-/// The demo fixtures dir (`ZERON_DEMO_CARDS`), read once.
+/// The demo fixtures dir (`SURYA_DEMO_CARDS`), read once.
 fn demo_dir() -> Option<&'static PathBuf> {
     static DIR: OnceLock<Option<PathBuf>> = OnceLock::new();
     DIR.get_or_init(|| {
-        std::env::var_os("ZERON_DEMO_CARDS")
+        std::env::var_os("SURYA_DEMO_CARDS")
             .filter(|v| !v.is_empty())
             .map(PathBuf::from)
     })
     .as_ref()
 }
 
-/// Whether the render/measure counters print (`ZERON_DEMO_CARDS` or
+/// Whether the render/measure counters print (`SURYA_DEMO_CARDS` or
 /// `SURYA_CARD_STATS=1`); off by default so a card row costs no log line
 /// and no per-frame closure.
 fn stats_enabled() -> bool {
@@ -126,23 +126,23 @@ pub fn fixture_base(dir: &Path) -> String {
         .unwrap_or(base)
 }
 
-/// Demo entries for `ZERON_DEMO_CARDS=<dir>`: one assistant turn per
+/// Demo entries for `SURYA_DEMO_CARDS=<dir>`: one assistant turn per
 /// fixture, a one-line reply then the card (decision 14: "Reply text stays
 /// to one line when a card is shown").
-pub fn demo_entries(dir: &Path) -> Vec<zeron_doc::SessionMessageEntry> {
+pub fn demo_entries(dir: &Path) -> Vec<surya_doc::SessionMessageEntry> {
     let now = chrono::Utc::now().timestamp_millis();
     load_fixture_dir(dir)
         .into_iter()
         .enumerate()
-        .map(|(ix, (stem, json))| zeron_doc::SessionMessageEntry {
+        .map(|(ix, (stem, json))| surya_doc::SessionMessageEntry {
             id: format!("demo-card-{stem}"),
-            role: zeron_doc::MessageRole::Assistant,
+            role: surya_doc::MessageRole::Assistant,
             parts: vec![
-                zeron_doc::MessagePart::Text {
+                surya_doc::MessagePart::Text {
                     id: "t0".into(),
                     text: format!("Card {}: `{stem}`", ix + 1),
                 },
-                zeron_doc::MessagePart::Card {
+                surya_doc::MessagePart::Card {
                     id: format!("toolu_{stem}"),
                     card_id: format!("card-{stem}"),
                     surface_id: json
@@ -161,7 +161,7 @@ pub fn demo_entries(dir: &Path) -> Vec<zeron_doc::SessionMessageEntry> {
             ],
             created_at: now + ix as i64,
             device_id: "local".into(),
-            status: Some(zeron_doc::MessageStatus::Complete),
+            status: Some(surya_doc::MessageStatus::Complete),
             continuation_of: None,
         })
         .collect()

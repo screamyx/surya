@@ -22,17 +22,17 @@ use tokio_tungstenite::tungstenite::handshake::server::{
     Request as WsRequest, Response as WsResponse,
 };
 
-use zeron_doc::SessionCommandPayload;
-use zeron_engine::{
+use surya_doc::SessionCommandPayload;
+use surya_engine::{
     BranchHeadContext, ChangeRequestError, CheckoutChangeRequestLookup, CheckoutChangeRequests,
     CheckoutSourceContext, EngineCore, HarnessRegistry,
 };
-use zeron_harness::{Harness, HarnessError, RunControls};
-use zeron_proto::{
+use surya_harness::{Harness, HarnessError, RunControls};
+use surya_proto::{
     AgentEvent, ChangeRequestState, ChangeRequestSummary, DoneStatus, HarnessId, Model,
     ReasoningLevel, RunRequest, SandboxLevel, SteeringMode,
 };
-use zeron_rpc::{
+use surya_rpc::{
     DeviceFrameHeader, HostRelay, HostRelayConfig, LinkCache, LinkCacheConfig, RpcError, RpcReply,
     RpcService, StaticToken, decode_device_frame, encode_device_frame, methods,
 };
@@ -252,7 +252,7 @@ fn change_request_lookup(root: &std::path::Path) -> Arc<StaticChangeRequestLooku
                 "feature/status",
                 Some("origin/feature/status"),
                 Some("origin"),
-                Some("https://github.com/acme/zeron.git"),
+                Some("https://github.com/acme/surya.git"),
             ),
             default_branch: Some("main".into()),
         },
@@ -260,7 +260,7 @@ fn change_request_lookup(root: &std::path::Path) -> Arc<StaticChangeRequestLooku
             provider: "github".into(),
             number: 90,
             title: "Stream checkout pull request".into(),
-            url: "https://github.com/acme/zeron/pull/90".into(),
+            url: "https://github.com/acme/surya/pull/90".into(),
             state: ChangeRequestState::Open,
             base_ref: "main".into(),
             head_ref: "feature/status".into(),
@@ -293,7 +293,7 @@ async fn simulated_ios_change_request(
         .await
         .expect("send iOS subscription");
 
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     loop {
         let message = tokio::time::timeout_at(deadline, socket.next())
             .await
@@ -379,7 +379,7 @@ async fn checkout_change_request_stream_matches_locally_and_through_device_routi
     let lookup = change_request_lookup(&checkout);
     core_b.change_requests =
         CheckoutChangeRequests::new(core_b.repos.clone(), "device-b", lookup.clone());
-    let local_client = zeron_rpc::memory_client(core_b.rpc_service());
+    let local_client = surya_rpc::memory_client(core_b.rpc_service());
     let rejected = match local_client
         .subscribe_checked(
             methods::WATCH_CHECKOUT_CHANGE_REQUEST,
@@ -406,9 +406,9 @@ async fn checkout_change_request_stream_matches_locally_and_through_device_routi
         LinkCacheConfig::new(relay_url.clone(), Arc::new(StaticToken("test-user".into())));
     link_config.probe_timeout = Duration::from_secs(5);
     core_a.set_links(LinkCache::new(link_config));
-    let client = zeron_rpc::memory_client(core_a.rpc_service());
+    let client = surya_rpc::memory_client(core_a.rpc_service());
 
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     let mut remote = loop {
         match client
             .subscribe_checked(
@@ -430,7 +430,7 @@ async fn checkout_change_request_stream_matches_locally_and_through_device_routi
             }
         }
     };
-    let remote_frame = tokio::time::timeout(zeron_test_deadlines::WAIT, remote.recv())
+    let remote_frame = tokio::time::timeout(surya_test_deadlines::WAIT, remote.recv())
         .await
         .expect("remote frame before timeout")
         .expect("remote initial frame");
@@ -470,7 +470,7 @@ async fn checkout_change_request_stream_matches_locally_and_through_device_routi
 
     core_a.disconnect_edge();
     assert!(
-        tokio::time::timeout(zeron_test_deadlines::WAIT, remote.recv())
+        tokio::time::timeout(surya_test_deadlines::WAIT, remote.recv())
             .await
             .expect("remote stream closes after link")
             .is_none()
@@ -502,11 +502,11 @@ async fn unsupported_remote_change_request_watch_keeps_the_shared_device_link() 
         LinkCacheConfig::new(relay_url, Arc::new(StaticToken("test-user".into())));
     link_config.probe_timeout = Duration::from_secs(5);
     core.set_links(LinkCache::new(link_config));
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = surya_rpc::memory_client(core.rpc_service());
 
     // The host can take a moment to attach to the room. Once attached, an old
     // host rejects only the capability added by this version.
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     loop {
         match client
             .subscribe_checked(
@@ -572,7 +572,7 @@ async fn target_device_id_routes_over_the_relay() {
         .write_user_message("m-b-1", "hello from B", 1_000)
         .expect("write user message");
 
-    let client = zeron_rpc::memory_client(core_a.rpc_service());
+    let client = surya_rpc::memory_client(core_a.rpc_service());
 
     // Our own id in targetDeviceId: handled locally, no forward.
     let local = client
@@ -586,7 +586,7 @@ async fn target_device_id_routes_over_the_relay() {
 
     // Unary forward: ListHarnesses answered by B through the relay. (The host relay
     // dials with backoff; retry until its session is up.)
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     let remote = loop {
         match client
             .call(
@@ -642,7 +642,7 @@ async fn target_device_id_routes_over_the_relay() {
         .expect("remote subscribe");
     // The watch emits its current value first ([] if B's publish pass hasn't run yet),
     // then re-emits on every doc change — read until B's entry arrives.
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     loop {
         let item = tokio::time::timeout_at(deadline, stream.recv())
             .await
@@ -733,10 +733,10 @@ async fn terminal_stream_proxies_over_the_relay() {
         LinkCacheConfig::new(relay_url.clone(), Arc::new(StaticToken("test-user".into())));
     link_config.probe_timeout = Duration::from_secs(5);
     core_a.set_links(LinkCache::new(link_config));
-    let client = zeron_rpc::memory_client(core_a.rpc_service());
+    let client = surya_rpc::memory_client(core_a.rpc_service());
 
     // OpenTerminal forwards to B once the relay session is up.
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     let session = loop {
         match client
             .call(
@@ -786,7 +786,7 @@ async fn terminal_stream_proxies_over_the_relay() {
         )
         .await
         .expect("remote write");
-    let deadline = tokio::time::Instant::now() + zeron_test_deadlines::WAIT;
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
     let mut transcript = Vec::new();
     loop {
         let item = tokio::time::timeout_at(deadline, stream.recv())
@@ -820,7 +820,7 @@ async fn terminal_stream_proxies_over_the_relay() {
 async fn remote_target_without_links_fails_clearly() {
     let dirs = tempfile::tempdir().expect("tempdir");
     let core = assemble(&dirs.path().join("solo"), "device-solo");
-    let client = zeron_rpc::memory_client(core.rpc_service());
+    let client = surya_rpc::memory_client(core.rpc_service());
     let err = client
         .call(
             methods::LIST_HARNESSES,

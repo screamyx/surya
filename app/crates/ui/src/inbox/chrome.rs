@@ -5,7 +5,7 @@
 //! cannot drift into three different-looking surfaces.
 
 use gpui::{Div, Hsla, SharedString, div, prelude::*, px};
-use zeron_proto::{AgentState, NeedsYouKind};
+use surya_proto::{AgentState, NeedsYouKind};
 
 use crate::theme::Theme;
 use crate::typography::ui_rems;

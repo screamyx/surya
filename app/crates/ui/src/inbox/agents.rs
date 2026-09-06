@@ -6,8 +6,8 @@
 //! [`SelectChat`]; the shell owns routing, not this pane.
 
 use gpui::{Context, Entity, Render, SharedString, Task, Window, div, prelude::*, px};
-use zeron_proto::{AgentStateRow, Chat};
-use zeron_rpc::methods;
+use surya_proto::{AgentStateRow, Chat};
+use surya_rpc::methods;
 
 use crate::inbox::chrome::{badge, dot, empty_state, heading, state_color};
 use crate::inbox::model::{AgentRow, AgentSection, agent_sections};

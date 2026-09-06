@@ -9,10 +9,10 @@ use std::time::Duration;
 use futures::StreamExt;
 use tokio::sync::{mpsc, oneshot};
 
-use zeron_harness::{
+use surya_harness::{
     CancellationToken, ClaudeHarness, Harness, HarnessError, RunControls, SteerMessage,
 };
-use zeron_proto::{
+use surya_proto::{
     AgentEvent, DoneStatus, HarnessId, RunRequest, SandboxLevel, ToolCall, UserInputAnswer,
     UserInputQuestion,
 };
@@ -72,7 +72,7 @@ fn controls(
         }),
         steering: steer_rx,
         interrupt: token.clone(),
-        permission: zeron_harness::permission::PermissionGate::auto_allow(),
+        permission: surya_harness::permission::PermissionGate::auto_allow(),
     };
     (controls, steer_tx, token)
 }
@@ -84,7 +84,7 @@ async fn run_to_end(
 ) -> Vec<AgentEvent> {
     let stream = harness.run(req, controls).await.expect("run starts");
     tokio::time::timeout(
-        zeron_test_deadlines::WAIT,
+        surya_test_deadlines::WAIT,
         stream.map(|r| r.expect("stream event")).collect::<Vec<_>>(),
     )
     .await
@@ -98,14 +98,14 @@ async fn run_to_end(
 #[tokio::test]
 async fn a_host_gate_decides_whether_the_tool_runs() {
     for (decision, expected) in [
-        (zeron_proto::PermissionDecision::Allow, "permission allowed"),
-        (zeron_proto::PermissionDecision::Deny, "permission denied"),
+        (surya_proto::PermissionDecision::Allow, "permission allowed"),
+        (surya_proto::PermissionDecision::Deny, "permission denied"),
     ] {
         let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let seen = asked.clone();
         let (mut controls, _steer, _token) = controls("A");
         controls.permission =
-            zeron_harness::permission::PermissionGate::new(move |request| {
+            surya_harness::permission::PermissionGate::new(move |request| {
                 seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 assert_eq!(request.tool_name, "Bash");
                 assert_eq!(request.command, "php artisan migrate --seed");
@@ -133,7 +133,7 @@ async fn a_host_gate_decides_whether_the_tool_runs() {
         assert_eq!(result.as_deref(), Some(expected));
         assert_eq!(
             ran_tool,
-            decision == zeron_proto::PermissionDecision::Allow,
+            decision == surya_proto::PermissionDecision::Allow,
             "the tool runs only on an allow"
         );
     }
@@ -352,7 +352,7 @@ async fn ask_user_question_round_trips_through_the_control_channel() {
         }),
         steering: steer_rx,
         interrupt: token.clone(),
-        permission: zeron_harness::permission::PermissionGate::auto_allow(),
+        permission: surya_harness::permission::PermissionGate::auto_allow(),
     };
     let events = run_to_end(&harness(), request("scenario:askuser"), controls).await;
 
@@ -435,7 +435,7 @@ async fn interrupt_escalates_to_sigterm_and_ends_with_interrupted_done() {
         .await
         .expect("run starts");
 
-    let events = tokio::time::timeout(zeron_test_deadlines::WAIT, async move {
+    let events = tokio::time::timeout(surya_test_deadlines::WAIT, async move {
         let mut events = Vec::new();
         while let Some(ev) = stream.next().await {
             let ev = ev.expect("stream event");
@@ -625,7 +625,7 @@ async fn captured_live_background_subagent_frames_replay_correctly() {
 
 /// Live smoke against the REAL claude CLI (2.1.x, must be installed + authed):
 /// one trivial turn through the stdio permission channel, ending on the
-/// result frame. `cargo test -p zeron-harness --test claude -- --ignored`.
+/// result frame. `cargo test -p surya-harness --test claude -- --ignored`.
 #[tokio::test]
 #[ignore = "spawns the real claude CLI; needs install + auth + network"]
 async fn live_real_cli_single_turn() {
@@ -689,7 +689,7 @@ async fn commands_come_from_the_initialize_control_request() {
     assert_eq!(again, commands);
 }
 
-/// Live smoke against the real CLI: `cargo test -p zeron-harness --test
+/// Live smoke against the real CLI: `cargo test -p surya-harness --test
 /// claude -- --ignored live_commands`. No model turn, no API cost.
 #[tokio::test]
 #[ignore]
@@ -732,7 +732,7 @@ async fn a_resolved_show_card_call_emits_one_card_event_in_transcript_order() {
     .unwrap();
 
     let mut req = request("scenario:card");
-    req.surya = Some(zeron_proto::SuryaOptions {
+    req.surya = Some(surya_proto::SuryaOptions {
         agent_id: "seat-1".into(),
         workspace: "demo".into(),
         mcp_binary: None,
@@ -865,7 +865,7 @@ async fn a_configured_store_with_no_record_shows_the_chip_not_an_empty_card() {
     .unwrap();
 
     let mut req = request("scenario:card");
-    req.surya = Some(zeron_proto::SuryaOptions {
+    req.surya = Some(surya_proto::SuryaOptions {
         agent_id: "seat-1".into(),
         workspace: "demo".into(),
         mcp_binary: None,

@@ -8,8 +8,8 @@ use gpui::{
     AnyElement, Context, Entity, FocusHandle, Focusable, Hsla, IntoElement, KeyDownEvent, Render,
     SharedString, Subscription, Window, div, prelude::*, px,
 };
-use zeron_theme::vscode::{ImportReport, SourceCompilation};
-use zeron_theme::{
+use surya_theme::vscode::{ImportReport, SourceCompilation};
+use surya_theme::{
     AccentPreset, AccentSelection, CustomThemeEntry, CustomThemeStatus, InstallMode,
     SurfacePreference, SurfaceTreatment, ThemeRegistry, ThemeSelection,
 };
@@ -708,10 +708,10 @@ fn preview(
     }
 }
 
-fn model_appearance(appearance: Appearance) -> zeron_theme::Appearance {
+fn model_appearance(appearance: Appearance) -> surya_theme::Appearance {
     match appearance {
-        Appearance::Dark => zeron_theme::Appearance::Dark,
-        Appearance::Light => zeron_theme::Appearance::Light,
+        Appearance::Dark => surya_theme::Appearance::Dark,
+        Appearance::Light => surya_theme::Appearance::Light,
     }
 }
 
@@ -750,7 +750,7 @@ fn compact_action(
         .text_size(crate::typography::ui_rems(11.5))
 }
 
-fn import_scene_preview(variant: &zeron_theme::ThemeVariant) -> AnyElement {
+fn import_scene_preview(variant: &surya_theme::ThemeVariant) -> AnyElement {
     let theme = Theme::from_variant(
         variant,
         AccentSelection::ThemeDefault,
@@ -880,7 +880,7 @@ fn report_panel(theme: &Theme, report: &ImportReport) -> gpui::Stateful<gpui::Di
         .children(report.adjustments.iter().map(|adjustment| {
             div().mt(px(4.0)).child(SharedString::from(format!(
                 "Adjusted · {} {} → {} · {}",
-                adjustment.zeron_role, adjustment.original, adjustment.resolved, adjustment.reason
+                adjustment.surya_role, adjustment.original, adjustment.resolved, adjustment.reason
             )))
         }))
         .children(report.fallbacks.iter().map(|message| {
@@ -907,7 +907,7 @@ fn report_panel(theme: &Theme, report: &ImportReport) -> gpui::Stateful<gpui::Di
         .children(report.mappings.iter().map(|mapping| {
             div().mt(px(4.0)).child(SharedString::from(format!(
                 "{} ← {}",
-                mapping.zeron_role, mapping.vscode_key
+                mapping.surya_role, mapping.vscode_key
             )))
         }))
 }
@@ -1524,7 +1524,7 @@ impl AppearancePage {
                             .mt(px(1.0))
                             .flex_none(),
                     )
-                    .child("Zeron finds light and dark variants automatically."),
+                    .child("Surya finds light and dark variants automatically."),
             );
         }
 
@@ -2357,7 +2357,7 @@ impl Render for AppearancePage {
                     .child(
                         widgets::page_subtitle(
                             &theme,
-                            "Choose how Zeron looks. These settings stay on this device.",
+                            "Choose how Surya looks. These settings stay on this device.",
                         )
                         .max_w(px(512.0))
                         .line_height(px(20.0)),
@@ -2458,12 +2458,12 @@ mod tests {
         // 11 and 21 since the Surya family joined the built-ins.
         assert_eq!(
             registry
-                .variants_for(zeron_theme::Appearance::Light)
+                .variants_for(surya_theme::Appearance::Light)
                 .count(),
             11
         );
         assert_eq!(
-            registry.variants_for(zeron_theme::Appearance::Dark).count(),
+            registry.variants_for(surya_theme::Appearance::Dark).count(),
             21
         );
     }

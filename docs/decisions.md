@@ -294,15 +294,15 @@ Comet pins wingleeio's gpui fork for glass effects; haktui pins Zed's. Making ha
 ## 23. The rename lands last, copies the old data dir, and skips iOS
 
 Coordinator ruling, 2026-09-05 08:20, owner asleep (autonomy order 06:17).
-The plan and the counts are in `docs/rename-zeron-to-surya.md` (PR #16): "zeron files=260 hits=2140", "ZERON_* ... 66 distinct vars, 16 user-set need the alias".
+The plan and the counts are in `docs/rename-surya-to-surya.md` (PR #16): "surya files=260 hits=2140", "SURYA_* ... 66 distinct vars, 16 user-set need the alias".
 
 - The rename is the last code change before the RC, after the last feature PR, as four commits in the order the plan gives.
-- Existing data: on first start, if the surya data dir is absent and the zeron one exists, surya COPIES it and leaves the old dir untouched. Never rename or delete a user's directory. One release later the copy step can go.
-- Every user-set `ZERON_*` variable keeps working for one release as an alias of its `SURYA_*` name; the engine logs one line when the old name is used.
-- iOS bundle id and the Cloudflare edge are out of scope for the RC; they keep the zeron names until the owner picks a domain.
-- Amended 11:03 (PR #48): the data-dir adoption is one helper `adopt(home, current, previous)` that COPIES into `<current>.incoming` and renames it in atomically; the pre-existing `.comet-native` migration now goes through it too, so it copies where it used to rename (accepted, safer, one path). After the rename the pair is (`.surya`, `.zeron`) and the `.comet-native` step drops.
-- Amended 10:33 from the rename dry run (PR #41): the data dir is COPIED, not renamed (this decision wins over row 5 of the plan). Comet's two built-in themes become `comet_light` / `comet_dark` and keep their display names ("Zeron Light/Dark" stays as the provenance label); `surya_light` / `surya_dark` already exist from PR #2, so a literal rename would collide (E0428).
-- Amended 20:20 by the comet-look revert (PR #82). Those are the Rust *function* names; the variant ids in the registry are the strings `zeron-light` and `zeron-dark`, and they are what the code and the settings file carry. Two things follow for whoever does the rename. Comet's pair is the shipped default again, so `ThemeSelection::default()`, the `ThemeRegistry::resolve` fallback and `Theme::for_appearance`'s fallback all name those strings and must move with them. And every `ui-settings.json` on disk stores the selection as a string, so renaming the ids without a settings migration silently drops users onto the fallback. `UiSettings::migrated` now has a schema version and one rule; the rename adds the second.
+- Existing data: on first start, if the surya data dir is absent and the surya one exists, surya COPIES it and leaves the old dir untouched. Never rename or delete a user's directory. One release later the copy step can go.
+- Every user-set `SURYA_*` variable keeps working for one release as an alias of its `SURYA_*` name; the engine logs one line when the old name is used.
+- iOS bundle id and the Cloudflare edge are out of scope for the RC; they keep the surya names until the owner picks a domain.
+- Amended 11:03 (PR #48): the data-dir adoption is one helper `adopt(home, current, previous)` that COPIES into `<current>.incoming` and renames it in atomically; the pre-existing `.comet-native` migration now goes through it too, so it copies where it used to rename (accepted, safer, one path). After the rename the pair is (`.surya`, `.surya`) and the `.comet-native` step drops.
+- Amended 10:33 from the rename dry run (PR #41): the data dir is COPIED, not renamed (this decision wins over row 5 of the plan). Comet's two built-in themes become `comet_light` / `comet_dark` and keep their display names ("Surya Light/Dark" stays as the provenance label); `surya_light` / `surya_dark` already exist from PR #2, so a literal rename would collide (E0428).
+- Amended 20:20 by the comet-look revert (PR #82). Those are the Rust *function* names; the variant ids in the registry are the strings `surya-light` and `surya-dark`, and they are what the code and the settings file carry. Two things follow for whoever does the rename. Comet's pair is the shipped default again, so `ThemeSelection::default()`, the `ThemeRegistry::resolve` fallback and `Theme::for_appearance`'s fallback all name those strings and must move with them. And every `ui-settings.json` on disk stores the selection as a string, so renaming the ids without a settings migration silently drops users onto the fallback. `UiSettings::migrated` now has a schema version and one rule; the rename adds the second.
 
 ## 24. CI runs on a self-hosted runner on pc-ajim; the owner's spawn order narrows to user2
 
@@ -322,14 +322,14 @@ Owner ruling, 2026-09-05 13:10, verbatim: "wait no. windows version with cef mus
 
 Context: raven told the owner the Windows zip does not carry the browser (build.ps1 never enables the `browser` feature, the CEF runtime is not packaged) and proposed post-RC. Overruled.
 
-- The RC2 zip for FINAL MAIN (2026-09-06 12:15) is built with `--features browser` and ships the CEF runtime next to `zeron.exe`; a real page must paint in the pane on dtry before the zip is called final.
+- The RC2 zip for FINAL MAIN (2026-09-06 12:15) is built with `--features browser` and ships the CEF runtime next to `surya.exe`; a real page must paint in the pane on dtry before the zip is called final.
 - Path: the OSR CPU-upload path (the one proven on Linux) first; D3D11 zero-copy only if it comes free.
 - Owners: surya-cef2 (crate, CEF packaging step in build.ps1, dtry proof), surya-remote (rest of build.ps1, boot-dial timeout, cmd quoting, final zip). One builder on dtry at a time, agreed over agb.
 - The cut order in the 12:44 handoff is amended: the browser pane on Windows is no longer cuttable. If it is not painting by 2026-09-06 09:00, raven escalates to the owner instead of cutting.
 
 ## 26. The look goes back to comet's; the features stay
 
-Owner ruling, 2026-09-05 19:25, verbatim: "just revert back the gui to how zeron's comet look. can you do that?" and "i mean only the theme, not functionality, features".
+Owner ruling, 2026-09-05 19:25, verbatim: "just revert back the gui to how surya's comet look. can you do that?" and "i mean only the theme, not functionality, features".
 
 Context: the owner saw the RC2 preview screens and did not like the surya look (decision 22's "floating rounded panels on a soft canvas", PR #2's light-first themes, PR #36). This supersedes the layout paragraph of decision 22 and the theme parts of PR #2.
 
@@ -338,7 +338,7 @@ Context: the owner saw the RC2 preview screens and did not like the surya look (
 - Every feature stays. The motion switch stays (it is a function, not a look).
 - The surya themes and `surya.rs` stay in the tree, selectable but not default, so a reversal is cheap.
 - Owner: surya-theme, branch fix/comet-look, before the 2026-09-06 11:45 freeze; proof = side-by-side with upstream comet at the import commit.
-- Amended 19:32, owner verbatim: "the new gui should look like zeron's comet, but with our feature built in". So comet's own elements keep comet's exact shape, including its rounded glass question panel that replaces the composer (states had found it is comet's, not ours); permissions mirror that panel. What goes is only what surya added on top: the needs-you cards over the transcript, the surya chrome and tokens. The 19:26 "box/modal, remove them" refers to those additions.
+- Amended 19:32, owner verbatim: "the new gui should look like surya's comet, but with our feature built in". So comet's own elements keep comet's exact shape, including its rounded glass question panel that replaces the composer (states had found it is comet's, not ours); permissions mirror that panel. What goes is only what surya added on top: the needs-you cards over the transcript, the surya chrome and tokens. The 19:26 "box/modal, remove them" refers to those additions.
 
 ## 27. Zero-copy stays off; the frame-rate work targets the clock and the present cadence
 

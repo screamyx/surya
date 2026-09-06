@@ -1,7 +1,7 @@
 //! File RPCs on the engine: a jailed tree, read, and optimistic-concurrency
 //! write against one checkout root. This is haktui's resident file agent
 //! (`haktui_files`, design.md D8/D13) folded into the engine; the wire types
-//! and the mapping table live in `zeron_proto::files`. The watcher is
+//! and the mapping table live in `surya_proto::files`. The watcher is
 //! [`crate::files_watch`].
 //!
 //! Every function here takes a [`Jail`] and a relative path. The jail is the
@@ -16,7 +16,7 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use sha2::{Digest as _, Sha256};
-use zeron_proto::files::{FileEntry, FileKind, FileRead, FileTree, FileWrite, LineRange};
+use surya_proto::files::{FileEntry, FileKind, FileRead, FileTree, FileWrite, LineRange};
 
 use crate::EngineError;
 
@@ -367,7 +367,7 @@ pub fn write(
         return Err(other("parent directory does not exist"));
     }
     let tmp = dir.join(format!(
-        ".{}.zeron-{}",
+        ".{}.surya-{}",
         abs.file_name()
             .map(|n| n.to_string_lossy())
             .unwrap_or_default(),

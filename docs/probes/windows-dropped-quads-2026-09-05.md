@@ -39,13 +39,13 @@ Round 4's ruled-out list stands: window background mode and theme colours are no
 Box: dtry, NVIDIA GeForce RTX 4080 (plus the AMD iGPU), Windows PowerShell 5.1, cargo 1.97.1 MSVC.
 Tree: this repo at 3407d5f (main 4737c75 plus PR #52), shipped to `E:\surya-cef`, own cargo home `E:\surya-cef-cargo` (a copy of surya-remote's) and target `E:\surya-cef-target`.
 Engine: the remote service on this box (`ws://pc-ajim:27700`, saved Servers entry), the app on the last selected chat "Display All Leads Table".
-Shots: `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` of the zeron window from a session-1 scheduled task (`E:\surya-cef-pshot.ps1`), because the window came up behind the owner's terminal and Chrome and `SetForegroundWindow` from a task does not raise it.
-`ZERON_DEMO_CARDS` was set but the fixture chat never seeded within the 22 s before the shot (no "demo cards seeded" line), so the comparison uses a real chat instead of the a2ui cards.
+Shots: `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` of the surya window from a session-1 scheduled task (`E:\surya-cef-pshot.ps1`), because the window came up behind the owner's terminal and Chrome and `SetForegroundWindow` from a task does not raise it.
+`SURYA_DEMO_CARDS` was set but the fixture chat never seeded within the 22 s before the shot (no "demo cards seeded" line), so the comparison uses a real chat instead of the a2ui cards.
 
 | Build | What changed | exe time | Shot |
 | --- | --- | --- | --- |
-| A | `cargo build -p zeron` (debug), nothing patched | 11:20:41 | `docs/images/dtry-r5-A-unpatched-hlsl.png` |
-| B | same tree, only the vendored `shaders.hlsl` in `E:\surya-cef-cargo\git\checkouts\zed-d032abea1bc23d84\e2ddcc6\crates\gpui_windows\src\` patched by `E:\surya-cef-hlsl-patch.ps1` (adds `struct EdgeFadeParams` at line 88, `EdgeFadeParams fade;` at 516 in `Quad` and at 1224 in `PolychromeSprite`), then `cargo clean -p gpui_windows` and `cargo build -p zeron` | 11:23:40 | `docs/images/dtry-r5-B-hlsl-fade-field.png` |
+| A | `cargo build -p surya` (debug), nothing patched | 11:20:41 | `docs/images/dtry-r5-A-unpatched-hlsl.png` |
+| B | same tree, only the vendored `shaders.hlsl` in `E:\surya-cef-cargo\git\checkouts\zed-d032abea1bc23d84\e2ddcc6\crates\gpui_windows\src\` patched by `E:\surya-cef-hlsl-patch.ps1` (adds `struct EdgeFadeParams` at line 88, `EdgeFadeParams fade;` at 516 in `Quad` and at 1224 in `PolychromeSprite`), then `cargo clean -p gpui_windows` and `cargo build -p surya` | 11:23:40 | `docs/images/dtry-r5-B-hlsl-fade-field.png` |
 
 Same window size (1336x888), same chat, same scroll position. Elements checked: asked=5.
 
@@ -67,7 +67,7 @@ Left on dtry: `E:\surya-cef`, `E:\surya-cef-cargo`, `E:\surya-cef-target`, `E:\s
 ## Fixed in RC1 (12:35, release build)
 
 PR #56 pins `screamyx/gpui-surya` f910653 (the three struct lines plus `edge_fade_alpha` ported into both fragments); it is in RC1 main e116422.
-surya-remote's RC1 release exe (`E:\surya-remote-target\release\zeron.exe`, built 12:18:57 from e116422) on the same chat and window as the A/B above, PrintWindow shot `docs/images/dtry-r5-C-rc1-release-e116422.png`: the "reply" and "reply with the single word mango" bubbles, the transcript container card, the "L" avatar circle and the "Thought process" chip all paint.
+surya-remote's RC1 release exe (`E:\surya-remote-target\release\surya.exe`, built 12:18:57 from e116422) on the same chat and window as the A/B above, PrintWindow shot `docs/images/dtry-r5-C-rc1-release-e116422.png`: the "reply" and "reply with the single word mango" bubbles, the transcript container card, the "L" avatar circle and the "Thought process" chip all paint.
 Checked elements asked=5, dropped seen=0.
 
 ## Fix as shipped (PR #56) and the earlier candidate
@@ -87,7 +87,7 @@ The fix belongs in the gpui fork (a new rev pinned in `app/Cargo.toml:71-72`), n
 # Round 4 (surya-remote): primary buttons paint as dim text on Windows
 
 Date: 2026-09-05, 09:16 to 10:00 local. Seat surya-remote, round 4 on dtry.
-Build: `main` at ca5abe9 (theme PR #2 merged as a139718), `cargo build --release -p zeron` on dtry, cargo 1.97.1, exe 09:18:50.
+Build: `main` at ca5abe9 (theme PR #2 merged as a139718), `cargo build --release -p surya` on dtry, cargo 1.97.1, exe 09:18:50.
 Engine: the Linux service unit on the tailnet, dialed from the saved Servers entry (`ws://pc-ajim:27700`, token).
 Screenshots are native Windows captures cropped to the app window (1336x888), stored under `docs/images/`.
 
@@ -148,6 +148,6 @@ Forcing Opaque would change nothing, so the build was not spent.
 ## Where to look next
 
 The missing primitives are all filled quads with rounded corners or 1px underlines, drawn inside the scrolled transcript or the settings page, while the same element type inside the modal usually paints.
-Reproduce: launch with `ZERON_DEMO_CARDS`, scroll the demo chat one notch at a time, capture each frame, diff.
+Reproduce: launch with `SURYA_DEMO_CARDS`, scroll the demo chat one notch at a time, capture each frame, diff.
 Start in the Windows quad batching in the vendored gpui renderer (instance buffer boundaries, or the primitive sort by order/z when a scroll offset moves elements).
 Checked and ruled out: window background mode, theme colours, macOS-only glass path.

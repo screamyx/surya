@@ -86,7 +86,7 @@ Inside the Files tab the tree owns up/down/left/right/enter/escape and the edito
 
 ## Proof plan (phase 2)
 
-`cargo check -p zeron-ui`, `cargo test -p zeron-ui`, then a 5 s headless run per pane with `ZERON_OPEN_PANE=files|tasks|inbox|browser` (the env knob cef already uses as `ZERON_OPEN_BROWSER`), each printing `started=1 panics=0`.
+`cargo check -p surya-ui`, `cargo test -p surya-ui`, then a 5 s headless run per pane with `SURYA_OPEN_PANE=files|tasks|inbox|browser` (the env knob cef already uses as `SURYA_OPEN_BROWSER`), each printing `started=1 panics=0`.
 
 ## Critique round 2 items that land with the wiring (surya-tasks, PR #26)
 

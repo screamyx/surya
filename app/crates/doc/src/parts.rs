@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use zeron_proto::{AgentEvent, SUBAGENT_INPUT_KEEP, ToolCall, ToolDiff, UserInputQuestion};
+use surya_proto::{AgentEvent, SUBAGENT_INPUT_KEEP, ToolCall, ToolDiff, UserInputQuestion};
 
 use crate::constants::MSG_INLINE_MAX;
 
@@ -216,7 +216,7 @@ pub enum MessagePart {
         resolved: bool,
         /// How it was answered, once it was.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        decision: Option<zeron_proto::PermissionDecision>,
+        decision: Option<surya_proto::PermissionDecision>,
         /// Why, for a deny.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
@@ -318,7 +318,7 @@ impl MessagePart {
 /// In place because the fold runs once per streamed event: rebuilding the
 /// accumulator each time made long turns O(n²) in allocations.
 ///
-/// Semantics from zeron `foldEventIntoParts`:
+/// Semantics from surya `foldEventIntoParts`:
 /// - `SessionStarted` / `Steered` reset the accumulator (turn boundary — makes replay safe).
 /// - `TextDelta` appends to the trailing text part, or starts a new one if the trail is not text
 ///   (a tool call in between breaks the text block).
@@ -525,7 +525,7 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
         } => {
             let status = match event.as_ref() {
                 AgentEvent::Done { status, .. } => Some(match status {
-                    zeron_proto::DoneStatus::Errored => SubagentStatus::Failed,
+                    surya_proto::DoneStatus::Errored => SubagentStatus::Failed,
                     _ => SubagentStatus::Done,
                 }),
                 // A steer RESURRECTS a settled chip — it announces more work
@@ -608,16 +608,16 @@ pub fn fold_event_into_parts(out: &mut Vec<MessagePart>, event: &AgentEvent) {
                 None
             } else {
                 match (decision, rule, reason) {
-                (zeron_proto::PermissionDecision::Allow, Some(rule), _) => {
+                (surya_proto::PermissionDecision::Allow, Some(rule), _) => {
                     Some(format!("allowed by rule {rule}"))
                 }
-                (zeron_proto::PermissionDecision::Deny, _, Some(reason)) => {
+                (surya_proto::PermissionDecision::Deny, _, Some(reason)) => {
                     Some(format!("not allowed: {reason}"))
                 }
-                (zeron_proto::PermissionDecision::Deny, _, None) => {
+                (surya_proto::PermissionDecision::Deny, _, None) => {
                     Some("not allowed".to_string())
                 }
-                (zeron_proto::PermissionDecision::Allow, None, _) => None,
+                (surya_proto::PermissionDecision::Allow, None, _) => None,
                 }
             };
             if let Some(text) = text {
@@ -764,7 +764,7 @@ pub fn continuation_id(root: &str, index: usize) -> String {
 ///
 /// Splitting happens at part boundaries; an oversized text part is itself chunked at char
 /// boundaries. Returns one Vec per resulting entry — the first keeps the root id, the rest are
-/// continuations (`continuation_id(root, i)`), matching `splitMessageEntry` in zeron.
+/// continuations (`continuation_id(root, i)`), matching `splitMessageEntry` in surya.
 pub fn split_parts(parts: &[MessagePart]) -> Vec<Vec<MessagePart>> {
     let mut chunks: Vec<Vec<MessagePart>> = vec![Vec::new()];
     let mut current_bytes = 0usize;
@@ -840,7 +840,7 @@ mod tests {
     /// silent gap where the user said no.
     #[test]
     fn the_ask_is_a_part_and_the_answer_lands_on_it() {
-        use zeron_proto::PermissionDecision;
+        use surya_proto::PermissionDecision;
         let mut parts = Vec::new();
         // The ask used to live only in the needs-you inbox. The owner
         // reversed that on 2026-09-05: a tool waiting on you belongs in the
@@ -900,7 +900,7 @@ mod tests {
 
     #[test]
     fn a_deny_nobody_was_asked_for_still_says_something() {
-        use zeron_proto::PermissionDecision;
+        use surya_proto::PermissionDecision;
         let mut parts = Vec::new();
         // No ask was folded, so there is no chip to carry the outcome and
         // the notice is the only trace the turn would otherwise have.
@@ -921,7 +921,7 @@ mod tests {
 
     #[test]
     fn a_rule_allow_says_which_rule_and_a_plain_allow_says_nothing() {
-        use zeron_proto::PermissionDecision;
+        use surya_proto::PermissionDecision;
         let mut parts = Vec::new();
         fold_event_into_parts(
             &mut parts,
@@ -1072,7 +1072,7 @@ mod tests {
         fold_event_into_parts(
             &mut parts,
             &AgentEvent::SessionStarted {
-                harness: zeron_proto::HarnessId::Mock,
+                harness: surya_proto::HarnessId::Mock,
                 model: "m".into(),
                 tools: vec![],
                 cwd: "/".into(),
@@ -1422,7 +1422,7 @@ mod tests {
 
     #[test]
     fn subagent_events_refresh_the_spawn_chip_in_place() {
-        use zeron_proto::DoneStatus;
+        use surya_proto::DoneStatus;
         let mut parts = Vec::new();
         fold_event_into_parts(
             &mut parts,
@@ -1493,7 +1493,7 @@ mod tests {
         // Mis-keyed tagged traffic (claude's background shells settled
         // through the subagent subtype, 2026-08-20) must not stamp lifecycle
         // onto an ordinary tool chip — the genus gate is the CALL.
-        use zeron_proto::DoneStatus;
+        use surya_proto::DoneStatus;
         let mut parts = Vec::new();
         fold_event_into_parts(
             &mut parts,

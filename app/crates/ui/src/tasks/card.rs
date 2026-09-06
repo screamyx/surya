@@ -3,7 +3,7 @@
 
 use gpui::{AnyElement, Context, IntoElement, Render, SharedString, Window, div, prelude::*, px};
 
-use zeron_proto::{Task as BoardTask, TaskStatus};
+use surya_proto::{Task as BoardTask, TaskStatus};
 
 use super::board::TasksPane;
 use super::chips::{link_chip, owner_chip, preview, short_id};

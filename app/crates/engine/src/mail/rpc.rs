@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde::Deserialize;
-use zeron_rpc::{RpcError, RpcReply, RpcService, methods, parse_params};
+use surya_rpc::{RpcError, RpcReply, RpcService, methods, parse_params};
 
 use super::Mail;
 

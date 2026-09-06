@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Pixel proof for the Tasks pane on the shared headless Xorg (:7): throwaway
-# engine, a seeded board (one space, six tasks), `zeron --tasks-demo`, one
+# engine, a seeded board (one space, six tasks), `surya --tasks-demo`, one
 # frame grabbed with ffmpeg. Prints `shot=1 bytes=N` and the PNG path.
 #
-#   scripts/tasks-demo-shot.sh [out.png] [path/to/zeron]
+#   scripts/tasks-demo-shot.sh [out.png] [path/to/surya]
 set -euo pipefail
 OUT=${1:-/tmp/tasks-demo.png}
-ZERON=${2:-${CARGO_TARGET_DIR:-target}/debug/zeron}
+ZERON=${2:-${CARGO_TARGET_DIR:-target}/debug/surya}
 DISPLAY_NO=${SURYA_SHOT_DISPLAY:-:7}
-[ -x "$ZERON" ] || { echo "no zeron binary at $ZERON" >&2; exit 2; }
+[ -x "$ZERON" ] || { echo "no surya binary at $ZERON" >&2; exit 2; }
 WORK=$(mktemp -d /tmp/tasks-shot-XXXXXX)
 PORT=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
 trap 'kill $ENGINE $DEMO 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
-ZERON_DATA_DIR="$WORK/engine" ZERON_IPC_PORT=$PORT "$ZERON" headless > "$WORK/engine.log" 2>&1 &
+SURYA_DATA_DIR="$WORK/engine" SURYA_IPC_PORT=$PORT "$ZERON" headless > "$WORK/engine.log" 2>&1 &
 ENGINE=$!
 for _ in $(seq 1 60); do grep -q "IPC server listening" "$WORK/engine.log" 2>/dev/null && break; sleep 0.5; done
 
@@ -50,7 +50,7 @@ JS
 # Takes the display lock itself: never wrap this script in an outer flock.
 exec 9>/store/surya-display7.lock
 flock -w "${SHOT_LOCK_WAIT:-120}" 9 || { echo "display lock busy after ${SHOT_LOCK_WAIT:-120}s, holder: $(fuser /store/surya-display7.lock 2>/dev/null) (shot=0)"; exit 3; }
-ZERON_DATA_DIR="$WORK/ui" ZERON_IPC_PORT=$PORT DISPLAY=$DISPLAY_NO \
+SURYA_DATA_DIR="$WORK/ui" SURYA_IPC_PORT=$PORT DISPLAY=$DISPLAY_NO \
   "$ZERON" --tasks-demo --tasks-space space-demo > "$WORK/demo.log" 2>&1 &
 DEMO=$!
 sleep 10

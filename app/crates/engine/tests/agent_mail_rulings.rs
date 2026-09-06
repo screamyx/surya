@@ -8,9 +8,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mail_support::{CHAT_B, EchoHarness, FailingHarness, request, settled, user_texts, wait_for};
-use zeron_engine::mail::MAX_DELIVERY_ATTEMPTS;
-use zeron_engine::{EngineCore, HarnessRegistry};
-use zeron_proto::HarnessId;
+use surya_engine::mail::MAX_DELIVERY_ATTEMPTS;
+use surya_engine::{EngineCore, HarnessRegistry};
+use surya_proto::HarnessId;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_repeated_delivery_id_does_not_redeliver() {

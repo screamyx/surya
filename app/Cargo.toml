@@ -14,11 +14,11 @@ members = [
     "crates/syntax",
     "crates/a2ui",
     "crates/test-deadlines",
-    "apps/zeron",
+    "apps/surya",
 ]
 # surya-browser is a path dependency, not a member: it links Chromium (CEF)
 # and its build script downloads the CEF binary, which `cargo check
-# --workspace` (CI) must never pull. `-p zeron --features browser` builds it.
+# --workspace` (CI) must never pull. `-p surya --features browser` builds it.
 exclude = ["crates/browser"]
 
 [workspace.package]
@@ -28,18 +28,18 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
-zeron-proto = { path = "crates/proto" }
-zeron-doc = { path = "crates/doc" }
-zeron-sync = { path = "crates/sync" }
-zeron-harness = { path = "crates/harness" }
-zeron-engine = { path = "crates/engine" }
-zeron-rpc = { path = "crates/rpc" }
-zeron-update = { path = "crates/update" }
-zeron-ui = { path = "crates/ui" }
-zeron-syntax = { path = "crates/syntax" }
-zeron-theme = { path = "crates/theme" }
-zeron-test-deadlines = { path = "crates/test-deadlines" }
-# surya: haktui's CEF browser pane, behind the `browser` feature on zeron-ui and zeron.
+surya-proto = { path = "crates/proto" }
+surya-doc = { path = "crates/doc" }
+surya-sync = { path = "crates/sync" }
+surya-harness = { path = "crates/harness" }
+surya-engine = { path = "crates/engine" }
+surya-rpc = { path = "crates/rpc" }
+surya-update = { path = "crates/update" }
+surya-ui = { path = "crates/ui" }
+surya-syntax = { path = "crates/syntax" }
+surya-theme = { path = "crates/theme" }
+surya-test-deadlines = { path = "crates/test-deadlines" }
+# surya: haktui's CEF browser pane, behind the `browser` feature on surya-ui and surya.
 surya-browser = { path = "crates/browser" }
 surya-a2ui = { path = "crates/a2ui" }
 
@@ -68,7 +68,7 @@ loro-protocol = "0.3"
 # sidebar); a6c1ad5 adds BackdropBlur + horizontal EdgeFade + glass fixes;
 # 9b672fa bounds renderer GPU memory (region-sized backdrop blur scratch,
 # idle release of blur/path intermediates, instance pool shrink,
-# ZERON_GPU_STATS=1 diagnostics); b687328 adds ImageSource::evict (frees
+# SURYA_GPU_STATS=1 diagnostics); b687328 adds ImageSource::evict (frees
 # sprite-atlas tiles — remove_asset alone leaked them, see
 # attachments::flush_evicted); ac135eb adds device memory to the stats line;
 # f596cde fixes destination alpha on transparent windows (Porter-Duff OVER,

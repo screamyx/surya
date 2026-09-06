@@ -24,9 +24,9 @@ use gpui::{
     px,
 };
 
-use zeron_engine::registry::{HarnessDescriptor, descriptor_enabled};
-use zeron_proto::HarnessId;
-use zeron_rpc::methods;
+use surya_engine::registry::{HarnessDescriptor, descriptor_enabled};
+use surya_proto::HarnessId;
+use surya_rpc::methods;
 
 use crate::pickers::visible_harnesses;
 use crate::popover::{self, Loadable};

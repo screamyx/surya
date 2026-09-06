@@ -1,7 +1,7 @@
 //! The A2UI envelope list a `show_card` call carries, normalized once for
 //! every harness: a model may send the full envelope stream, one envelope,
 //! or the `{surfaceId, components, data}` shorthand. The renderer parses
-//! any of them, but the wire event ([`zeron_proto::AgentEvent::Card`])
+//! any of them, but the wire event ([`surya_proto::AgentEvent::Card`])
 //! carries the list form so every consumer sees one shape.
 
 use serde_json::{Value, json};
