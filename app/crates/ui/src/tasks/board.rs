@@ -31,9 +31,9 @@ pub struct TasksPane {
     space_id: String,
     space_name: SharedString,
     pub(super) model: BoardModel,
-    focus_handle: FocusHandle,
+    pub(super) focus_handle: FocusHandle,
     pub(super) sheet: Option<EditSheet>,
-    quick_add: Entity<ComposerInput>,
+    pub(super) quick_add: Entity<ComposerInput>,
     /// Last RPC failure, shown under the header until the next success.
     pub(super) error: Option<SharedString>,
     /// The columns row scrolls sideways when the pane is narrower than four
@@ -53,6 +53,9 @@ impl TasksPane {
     ) -> Self {
         let space_id: String = space.into();
         let quick_add = cx.new(|cx| ComposerInput::with_context("Add a task", "PaletteSearch", cx));
+        // Kept, but it does not fire today: `PaletteSearch` leaves enter
+        // unbound, so the input never raises `Submitted` and `quick_add.rs`
+        // handles the key instead. This stays correct if that binding lands.
         let quick_add_events = cx.subscribe(&quick_add, |this: &mut Self, _, event, cx| {
             if matches!(event, ComposerInputEvent::Submitted) {
                 this.submit_quick_add(cx);
@@ -125,16 +128,6 @@ impl TasksPane {
         self.mutate(params, cx);
     }
 
-    fn submit_quick_add(&mut self, cx: &mut Context<Self>) {
-        let title = self.quick_add.read(cx).text().trim().to_string();
-        if title.is_empty() {
-            return;
-        }
-        self.quick_add
-            .update(cx, |input, cx| input.set_text(String::new(), cx));
-        self.create_task(&title, TaskStatus::Queued, serde_json::Value::Null, cx);
-    }
-
     /// A card was dropped: status change and/or rank writes per the model.
     pub(super) fn drop_card(
         &mut self,
@@ -165,6 +158,13 @@ impl TasksPane {
     }
 
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // The quick-add box first: enter and escape are unbound in its key
+        // context on purpose, so they arrive here as raw keys while the box,
+        // not the pane, holds focus. See `quick_add.rs`.
+        if self.on_quick_add_key(event, window, cx) {
+            cx.stop_propagation();
+            return;
+        }
         // Only when the pane itself has focus: a child input owns its own keys.
         if !self.focus_handle.is_focused(window) {
             return;
