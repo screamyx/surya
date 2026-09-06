@@ -271,7 +271,7 @@ jobs:
           # work on the owner's disk, and on six days out of seven the answer
           # cannot change what this step does. So: one file stat on most
           # runs, the walk only in the week the clean could fire.
-          $lastCheck = if (Test-Path $stamp) { (Get-Item $stamp).LastWriteTime } else { [datetime]::MinValue }
+          $lastCheck = if (Test-Path $stamp) { (Get-Item $stamp -Force).LastWriteTime } else { [datetime]::MinValue }
           $daysSince = [math]::Round(((Get-Date) - $lastCheck).TotalDays, 1)
           if ($daysSince -lt 7) {
             Write-Host "last clean $daysSince days ago, under 7; not measuring the target dir this run"
