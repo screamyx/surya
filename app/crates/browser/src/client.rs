@@ -137,14 +137,9 @@ static LOAD_END_OTHER: AtomicU64 = AtomicU64::new(0);
 /// runs on CEF's UI thread (a callback, or the inline mode's main thread);
 /// a call from the shell goes through `cef_thread::on_ui` with
 /// [`browser_of`] instead. Kept for the devtools and self-test modules.
-#[allow(dead_code)]
+/// The active tab's browser, if it exists.
 pub(crate) fn browser() -> Option<Browser> {
     browser_of(crate::tabs::active_browser())
-}
-
-#[allow(dead_code)]
-pub(crate) fn host() -> Option<BrowserHost> {
-    browser().and_then(|b| b.host())
 }
 
 /// The browser with CEF identifier `id`, if it still exists.
@@ -153,13 +148,6 @@ pub(crate) fn browser_of(id: i32) -> Option<Browser> {
         return None;
     }
     BROWSERS.lock().ok()?.as_ref()?.get(&id).cloned()
-}
-
-/// Whether `id` names a live browser, without touching its refcount. For
-/// the threaded paint handoff (astra), which drops frames of dead browsers.
-#[allow(dead_code)]
-pub(crate) fn has_browser(id: i32) -> bool {
-    id != 0 && BROWSERS.lock().ok().and_then(|g| g.as_ref().map(|m| m.contains_key(&id))).unwrap_or(false)
 }
 
 pub(crate) fn host_of(id: i32) -> Option<BrowserHost> {

@@ -167,10 +167,11 @@ pub(crate) fn on_load_end(id: i32) {
 }
 
 /// Send one method to browser `id` and hand its reply to `done`. Returns
-/// the message id, or `None` when that browser is not open (then `done`
-/// was called with the error already). The message itself goes out on
-/// CEF's UI thread (`cef_thread::on_ui`); a message CEF refuses there is
-/// answered with an error from that thread instead of at the deadline.
+/// `None` only when that browser is not open (then `done` was called with
+/// the error already). Otherwise the message id comes back at once, and
+/// the message itself goes out on CEF's UI thread (`cef_thread::on_ui`):
+/// a message CEF refuses there reaches `done` as an error from that thread,
+/// not the return value, since the refusal is only known on that thread.
 pub(crate) fn send(
     browser: i32,
     method: &'static str,

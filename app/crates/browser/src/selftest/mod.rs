@@ -52,13 +52,21 @@ fn load(url: &str) -> bool {
 /// One wheel notch at the middle of the view, the way a mouse sends it.
 fn wheel(dy: i32) -> bool {
     use std::sync::atomic::Ordering;
-    let Some(host) = crate::client::host() else { return false };
+    let id = crate::tabs::active_browser();
+    if crate::client::browser_of(id).is_none() {
+        return false;
+    }
     let x = crate::render::VIEW_W.load(Ordering::Acquire) / 2;
     let y = crate::render::VIEW_H.load(Ordering::Acquire) / 2;
-    let ev = MouseEvent { x, y, modifiers: 0 };
     // The same marker a real wheel sets on its way to CEF.
     crate::pump::mark_input();
-    host.send_mouse_wheel_event(Some(&ev), 0, dy);
+    // On CEF's UI thread, like every shell-side host call (cef_thread.rs).
+    crate::cef_thread::on_ui(move || {
+        if let Some(host) = crate::client::host_of(id) {
+            let ev = MouseEvent { x, y, modifiers: 0 };
+            host.send_mouse_wheel_event(Some(&ev), 0, dy);
+        }
+    });
     true
 }
 

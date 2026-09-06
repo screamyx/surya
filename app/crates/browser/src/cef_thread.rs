@@ -45,18 +45,30 @@ wrap_task! {
 }
 
 static POSTED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Posts CEF refused (before `initialize`, after `shutdown`): the job was
+/// dropped. Printed in [`counters`], so a lost call is never silent.
+static REFUSED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// Run `f` on CEF's UI thread: now, when that is this thread; otherwise
-/// posted. A call that CEF refuses to post (before `initialize`, after
-/// `shutdown`) is dropped, as the browser it named is gone anyway.
+/// Run `f` on CEF's UI thread: now, when that is this thread (inline mode,
+/// or a threaded-mode call already on CEF's thread, such as from a CEF
+/// callback); otherwise posted. A call that CEF refuses to post (before
+/// `initialize`, after `shutdown`) is dropped and counted, as the browser
+/// it named is gone anyway.
 pub(crate) fn on_ui(f: impl FnOnce() + Send + 'static) {
-    if !threaded() {
+    on_ui_with(threaded(), f);
+}
+
+/// [`on_ui`] with the mode passed in, so a test can take either branch.
+fn on_ui_with(threaded: bool, f: impl FnOnce() + Send + 'static) {
+    if !threaded || currently_on(ThreadId::UI) != 0 {
         f();
         return;
     }
     POSTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut task = UiTask::new(Arc::new(Mutex::new(Some(Box::new(f) as Job))));
-    let _ = post_task(ThreadId::UI, Some(&mut task));
+    if post_task(ThreadId::UI, Some(&mut task)) == 0 {
+        REFUSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// A browser answered its close (`on_before_close`, after the map entry is
@@ -79,7 +91,12 @@ pub(crate) fn wait_until_closed(timeout: Duration) -> bool {
 }
 
 pub(crate) fn counters() -> String {
-    format!("threaded={} ui_posted={}", u8::from(threaded()), POSTED.load(std::sync::atomic::Ordering::Relaxed))
+    format!(
+        "threaded={} ui_posted={} ui_refused={}",
+        u8::from(threaded()),
+        POSTED.load(std::sync::atomic::Ordering::Relaxed),
+        REFUSED.load(std::sync::atomic::Ordering::Relaxed)
+    )
 }
 
 #[cfg(test)]
@@ -87,12 +104,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn inline_mode_runs_the_closure_now() {
-        // No env, no CEF: not threaded, and the call runs before return.
-        assert!(!threaded());
+    fn inline_mode_runs_the_closure_before_returning() {
+        // The inline branch, whatever SURYA_CEF_THREADED says in this shell;
+        // the threaded branch needs a live CEF and is proven on dtry.
         let ran = Arc::new(Mutex::new(false));
         let seen = ran.clone();
-        on_ui(move || *seen.lock().unwrap() = true);
+        on_ui_with(false, move || *seen.lock().unwrap() = true);
         assert!(*ran.lock().unwrap());
+        assert!(counters().contains("ui_refused="));
     }
 }
