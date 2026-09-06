@@ -8,11 +8,12 @@ Read the decision that covers your change before you write code.
 ## Build and test
 
 Run these from `app/`.
-CI runs the same four commands.
+CI runs the same five commands.
 
 ```
-cargo test -p zeron-proto -p zeron-doc -p zeron-rpc -p zeron-engine -p zeron-harness -p surya-mcp
+cargo test -p surya-proto -p surya-doc -p surya-rpc -p surya-engine -p surya-harness -p surya-mcp
 cargo check --workspace --all-targets
+cargo test -p surya-ui
 cargo test -p surya-a2ui
 SURYA_SMOKE_CARGO=cargo scripts/smoke.sh
 ```
@@ -20,14 +21,14 @@ SURYA_SMOKE_CARGO=cargo scripts/smoke.sh
 The browser pane is off by default and builds separately.
 
 ```
-cargo build -p zeron --features browser
+cargo build -p surya --features browser
 cd crates/browser && cargo test
 ```
 
 `crates/browser` is a path dependency, not a workspace member.
 Its build script downloads the CEF binary, and `cargo check --workspace` must never pull it.
 
-Only the seven crates named above run their tests in CI.
+Only the eight crates named above run their tests in CI.
 Every other crate gets `cargo check` only, so run its tests locally when you touch it.
 
 There is no `cargo fmt --check` in CI, because the upstream comet tree is not formatting clean.
@@ -39,7 +40,6 @@ Do not reformat files you did not otherwise change.
 - No emoji anywhere: user interface, code, docs, commit messages. `python3 scripts/check_no_emoji.py` checks this.
 - No em dash. Use a plain dash instead.
 - New panes use comet's tokens. The look is comet's own and the features are ours.
-- Crate names are mixed on purpose. Upstream crates stay `zeron-*`, new ones are `surya-*`. Do not rename piecemeal.
 - `app/.github/workflows/` is comet's own release pipeline and never runs from here. Leave it alone.
 
 ## Pull requests
