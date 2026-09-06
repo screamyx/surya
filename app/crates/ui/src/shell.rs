@@ -344,6 +344,7 @@ fn log_keymap_proof(cx: &App, toggle_terminal: &str, toggle_files: &str) {
     };
     probe(Some("Composer"), "enter", "Submit");
     probe(Some("FilesEditor"), "enter", "Newline");
+    probe(Some("FilesEditor"), "ctrl-s", "SaveFile");
     probe(None, toggle_terminal, "ToggleTerminal");
     probe(None, toggle_files, "ToggleFiles");
     // The browser pane's chords are bound with no context and must come out
@@ -457,13 +458,20 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
             None,
         ))
     }));
-    // LAST of the binds, and it has to be: the browser pane binds ctrl-tab
-    // and cmd-w with no context, as the bindings above do, and gpui breaks a
-    // same-depth tie by insertion order. Bound earlier, the pane's tab switch
-    // would lose to NextSession. The pane's handlers only exist while it is
-    // focused, so these fall through to the bindings above whenever it is not.
+    // LAST of the context-less binds, and it has to be: the browser pane binds
+    // ctrl-tab and cmd-w with no context, as the bindings above do, and gpui
+    // breaks a same-depth tie by insertion order. Bound earlier, the pane's
+    // tab switch would lose to NextSession. The pane's handlers only exist
+    // while it is focused, so these fall through to the bindings above
+    // whenever it is not.
     #[cfg(feature = "browser")]
     crate::browser_pane::init(cx);
+    // The editor's save chord goes after EVERY chord a keymap can remap (the
+    // block above, the jump slots, the browser pane): a context-less binding
+    // and one matched on the innermost context score the same depth, and the
+    // later-bound one wins (files::bind_save_keys). Any shortcut remapped to
+    // mod-s still loses to save while the editor has focus.
+    crate::files::bind_save_keys(cx);
     // After every bind, so the probe reads the map that shipped.
     log_keymap_proof(cx, &toggle_terminal, &toggle_files);
 }
