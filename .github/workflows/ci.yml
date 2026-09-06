@@ -3,32 +3,42 @@ name: CI
 # Every merge into main so far was reviewed by reading. This is the machine
 # saying main builds and the headless tests pass.
 #
-# The runners are self-hosted on pc-ajim since 2026-09-05 12:49 (decision 24):
-# GitHub-hosted jobs stopped starting at 12:35 with "The job was not started
-# because recent account payments have failed or your spending limit needs to
-# be increased". Two runner services since 2026-09-06 03:10 (owner: "CI
-# improvement takes priorities from all other work"):
-# actions.runner.screamyx-surya.pc-ajim-surya at /store/gha-runner-surya with
-# CARGO_TARGET_DIR=/store/surya-ci-target, and pc-ajim-surya-2 at
-# /store/gha-runner-surya-2 with /store/surya-ci-target-2 (a copy of the
-# first). Each target dir is that runner's cache; no rust-cache action. Each
-# runner takes one job at a time, so the workflow is ONE job: three jobs on
-# one runner ran serially anyway and paid three checkouts and two extra link
-# passes per PR (about 30 min); one job with the same steps is about half
-# that, and two runners take two PRs at once. The system libraries gpui needs are already on
-# the box, so the apt and "free disk space" steps of the hosted era are gone:
-# never `sudo rm -rf` or `apt-get` on a shared machine from CI.
+# WHERE THE JOBS RUN, in one place (task 37, owner 2026-09-07 02:05):
 #
-# `app/` is the comet subtree and holds the cargo workspace, so every job runs
-# there. `app/.github/workflows/` is comet's own release pipeline: GitHub only
-# reads workflows from the repository root, so those files never fire here and
-# are not touched.
+#   linux    ubuntu-latest, GitHub-hosted. Free on a public repository,
+#            metered on a private one. The `if:` on the job is the switch:
+#            it runs only when the repository is public, so merging this
+#            file before the repository is flipped costs no minutes.
+#   windows  [self-hosted, surya-win], the owner's PC "dtry". Runs at idle
+#            priority, reuses a warm target directory on E:, and deletes
+#            what it packs. See the guarantees on the job itself.
+#
+# This replaces the two self-hosted Linux runners on pc-ajim (decision 24):
+# pc-ajim-surya at /store/gha-runner-surya and pc-ajim-surya-2 at
+# /store/gha-runner-surya-2. They are retired by hand after this workflow
+# has one green run, not by this file. pc-ajim is the swarm's build box and
+# CI was competing with every seat on it for cores.
+#
+# Decision 28 says Windows is the product and Linux is a test bench. The
+# split here follows it: Linux gives the cheap fail-fast signal, Windows
+# produces the thing the owner actually runs.
+#
+# `app/` is the comet subtree and holds the cargo workspace, so every job
+# runs there. `app/.github/workflows/` is comet's own release pipeline:
+# GitHub only reads workflows from the repository root, so those files never
+# fire here and are not touched.
 #
 # There is no `cargo fmt --check` step. The upstream comet tree is not
 # fmt-clean, so the check would fail on code nobody in this project wrote.
 
 on:
   pull_request:
+    # A docs-only pull request has nothing for a compiler to say. The same
+    # list sits under `push` below; both events need it, and only `push` had
+    # it before (task 36).
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
   push:
     branches: [main]
     # docs-only pushes (handoff notes land every few minutes) must not cancel
@@ -38,8 +48,12 @@ on:
       - 'docs/**'
       - '**.md'
 
+# One run per pull request, and a new push kills the one before it. On a
+# pull_request event `github.head_ref` is the source branch, which is stable
+# across force-pushes to the same PR; on a push to main it is empty and
+# `github.ref` takes over.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -54,14 +68,24 @@ env:
   CARGO_PROFILE_TEST_DEBUG: "0"
 
 jobs:
-  # One job, five steps, in the order that fails fastest. The six headless
-  # crates first (no gpui, the useful signal), then the whole-workspace check,
-  # then ui's tests and a2ui's, then the smoke (one engine over the real
-  # websocket, driven by the binaries a user runs). The gpui build is paid by
-  # the check step; every step after it is incremental on top.
-  ci:
-    name: ci
-    runs-on: [self-hosted, surya-ci]
+  # ---------------------------------------------------------------- linux --
+  # The same five steps as the pc-ajim job, in the same order, which is the
+  # order that fails fastest. The six headless crates first (no gpui, the
+  # useful signal), then the whole-workspace check, then ui's tests and
+  # a2ui's, then the smoke (one engine over the real websocket, driven by the
+  # binaries a user runs). The gpui build is paid by the check step; every
+  # step after it is incremental on top.
+  linux:
+    name: linux
+    # THE SWITCH. A GitHub-hosted runner is free on a public repository and
+    # billed against a capped minute balance on a private one, so this job
+    # waits for the repository to be public. Read off a real push event on
+    # 2026-09-06: `visibility` is "private" today and this expression is
+    # false, so the job is skipped before a runner is ever assigned. An
+    # absent field is also not "public", so the failure direction is "does
+    # not run", never "runs and bills".
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     defaults:
       run:
@@ -69,15 +93,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # AGENTS.md says CI never runs `sudo rm -rf` or `apt-get`. That rule is
+      # about pc-ajim, which is the owner's own shared machine. A hosted
+      # runner is a fresh throwaway VM that is destroyed when the job ends,
+      # so both of the next two steps are safe here and both are needed: the
+      # pc-ajim job could drop them only because that box already had the
+      # libraries and the disk. These two steps are restored verbatim from
+      # the hosted-era file at 3790d41 (decision 24 said moving back would be
+      # "one `runs-on` edit plus restoring those steps").
+      #
+      # The hosted image ships tens of GB of toolchains this build never
+      # touches. Reclaiming them buys the linker its working room back.
+      - name: free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/share/boost /usr/local/.ghcup
+          df -h /
+
+      # The system libraries gpui links against. The list is the one comet's
+      # own release workflow installs (app/.github/workflows/release.yml), so
+      # it is known to be enough.
+      - name: gpui system deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev \
+            libx11-dev libxcb1-dev libx11-xcb-dev \
+            libfontconfig1-dev libfreetype-dev libasound2-dev \
+            libvulkan-dev pkg-config cmake
+
       - name: rust toolchain (app/rust-toolchain.toml)
         run: rustup show active-toolchain || rustup toolchain install
 
-      # --jobs 2 was set when roughly twenty test binaries linking at once
-      # exhausted the runner with debug info on. Debug info is off (env above)
-      # and MemoryHigh is set on the service, so six at a time is safe.
+      # The pc-ajim runners cached by building into one persistent
+      # CARGO_TARGET_DIR that survived between runs. A hosted runner is a
+      # fresh machine every time, so the cache has to be uploaded and
+      # downloaded. rust-cache rather than actions/cache because it already
+      # knows the three things a hand-written actions/cache entry has to be
+      # taught and kept correct: it keys on Cargo.lock AND the exact rustc
+      # version (a toolchain bump otherwise restores objects rustc will not
+      # reuse), it drops this workspace's own crates from the saved artifact
+      # (they change every commit and would only be dead weight), and it
+      # prunes the registry so the cache stays inside the 10 GB a repository
+      # gets before GitHub starts evicting.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+
+      # A GitHub-hosted ubuntu-latest runner is 4 cores and 16 GB. --jobs 4
+      # matches the cores. The old --jobs 6 was tuned for a 16-thread box
+      # shared with the swarm, not for this one.
       - name: headless tests
         run: |
-          cargo test --jobs 6 \
+          cargo test --jobs 4 \
             -p surya-proto \
             -p surya-doc \
             -p surya-rpc \
@@ -86,28 +155,143 @@ jobs:
             -p surya-mcp
 
       - name: cargo check (whole workspace)
-        run: cargo check --workspace --all-targets
+        run: cargo check --jobs 4 --workspace --all-targets
 
       # crates/ui was the one crate nothing ran the tests of: the headless
       # step skips it (gpui), and `cargo check` never runs a test - it stops
       # at rmeta, so this step still codegens and links the ui test binary
       # itself. It sits here for fail-fast order, not for reuse: a broken
       # workspace should fail before anything spends time on a test binary.
-      # Cost, measured twice, because the runner is the swarm's build box and
-      # the two numbers are not close:
-      #   run 34001992513, quiet:  40s of a 6m51s run
-      #   run 34021004960, loaded: 875s of a 52m51s run
-      # Codegen and linking contend worst, so this step stretches further
-      # under load than the run does (22x against the run's 8x). Worth it for
-      # 659 tests that had never run in CI at all - but that is the trade, and
-      # the quiet number alone would have hidden it.
+      # It was the most expensive step on pc-ajim and it is load-sensitive:
+      #   run 34001992513, quiet runner:   40s of a 6m51s run
+      #   run 34021004960, loaded runner: 875s of a 52m51s run
+      # A hosted runner has no other tenant, so the quiet number is the one
+      # to expect here. That is the whole point of the move.
       - name: cargo test -p surya-ui
-        run: cargo test --jobs 6 -p surya-ui
+        run: cargo test --jobs 4 -p surya-ui
 
       - name: cargo test -p surya-a2ui
-        run: cargo test --jobs 6 -p surya-a2ui
+        run: cargo test --jobs 4 -p surya-a2ui
 
       - name: smoke
         env:
           SURYA_SMOKE_CARGO: cargo
         run: scripts/smoke.sh
+
+  # -------------------------------------------------------------- windows --
+  # The product build (decision 28). Same commands deploy/windows/build.ps1
+  # runs by hand today on dtry, so CI and the owner's own build cannot drift.
+  #
+  # The owner's two conditions, verbatim (2026-09-07 02:05):
+  #   "the low priority run dont effect my non-gaming day to day use"
+  #   "it wont eat too much space"
+  # Every rule below exists to keep one of those two. Each is marked.
+  windows:
+    name: windows
+    runs-on: [self-hosted, surya-win]
+    # A warm incremental build measured 2m32s to 4m54s on dtry. A cold one
+    # after a `cargo clean` is the long tail this covers.
+    timeout-minutes: 90
+    env:
+      # SPACE. One target directory, reused forever, already 13.3 GB warm.
+      # Not the runner's workspace: the runner would wipe it between runs and
+      # every build would be cold, which is both slower and more disk churn.
+      CARGO_TARGET_DIR: E:\surya-remote-target
+      # PRIORITY. 8 of the 9800X3D's 16 threads. Half the box stays free for
+      # whatever the owner is doing.
+      CARGO_BUILD_JOBS: "8"
+      # SPACE. Above this, the weekly clean below fires.
+      TARGET_DIR_LIMIT_GB: "25"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: rust toolchain (app/rust-toolchain.toml)
+        shell: pwsh
+        working-directory: app
+        run: rustup show active-toolchain || rustup toolchain install
+
+      # SPACE. Runs before the build, so a run that would have overflowed E:
+      # cleans first instead of failing half way through a link. Weekly, not
+      # every run: a clean throws away the warm target and the next build is
+      # cold, so it is worth doing rarely and only when the size asks for it.
+      # The stamp file is the clock. Both conditions must hold.
+      - name: weekly cargo clean when the target dir is over 25 GB
+        shell: pwsh
+        working-directory: app
+        run: |
+          $ErrorActionPreference = "Stop"
+          $target = $env:CARGO_TARGET_DIR
+          $limit  = [int]$env:TARGET_DIR_LIMIT_GB
+          $stamp  = Join-Path $target ".last-ci-clean"
+          if (-not (Test-Path $target)) {
+            Write-Host "no target dir yet at $target, nothing to clean"
+            exit 0
+          }
+          $bytes = (Get-ChildItem $target -Recurse -File -Force -ErrorAction SilentlyContinue |
+                    Measure-Object -Property Length -Sum).Sum
+          $gb = [math]::Round($bytes / 1GB, 1)
+          $lastClean = if (Test-Path $stamp) { (Get-Item $stamp).LastWriteTime } else { [datetime]::MinValue }
+          $daysSince = [math]::Round(((Get-Date) - $lastClean).TotalDays, 1)
+          Write-Host "target dir $target is $gb GB, limit $limit GB, last clean $daysSince days ago"
+          if ($gb -gt $limit -and $daysSince -ge 7) {
+            Write-Host "== cargo clean"
+            cargo clean
+            if ($LASTEXITCODE -ne 0) { throw "cargo clean failed with exit $LASTEXITCODE" }
+            New-Item -ItemType Directory -Force -Path $target | Out-Null
+            Set-Content -Path $stamp -Value (Get-Date -Format o)
+          } else {
+            Write-Host "no clean this run"
+          }
+
+      # PRIORITY. Windows gives a new process its parent's priority class
+      # unless the parent asks otherwise, so dropping this shell to Idle
+      # drops cargo, rustc and link.exe with it. Idle yields to everything,
+      # including a game. The runner service is installed at idle priority
+      # too (deploy/windows/install-runner.ps1); this line is the second belt
+      # and it is the one that survives a service reinstall.
+      #
+      # The build itself is build.ps1 and nothing else. -Browser needs
+      # CEF_PATH, seeded once on the box; without it build.ps1 throws rather
+      # than re-downloading 250 MB into the build directory.
+      - name: build and pack (deploy/windows/build.ps1 -Browser)
+        shell: pwsh
+        env:
+          CEF_PATH: E:\surya-cef2-cef
+        run: |
+          $ErrorActionPreference = "Stop"
+          (Get-Process -Id $PID).PriorityClass = "Idle"
+          Write-Host "this shell is $((Get-Process -Id $PID).PriorityClass); cargo inherits it"
+          $sha = "${{ github.event.pull_request.head.sha || github.sha }}".Substring(0, 9)
+          powershell -ExecutionPolicy Bypass -File deploy\windows\build.ps1 -Browser -Sha $sha
+          if ($LASTEXITCODE -ne 0) { throw "build.ps1 failed with exit $LASTEXITCODE" }
+
+      # The zip is the deliverable. 14 days is long enough to go back to a
+      # build the owner was looking at last week and short enough that the
+      # storage does not accumulate.
+      - name: upload the zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: surya-windows-${{ github.run_id }}
+          path: dist/surya-windows-*.zip
+          retention-days: 14
+          if-no-files-found: error
+
+      # SPACE. `dist` is the packed folder plus a 207 MB zip, per run. The
+      # zip is in the artifact by now, so nothing here is the only copy.
+      # `always()` so a failed build does not leave a part-packed folder on
+      # E: either. The target dir is deliberately NOT touched: that is the
+      # warm cache the next run needs, and the weekly step above is what
+      # bounds it.
+      - name: delete this run's build folder
+        if: always()
+        shell: pwsh
+        run: |
+          $dist = Join-Path $env:GITHUB_WORKSPACE "dist"
+          if (Test-Path $dist) {
+            $mb = [math]::Round((Get-ChildItem $dist -Recurse -File -Force -ErrorAction SilentlyContinue |
+                                 Measure-Object -Property Length -Sum).Sum / 1MB, 1)
+            Remove-Item -Recurse -Force $dist
+            Write-Host "removed $dist, $mb MB"
+          } else {
+            Write-Host "no dist folder to remove"
+          }
