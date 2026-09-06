@@ -837,7 +837,7 @@ impl Pickers {
     /// which the doc write alone would only reach on its next pass); on the
     /// new-chat canvas it is the draft plus the sticky global default, the
     /// same shape as picking a model.
-    fn set_auto_approve(&mut self, on: bool, cx: &mut Context<Self>) {
+    pub fn set_auto_approve(&mut self, on: bool, cx: &mut Context<Self>) {
         let selected = self.state.read(cx).selected_chat.clone();
         match selected {
             Some(chat_id) => {
