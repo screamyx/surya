@@ -235,14 +235,17 @@ fn show_active() {
     crate::client::activate(active_browser());
 }
 
+/// Every tab in strip order, as the strip draws them.
 pub fn tabs() -> Vec<TabInfo> {
     with(|t| t.infos())
 }
 
+/// The tab on screen, if any tab exists.
 pub fn active_tab() -> Option<TabId> {
     with(|t| t.active().map(|t| t.id))
 }
 
+/// How many tabs exist.
 pub fn count() -> usize {
     with(|t| t.tabs.len())
 }
@@ -370,100 +373,5 @@ pub(crate) fn counters() -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn open_makes_the_new_tab_active_and_ids_never_repeat() {
-        let mut t = Tabs::default();
-        let a = t.open("https://a");
-        let b = t.open("https://b");
-        assert_ne!(a, b);
-        assert_eq!(t.active().map(|t| t.id), Some(b));
-        assert_eq!(t.infos().len(), 2);
-        assert_eq!(t.infos()[1].url, "https://b");
-        assert!(t.infos()[1].loading);
-    }
-
-    #[test]
-    fn closing_the_active_tab_activates_its_left_neighbour() {
-        let mut t = Tabs::default();
-        let a = t.open("https://a");
-        let b = t.open("https://b");
-        let c = t.open("https://c");
-        t.activate(c);
-        assert_eq!(t.close(c).map(|c| (c.id, c.was_active)), Some((c, true)));
-        assert_eq!(t.active().map(|t| t.id), Some(b));
-        t.activate(a);
-        assert_eq!(t.close(a).map(|c| (c.id, c.was_active)), Some((a, true)));
-        assert_eq!(t.active().map(|t| t.id), Some(b));
-        assert_eq!(t.close(b).map(|c| c.was_active), Some(true));
-        assert!(t.active().is_none());
-        assert!(t.close(b).is_none());
-    }
-
-    #[test]
-    fn closing_a_tab_left_of_the_active_one_keeps_the_active_tab() {
-        let mut t = Tabs::default();
-        let a = t.open("https://a");
-        let b = t.open("https://b");
-        let c = t.open("https://c");
-        t.activate(b);
-        assert_eq!(t.close(a).map(|c| c.was_active), Some(false));
-        assert_eq!(t.active().map(|t| t.id), Some(b));
-        assert_eq!(t.close(c).map(|c| c.was_active), Some(false));
-        assert_eq!(t.active().map(|t| t.id), Some(b));
-    }
-
-    #[test]
-    fn a_browser_that_closes_itself_takes_its_tab_and_keeps_its_address() {
-        let mut t = Tabs::default();
-        let a = t.open("https://a");
-        let b = t.open("https://b");
-        t.tabs[0].browser = 7;
-        t.tabs[1].browser = 9;
-        t.by_browser_mut(9).unwrap().page.committed("https://b/".into());
-        // CEF says browser 9 is gone (window.close): tab b goes with it.
-        let id = t.index_of_browser(9).map(|i| t.tabs[i].id);
-        assert_eq!(id, Some(b));
-        let closed = t.close(b).unwrap();
-        assert_eq!((closed.browser, closed.was_active, closed.url.as_str()), (9, true, "https://b/"));
-        assert_eq!(t.active().map(|t| t.id), Some(a));
-        // Nothing owns 9 any more, and 0 never names a browser.
-        assert_eq!(t.index_of_browser(9), None);
-        assert_eq!(t.index_of_browser(0), None);
-    }
-
-    #[test]
-    fn the_last_tab_to_close_reports_its_address_for_reopen() {
-        let mut t = Tabs::default();
-        let a = t.open("https://a");
-        t.tabs[0].page.committed("https://a/page".into());
-        let closed = t.close(a).unwrap();
-        assert_eq!(closed.url, "https://a/page");
-        assert_eq!(t.tabs.len(), 0);
-    }
-
-    #[test]
-    fn callbacks_land_on_the_tab_that_owns_the_browser() {
-        let mut t = Tabs::default();
-        let a = t.open("https://a");
-        let b = t.open("https://b");
-        t.tabs[0].browser = 7;
-        t.tabs[1].browser = 9;
-        t.by_browser_mut(7).unwrap().page.title = "A".into();
-        t.by_browser_mut(9).unwrap().page.committed("https://b/".into());
-        assert!(t.by_browser_mut(0).is_none());
-        assert!(t.by_browser_mut(8).is_none());
-        let infos = t.infos();
-        assert_eq!((infos[0].id, infos[0].title.as_str()), (a, "A"));
-        assert_eq!((infos[1].id, infos[1].url.as_str()), (b, "https://b/"));
-    }
-
-    #[test]
-    fn a_new_tab_never_opens_what_the_bar_refuses() {
-        assert_eq!(tab_url(""), "about:blank");
-        assert_eq!(tab_url("file:///etc/passwd"), "about:blank");
-        assert_eq!(tab_url("example.com"), "https://example.com");
-    }
-}
+#[path = "tabs_tests.rs"]
+mod tests;
