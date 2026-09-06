@@ -451,13 +451,21 @@ echo "zeron_hits_before=$BEFORE after=$(hits_of '[Zz]eron') files_changed=$CHANG
 
 # --------------------------------------------------------------------------
 # 5. Scope drift. The counters cannot see a directory the script was never
-# told about. This reads the WHOLE repo, subtracts the out-of-scope trees and
-# the masked hits, then fails on the rest. Cargo.lock is excluded like RG
+# told about. This reads every TRACKED file, subtracts the out-of-scope trees
+# and the masked hits, then fails on the rest. Cargo.lock is excluded like RG
 # excludes it: generated, and unrewritten it made this report MISSED=42 of it.
+#
+# The file list is `git ls-files`, not a `grep -r` walk of the directory.
+# The rename itself runs through RG, which skips everything .gitignore
+# names, so a walk reported files the rename was never going to touch: any
+# build output, log or scratch file an agent left in a working checkout that
+# happened to contain the old name. Two seats reading the same commit got
+# different counts. Tracked files are the same set the rename edits and the
+# same set on every checkout, so the count is now a fact about the commit.
 # --------------------------------------------------------------------------
 echo
-MISSED=$(grep -rnI --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules \
-    --exclude=Cargo.lock -e '[Zz]eron' . 2>/dev/null | sed 's|^\./||' \
+MISSED=$(git ls-files -z ':!:Cargo.lock' ':!:*/Cargo.lock' \
+  | xargs -0 -r grep -HnI -e '[Zz]eron' -- 2>/dev/null \
   | grep -vE '^(app/apps/ios|app/edge|app/apps/landing|app/apps/www-redirect|app/\.github|scripts/rename-(apply|dry-run)\.sh|docs/)' \
   | grep -vE "^$EXCLUDE:" \
   | sed -E 's/zeronsh//g; s/zeron\.sh//g; s/"?[Zz]eron[- ](Dark|dark|Light|light)"?//g;
