@@ -25,16 +25,13 @@ RG=(rg --no-messages -g '!target' -g '!node_modules' -g '!.git' -g '!Cargo.lock'
 # app/.github (comet's release pipeline, never fired from a subdirectory) are
 # out of scope per the plan (rows 13, 14, 15).
 #
-# This list grows: `deploy/` (2026-09-05), `AGENTS.md` and `sandbox/`
-# (2026-09-06), each found by the guard at the end.
-# `ZERON_` is its own pattern because `[Zz]eron` does not match it: a file
-# whose only hits are the all-caps env prefix was never selected.
+# This list grows: `deploy/` (09-05), `AGENTS.md` and `sandbox/` (09-06).
+# `ZERON_` is its own pattern: `[Zz]eron` does not match it.
 #
-# Two files are excluded outright, every hit in them being the old name on
-# purpose. env_compat.rs is GENERATED here - rewriting it made its fallback
-# read `var_os("SURYA_")`, the compat dead and the tree still compiling.
-# data_dir.rs adopts the OLD dir - rewriting its fixtures made it adopt a
-# dir from itself: three tests red.
+# Two files are excluded outright, every hit in them the old name on purpose.
+# env_compat.rs is GENERATED here - rewriting it made its fallback read
+# `var_os("SURYA_")`, the compat dead and the tree still compiling. data_dir.rs
+# adopts the OLD dir - rewriting its fixtures made it adopt a dir from itself.
 EXCLUDE='app/crates/(proto/src/env_compat|engine/src/data_dir)\.rs'
 in_scope_files() {
   "${RG[@]}" -l -e '[Zz]eron' -e 'ZERON_' \
@@ -137,9 +134,9 @@ assert_data_dir_call_present() {
 }
 
 rename_legacy_theme_fns() {
-  # The sandbox's theme generator names comet's builtins through a template
-  # literal. The global rule makes that `fn surya_${mode}()`, which EXISTS -
-  # surya's own themes - so it would keep running on another theme's seeds.
+  # The sandbox generator names comet's builtins in a template literal. The
+  # global rule makes that `fn surya_${mode}()`, which EXISTS, so it would
+  # keep running on another theme's seeds.
   sed -e 's/\bzeron_dark\b/comet_dark/g' -e 's/\bzeron_light\b/comet_light/g' \
       -e 's/fn zeron_\${mode}/fn comet_${mode}/g'
 }
@@ -360,17 +357,20 @@ grep -q '^tracing' app/crates/proto/Cargo.toml \
   || sed -i 's/^chrono.workspace = true$/chrono.workspace = true\ntracing.workspace = true/' app/crates/proto/Cargo.toml
 grep -q 'surya-proto' app/apps/surya/Cargo.toml \
   || sed -i 's/^surya-engine.workspace = true$/surya-proto.workspace = true\nsurya-engine.workspace = true/' app/apps/surya/Cargo.toml
+grep -q 'surya-proto' app/crates/mcp/Cargo.toml \
+  || sed -i 's/^surya-rpc.workspace = true$/surya-proto.workspace = true\nsurya-rpc.workspace = true/' app/crates/mcp/Cargo.toml
 
 # --------------------------------------------------------------------------
-# 3b. Route the user-set reads through it. Only the 16 names, only outside
-# tests, and never crates/mcp/src/tasks.rs - that file belongs to the tasks
-# seat. The dev and test knobs keep reading std::env directly: nothing outside
-# this repo sets them, so they need no alias.
+# 3b. Route the user-set reads through it. Only the 16 names, outside tests.
+# This used to skip the whole of crates/mcp/ while claiming to exempt only
+# tasks.rs, leaving crates/mcp/src/browser.rs reading the environment direct.
+# tasks.rs takes its key as a closure argument so it never matched this regex
+# anyway. Dev and test knobs keep std::env: nothing outside this repo sets them.
 # --------------------------------------------------------------------------
 ROUTED=0
 USER_SET='DATA_DIR|EDGE_URL|EDGE_TOKEN|ORG_ID|WORKOS_CLIENT_ID|WORKOS_API_BASE|IPC_PORT|BIND|IPC_TOKEN|CALLBACK_PORT|HARNESS|DEVICE_NAME|ENGINE|ENGINE_TOKEN|USER_ID|WORKTREES_DIR'
 while IFS= read -r file; do
-  case "$file" in */tests/*|*/crates/mcp/*) continue;; esac
+  case "$file" in */tests/*) continue;; esac
   before_sum=$(cksum < "$file")
   perl -pi -e "s/(?:std::)?env::var_os\(\"SURYA_($USER_SET)\"\)/surya_proto::env_compat::var_os(\"\1\")/g;
                s/(?:std::)?env::var\(\"SURYA_($USER_SET)\"\)/surya_proto::env_compat::var(\"\1\")/g" "$file"
@@ -465,7 +465,7 @@ echo "zeron_hits_before=$BEFORE after=$(hits_of '[Zz]eron') files_changed=$CHANG
 # --------------------------------------------------------------------------
 # 5. Scope drift. The counters cannot see a directory the script was never
 # told about. This reads the WHOLE repo, subtracts the out-of-scope trees and
-# every hit the masks keep on purpose, and fails on what is left.
+# the masked hits, and fails on what is left.
 # --------------------------------------------------------------------------
 echo
 MISSED=$(grep -rnI --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules \

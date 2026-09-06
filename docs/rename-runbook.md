@@ -1,11 +1,12 @@
 # Rename runbook: zeron -> surya
 
 Run this on frozen main, after the last feature PR merges.
-It touches 295 files, so nothing rebases across it.
+It touches 327 files, so nothing rebases across it.
 
-Dry-run source for every number below: main `3dfcf38` plus this script's fix,
-2026-09-05 11:45, on a throwaway clone. The counts grow as main grows - a
-small drift is normal, a sudden drop is not.
+Dry-run source for every number below: main `0f4fbe77`, 2026-09-06 18:20, on
+a throwaway clone. The counts grow as main grows - a small drift is normal, a
+sudden drop is not. Re-run the dry run and refresh this table whenever main
+has moved much; a runbook that disagrees with the script is worse than none.
 
 ## The commands
 
@@ -37,18 +38,18 @@ that class of bug has now been found three times in this script.
 
 | Line | Expect | Meaning |
 | --- | --- | --- |
-| `files in scope` | 295 | grows with main; a sudden drop means the scope broke |
-| `files_changed` | 295 | first run |
+| `files in scope` | 327 | grows with main; a sudden drop means the scope broke |
+| `files_changed` | 327 | first run |
 | `paths_moved` | 6 | `apps/zeron`, three `dist/` assets, the ui logo, the theme-import bin |
-| `files_routed` | 6 | env reads sent through the compat alias |
-| `user_set_reads_still_direct` | 1 | `crates/mcp/src/tasks.rs`, deliberate |
+| `files_routed` | 8 | env reads sent through the compat alias |
+| `user_set_reads_still_direct` | 1 | `crates/rpc/tests/device_room.rs`, a test |
 | `compat_blocks_added` | 3 | links.rs, lib.rs, daemon.rs |
 | `cargo_update` | `ok` | the lock regenerated |
-| `zeron_hits_before / after` | 2772 / 322 | every remaining hit is listed below |
+| `zeron_hits_before / after` | 3034 / 339 | every remaining hit is listed below |
 | `missed` | 0 | the scope-drift guard found nothing |
 
 Second and third run: `files_changed=0 paths_moved=0 compat_blocks_added=0`,
-and `files in scope` drops to 23 (the files that keep the old name on purpose).
+and `files in scope` drops to 25 (the files that keep the old name on purpose).
 
 ## If a step fails
 
@@ -63,17 +64,17 @@ The script edits in place.
 If anything above fires, `git checkout -- .` and start again - it is
 re-runnable on any clean main, and takes about three seconds.
 
-## The 322 hits it leaves, all deliberate
+## The 339 hits it leaves, all deliberate
 
 Counted the way the script counts: `rg` over `app deploy docs .github`.
-The eight rows sum to exactly 322.
+The eight rows sum to exactly 339.
 
 | Hits | Where | Why |
 | --- | --- | --- |
 | 250 | `apps/ios`, `edge/`, `apps/landing`, `apps/www-redirect` | out of scope, rows 13-15 |
-| 24 | `theme/src/{builtins,vscode,lib}.rs`, `ui/src/theme.rs` | `zeron-dark`, `zeron-light`, their family and display names are user state in `ui-settings.json` (row 19) |
+| 40 | `theme/src/{lib,builtins,vscode}.rs`, `ui/src/{theme,settings}.rs` | `zeron-dark` / `zeron-light` ids, family and display names are user state in `ui-settings.json` (row 19), down to the saved default and its test |
 | 15 | `crates/engine/src/data_dir.rs` | the module that adopts the old dir, excluded from the rename |
-| 13 | `docs/` | the rename plan and notes, which have to name both words |
+| 14 | `docs/` | the rename plan, notes and this runbook, which have to name both words |
 | 7 | `ui/src/{markdown/parser,transcript}.rs`, `harness/{src/adapter_install,tests/managed_install*}.rs` | `zeronsh/comet` provenance links (rows 16-17) |
 | 6 | `app/docs/`, `app/README*.md` | same |
 | 4 | `apps/surya/src/{main,update_cli}.rs` | `zeron.sh` and `edge.zeron.sh`, the domain until surya has one (row 10) |
@@ -84,9 +85,13 @@ are all the all-caps `ZERON_` prefix, which `[Zz]eron` does not match. The same
 gap kept `crates/proto/build.rs` out of the rename until 2026-09-05, and is why
 the selector now matches `ZERON_` as well.
 
+`AGENTS.md` is in scope but outside these four roots, so the script's counter
+does not see its 3 remaining hits - all of them the masked bullet the operator
+deletes by hand. `sandbox/` comes out clean.
+
 `app/.github/` is not counted at all - `rg` skips dot directories, and the
-script never had it in scope. It holds 17 more, across `deploy.yml`, `release.yml`,
-`testflight.yml` and `FUNDING.yml`.
+script never had it in scope. It holds 17 more, across `deploy.yml`,
+`release.yml`, `testflight.yml` and `FUNDING.yml`.
 
 ## Two things the script does not do
 
