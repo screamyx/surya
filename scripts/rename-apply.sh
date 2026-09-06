@@ -10,9 +10,8 @@
 # dir adoption pair is the subtle one - see `advance_data_dir_migration`.
 #
 # It does the mechanical categories plus the compat that is a substitution:
-# the env alias and its call sites, both URL schemes, the old systemd unit,
-# and the data dir adoption pair. What is left needs an owner decision and is
-# listed at the end rather than guessed at.
+# the env alias and its call sites, both URL schemes, the old systemd unit and
+# the data dir pair. The rest needs an owner decision, listed at the end.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -49,14 +48,12 @@ in_scope_files() {
 #   zeron-dark     comet's two builtin themes: their ids, family and display
 #   zeron-light    names are user state, saved in ui-settings.json (row 19)
 #
-#   LEGACY_UNIT    the compat blocks below name the OLD unit, scheme and
+#   LEGACY_UNIT    the compat blocks name the OLD unit, scheme and
 #   LEGACY_SCHEME  registration ON PURPOSE. Unmasked, a SECOND run renames
-#   register_url_  them too: LEGACY_UNIT becomes "surya.service" and the
-#   scheme("zeron")  install then disables and deletes the CURRENT unit, the
-#                  scheme compat starts comparing surya:// to itself, and the
-#                  duplicate registration is re-added every run. Measured, not
-#                  imagined - it took eight stacked register_url_scheme lines
-#                  to notice.
+#   register_url_  them too: LEGACY_UNIT becomes "surya.service" and install
+#   scheme("zeron")  then deletes the CURRENT unit, the scheme compat compares
+#                  surya:// to itself, and the registration re-adds every run.
+#                  Measured: it took eight stacked lines to notice.
 # --------------------------------------------------------------------------
 mask() {
   sed -e 's/zeronsh/\x01PROVENANCE\x01/g' \
@@ -91,24 +88,17 @@ unmask() {
 
 # Comet's two builtin themes keep their user-visible identity above, but their
 # Rust identifiers cannot become `surya_dark`/`surya_light`: surya-theme
-# already defines those (builtins.rs), and the rename would redefine them -
-# E0428, caught by running this script rather than by reading it. Named for
-# what they are, comet's originals.
-# The data dir migration moves along by one: the call that adopts
-# `.comet-native` into `.zeron` becomes the one that adopts `.zeron` into
-# `.surya`. The global substitution alone gets this WRONG - it rewrites the
-# first argument and leaves the second, producing `(".surya", ".comet-native")`
-# and silently dropping the whole zeron -> surya adoption, which is the one
-# this release needs.
+# already defines those, and the rename would redefine them - E0428, caught by
+# running this script rather than reading it. Named for what they are.
 #
-# The ALREADY-ADVANCED pair is masked too. Without that a second run eats the
-# surviving `.zeron` and leaves `(".surya", ".surya")` - a call that adopts a
-# directory from itself, which is the same silent no-copy, arrived at from the
-# other side. The counters do not catch it; the double-run check below does.
-#
-# Matched on the two string arguments with `\s*` between them, not on the whole
-# line: rustfmt is free to wrap this call, and a whole-line literal would
-# quietly stop matching if it ever did.
+# The data dir migration moves along by one: the call adopting `.comet-native`
+# into `.zeron` becomes the one adopting `.zeron` into `.surya`. The global
+# substitution gets this WRONG - it rewrites the first argument and leaves the
+# second, silently dropping the adoption this release exists for. The
+# ALREADY-ADVANCED pair is masked too, or a second run eats the surviving
+# `.zeron` and leaves `(".surya", ".surya")`, the same no-copy from the other
+# side. Matched on the two string arguments with `\s*` between, not the whole
+# line: rustfmt may wrap this call and a line literal would stop matching.
 advance_data_dir_migration() {
   perl -0pe 's/"\.zeron",(\s*)"\.comet-native"/"\x01DATADIR\x01",$1"\x01DATADIRPREV\x01"/gs;
              s/"\.surya",(\s*)"\.zeron"/"\x01DATADIR\x01",$1"\x01DATADIRPREV\x01"/gs'
@@ -360,8 +350,8 @@ grep -q 'surya-proto' app/crates/mcp/Cargo.toml \
 # --------------------------------------------------------------------------
 # 3b. Route the user-set reads through it. Only the 16 names, outside tests.
 # This used to skip the whole of crates/mcp/ while claiming to exempt only
-# tasks.rs, leaving crates/mcp/src/browser.rs reading the environment direct.
-# tasks.rs passes its key as a closure argument, so it never matched anyway.
+# tasks.rs, leaving browser.rs reading the environment direct; tasks.rs passes
+# its key as a closure argument, so it never matched anyway.
 # --------------------------------------------------------------------------
 ROUTED=0
 USER_SET='DATA_DIR|EDGE_URL|EDGE_TOKEN|ORG_ID|WORKOS_CLIENT_ID|WORKOS_API_BASE|IPC_PORT|BIND|IPC_TOKEN|CALLBACK_PORT|HARNESS|DEVICE_NAME|ENGINE|ENGINE_TOKEN|USER_ID|WORKTREES_DIR'
@@ -437,12 +427,12 @@ RUST
 fi
 echo "compat_blocks_added=$COMPAT"
 
-# --------------------------------------------------------------------------
 # 3d. The lock. Package names changed, so it is stale by definition.
-# --------------------------------------------------------------------------
 if command -v cargo >/dev/null 2>&1; then
-  (cd app && cargo update -w >/dev/null 2>&1) && echo "cargo_update=ok" || echo "cargo_update=failed"
+  (cd app && cargo update -w >/dev/null 2>&1) && LOCK=ok || LOCK=failed
+  echo "cargo_update=$LOCK"
 else
+  LOCK=skipped
   echo "cargo_update=skipped (no cargo on PATH)"
 fi
 
@@ -462,8 +452,7 @@ echo "zeron_hits_before=$BEFORE after=$(hits_of '[Zz]eron') files_changed=$CHANG
 # 5. Scope drift. The counters cannot see a directory the script was never
 # told about. This reads the WHOLE repo, subtracts the out-of-scope trees and
 # the masked hits, then fails on the rest. Cargo.lock is excluded like RG
-# excludes it: generated, and with `cargo update -w` unrun it named the old
-# crates and made this report MISSED=42 of it. A stale lock fails the build.
+# excludes it: generated, and unrewritten it made this report MISSED=42 of it.
 # --------------------------------------------------------------------------
 echo
 MISSED=$(grep -rnI --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules \
@@ -498,3 +487,13 @@ cat <<'TODO'
   4. Dev and test knobs (`SURYA_MOCK_*`, `SURYA_DEMO_*`, `SURYA_ACP_*`) rename
      without an alias on purpose - nothing outside this repo sets them.
 TODO
+
+# The lock is the one step that can fail without leaving a trace in any
+# counter above, and this runs once, on frozen main. Report everything first,
+# then refuse. Fix by hand and re-run: this reads THIS run's result only.
+if [ "$LOCK" != ok ]; then
+  echo
+  echo "STOPPING: cargo_update=$LOCK, so app/Cargo.lock still names the old"
+  echo "crates. Run 'cd app && cargo update -w', then run this script again."
+  exit 1
+fi

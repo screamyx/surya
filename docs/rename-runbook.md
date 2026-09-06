@@ -58,7 +58,7 @@ and `files in scope` drops to 25 (the files that keep the old name on purpose).
 | `FATAL: expected hits=1 for the data dir adoption pair` | rustfmt reshaped the call, or it moved | fix the rule in `advance_data_dir_migration`, do not skip it |
 | `MISSED=n - files with the old name that no rule covers` | a new directory arrived outside the scope | add it to `in_scope_files`, re-run from a clean tree |
 | second run reports `files_changed` > 0 | a rule is rewriting its own output | find the file with `git diff`, mask or exclude it |
-| `cargo_update=failed` or `=skipped` | no cargo, or the lock is conflicted | run `cd app && cargo update -w` by hand; the lock still names the old crates until you do, and the build will say so |
+| `cargo_update=failed` or `=skipped`, then `STOPPING` | no cargo, or the lock is conflicted | the script prints every counter, then stops with exit 1 and leaves the tree renamed. Run `cd app && cargo update -w`, then run the script again - it passes, because the check reads that run's result |
 
 The script edits in place.
 If anything above fires, `git checkout -- .` and start again - it is
