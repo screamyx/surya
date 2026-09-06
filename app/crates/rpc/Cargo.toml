@@ -21,3 +21,4 @@ uuid.workspace = true
 
 [dev-dependencies]
 surya-doc.workspace = true
+surya-test-deadlines.workspace = true
