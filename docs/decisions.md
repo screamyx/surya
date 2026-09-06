@@ -403,6 +403,20 @@ Owner, 04:01 on 2026-09-06: "the mockup was a typescript backend with react fron
 - `mockup/` (134 files) is removed from main. It was the pre-fork web prototype, not a design reference for the GPUI app (decision 26 already made comet's look the reference).
 - Any future design sandbox is a new decision, not a revival of this tree.
 
+## 33. CI leaves pc-ajim: Linux on GitHub-hosted runners, Windows on dtry
+
+Owner ruling, 2026-09-07 02:05, "follow your recommendation", on his two conditions, verbatim: "the low priority run dont effect my non-gaming day to day use" and "it wont eat too much space".
+
+Supersedes decision 24, which put CI on two self-hosted Linux runners on pc-ajim because GitHub-hosted jobs were blocked on billing. Decision 24 stays on the record for why that happened and is no longer the arrangement.
+
+- The Linux checks go back to `ubuntu-latest`, free once the repository is public. The job carries `if: github.event.repository.visibility == 'public'`, so the workflow can merge before the repository is flipped without ever asking for a billed minute. An absent field is not "public" either, so the failure direction is "does not run", never "runs and bills".
+- The hosted-era steps come back with it: freeing disk and `apt-get` for gpui's system libraries. Decision 24 banned both, and that ban still holds for anything running on pc-ajim. A GitHub-hosted runner is a throwaway VM, not the owner's machine.
+- The Windows build moves to dtry, label `surya-win`, installed by `deploy/windows/install-runner.ps1`. It runs `deploy/windows/build.ps1` at Idle priority on 8 of 16 threads, reuses `E:\surya-remote-target`, deletes each run's `dist` folder, keeps the zip as a 14-day artifact, and runs `cargo clean` only when the target passes 25 GB and only once a week. Those five rules are the owner's two conditions written down.
+- The `windows` job never runs for a pull request from a fork. A self-hosted runner executes the PR author's code on the owner's PC; once the repository is public, anyone could open one.
+- Only `actions/*` actions may be used. The repository's Actions policy rejects anything else before a job starts, which is why the Linux cache is a hand-written `actions/cache` and not `Swatinem/rust-cache`.
+- pc-ajim's two runners retire by hand after this workflow has one green run, not before. `browser-nightly.yml` still needs `[self-hosted, surya-ci]` and the CEF distribution at `/store/surya-ci-cef`, so where the nightly runs is a separate decision.
+- Windows is still the product and Linux still the test bench (decision 28). Nothing here makes a green Linux run RC proof.
+
 ## Open
 
 None at day zero.

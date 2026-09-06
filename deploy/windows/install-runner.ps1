@@ -101,9 +101,28 @@ function Set-ImagePriority {
 }
 
 function Remove-ImagePriority {
+    # Only the one value this script created. The Image File Execution
+    # Options key for an executable is shared: a debugger, a mitigation
+    # policy or another tool's settings can live under the same key, and
+    # deleting it whole would take those with it. If PerfOptions is empty
+    # afterwards it was ours alone, so that subkey goes too, and the image
+    # key itself if nothing else is left under it.
     foreach ($image in $images) {
-        $key = Join-Path $ifeo $image
-        if (Test-Path $key) { Remove-Item -Path $key -Recurse -Force; Write-Host "  removed IFEO for $image" }
+        $imageKey = Join-Path $ifeo $image
+        $perf = Join-Path $imageKey "PerfOptions"
+        if (-not (Test-Path $perf)) { Write-Host "  no PerfOptions for $image, nothing to undo"; continue }
+        if ($null -ne (Get-ItemProperty -Path $perf -Name "CpuPriorityClass" -ErrorAction SilentlyContinue)) {
+            Remove-ItemProperty -Path $perf -Name "CpuPriorityClass"
+            Write-Host "  removed CpuPriorityClass for $image"
+        } else {
+            Write-Host "  $image has no CpuPriorityClass, nothing to undo"
+        }
+        $perfKey = Get-Item $perf
+        if ($perfKey.ValueCount -eq 0 -and $perfKey.SubKeyCount -eq 0) {
+            Remove-Item -Path $perf
+            $imgKey = Get-Item $imageKey
+            if ($imgKey.ValueCount -eq 0 -and $imgKey.SubKeyCount -eq 0) { Remove-Item -Path $imageKey }
+        }
     }
 }
 

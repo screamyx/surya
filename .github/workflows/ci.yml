@@ -66,6 +66,12 @@ env:
   # less linker memory, a faster build.
   CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_PROFILE_TEST_DEBUG: "0"
+  # Incremental compilation is for a developer rebuilding the same tree over
+  # and over. CI builds a given commit once, so the incremental directory is
+  # never read back, and it is large: leaving it on is the quickest way to
+  # push the Linux cache past the 10 GB a repository gets before GitHub
+  # starts evicting, and to fill E: on dtry faster.
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   # ---------------------------------------------------------------- linux --
@@ -209,6 +215,16 @@ jobs:
   # Every rule below exists to keep one of those two. Each is marked.
   windows:
     name: windows
+    # A self-hosted runner runs the job's code on the owner's own PC, as the
+    # account the service logs on as. A pull request from a fork carries code
+    # the fork's author wrote, including this file. Once the repository is
+    # public anyone can open one, so without this line the first fork PR
+    # after the flip would run arbitrary code on dtry. Pushes to main are
+    # safe (only someone with write access makes one) and so is a pull
+    # request whose head branch lives in this repository.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, surya-win]
     # A warm incremental build measured 2m32s to 4m54s on dtry. A cold one
     # after a `cargo clean` is the long tail this covers.
@@ -243,26 +259,51 @@ jobs:
           $ErrorActionPreference = "Stop"
           $target = $env:CARGO_TARGET_DIR
           $limit  = [int]$env:TARGET_DIR_LIMIT_GB
-          $stamp  = Join-Path $target ".last-ci-clean"
+          # "when did this step last measure", not "last cleaned": it is what
+          # makes the walk below weekly.
+          $stamp  = Join-Path $target ".last-ci-size-check"
           if (-not (Test-Path $target)) {
             Write-Host "no target dir yet at $target, nothing to clean"
             exit 0
           }
-          $bytes = (Get-ChildItem $target -Recurse -File -Force -ErrorAction SilentlyContinue |
-                    Measure-Object -Property Length -Sum).Sum
+          # The stamp is checked first, on purpose. Measuring a 13 to 25 GB
+          # target means walking a few hundred thousand files, which is real
+          # work on the owner's disk, and on six days out of seven the answer
+          # cannot change what this step does. So: one file stat on most
+          # runs, the walk only in the week the clean could fire.
+          $lastCheck = if (Test-Path $stamp) { (Get-Item $stamp).LastWriteTime } else { [datetime]::MinValue }
+          $daysSince = [math]::Round(((Get-Date) - $lastCheck).TotalDays, 1)
+          if ($daysSince -lt 7) {
+            Write-Host "last clean $daysSince days ago, under 7; not measuring the target dir this run"
+            exit 0
+          }
+          # EnumerateFiles streams and reads Length straight off the
+          # directory entry. Get-ChildItem -Recurse builds the whole array
+          # first, which on a target this size is the expensive way to reach
+          # the same number.
+          $bytes = 0L
+          try {
+            $bytes = ([System.IO.DirectoryInfo]::new($target).EnumerateFiles(
+                        '*', [System.IO.SearchOption]::AllDirectories) |
+                      Measure-Object -Property Length -Sum).Sum
+          } catch {
+            Write-Host "could not measure $target ($($_.Exception.Message)); skipping the clean"
+            exit 0
+          }
           $gb = [math]::Round($bytes / 1GB, 1)
-          $lastClean = if (Test-Path $stamp) { (Get-Item $stamp).LastWriteTime } else { [datetime]::MinValue }
-          $daysSince = [math]::Round(((Get-Date) - $lastClean).TotalDays, 1)
-          Write-Host "target dir $target is $gb GB, limit $limit GB, last clean $daysSince days ago"
-          if ($gb -gt $limit -and $daysSince -ge 7) {
+          Write-Host "target dir $target is $gb GB, limit $limit GB, last measured $daysSince days ago"
+          if ($gb -gt $limit) {
             Write-Host "== cargo clean"
             cargo clean
             if ($LASTEXITCODE -ne 0) { throw "cargo clean failed with exit $LASTEXITCODE" }
             New-Item -ItemType Directory -Force -Path $target | Out-Null
-            Set-Content -Path $stamp -Value (Get-Date -Format o)
           } else {
-            Write-Host "no clean this run"
+            Write-Host "under the limit, no clean this run"
           }
+          # Stamped whether or not the clean fired. Stamping only on a clean
+          # would leave an under-limit box walking the whole tree every run,
+          # which is the cost this step exists to avoid.
+          Set-Content -Path $stamp -Value (Get-Date -Format o)
 
       # PRIORITY. Windows gives a new process its parent's priority class
       # unless the parent asks otherwise, so dropping this shell to Idle
@@ -292,7 +333,11 @@ jobs:
       - name: upload the zip
         uses: actions/upload-artifact@v4
         with:
-          name: surya-windows-${{ github.run_id }}
+          # upload-artifact v4 refuses to write a name that already exists,
+          # and "Re-run failed jobs" keeps the same run_id. Without the
+          # attempt number the second attempt fails at the upload, after
+          # paying for the whole build.
+          name: surya-windows-${{ github.run_id }}-${{ github.run_attempt }}
           path: dist/surya-windows-*.zip
           retention-days: 14
           if-no-files-found: error
