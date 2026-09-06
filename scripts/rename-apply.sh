@@ -22,33 +22,26 @@ CHECK=0
 RG=(rg --no-messages -g '!target' -g '!node_modules' -g '!.git' -g '!Cargo.lock')
 
 # Everything in scope. apps/ios, edge/, apps/landing, apps/www-redirect and
-# app/.github (comet's own release pipeline, which GitHub never fires from a
-# subdirectory) are out of scope per the plan (rows 13, 14, 15) and never
-# appear here.
+# app/.github (comet's release pipeline, never fired from a subdirectory) are
+# out of scope per the plan (rows 13, 14, 15).
 #
-# `deploy/` was missed until 2026-09-05: it builds `-p zeron`, installs
-# `target/release/zeron`, and its unit runs `~/.local/bin/zeron`. The rename
-# left all three pointing at a crate and a binary that no longer exist. The
-# guard at the end now catches the next directory to arrive the same way.
-#
+# This list grows: `deploy/` (2026-09-05), `AGENTS.md` and `sandbox/`
+# (2026-09-06), each found by the guard at the end.
 # `ZERON_` is its own pattern because `[Zz]eron` does not match it: a file
-# whose only hits are the all-caps env prefix (`crates/proto/build.rs`,
-# `crates/proto/src/build.rs`) was never selected.
+# whose only hits are the all-caps env prefix was never selected.
 #
-# Two files are excluded outright: every hit in them is the old name on
-# purpose, so a mask would be one mask per line. env_compat.rs is GENERATED
-# here - rewriting it made its fallback read `var_os("SURYA_")`, the alias
-# reading the new name twice, the compat dead and the tree still compiling.
-# data_dir.rs adopts the OLD dir - rewriting its test fixtures made the dir
-# adopted and the dir adopted INTO the same name: three tests red, and a doc
-# reading "moves the data dir from ~/.surya to ~/.surya".
+# Two files are excluded outright, every hit in them being the old name on
+# purpose. env_compat.rs is GENERATED here - rewriting it made its fallback
+# read `var_os("SURYA_")`, the compat dead and the tree still compiling.
+# data_dir.rs adopts the OLD dir - rewriting its fixtures made it adopt a
+# dir from itself: three tests red.
 EXCLUDE='app/crates/(proto/src/env_compat|engine/src/data_dir)\.rs'
 in_scope_files() {
   "${RG[@]}" -l -e '[Zz]eron' -e 'ZERON_' \
     app/crates app/apps/zeron app/apps/surya app/Cargo.toml app/scripts \
     app/dist app/ARCHITECTURE.md app/CONTEXT.md app/README.md \
     app/README.zh-CN.md app/THIRD_PARTY_NOTICES.md app/docs \
-    .github deploy docs 2>/dev/null \
+    .github deploy docs AGENTS.md sandbox 2>/dev/null \
     | grep -vE "^$EXCLUDE\$" | sort -u
 }
 
@@ -82,7 +75,8 @@ mask() {
       -e 's/family("zeron", "Zeron"/\x01THEMEFAM\x01/g' \
       -e 's/LEGACY_UNIT: &str = "zeron.service"/\x01LEGACYUNIT\x01/g' \
       -e 's|LEGACY_SCHEME: &str = "zeron://open/chat/"|\x01LEGACYSCHEME\x01|g' \
-      -e 's|register_url_scheme("zeron").detach(); // surya-rename: legacy|\x01LEGACYREG\x01|g'
+      -e 's|register_url_scheme("zeron").detach(); // surya-rename: legacy|\x01LEGACYREG\x01|g' \
+      -e 's|upstream crates stay `zeron-\*`|\x01MIXEDCRATES\x01|g'
 }
 unmask() {
   sed -e 's/\x01PROVENANCE\x01/zeronsh/g' \
@@ -97,7 +91,8 @@ unmask() {
       -e 's/\x01DATADIRPREV\x01/.zeron/g' \
       -e 's/\x01LEGACYUNIT\x01/LEGACY_UNIT: \&str = "zeron.service"/g' \
       -e 's|\x01LEGACYSCHEME\x01|LEGACY_SCHEME: \&str = "zeron://open/chat/"|g' \
-      -e 's|\x01LEGACYREG\x01|register_url_scheme("zeron").detach(); // surya-rename: legacy|g'
+      -e 's|\x01LEGACYREG\x01|register_url_scheme("zeron").detach(); // surya-rename: legacy|g' \
+      -e 's|\x01MIXEDCRATES\x01|upstream crates stay `zeron-*`|g'
 }
 
 # Comet's two builtin themes keep their user-visible identity above, but their
@@ -142,7 +137,11 @@ assert_data_dir_call_present() {
 }
 
 rename_legacy_theme_fns() {
-  sed -e 's/\bzeron_dark\b/comet_dark/g' -e 's/\bzeron_light\b/comet_light/g'
+  # The sandbox's theme generator names comet's builtins through a template
+  # literal. The global rule makes that `fn surya_${mode}()`, which EXISTS -
+  # surya's own themes - so it would keep running on another theme's seeds.
+  sed -e 's/\bzeron_dark\b/comet_dark/g' -e 's/\bzeron_light\b/comet_light/g' \
+      -e 's/fn zeron_\${mode}/fn comet_${mode}/g'
 }
 
 # Categories 1, 2, 3, 4, 17, 18, 19: every spelling of the name, and the env
@@ -465,9 +464,8 @@ echo "zeron_hits_before=$BEFORE after=$(hits_of '[Zz]eron') files_changed=$CHANG
 
 # --------------------------------------------------------------------------
 # 5. Scope drift. The counters cannot see a directory the script was never
-# told about, so `deploy/` sat outside them and outside the rename. This
-# reads the WHOLE repo, subtracts the out-of-scope trees and every hit the
-# masks keep on purpose, and fails on what is left.
+# told about. This reads the WHOLE repo, subtracts the out-of-scope trees and
+# every hit the masks keep on purpose, and fails on what is left.
 # --------------------------------------------------------------------------
 echo
 MISSED=$(grep -rnI --exclude-dir=.git --exclude-dir=target --exclude-dir=node_modules \
@@ -476,7 +474,8 @@ MISSED=$(grep -rnI --exclude-dir=.git --exclude-dir=target --exclude-dir=node_mo
   | grep -vE "^$EXCLUDE:" \
   | sed -E 's/zeronsh//g; s/zeron\.sh//g; s/"?[Zz]eron[- ](Dark|dark|Light|light)"?//g;
             s/family_id: "zeron"//g; s/family\("zeron", "Zeron"//g; s/zeron\.service//g;
-            s|zeron://||g; s/register_url_scheme\("zeron"\)//g; s/\.zeron//g; s/ZERON_//g' \
+            s|zeron://||g; s/register_url_scheme\("zeron"\)//g; s/\.zeron//g;
+            s/upstream crates stay `zeron-\*`//g; s/ZERON_//g' \
   | grep -E '[Zz]eron' || true)
 if [ -n "$MISSED" ]; then
   echo "MISSED=$(printf '%s\n' "$MISSED" | wc -l | tr -d ' ') - files with the old name that no rule covers:"
@@ -492,8 +491,9 @@ cat <<'TODO'
 
   1. Bundle ids (`sh.zeron.app`, the notify id, the conversation URL type)
      wait on the owner picking a domain.
-  2. `crates/mcp/src/tasks.rs` reads SURYA_IPC_PORT directly and is NOT routed
-     here: that file belongs to the tasks seat.
+  2. AGENTS.md's "Crate names are mixed on purpose" bullet is masked, not
+     rewritten: after the rename nothing is `zeron-*` and the bullet tells
+     readers not to do what was just done. DELETE it by hand.
   3. Dev and test knobs (`SURYA_MOCK_*`, `SURYA_DEMO_*`, `SURYA_ACP_*`, and
      the rest) rename without an alias on purpose - nothing outside this repo
      sets them.
