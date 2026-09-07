@@ -236,6 +236,25 @@ pub trait TokenSource: Send + Sync + 'static {
     }
 }
 
+/// Does this broadcast read mean the channel is gone, as opposed to behind?
+///
+/// Only `Closed` ends a watcher. `Lagged(n)` says n events were dropped
+/// before this read, which is a reason to do the arm's work - the missed
+/// events are exactly the ones whose work is still owed - not a reason to
+/// stop watching. Treating the two alike stranded the sign-out watcher
+/// below: both wake and online are `broadcast::channel(4)`
+/// (`surya_sync::wake`), every successful dial in the process notifies
+/// online (`surya_sync::dial`), and on a loaded machine a starved receiver
+/// overruns that capacity in normal operation. The task exited, nothing
+/// watched the token after it, and cached peer links kept serving after
+/// sign-out.
+fn broadcast_closed(result: &Result<(), tokio::sync::broadcast::error::RecvError>) -> bool {
+    matches!(
+        result,
+        Err(tokio::sync::broadcast::error::RecvError::Closed)
+    )
+}
+
 async fn token_changed(changes: &mut Option<tokio::sync::watch::Receiver<u64>>) {
     match changes {
         Some(changes) => {
@@ -828,14 +847,14 @@ impl LinkCache {
                 loop {
                     tokio::select! {
                         result = wake.recv() => {
-                            if result.is_err() { return; }
+                            if broadcast_closed(&result) { return; }
                             let Some(cache) = weak.upgrade() else { return };
                             lock(&cache.links).clear();
                             lock(&cache.dial_state).clear();
                             tracing::info!("peer: links + cooldowns cleared after wake");
                         }
                         result = online.recv() => {
-                            if result.is_err() { return; }
+                            if broadcast_closed(&result) { return; }
                             let Some(cache) = weak.upgrade() else { return };
                             lock(&cache.dial_state).clear();
                         }

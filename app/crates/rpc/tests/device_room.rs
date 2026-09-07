@@ -121,6 +121,68 @@ async fn sign_out_closes_cached_peer_links() {
     );
 }
 
+/// A lagged `online` broadcast must not stop the sign-out watcher.
+///
+/// `LinkCache`'s watcher selects over wake, online and the token. Both
+/// broadcasts are `broadcast::channel(4)` and every successful dial in the
+/// process notifies online, so a starved receiver overruns that capacity in
+/// normal operation. The watcher used to read `Lagged` as "channel gone" and
+/// return, after which nothing watched the token and the cached link kept
+/// serving with the credentials removed.
+///
+/// Deterministic, no load needed: the sends carry no await between them, so
+/// on the test's current-thread runtime the watcher cannot drain them.
+#[tokio::test]
+async fn a_lagged_online_broadcast_still_closes_links_on_sign_out() {
+    let relay = FakeRelay::start().await;
+    let _host = HostRelay::spawn(
+        relay_config(&relay.edge_url(), 100),
+        TestService::new("host-a"),
+        noop_nudge(),
+    );
+    relay.wait_host_connected().await;
+
+    let token = Arc::new(RecoveringToken::new(Some("test-user")));
+    let links = LinkCache::new(LinkCacheConfig::new(relay.edge_url(), token.clone()));
+    let client = links.client("dev-a").await.expect("client dials");
+    client
+        .call("Echo", serde_json::json!({ "before": "lag" }))
+        .await
+        .expect("link is live before the overrun");
+    // Park the watcher in its select before overrunning it.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // Eight into a channel of four. Nothing is awaited in between, so the
+    // watcher's next read is a Lagged, not eight events.
+    for _ in 0..8 {
+        surya_sync::wake::notify_online();
+    }
+    // Let it take that read and decide what to do about it.
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    token.clear();
+
+    // Same shape as the sign-out test above: an expected event, so wait for
+    // it on the shared deadline. Before the fix this ran the full WAIT.
+    tokio::time::timeout(surya_test_deadlines::WAIT, async {
+        loop {
+            if links.client("dev-a").await.is_err() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("sign-out went unseen after a lagged online broadcast");
+    assert!(
+        client
+            .call("Echo", serde_json::json!({ "after": "lag" }))
+            .await
+            .is_err(),
+        "the cached link kept serving after sign-out"
+    );
+}
+
 #[tokio::test]
 async fn relay_serves_multiple_clients_end_to_end() {
     let relay = FakeRelay::start().await;
