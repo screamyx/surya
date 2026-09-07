@@ -554,6 +554,11 @@ impl SessionsEngine {
             self.interrupt(chat_id).await?;
         }
 
+        // Resolve first: it can fail (`HarnessError::NotInstalled`, or a lazy
+        // factory that errors), and a claim ahead of it would leave a row -
+        // and at a new cwd a freshly minted project - for a run that never
+        // started. Nothing below this line may fail before the claim either.
+        let harness = self.inner.registry.resolve(harness_id)?;
         // Claim BEFORE anything is written, and before the first status
         // mirror. The command path claims in `DocHost::execute`, but mail
         // delivery and the crash auto-resume reach here without going through
@@ -570,7 +575,6 @@ impl SessionsEngine {
         if let Some(ws) = self.inner.workspace() {
             ws.claim_chat(chat_id, &request.cwd)?;
         }
-        let harness = self.inner.registry.resolve(harness_id)?;
         let handle = self.doc_handle(chat_id)?;
         let user_id = message_id.unwrap_or_else(new_id);
         handle.write_user_message(&user_id, &request.prompt, now_ms())?;
