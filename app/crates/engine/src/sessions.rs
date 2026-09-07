@@ -2179,11 +2179,12 @@ async fn drive_run(
             // first boundary on, plans never rendered again.
             AgentEvent::ToolCall { id, .. } if id == surya_proto::LIVE_PLAN_TOOL_ID => {}
             AgentEvent::ToolResult { id, .. } if id == surya_proto::LIVE_PLAN_TOOL_ID => {}
-            AgentEvent::ToolCall { id, .. } => {
+            AgentEvent::ToolCall { id, call } => {
                 if !in_segment(&folded, id) && seen_tools.contains(id) {
                     continue;
                 }
                 seen_tools.insert(id.clone());
+                inner.states.note_spawn(&chat_id, id, call);
             }
             AgentEvent::ToolResult { id, .. }
                 if !in_segment(&folded, id) && seen_tools.contains(id) =>
