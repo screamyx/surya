@@ -52,12 +52,16 @@ use crate::state::{
     AppState, ConnectionStatus, EngineBootConfig, EngineMode, GatePhase, Indicator, OrgRow,
     RemoteEngineTarget, format_time_ago, org_name_valid, parse_orgs, sort_memberships,
 };
+use crate::shell::demo_seed::{
+    DEMO_CARDS_CHAT, DEMO_MAIL_CHAT, DemoSeed, demo_seed_step, insert_demo_chat,
+};
 use crate::terminal::panel::{TerminalPanel, ToggleTerminal, clamp_terminal_height};
 use crate::theme::Theme;
 use crate::transcript::{self, Transcript, TranscriptEvent};
 
 mod agents_entry;
 mod confirm_target;
+mod demo_seed;
 mod focus;
 mod folder_load;
 mod spaces;
@@ -1364,11 +1368,14 @@ pub struct Shell {
     debug_gate: Option<GatePhase>,
     debug_upload: Option<String>,
     debug_cards: Option<String>,
+    debug_mail: Option<String>,
     /// The engine-skew message the user dismissed this session; a different
     /// mismatch (re-attach elsewhere) shows the banner again.
     engine_skew_dismissed: Option<String>,
     /// The demo chat has been inserted at least once this session.
     demo_cards_seeded: bool,
+    /// The same, for the mail-row demo chat.
+    demo_mail_seeded: bool,
     /// The user pressed `+` since then: the empty canvas is theirs.
     pub(super) demo_cards_user_plus: bool,
     sidebar_tween: Option<WidthTween>,
@@ -1531,6 +1538,11 @@ impl Shell {
         // turn per A2UI fixture in <dir> (surya proof knob: cards render
         // without an engine or a typed prompt).
         let debug_cards = std::env::var("SURYA_DEMO_CARDS").ok();
+        // `SURYA_DEMO_MAIL=<sender>|<body>` seeds a chat holding one row the
+        // owner typed and one another agent mailed in (surya#198 proof knob:
+        // a real mail row needs a second agent and a shot taken before its
+        // turn answers).
+        let debug_mail = crate::transcript::demo_mail::from_env();
         let debug_gate = match std::env::var("SURYA_FORCE_GATE").ok().as_deref() {
             Some("signin") => Some(GatePhase::SignIn),
             Some("org") => Some(GatePhase::OrgGate),
@@ -1638,8 +1650,10 @@ impl Shell {
             debug_gate,
             debug_upload,
             debug_cards,
+            debug_mail,
             engine_skew_dismissed: None,
             demo_cards_seeded: false,
+            demo_mail_seeded: false,
             demo_cards_user_plus: false,
             sidebar_tween: None,
             right_tween: None,
@@ -1766,6 +1780,7 @@ impl Shell {
             let step = {
                 let s = state.read(cx);
                 demo_seed_step(
+                    DEMO_CARDS_CHAT,
                     s.chats_synced,
                     self.demo_cards_seeded,
                     self.demo_cards_user_plus,
@@ -1785,37 +1800,38 @@ impl Shell {
                     "demo cards seeded"
                 );
                 state.update(cx, |s, cx| {
-                    s.chats.insert(
-                        0,
-                        surya_proto::Chat {
-                            id: DEMO_CARDS_CHAT.into(),
-                            device_id: s
-                                .local_device_id
-                                .clone()
-                                .unwrap_or_else(|| "local".into()),
-                            title: Some("A2UI cards demo".into()),
-                            archived: false,
-                            cwd: None,
-                            branch: None,
-                            checkout_id: None,
-                            source_context: None,
-                            config: None,
-                            last_message_preview: None,
-                            last_message_at: None,
-                            created_at: chrono::Utc::now(),
-                            harness_session_id: None,
-                            harness_session_cwd: None,
-                            space_id: None,
-                            last_seen_at: None,
-                            room_gen: Default::default(),
-                        },
-                    );
-                    if let Some(entries) = entries {
-                        s.auto_selected = true;
-                        s.selected_chat = Some(DEMO_CARDS_CHAT.into());
-                        s.transcript = entries;
-                        s.transcript_replayed = true;
-                    }
+                    insert_demo_chat(s, DEMO_CARDS_CHAT, "A2UI cards demo", entries);
+                    cx.notify();
+                });
+            }
+        }
+        // The same knob shape for the mail row: `SURYA_DEMO_MAIL` seeds a
+        // `demo-mail` chat holding one typed row and one mailed-in row, which
+        // is the comparison the shot has to show.
+        if let Some(spec) = self.debug_mail.clone() {
+            let step = {
+                let s = state.read(cx);
+                demo_seed_step(
+                    DEMO_MAIL_CHAT,
+                    s.chats_synced,
+                    self.demo_mail_seeded,
+                    self.demo_cards_user_plus,
+                    s.chats.iter().any(|c| c.id == DEMO_MAIL_CHAT),
+                    s.selected_chat.as_deref(),
+                )
+            };
+            if let DemoSeed::Insert { select } = step {
+                self.demo_mail_seeded = true;
+                let entries = select
+                    .then(|| crate::transcript::demo_mail::entries(Some(spec)))
+                    .flatten();
+                tracing::info!(
+                    asked = entries.as_ref().map_or(0, Vec::len),
+                    select,
+                    "demo mail seeded"
+                );
+                state.update(cx, |s, cx| {
+                    insert_demo_chat(s, DEMO_MAIL_CHAT, "Mail row demo", entries);
                     cx.notify();
                 });
             }
@@ -1861,6 +1877,7 @@ impl Shell {
                     device_id: "local".into(),
                     status: None,
                     continuation_of: None,
+                    source: None,
                 };
                 state.update(cx, |s, cx| {
                     s.push_echo(&chat_id, echo);
@@ -9287,21 +9304,6 @@ impl Render for Shell {
     }
 }
 
-/// The fake chat `SURYA_DEMO_CARDS` shows its fixtures in.
-const DEMO_CARDS_CHAT: &str = "demo-cards";
-
-/// What the `SURYA_DEMO_CARDS` knob does on one frame.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DemoSeed {
-    Skip,
-    /// Put the demo row back; `select` also moves the window onto it.
-    Insert { select: bool },
-}
-
-/// The demo row is re-inserted only when the chat sync dropped it, and it
-/// takes the window only on the first seed, when the demo itself was
-/// selected, or when nothing is selected and the user never pressed `+`:
-/// a user who clicked another chat, or pressed `+`, keeps what they chose.
 /// When `SURYA_OPEN_PANE` may add its tab. Files and Tasks need a space.
 /// The Browser needs none, but it does need the panel key to be final: the
 /// boot selection (last chat, last space) lands with the first chats and
@@ -9313,22 +9315,6 @@ fn pane_knob_ready(pane: &str, boot_synced: bool, has_space: bool) -> bool {
         "browser" => boot_synced,
         _ => has_space,
     }
-}
-
-fn demo_seed_step(
-    synced: bool,
-    seeded_before: bool,
-    user_pressed_plus: bool,
-    row_present: bool,
-    selected: Option<&str>,
-) -> DemoSeed {
-    if !synced || row_present {
-        return DemoSeed::Skip;
-    }
-    let select = !seeded_before
-        || selected == Some(DEMO_CARDS_CHAT)
-        || (selected.is_none() && !user_pressed_plus);
-    DemoSeed::Insert { select }
 }
 
 #[cfg(test)]
@@ -9400,30 +9386,6 @@ mod tests {
             passed += 1;
         }
         assert_eq!((asked, passed), (5, 5), "asked={asked} passed={passed}");
-    }
-
-    #[test]
-    fn demo_seed_re_arms_only_when_the_row_vanished() {
-        use DemoSeed::*;
-        // (synced, seeded_before, user_pressed_plus, row_present, selected) -> step
-        let cases = [
-            ((false, false, false, false, None), Skip, "before the chat list lands"),
-            ((true, false, false, false, Some("real")), Insert { select: true }, "first seed takes the window"),
-            ((true, true, false, true, Some("real")), Skip, "user clicked another chat: leave it"),
-            ((true, true, true, true, None), Skip, "user pressed +, row still there: leave it"),
-            ((true, true, false, false, None), Insert { select: true }, "sync dropped row and selection: restore both"),
-            ((true, true, false, false, Some("real")), Insert { select: false }, "sync dropped the row while the user is elsewhere: row only"),
-            ((true, true, true, false, None), Insert { select: false }, "user pressed +, then a sync dropped the row: row only, canvas stays empty"),
-            ((true, true, true, false, Some("demo-cards")), Insert { select: true }, "user came back to the demo after +, then a sync dropped it: restore"),
-        ];
-        let asked = cases.len();
-        let mut passed = 0;
-        for ((synced, seeded, plus, present, selected), want, why) in cases {
-            assert_eq!(demo_seed_step(synced, seeded, plus, present, selected), want, "{why}");
-            passed += 1;
-        }
-        eprintln!("demo seed cases asked={asked} passed={passed}");
-        assert_eq!(passed, asked);
     }
 
     #[test]

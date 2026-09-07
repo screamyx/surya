@@ -19,6 +19,8 @@ use crate::commands::{SessionCommandEntry, SessionCommandStatus};
 use crate::constants::{SESSION_SCHEMA_VERSION, TAIL_MESSAGE_COUNT};
 use crate::parts::{MessagePart, MessageStatus, SubagentStatus};
 
+pub use surya_proto::mail::MessageSource;
+
 #[derive(Debug, thiserror::Error)]
 pub enum DocError {
     #[error("loro: {0}")]
@@ -51,13 +53,22 @@ pub struct SessionMessageEntry {
     pub status: Option<MessageStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub continuation_of: Option<String>,
+    /// Who authored this row, when it was not the person at the keyboard.
+    /// Today that means a mail delivery. Additive: absent on every ordinary
+    /// row and on every row written before the field existed.
+    ///
+    /// The UI styles the row off this and never off the row's text, so a
+    /// prompt the user pastes can say `[MAIL ...]` and still render as their
+    /// own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<MessageSource>,
 }
 
 /// The doc-resident flat part map (`DocMessagePart` in TS). Distinct from the app-layer
 /// [`MessagePart`]: input parts key on their request id, error parts store `message`.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct DocPartJson {
+pub(crate) struct DocPartJson {
     id: String,
     kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -269,7 +280,7 @@ fn to_doc_part(part: &MessagePart) -> Result<DocPartJson, DocError> {
 }
 
 /// Doc part json → app part (mirror of `fromDocParts`; malformed degrades to empty text).
-fn from_doc_part(p: DocPartJson) -> MessagePart {
+pub(crate) fn from_doc_part(p: DocPartJson) -> MessagePart {
     match p.kind.as_str() {
         "tool" => match p.call.and_then(|c| serde_json::from_value(c).ok()) {
             Some(call) => MessagePart::Tool {
@@ -744,6 +755,12 @@ fn write_entry_scalar_fields(map: &LoroMap, entry: &SessionMessageEntry) -> Resu
     if let Some(continuation_of) = &entry.continuation_of {
         map.insert("continuationOf", continuation_of.as_str())?;
     }
+    if let Some(source) = &entry.source {
+        map.insert(
+            "source",
+            loro_value_from_json(&serde_json::to_value(source)?),
+        )?;
+    }
     Ok(())
 }
 
@@ -864,6 +881,8 @@ fn entry_from_json(v: serde_json::Value) -> Result<SessionMessageEntry, DocError
         status: Option<MessageStatus>,
         #[serde(default)]
         continuation_of: Option<String>,
+        #[serde(default)]
+        source: Option<MessageSource>,
     }
     match serde_json::from_value::<RawEntry>(v.clone()) {
         Ok(raw) => Ok(SessionMessageEntry {
@@ -874,131 +893,15 @@ fn entry_from_json(v: serde_json::Value) -> Result<SessionMessageEntry, DocError
             device_id: raw.device_id,
             status: raw.status,
             continuation_of: raw.continuation_of,
+            source: raw.source,
         }),
         // 2026-08-10 incident rule: a missing field must cost AT MOST what
         // the field carried — never the entry, never the transcript. Rooms
         // merge writes from every device and app version; one bad writer
         // (or one mangled export) blanking whole sessions for every reader
         // is exactly what tonight looked like.
-        Err(strict_err) => salvage_entry(v, strict_err),
+        Err(strict_err) => crate::salvage::salvage_entry(v, strict_err),
     }
-}
-
-/// Field-level salvage for entries the strict shape rejects. Missing
-/// identity/attribution fields get deterministic stand-ins (content-hashed
-/// id, so repeated reads and continuation joins stay stable); parts are
-/// salvaged individually — a part missing `kind` is inferred from its
-/// content shape, and only truly contentless parts are dropped.
-fn salvage_entry(
-    v: serde_json::Value,
-    strict_err: serde_json::Error,
-) -> Result<SessionMessageEntry, DocError> {
-    let Some(obj) = v.as_object() else {
-        return Err(DocError::Json(strict_err));
-    };
-    let stable_hash = {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        v.to_string().hash(&mut hasher);
-        hasher.finish()
-    };
-    let str_field = |key: &str| obj.get(key).and_then(|x| x.as_str()).map(str::to_owned);
-    let id = str_field("id").unwrap_or_else(|| format!("recovered-{stable_hash:016x}"));
-    let role = obj
-        .get("role")
-        .and_then(|r| serde_json::from_value::<MessageRole>(r.clone()).ok())
-        .unwrap_or(MessageRole::Assistant);
-    let mut parts = Vec::new();
-    let mut dropped_parts = 0usize;
-    if let Some(raw_parts) = obj.get("parts").and_then(|p| p.as_array()) {
-        for (ix, part) in raw_parts.iter().enumerate() {
-            match serde_json::from_value::<DocPartJson>(part.clone()) {
-                Ok(p) => parts.push(from_doc_part(p)),
-                Err(_) => match salvage_part(part, &id, ix) {
-                    Some(p) => parts.push(p),
-                    None => dropped_parts += 1,
-                },
-            }
-        }
-    }
-    tracing::warn!(
-        entry = %id,
-        error = %strict_err,
-        salvaged_parts = parts.len(),
-        dropped_parts,
-        "transcript entry failed strict parse; salvaged"
-    );
-    Ok(SessionMessageEntry {
-        id,
-        role,
-        parts,
-        created_at: obj.get("createdAt").and_then(|x| x.as_i64()).unwrap_or(0),
-        device_id: str_field("deviceId").unwrap_or_default(),
-        status: obj
-            .get("status")
-            .and_then(|s| serde_json::from_value(s.clone()).ok()),
-        continuation_of: str_field("continuationOf"),
-    })
-}
-
-/// Salvage one part whose strict `DocPartJson` parse failed: infer the kind
-/// from the content shape (`text` → text part, parseable `call` → tool
-/// part). `None` only when nothing renderable survives.
-fn salvage_part(part: &serde_json::Value, entry_id: &str, ix: usize) -> Option<MessagePart> {
-    let obj = part.as_object()?;
-    let id = obj
-        .get("id")
-        .and_then(|x| x.as_str())
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("{entry_id}#recovered-{ix}"));
-    if let Some(reasoning) = obj.get("reasoning").and_then(|x| x.as_str()) {
-        return Some(MessagePart::Reasoning {
-            id,
-            text: reasoning.to_owned(),
-        });
-    }
-    if let Some(text) = obj.get("text").and_then(|x| x.as_str()) {
-        return Some(MessagePart::Text {
-            id,
-            text: text.to_owned(),
-        });
-    }
-    if let Some(call) = obj
-        .get("call")
-        .and_then(|c| serde_json::from_value(c.clone()).ok())
-    {
-        return Some(MessagePart::Tool {
-            id,
-            call,
-            is_error: obj
-                .get("isError")
-                .and_then(|x| x.as_bool())
-                .unwrap_or(false),
-            resolved: obj
-                .get("resolved")
-                .and_then(|x| x.as_bool())
-                .unwrap_or(true),
-            output: obj
-                .get("output")
-                .and_then(|x| x.as_str())
-                .map(str::to_owned),
-            diff: None,
-            output_ref: None,
-            output_bytes: None,
-            diff_ref: None,
-            diff_stats: None,
-            subagent_ref: None,
-            subagent_status: None,
-            subagent_tail: None,
-        });
-    }
-    if let Some(message) = obj.get("message").and_then(|x| x.as_str()) {
-        return Some(MessagePart::Error {
-            id,
-            message: message.to_owned(),
-        });
-    }
-    None
 }
 
 /// Render-time continuation join at the entry level (`joinContinuations` in TS):
@@ -1068,6 +971,7 @@ impl<'a> SegmentWriter<'a> {
                 device_id: device_id.into(),
                 status: Some(MessageStatus::Streaming),
                 continuation_of: None,
+                source: None,
             },
         )?;
         map.insert_container("parts", LoroList::new())?;
@@ -1351,7 +1255,31 @@ mod tests {
             device_id: "dev-a".into(),
             status: Some(MessageStatus::Complete),
             continuation_of: None,
+            source: None,
         }
+    }
+
+    /// The field the whole mail row hangs off has to survive the doc. It is
+    /// written as a map beside the entry's scalars, so a reader that does
+    /// not know it sees an unknown key and carries on.
+    #[test]
+    fn the_source_field_round_trips_through_the_doc() {
+        let doc = SessionDoc::init("chat-1").unwrap();
+        let mut entry = user_entry("mailmsg-1", "[MAIL m-1 from finch]\n  hello\n[/MAIL m-1]");
+        entry.source = Some(MessageSource::Mail {
+            from: vec!["finch".into()],
+        });
+        doc.push_message(&entry).unwrap();
+        doc.push_message(&user_entry("m2", "typed by hand")).unwrap();
+
+        let entries = doc.read_entries().unwrap();
+        assert_eq!(
+            entries[0].source,
+            Some(MessageSource::Mail {
+                from: vec!["finch".into()]
+            })
+        );
+        assert_eq!(entries[1].source, None, "a typed row carries no source");
     }
 
     #[test]
@@ -1651,6 +1579,7 @@ mod tests {
             // The orphan case: the run died and recovery stamped the entry.
             status: Some(MessageStatus::Aborted),
             continuation_of: None,
+            source: None,
         })
         .unwrap();
         assert!(!doc.resolve_input("nope").unwrap());
@@ -1909,6 +1838,7 @@ mod tests {
             device_id: "dev-a".into(),
             status: Some(MessageStatus::Complete),
             continuation_of: None,
+            source: None,
         })
         .unwrap();
         let entries = doc.read_entries().unwrap();

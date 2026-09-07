@@ -163,6 +163,7 @@ pub fn demo_entries(dir: &Path) -> Vec<surya_doc::SessionMessageEntry> {
             device_id: "local".into(),
             status: Some(surya_doc::MessageStatus::Complete),
             continuation_of: None,
+            source: None,
         })
         .collect()
 }

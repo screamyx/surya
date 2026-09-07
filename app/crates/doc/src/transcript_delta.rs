@@ -274,6 +274,7 @@ mod tests {
             device_id: "dev".into(),
             status: None,
             continuation_of: None,
+            source: None,
         }
     }
 

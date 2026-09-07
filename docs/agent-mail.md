@@ -43,6 +43,28 @@ An agent with no chat row on this engine keeps its mail queued. So does a row
 whose `to_device` is not this device - the forwarding call is the only thing
 missing for cross-server mail, not the schema.
 
+## How the row looks
+
+The delivered row is a user entry, because that is what the harness has to
+read it as. It also carries a `source` field naming the senders, and that
+field is the only thing the app looks at to decide the row is mail. Text is
+never consulted: a prompt the owner pastes can say `[MAIL ...]` and still
+renders as his own (surya#198).
+
+The envelope text stays in the row exactly as delivered. The harness needs the
+ids it has to ack, and a crash-recovery re-dispatch resends the stored prompt
+verbatim, so the brackets cannot be stripped on the way in. The app strips
+them on the way out instead: it lifts each envelope back out at render time
+and draws one left-hand row per sender, named, opposite the owner's own
+right-hand bubble.
+
+The grammar has one definition, `app/crates/proto/src/mail.rs`, because both
+sides use it - the engine writes the block, the app reads it back.
+
+`SURYA_DEMO_MAIL=<sender>|<body>` seeds a chat with one typed row and one
+mailed-in row, for a screenshot. A real mail row needs a second agent and a
+shot taken before its turn answers.
+
 ## Table
 
 `mail.sqlite3`, a sibling of `docs.sqlite3` in the same profile root, so mail
@@ -92,14 +114,18 @@ devices, and auth.
 
 | File | Lines | Holds |
 | --- | --- | --- |
-| `app/crates/engine/src/mail/mod.rs` | 250 | the service: send, list, ack, address resolution |
-| `app/crates/engine/src/mail/store.rs` | 285 | the table |
-| `app/crates/engine/src/mail/delivery.rs` | 164 | the pump and the ack |
-| `app/crates/engine/src/mail/envelope.rs` | 132 | the row, the address, the envelope line |
-| `app/crates/engine/src/mail/ingress.rs` | 215 | socket and jsonl ingress |
-| `app/crates/engine/src/mail/rpc.rs` | 99 | the four calls |
-| `app/apps/surya/src/mail_cli.rs` | 113 | the CLI shim |
-| `app/crates/engine/tests/agent_mail.rs` | 275 | the proof |
+| `app/crates/engine/src/mail/mod.rs` | 396 | the service: send, list, ack, address resolution |
+| `app/crates/engine/src/mail/store.rs` | 426 | the table |
+| `app/crates/engine/src/mail/delivery.rs` | 306 | the pump and the ack |
+| `app/crates/engine/src/mail/envelope.rs` | 268 | the row, the address, the state |
+| `app/crates/engine/src/mail/origin.rs` | 75 | who a dispatched turn writes its row as |
+| `app/crates/proto/src/mail.rs` | 214 | the envelope grammar, and the row's `source` field |
+| `app/crates/ui/src/transcript/mail_row.rs` | 268 | the row the owner sees |
+| `app/crates/ui/src/transcript/demo_mail.rs` | 139 | `SURYA_DEMO_MAIL`, for the shot |
+| `app/crates/engine/src/mail/ingress.rs` | 361 | socket and jsonl ingress |
+| `app/crates/engine/src/mail/rpc.rs` | 120 | the four calls |
+| `app/apps/surya/src/mail_cli.rs` | 119 | the CLI shim |
+| `app/crates/engine/tests/agent_mail.rs` | 185 | the proof |
 
 ## Proof
 

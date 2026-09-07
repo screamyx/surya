@@ -9,6 +9,7 @@ pub mod build;
 pub mod card;
 pub mod entities;
 pub mod files;
+pub mod mail;
 pub mod match_rank;
 pub mod motion;
 pub mod state;

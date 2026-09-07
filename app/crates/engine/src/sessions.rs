@@ -37,6 +37,7 @@ use surya_proto::{
 
 use crate::agent_states::{AgentStates, PermissionOpen};
 use crate::doc_host::{ChatDocHandle, DocHost};
+use crate::mail::MessageOrigin;
 use crate::registry::HarnessRegistry;
 use crate::run_journal::RunJournal;
 use crate::{EngineError, new_id, now_ms};
@@ -430,7 +431,9 @@ impl SessionsEngine {
 
     /// Start (or route) a run for `chat_id`.
     ///
-    /// - The user message entry is written to the doc immediately (id = `message_id`).
+    /// - The user message entry is written to the doc immediately, under
+    ///   `origin`'s id and carrying `origin`'s source (mail names its senders
+    ///   there; a typed turn has none).
     /// - A live steerable run receives the prompt as its next turn via the mailbox
     ///   (surya's persistent-session routing); otherwise any live run is interrupted
     ///   first — never two runtimes driving one chat.
@@ -439,9 +442,9 @@ impl SessionsEngine {
         chat_id: &str,
         harness_id: HarnessId,
         request: RunRequest,
-        message_id: Option<String>,
+        origin: Option<MessageOrigin>,
     ) -> Result<String, EngineError> {
-        self.dispatch_with(chat_id, harness_id, request, message_id, false)
+        self.dispatch_with(chat_id, harness_id, request, origin, false)
             .await
     }
 
@@ -455,10 +458,10 @@ impl SessionsEngine {
         chat_id: &'a str,
         harness_id: HarnessId,
         request: RunRequest,
-        message_id: Option<String>,
+        origin: Option<MessageOrigin>,
         startup_retry: bool,
     ) -> futures::future::BoxFuture<'a, Result<String, EngineError>> {
-        Box::pin(self.dispatch_inner(chat_id, harness_id, request, message_id, startup_retry))
+        Box::pin(self.dispatch_inner(chat_id, harness_id, request, origin, startup_retry))
     }
 
     async fn dispatch_inner(
@@ -466,9 +469,14 @@ impl SessionsEngine {
         chat_id: &str,
         harness_id: HarnessId,
         mut request: RunRequest,
-        mut message_id: Option<String>,
+        origin: Option<MessageOrigin>,
         startup_retry: bool,
     ) -> Result<String, EngineError> {
+        // The row's author outlives its id: the routed-steer branch below can
+        // reclaim the entry and fall through to a fresh run, and the row it
+        // writes there must still say who sent it.
+        let source = origin.as_ref().and_then(|o| o.source.clone());
+        let mut message_id = origin.map(|o| o.message_id);
         // Project-less chats store cwd `~` (the creating device can't know the
         // host's home); expand it here, on the host, where the run spawns.
         request.cwd = expand_home(&request.cwd);
@@ -514,7 +522,12 @@ impl SessionsEngine {
                     message_id: user_id.clone(),
                 });
                 let handle = self.doc_handle(chat_id)?;
-                handle.write_user_message(&user_id, &request.prompt, now_ms())?;
+                handle.write_user_message_from(
+                    &user_id,
+                    &request.prompt,
+                    now_ms(),
+                    source.clone(),
+                )?;
                 if self.is_live(chat_id, &run_id) {
                     // Working BEFORE the lastMessageAt bump: both ride the
                     // workspace doc from this one peer, so causal order makes it
@@ -577,7 +590,7 @@ impl SessionsEngine {
         }
         let handle = self.doc_handle(chat_id)?;
         let user_id = message_id.unwrap_or_else(new_id);
-        handle.write_user_message(&user_id, &request.prompt, now_ms())?;
+        handle.write_user_message_from(&user_id, &request.prompt, now_ms(), source)?;
 
         // Engine-owned resume (surya sessions.ts:736 — every dispatch read the
         // chat's stored harness session): callers always send `resume: None`;
@@ -996,7 +1009,9 @@ impl SessionsEngine {
                         &chat_id,
                         harness_id,
                         request,
-                        Some(user_id),
+                        // The row is already in the doc under this id, source
+                        // and all; the re-dispatch dedupes against it.
+                        Some(user_id.into()),
                     )
                     .await
                 {
@@ -1404,6 +1419,7 @@ impl SubagentSink {
             device_id: device_id.to_owned(),
             status: Some(MessageStatus::Complete),
             continuation_of: None,
+            source: None,
         };
         if let Err(err) = self.doc.push_message(&entry) {
             tracing::warn!(doc = %self.doc_id, error = %err, "subagent steer write failed");
@@ -2216,7 +2232,7 @@ async fn drive_run(
                 // The user entry write inside dispatch is idempotent by
                 // message id; `startup_retry` makes this attempt final.
                 if let Err(err) = engine
-                    .dispatch_with(&chat, harness_id, retry, Some(message_id), true)
+                    .dispatch_with(&chat, harness_id, retry, Some(message_id.into()), true)
                     .await
                 {
                     tracing::error!(chat = %chat, error = %err, "startup-crash retry dispatch failed");
@@ -2475,7 +2491,7 @@ async fn drive_run(
                         &chat,
                         harness_id,
                         request,
-                        Some(steer.message_id.clone()),
+                        Some(steer.message_id.clone().into()),
                     )
                     .await
                 {

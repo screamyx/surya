@@ -68,55 +68,20 @@ impl MailMessage {
         }
     }
 
-    /// The block the recipient reads: a header, the body, and a closing line
-    /// naming the same id.
+    /// The block the recipient reads, from [`surya_proto::mail::envelope_block`].
     ///
-    /// Three things keep a body from forging a second message. Every body line
-    /// is indented two spaces, so nothing in it can start a line at column
-    /// zero. Every line separator a reader might honour — CR, NEL, LINE
-    /// SEPARATOR, the vertical tab and form feed — is folded to `\n` first, so
-    /// none of them can smuggle an un-indented line past `str::lines`, which
-    /// only splits on `\n`. And `id` and `from` are checked against
-    /// [`is_addressable`] before a message is ever stored, so neither can
-    /// carry a bracket or a newline into the header itself.
+    /// The grammar lives in the proto crate because the transcript row reads
+    /// it back: a mail row keeps this exact text (the harness gets the ids it
+    /// has to ack, and a crash-recovery re-dispatch resends the same prompt),
+    /// and the UI lifts the sender and the body back out of it to draw the
+    /// row. One writer, one reader, one definition.
+    ///
+    /// `id` and `from` are checked against [`is_addressable`] before a message
+    /// is ever stored, so neither can carry a bracket or a newline into the
+    /// header.
     pub fn envelope_block(&self) -> String {
-        let body = normalize_breaks(&self.body)
-            .lines()
-            .map(|line| format!("  {line}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!(
-            "[MAIL {id} from {from}]\n{body}\n[/MAIL {id}]",
-            id = self.id,
-            from = self.from
-        )
+        surya_proto::mail::envelope_block(&self.id, &self.from, &self.body)
     }
-}
-
-/// Fold every line separator a reader might honour into `\n`.
-///
-/// `str::lines` splits on `\n` alone. A lone CR, a NEL (U+0085), a LINE
-/// SEPARATOR (U+2028) or a PARAGRAPH SEPARATOR (U+2029) would survive the
-/// indent pass inside one "line" and still read as a line break downstream —
-/// which is exactly enough to place `[MAIL ...]` at what looks like column
-/// zero.
-fn normalize_breaks(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        match c {
-            '\r' => {
-                // CRLF is one break, not two.
-                if chars.peek() == Some(&'\n') {
-                    chars.next();
-                }
-                out.push('\n');
-            }
-            '\u{0085}' | '\u{2028}' | '\u{2029}' | '\u{000B}' | '\u{000C}' => out.push('\n'),
-            _ => out.push(c),
-        }
-    }
-    out
 }
 
 /// The charset an id or a sender may use: letters, digits, and `_ . : -`,

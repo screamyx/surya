@@ -421,6 +421,7 @@ fn the_row_only_collapses_when_the_transcript_really_carries_its_sheet() {
             device_id: "d".into(),
             status: Some(MessageStatus::Streaming),
             continuation_of: None,
+            source: None,
         }]
     };
 
