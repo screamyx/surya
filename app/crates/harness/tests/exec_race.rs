@@ -12,9 +12,15 @@
 //! fd. `O_CLOEXEC` does not close it until the child reaches its OWN exec, so
 //! for that window the script is "open for writing" and our exec of it fails.
 //!
-//! These two tests pin the kernel behaviour the fix relies on, so nobody
-//! reintroduces a written-then-exec'd fixture on the theory that a unique path
-//! or a rename makes it safe. Neither does.
+//! These tests pin the kernel behaviour the fix relies on, so nobody
+//! reintroduces a written-then-exec'd fixture on the theory that a unique
+//! path or a rename makes it safe. Neither does.
+//!
+//! The first test writes scripts and execs them, which is the pattern the
+//! rest of this file argues against. It is one test rather than two on
+//! purpose: a second forking test on a parallel thread could inherit its
+//! write fd and hit the same ETXTBSY for real. The other test never forks,
+//! so nothing here can race anything else here.
 
 #![cfg(unix)]
 
@@ -30,11 +36,18 @@ fn write_script(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
     path
 }
 
-/// A held write fd is exactly what a sibling test's fork inherits, so this
-/// reproduces the CI failure without waiting on the race to land.
+/// Both halves of the kernel behaviour the fix relies on, in ONE test.
+///
+/// Together on purpose. Each half writes a script and then execs it, which is
+/// the pattern the rest of this file argues against, and two such tests on
+/// parallel threads could inherit each other's write fd through a fork and
+/// hit this same ETXTBSY for real.
 #[test]
-fn a_held_write_fd_makes_exec_fail_with_text_file_busy() {
+fn a_held_write_fd_blocks_exec_and_renaming_does_not_clear_it() {
     let dir = tempfile::tempdir().expect("tmp dir");
+
+    // A held write fd is exactly what a sibling test's fork inherits, so this
+    // reproduces the CI failure without waiting on the race to land.
     let script = write_script(dir.path(), "written.sh");
 
     // Exec is fine while nobody holds the file open for writing.
@@ -61,18 +74,14 @@ fn a_held_write_fd_makes_exec_fail_with_text_file_busy() {
     Command::new(&script)
         .output()
         .expect("execs again once the fd is closed");
-}
 
-/// The obvious workaround does not work, and issue #171 proposed it.
-///
-/// `rename` moves a directory entry. The refusal is on the inode, and the
-/// inode is the same one before and after, so a write fd opened on the old
-/// name still blocks an exec of the new name. A unique path per test fails
-/// for the same reason: the fd a sibling fork inherits has nothing to do with
-/// which name we chose.
-#[test]
-fn renaming_the_script_into_place_does_not_clear_the_block() {
-    let dir = tempfile::tempdir().expect("tmp dir");
+    // The obvious workaround does not work, and issue #171 proposed it.
+    //
+    // `rename` moves a directory entry. The refusal is on the inode, and the
+    // inode is the same one before and after, so a write fd opened on the old
+    // name still blocks an exec of the new name. A unique path per test fails
+    // for the same reason: the fd a sibling fork inherits has nothing to do
+    // with which name we chose.
     let staged = write_script(dir.path(), "staged.sh.tmp");
     let held = std::fs::OpenOptions::new()
         .write(true)
@@ -97,29 +106,36 @@ fn renaming_the_script_into_place_does_not_clear_the_block() {
         .expect("execs once the fd is closed");
 }
 
-/// The fix: the replay path execs a fixture that is checked in and that no
-/// test opens for writing. If someone moves it back under a temp dir this
-/// stops being true and this test says so.
+/// The fix: every program these tests exec is checked in, and no test opens
+/// one for writing. If someone moves one back under a temp dir this stops
+/// being true and this test says so.
 #[test]
-fn the_replay_fixture_is_checked_in_next_to_the_tests() {
-    let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
-    let cli = root.join("fixtures").join("fake-claude.sh");
-    let capture = root
-        .join("fixtures")
+fn every_program_the_harness_tests_exec_is_checked_in() {
+    let fixtures = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures");
+
+    // fake-claude.sh serves the replay scenario; the two under `acp/` are the
+    // wedge and the config-option agent, both of which acp.rs used to write
+    // into a temp dir and exec.
+    for name in ["fake-claude.sh", "acp/hung-agent.sh", "acp/devin.py"] {
+        let path = fixtures.join(name);
+        assert!(path.is_file(), "{name} is checked in: {path:?}");
+        assert!(
+            path.metadata().expect("stat").permissions().mode() & 0o111 != 0,
+            "{name} is executable in the tree, so no test has to chmod it"
+        );
+    }
+
+    let capture = fixtures
         .join("claude")
         .join("live-2.1.228-background-subagent.jsonl");
-
-    assert!(cli.is_file(), "the fake CLI is checked in: {cli:?}");
     assert!(capture.is_file(), "the capture is checked in: {capture:?}");
-    assert!(
-        cli.metadata().expect("stat").permissions().mode() & 0o111 != 0,
-        "the fake CLI is executable in the tree, so no test has to chmod it"
-    );
 
-    // It knows the scenario the replay test asks for. Without this the test
-    // would fall through to the unknown-scenario branch and still "pass" a
-    // spawn, which is how a broken replay could look green.
-    let body = std::fs::read_to_string(&cli).expect("fake CLI readable");
+    // The fake CLI knows the scenario the replay test asks for. Without this
+    // the test would fall through to the unknown-scenario branch and still
+    // "pass" a spawn, which is how a broken replay could look green.
+    let body = std::fs::read_to_string(fixtures.join("fake-claude.sh")).expect("fake CLI readable");
     assert!(
         body.contains("*scenario:replay:*"),
         "the fake CLI serves scenario:replay"
