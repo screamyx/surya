@@ -32,6 +32,8 @@ use surya_proto::{
 use surya_rpc::{RpcError, methods};
 
 use crate::attachments::{self, StagedAttachment};
+
+mod attachment_ui;
 use crate::motion;
 use crate::pickers::Pickers;
 use crate::state::{AppState, EngineHandle, Indicator};
@@ -3558,7 +3560,7 @@ fn batch_notice(staged: usize, skipped: usize, failed: bool) -> BatchNotice {
     }
     if skipped > 0 {
         return BatchNotice::Show(format!(
-            "Only images can be attached ({})",
+            "Attach images ({}) or UTF-8 text files",
             attachments::supported_extensions()
         ));
     }
@@ -3846,10 +3848,11 @@ impl Composer {
                 .collect();
             if std::env::var("SURYA_ATTACH_PREVIEW").is_ok_and(|v| v == "1")
                 && let Some(first) = staged.first()
+                && let Some(image) = first.image()
             {
                 composer.preview = Some(attachments::PreviewImage {
                     name: first.name.clone().into(),
-                    image: first.image.clone(),
+                    image: image.clone(),
                 });
                 composer.preview_focus_pending = true;
             }
@@ -3897,51 +3900,6 @@ impl Composer {
             .or_default()
             .extend(staged);
         cx.notify();
-    }
-
-    /// Stage image files (picker / drop / pasted paths). A non-image is
-    /// skipped and SAID SO; read failures and oversize files surface in the
-    /// same failure notice.
-    ///
-    /// The skip used to be silent, matching comet's web original where the
-    /// file input carried `accept="image/*"` and a non-image could not be
-    /// picked in the first place. The native picker has no such filter
-    /// (`PathPromptOptions` cannot express one), so picking a .txt closed the
-    /// dialog and changed nothing on screen: the file was neither attached nor
-    /// refused (e2e E2E-CHAT-01).
-    pub(crate) fn add_paths(&mut self, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
-        let mut staged = Vec::new();
-        let mut skipped = 0usize;
-        let mut failed = false;
-        for path in &paths {
-            if attachments::format_by_extension(path).is_none() {
-                skipped += 1;
-                continue;
-            }
-            match attachments::stage_file(path) {
-                Ok(att) => staged.push(att),
-                Err(message) => {
-                    failed = true;
-                    self.failure = Some(message.into());
-                    self.failure_key = Some(self.current_key.clone());
-                    cx.notify();
-                }
-            }
-        }
-        match batch_notice(staged.len(), skipped, failed) {
-            BatchNotice::Show(notice) => {
-                self.failure = Some(notice.into());
-                self.failure_key = Some(self.current_key.clone());
-                cx.notify();
-            }
-            BatchNotice::Clear => {
-                self.failure = None;
-                self.failure_key = None;
-                cx.notify();
-            }
-            BatchNotice::Leave => {}
-        }
-        self.add_staged(staged, cx);
     }
 
     fn remove_attachment(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -3996,103 +3954,7 @@ impl Composer {
         )
     }
 
-    /// The staged-thumbnail strip (attachment-ui.tsx AttachmentStrip):
-    /// `flex flex-wrap gap-2 px-4 pt-3`, 56px rounded thumbs, a remove button
-    /// revealed on hover, click opens the full-size preview.
-    fn render_attachment_strip(&self, theme: &Theme, cx: &mut Context<Self>) -> Option<gpui::Div> {
-        let staged = self.staged();
-        if staged.is_empty() {
-            return None;
-        }
-        let mut strip = div()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .gap(px(STRIP_GAP))
-            .px(px(STRIP_PAD_X))
-            .pt(px(STRIP_PAD_TOP));
-        for (ix, att) in staged.iter().enumerate() {
-            let group: SharedString = format!("composer-att-{}", att.id).into();
-            let preview = attachments::PreviewImage {
-                name: att.name.clone().into(),
-                image: att.image.clone(),
-            };
-            let remove_id = att.id.clone();
-            strip = strip.child(
-                div()
-                    .group(group.clone())
-                    .relative()
-                    .child(
-                        div()
-                            .id(("composer-att-thumb", ix))
-                            .size(px(STRIP_THUMB))
-                            .rounded(px(8.0))
-                            .overflow_hidden()
-                            .border_1()
-                            .border_color(crate::theme::hairline(0.10))
-                            .cursor_pointer()
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                this.preview = Some(preview.clone());
-                                this.preview_focus_pending = true;
-                                cx.notify();
-                            }))
-                            .child(
-                                img(att.image.clone())
-                                    // EXPLICIT dims, not size_full: img layout
-                                    // honors the image's intrinsic aspect
-                                    // ratio over a percent height (gpui
-                                    // f8d8a90 repoint), so size_full let a
-                                    // tall photo grow past the frame — the
-                                    // rectangular overflow clip then squared
-                                    // the bottom corners (2026-08-19 report).
-                                    // 56−2 = frame minus its 1px borders.
-                                    .w(px(STRIP_THUMB - 2.0))
-                                    .h(px(STRIP_THUMB - 2.0))
-                                    // Own radii — the frame's rounding only
-                                    // clips rectangularly (7 = 8 - border).
-                                    .rounded(px(7.0))
-                                    .object_fit(ObjectFit::Cover),
-                            ),
-                    )
-                    // Own layer: inside the frosted pill everything shares one
-                    // draw order and images render last, so without it the
-                    // thumbnail paints OVER this button (user report).
-                    .child(crate::frost::layered(
-                        div()
-                            .id(("composer-att-remove", ix))
-                            .absolute()
-                            .top(px(-6.0))
-                            .right(px(-6.0))
-                            .size(px(18.0))
-                            .rounded_full()
-                            .bg(theme.bg)
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_pointer()
-                            .shadow_sm()
-                            .opacity(0.0)
-                            .group_hover(group, |s| s.opacity(1.0))
-                            .on_click(cx.listener(move |this, _, _, cx| {
-                                // The button overhangs the thumbnail, whose
-                                // hitbox is right underneath — don't let the
-                                // same click also open the preview.
-                                cx.stop_propagation();
-                                this.remove_attachment(&remove_id, cx);
-                            }))
-                            .child(
-                                crate::icons::icon(crate::icons::CLOSE_CIRCLE)
-                                    .size(px(14.0))
-                                    .text_color(theme.text_muted),
-                            ),
-                    )),
-            );
-        }
-        Some(strip)
-    }
-
-    /// Paperclip: the native image picker (the original's hidden
-    /// `<input type=file accept=image/* multiple>`).
+    /// Paperclip: choose images or UTF-8 text files with the native picker.
     fn open_file_picker(&mut self, cx: &mut Context<Self>) {
         let rx = cx.prompt_for_paths(PathPromptOptions {
             files: true,
@@ -5218,11 +5080,12 @@ impl Composer {
         // rewrite instead of blanking into a reload skeleton.
         if queued_flow {
             for (upload_id, att) in upload_ids.iter().zip(&staged) {
+                let Some(image) = att.image() else { continue; };
                 attachments::seed_attachment_alias(
                     &device_id,
                     upload_id,
                     &att.name,
-                    att.image.clone(),
+                    image.clone(),
                 );
                 if let Some(local) = local_device_id.as_deref()
                     && local != device_id
@@ -5231,17 +5094,18 @@ impl Composer {
                         local,
                         upload_id,
                         &att.name,
-                        att.image.clone(),
+                        image.clone(),
                     );
                 }
             }
         }
         for (path, att) in echo_paths.iter().zip(&staged) {
-            attachments::seed_attachment(&device_id, path, &att.name, att.image.clone());
+            let Some(image) = att.image() else { continue; };
+            attachments::seed_attachment(&device_id, path, &att.name, image.clone());
             if let Some(local) = local_device_id.as_deref()
                 && local != device_id
             {
-                attachments::seed_attachment(local, path, &att.name, att.image.clone());
+                attachments::seed_attachment(local, path, &att.name, image.clone());
             }
         }
 
@@ -5382,9 +5246,10 @@ impl Composer {
                     // Attachment in the original send path).
                     let seed_device = host_device_id.clone().unwrap_or_else(|| device_id.clone());
                     for (path, att) in attachment_paths.iter().zip(&staged) {
-                        attachments::seed_attachment(&seed_device, path, &att.name, att.image.clone());
+                        let Some(image) = att.image() else { continue; };
+                        attachments::seed_attachment(&seed_device, path, &att.name, image.clone());
                         if seed_device != device_id {
-                            attachments::seed_attachment(&device_id, path, &att.name, att.image.clone());
+                            attachments::seed_attachment(&device_id, path, &att.name, image.clone());
                         }
                     }
                     content = attachments::with_attachments(&text, &attachment_paths);
@@ -6945,7 +6810,7 @@ mod tests {
         };
         let listed = notice
             .rsplit_once('(')
-            .and_then(|(_, tail)| tail.strip_suffix(')'))
+            .and_then(|(_, tail)| tail.split_once(')').map(|(list, _)| list))
             .expect("the notice carries the list in parentheses");
         let listed: Vec<&str> = listed.split(", ").collect();
         assert_eq!(
