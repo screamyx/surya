@@ -368,7 +368,7 @@ async fn folder_lister_flags_and_ordering() {
     let data = tempfile::tempdir().expect("data dir");
     let repos = test_repos(data.path());
     let listing = repos
-        .list_folders(Some(tmp.path().to_string_lossy().to_string()))
+        .list_folders(Some(tmp.path().to_string_lossy().to_string()), None)
         .await
         .expect("listing");
     assert!(!listing.truncated);
@@ -404,11 +404,84 @@ async fn folder_lister_caps_at_500_with_truncated_flag() {
     let data = tempfile::tempdir().expect("data dir");
     let repos = test_repos(data.path());
     let listing = repos
-        .list_folders(Some(tmp.path().to_string_lossy().to_string()))
+        .list_folders(Some(tmp.path().to_string_lossy().to_string()), None)
         .await
         .expect("listing");
     assert_eq!(listing.entries.len(), 500);
     assert!(listing.truncated);
+}
+
+/// E2E-PROJ-01: a folder past the cap must still be findable.
+///
+/// This is the bug in miniature. 510 folders, the cap is 500, and the one
+/// being searched for sorts last by name - so under the old order (cap, then
+/// let the client filter) it was never sent and the picker said "No folders
+/// match" for a folder that plainly existed. On the real box the directory
+/// held 9,277 folders and the target sat at position 5,341.
+#[tokio::test]
+async fn a_folder_past_the_cap_is_still_found_by_query() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    for i in 0..510 {
+        std::fs::create_dir_all(tmp.path().join(format!("dir-{i:04}"))).expect("dir");
+    }
+    // Sorts after every dir-NNNN, so the cap would have cut it.
+    std::fs::create_dir_all(tmp.path().join("zz-needle")).expect("needle");
+    let data = tempfile::tempdir().expect("data dir");
+    let repos = test_repos(data.path());
+
+    // Without a query it is past the cap, exactly as before.
+    let all = repos
+        .list_folders(Some(tmp.path().to_string_lossy().to_string()), None)
+        .await
+        .expect("listing");
+    assert_eq!(all.entries.len(), 500);
+    assert!(all.truncated);
+    assert!(
+        !all.entries.iter().any(|e| e.name == "zz-needle"),
+        "the unfiltered listing is still capped, so the needle is not in it"
+    );
+
+    // With one, the device filters before it caps and the needle comes back.
+    let found = repos
+        .list_folders(
+            Some(tmp.path().to_string_lossy().to_string()),
+            Some("zz-needle".into()),
+        )
+        .await
+        .expect("listing");
+    let names: Vec<&str> = found.entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, vec!["zz-needle"], "the query has to reach the disk");
+    assert!(!found.truncated);
+}
+
+/// A query that matches more than the cap keeps the BEST matches, not the
+/// first 500 by name: prefix matches rank above substring ones, so a
+/// truncated search still surfaces what the picker would have ranked top.
+#[tokio::test]
+async fn a_query_over_the_cap_keeps_prefix_matches_first() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    for i in 0..600 {
+        // "xtarget" appears mid-name, so these are substring matches.
+        std::fs::create_dir_all(tmp.path().join(format!("pad-xtarget-{i:04}"))).expect("dir");
+    }
+    std::fs::create_dir_all(tmp.path().join("xtarget-wanted")).expect("prefix match");
+    let data = tempfile::tempdir().expect("data dir");
+    let repos = test_repos(data.path());
+
+    let listing = repos
+        .list_folders(
+            Some(tmp.path().to_string_lossy().to_string()),
+            Some("xtarget".into()),
+        )
+        .await
+        .expect("listing");
+    assert_eq!(listing.entries.len(), 500);
+    assert!(listing.truncated);
+    assert_eq!(
+        listing.entries.first().map(|e| e.name.as_str()),
+        Some("xtarget-wanted"),
+        "the prefix match survives the cap and leads"
+    );
 }
 
 #[tokio::test]
@@ -418,6 +491,7 @@ async fn folder_lister_timeout_path() {
     let err = repos
         .list_folders_with(
             Some(tmp.path().to_string_lossy().to_string()),
+            None,
             Duration::from_millis(50),
             true, // worker never responds
         )

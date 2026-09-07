@@ -59,6 +59,7 @@ use crate::transcript::{self, Transcript, TranscriptEvent};
 mod agents_entry;
 mod confirm_target;
 mod focus;
+mod folder_load;
 mod spaces;
 mod tab_press;
 mod tabs;

@@ -815,12 +815,19 @@ impl Repos {
     // ── ListFolders ─────────────────────────────────────────────────────────
 
     /// One directory level (home by default): dotfiles hidden, directories first,
-    /// capped at [`FOLDER_LIST_MAX_ENTRIES`] with a `truncated` flag. The walk runs
+    /// capped at [`FOLDER_LIST_MAX_ENTRIES`] with a `truncated` flag.
+    ///
+    /// `query` filters and ranks before the cap, so a match past the cap is
+    /// still reachable - see [`list_folders_blocking`]. The walk runs
     /// in a spawned blocking task under a 6s wall-clock ceiling — a wedged path
     /// (dead mount, permission-gated folder) fails this listing without blocking
     /// anything else; the abandoned task unwinds on its own thread.
-    pub async fn list_folders(&self, path: Option<String>) -> Result<FolderListing, EngineError> {
-        self.list_folders_with(path, FOLDER_LIST_TIMEOUT, false)
+    pub async fn list_folders(
+        &self,
+        path: Option<String>,
+        query: Option<String>,
+    ) -> Result<FolderListing, EngineError> {
+        self.list_folders_with(path, query, FOLDER_LIST_TIMEOUT, false)
             .await
     }
 
@@ -887,6 +894,7 @@ impl Repos {
     pub async fn list_folders_with(
         &self,
         path: Option<String>,
+        query: Option<String>,
         timeout: Duration,
         hang_for_test: bool,
     ) -> Result<FolderListing, EngineError> {
@@ -894,6 +902,7 @@ impl Repos {
             Some(p) => absolutize(Path::new(&p)),
             None => home_dir(),
         };
+        let query = query.unwrap_or_default();
         let (tx, rx) = tokio::sync::oneshot::channel();
         let spawned = std::thread::Builder::new()
             .name("folder-list".into())
@@ -903,7 +912,7 @@ impl Repos {
                     // exit reclaims it) — the caller must hit its timeout.
                     std::thread::sleep(Duration::from_secs(3600));
                 }
-                let _ = tx.send(list_folders_blocking(&target));
+                let _ = tx.send(list_folders_blocking(&target, &query));
             });
         if let Err(err) = spawned {
             return Err(EngineError::Other(format!("folder listing failed: {err}")));
@@ -959,35 +968,54 @@ async fn disposable_worker<T: Send + 'static>(
 
 /// The blocking walk: ONE readdir of the target; `is_repo` is a cheap `.git`
 /// existence probe per directory entry.
-fn list_folders_blocking(target: &Path) -> Result<FolderListing, EngineError> {
+///
+/// `query` filters and ranks BEFORE the cap, and the order of those two steps
+/// is the whole point. Capping first and filtering after is what the picker
+/// used to do between them, and on a directory of 9,277 folders it meant the
+/// client only ever saw the first 500 by name: a folder that plainly existed
+/// came back as "No folders match" because it sorted at position 5,341 and
+/// was never sent (E2E-PROJ-01). The rank rule is
+/// [`surya_proto::match_rank`], the same one the picker ranks with, so the
+/// entries that survive the cap are the ones the client would have put at the
+/// top anyway.
+fn list_folders_blocking(target: &Path, query: &str) -> Result<FolderListing, EngineError> {
     let read = std::fs::read_dir(target).map_err(|e| match e.kind() {
         std::io::ErrorKind::PermissionDenied => {
             EngineError::Other("Surya doesn't have access to this folder on the device.".into())
         }
         _ => EngineError::Other(format!("could not read that folder: {e}")),
     })?;
-    let mut entries: Vec<FolderEntry> = Vec::new();
+    let mut entries: Vec<(usize, FolderEntry)> = Vec::new();
     for entry in read.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with('.') {
             continue;
         }
+        let Some(rank) = surya_proto::match_rank::match_rank(query, &name) else {
+            continue;
+        };
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
         let is_repo = is_dir && entry.path().join(".git").exists();
-        entries.push(FolderEntry {
-            name,
-            is_dir,
-            is_repo,
-        });
+        entries.push((
+            rank,
+            FolderEntry {
+                name,
+                is_dir,
+                is_repo,
+            },
+        ));
     }
-    // Directories first, each group name-sorted (case-insensitive).
-    entries.sort_by(|a, b| {
+    // Directories first, then best match, then name (case-insensitive). With
+    // no query every rank is 1, so this is the original order untouched.
+    entries.sort_by(|(a_rank, a), (b_rank, b)| {
         b.is_dir
             .cmp(&a.is_dir)
+            .then_with(|| a_rank.cmp(b_rank))
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     let truncated = entries.len() > FOLDER_LIST_MAX_ENTRIES;
     entries.truncate(FOLDER_LIST_MAX_ENTRIES);
+    let entries: Vec<FolderEntry> = entries.into_iter().map(|(_, entry)| entry).collect();
     Ok(FolderListing {
         path: target.to_string_lossy().to_string(),
         entries,

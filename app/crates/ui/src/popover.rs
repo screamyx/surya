@@ -229,23 +229,10 @@ pub fn menu_step(active: Option<usize>, count: usize, delta: isize) -> Option<us
     Some(next as usize)
 }
 
-/// Match rank of a label against a query: `0` prefix match, `1` substring,
-/// `None` no match. Case-insensitive; an empty query matches everything at
-/// rank 1 (input order preserved).
-pub fn match_rank(query: &str, label: &str) -> Option<usize> {
-    let query = query.trim().to_lowercase();
-    if query.is_empty() {
-        return Some(1);
-    }
-    let label = label.to_lowercase();
-    if label.starts_with(&query) {
-        Some(0)
-    } else if label.contains(&query) {
-        Some(1)
-    } else {
-        None
-    }
-}
+/// Match rank of a label against a query. Re-exported from `surya-proto`:
+/// the engine ranks a directory by the same rule before it caps the listing
+/// it sends back, and the two must not drift (see `surya_proto::match_rank`).
+pub use surya_proto::match_rank::match_rank;
 
 /// Filter + rank labels for a search query: prefix matches first, then
 /// substring matches, stable within each rank. Returns indices into `labels`.
