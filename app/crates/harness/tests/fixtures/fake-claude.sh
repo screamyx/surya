@@ -57,24 +57,35 @@ case "$first" in
   emit '{"type":"result","subtype":"success","result":"done!","errors":[],"session_id":"sess-card-sub"}'
   ;;
 
-*scenario:card*)
-  # A surya show_card call and its result, plus a second one that FAILS, plus
-  # an ordinary tool: proves the Card event follows its own result, only for a
-  # non-error result, and never for a tool that is not show_card.
-  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","mcp__surya__show_card"],"cwd":"/tmp","session_id":"sess-card"}'
-  # Drawing a card asks permission like any other tool. The host must answer
-  # it on the spot, without going to the gate, or a card costs the user a
-  # prompt every time. Blocks until the answer arrives, so a regression that
-  # sends nothing back shows up here rather than passing quietly.
+*scenario:card-perm*)
+  # Drawing a card asks permission like any other tool, and the host must
+  # answer it on the spot rather than going to the gate - a card that costs
+  # the user a prompt is not worth drawing.
+  #
+  # Its own scenario, not part of `scenario:card`: this one blocks on a
+  # control-channel round trip, and a run whose steering mailbox is already
+  # closed (crates/ui/src/cards_e2e.rs) closes the child's stdin before the
+  # answer can arrive (mod.rs:730).
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","mcp__surya__show_card"],"cwd":"/tmp","session_id":"sess-card-perm"}'
   emit '{"type":"control_request","request_id":"cr-card","request":{"subtype":"can_use_tool","tool_name":"mcp__surya__show_card","input":{"card":{"shape":"approval","title":"Run it?"}}}}'
   read -r cardperm || exit 1
   case "$cardperm" in
   *'"request_id":"cr-card"'*'"behavior":"allow"'*) ;;
   *)
-    emit '{"type":"result","subtype":"error_during_execution","errors":["show_card was not auto-allowed"],"usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-card"}'
+    emit '{"type":"result","subtype":"error_during_execution","errors":["show_card was not auto-allowed"],"usage":{"input_tokens":1,"output_tokens":1},"session_id":"sess-card-perm"}'
     exit 0
     ;;
   esac
+  emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_card_ok","name":"mcp__surya__show_card","input":{"card":{"shape":"approval","title":"Run it?"}}}]}}'
+  emit '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_card_ok","is_error":false}]}}'
+  emit '{"type":"result","subtype":"success","result":"done!","errors":[],"session_id":"sess-card-perm"}'
+  ;;
+
+*scenario:card*)
+  # A surya show_card call and its result, plus a second one that FAILS, plus
+  # an ordinary tool: proves the Card event follows its own result, only for a
+  # non-error result, and never for a tool that is not show_card.
+  emit '{"type":"system","subtype":"init","model":"claude-fable-5","tools":["Bash","mcp__surya__show_card"],"cwd":"/tmp","session_id":"sess-card"}'
   emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_card_ok","name":"mcp__surya__show_card","input":{"card":{"shape":"approval","title":"Run it?"}}}]}}'
   emit '{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"toolu_card_ok","is_error":false}]}}'
   emit '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_card_bad","name":"mcp__surya__show_card","input":{"card":{"shape":"chart"}}},{"type":"tool_use","id":"toolu_bash","name":"Bash","input":{"command":"ls"}}]}}'

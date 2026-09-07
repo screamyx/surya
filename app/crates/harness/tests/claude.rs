@@ -975,7 +975,7 @@ async fn show_card_never_reaches_the_permission_gate() {
     let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
     let (mut card_controls, _steer, _token) = controls("B");
     card_controls.permission = recorder(seen.clone());
-    let events = run_to_end(&harness(), request("scenario:card"), card_controls).await;
+    let events = run_to_end(&harness(), request("scenario:card-perm"), card_controls).await;
     let card_saw = seen.lock().expect("not poisoned").clone();
     let result = events.iter().find_map(|e| match e {
         AgentEvent::Done { result, .. } => result.clone(),
