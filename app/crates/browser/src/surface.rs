@@ -101,9 +101,14 @@ pub fn panel(focus: &gpui::FocusHandle) -> gpui::AnyElement {
 }
 
 /// The page pixels, filling whatever bounds the parent gives them.
+///
+/// Empty when there is no browser. The words for that case come from
+/// [`crate::off_note`] and the caller draws them: this crate cannot see
+/// comet's tokens, and a note painted here inherits the shell's text onto the
+/// pane's white page surface, which measured about 1.2:1 on Windows dark.
 pub fn surface() -> gpui::AnyElement {
-    if let Some(off) = crate::off_reason() {
-        return placeholder(&crate::off::note(off)).into_any_element();
+    if crate::disabled() {
+        return div().size_full().into_any_element();
     }
     canvas(
         // The page area as a hitbox, so the page's own pointer shape applies
@@ -170,22 +175,4 @@ pub fn surface() -> gpui::AnyElement {
     .into_any_element()
 }
 
-/// What the pane shows when there is no browser in it. The words come from
-/// `off.rs`, which knows which of the three reasons this is.
-fn placeholder(note: &crate::off::Note) -> gpui::Div {
-    let mut pane = div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .gap(px(6.0))
-        .p(px(14.0))
-        .text_size(px(12.0))
-        .child(div().child(note.label))
-        .child(div().opacity(0.6).child(note.line));
-    // The way out sits under the sentence, quieter again, so the eye reads
-    // what happened before it reads what to do about it.
-    if let Some(hint) = note.hint {
-        pane = pane.child(div().opacity(0.4).child(hint));
-    }
-    pane
-}
+

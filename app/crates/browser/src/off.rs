@@ -70,8 +70,13 @@ pub(crate) fn cache_is_held(cache: &Path) -> bool {
     LOCK_NAMES.iter().any(|name| std::fs::symlink_metadata(cache.join(name)).is_ok())
 }
 
-/// What the pane draws in place of a page.
-pub(crate) struct Note {
+/// The words the pane shows in place of a page.
+///
+/// The words only. How they are painted belongs to whoever draws them: this
+/// crate depends on gpui alone and cannot see comet's tokens, and a note
+/// painted without them lands on the white page surface and disappears
+/// (measured at about 1.2:1 on Windows dark).
+pub struct OffNote {
     pub label: &'static str,
     /// The sentence a person reads first. Plain words, no variable names.
     pub line: &'static str,
@@ -80,19 +85,19 @@ pub(crate) struct Note {
 }
 
 /// The words for one reason.
-pub(crate) fn note(off: Off) -> Note {
+pub(crate) fn note(off: Off) -> OffNote {
     match off {
-        Off::ByRequest => Note {
+        Off::ByRequest => OffNote {
             label: "Browser off",
             line: "SURYA_NO_BROWSER is set, so this window left Chromium out.",
             hint: None,
         },
-        Off::CacheHeld => Note {
+        Off::CacheHeld => OffNote {
             label: "Browser off",
             line: "Another surya window is already using the browser. Close that window, then reopen this one.",
             hint: Some("Or set SURYA_CEF_CACHE to a different folder to run both at once."),
         },
-        Off::StartFailed => Note {
+        Off::StartFailed => OffNote {
             label: "Browser off",
             line: "The browser could not start.",
             hint: Some("Set SURYA_CEF_LOG to a file path and reopen to record why."),

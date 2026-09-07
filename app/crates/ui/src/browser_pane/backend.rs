@@ -99,3 +99,10 @@ pub fn set_page_focus(on: bool) {
 pub fn panel(focus: &gpui::FocusHandle) -> gpui::AnyElement {
     surya_browser::panel(focus)
 }
+
+/// What to tell the person when the pane has no page, or `None` while it has
+/// one. The crate owns the words; this side paints them (see
+/// `mod.rs::note_colors`).
+pub fn off_note() -> Option<surya_browser::OffNote> {
+    surya_browser::off_note()
+}
