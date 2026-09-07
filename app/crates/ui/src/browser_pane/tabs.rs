@@ -105,9 +105,13 @@ fn one(
                 cx.stop_propagation();
             }),
         )
-        // The strip truncates; the whole title is one hover away.
-        .tooltip(move |_, cx| cx.new(|_| PlainTooltip(title.clone())).into())
-        .tooltip_show_delay(std::time::Duration::from_millis(400))
+        // Only when the tooltip has something the pane is not already showing;
+        // gpui anchors it under the pointer, which here is the address bar.
+        // See `state::tab_tooltip`.
+        .when_some(state::tab_tooltip(is_active, &title, &tab.url), |el, words| {
+            el.tooltip(move |_, cx| cx.new(|_| TabCard(words.clone())).into())
+                .tooltip_show_delay(std::time::Duration::from_millis(400))
+        })
 }
 
 fn add_button(theme: &Theme, cx: &mut Context<BrowserPane>) -> impl IntoElement {
@@ -129,21 +133,45 @@ fn add_button(theme: &Theme, cx: &mut Context<BrowserPane>) -> impl IntoElement 
 /// or the name of a button that shows only an icon.
 pub struct PlainTooltip(pub SharedString);
 
-impl Render for PlainTooltip {
+/// A tab's hover card: what the tab is, and where it points. Same surface as
+/// [`PlainTooltip`], two lines instead of one.
+pub struct TabCard(pub state::TabTooltip);
+
+impl Render for TabCard {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = Theme::of(cx);
-        div()
-            .px(px(8.0))
-            .py(px(6.0))
-            .max_w(px(320.0))
-            .rounded(px(6.0))
-            .border_1()
-            .border_color(theme.border_strong)
-            .bg(theme.surface_raised)
-            .shadow_md()
-            .text_size(crate::typography::ui_rems(11.0))
-            .text_color(theme.text)
-            .child(self.0.clone())
+        let mut card = tooltip_card(&theme).child(SharedString::from(self.0.title.clone()));
+        // The address sits under the name, quieter, the way Chrome's does.
+        if let Some(url) = self.0.url.clone() {
+            card = card.child(
+                div()
+                    .text_size(crate::typography::ui_rems(11.0))
+                    .text_color(theme.text_muted)
+                    .child(SharedString::from(url)),
+            );
+        }
+        card.flex().flex_col().gap(px(2.0))
+    }
+}
+
+/// The surface every tooltip in this pane sits on.
+fn tooltip_card(theme: &Theme) -> gpui::Div {
+    div()
+        .px(px(8.0))
+        .py(px(6.0))
+        .max_w(px(320.0))
+        .rounded(px(6.0))
+        .border_1()
+        .border_color(theme.border_strong)
+        .bg(theme.surface_raised)
+        .shadow_md()
+        .text_size(crate::typography::ui_rems(11.0))
+        .text_color(theme.text)
+}
+
+impl Render for PlainTooltip {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        tooltip_card(&Theme::of(cx)).child(self.0.clone())
     }
 }
 
