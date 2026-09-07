@@ -56,6 +56,7 @@ use crate::terminal::panel::{TerminalPanel, ToggleTerminal, clamp_terminal_heigh
 use crate::theme::Theme;
 use crate::transcript::{self, Transcript, TranscriptEvent};
 
+mod focus;
 mod spaces;
 mod tab_press;
 mod tabs;
@@ -1230,6 +1231,10 @@ pub struct Shell {
     /// engine's own streams, so they are not per-space the way Files and
     /// Tasks are.
     inbox_pane: Option<Entity<crate::inbox::NeedsYouPane>>,
+    /// Last frame's keyboard home (`shell::focus`). Focus follows a CHANGE of
+    /// home: the page that unmounts the composer must hand the keyboard on in
+    /// the same frame, not wait to be asked.
+    keyboard_home: Option<focus::KeyboardHome>,
     agents_rail: Option<Entity<crate::inbox::AgentsRail>>,
     /// User's override for the needs-you list. `None` follows the queue:
     /// visible while something waits, gone when nothing does (decision 20's
@@ -1555,6 +1560,7 @@ impl Shell {
             files_pane: None,
             tasks_pane: None,
             inbox_pane: None,
+            keyboard_home: None,
             agents_rail: None,
             inbox_shown: None,
             debug_open_pane: std::env::var("SURYA_OPEN_PANE").ok(),
@@ -8803,27 +8809,18 @@ impl Render for Shell {
         }
 
         // Keyboard shortcuts (mod-s/b/j) dispatch through the window focus
-        // chain — with nothing focused they go dead. Land initial focus on the
-        // composer, and whenever focus is lost with no successor (e.g. the
-        // focused element unmounted), route it back there.
+        // chain - with nothing focused they go dead. Land initial focus on
+        // this frame's keyboard home, and whenever focus is lost with no
+        // successor (e.g. the focused element unmounted), route it back
+        // there. `shell::focus` names the home and says why it is not always
+        // the composer.
         if self.focus_sub.is_none() {
             self.focus_sub = Some(cx.on_focus_lost(window, |this: &mut Shell, window, cx| {
-                match this.route {
-                    Route::Chat => window.focus(&this.composer.focus_handle(cx), cx),
-                    // No composer here — clear the stale handle so `focused()`
-                    // reads None (the render hook below re-lands focus when the
-                    // route returns to Chat; a lingering unmounted handle would
-                    // otherwise dead-end keyboard dispatch for good).
-                    Route::Settings(_) => window.blur(),
-                }
+                this.land_keyboard_focus(window, cx);
             }));
         }
-        if !restart_required
-            && matches!(gate, GatePhase::Ready)
-            && matches!(self.route, Route::Chat)
-            && window.focused(cx).is_none()
-        {
-            window.focus(&self.composer.focus_handle(cx), cx);
+        if !restart_required && matches!(gate, GatePhase::Ready) {
+            self.sync_keyboard_focus(window, cx);
         }
 
         let root = div()
