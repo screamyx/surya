@@ -97,7 +97,10 @@ impl TasksPane {
             columns_scroll: gpui::ScrollHandle::new(),
             sheet: None,
             quick_add,
-            error: None,
+            // Normally None. `SURYA_DEMO_TASK_ERROR` paints the banner on a
+            // board that no engine failure could ever show; see
+            // `demo_banner`.
+            error: super::demo_banner::from_env().map(SharedString::from),
             _watch: watch,
             _quick_add_events: quick_add_events,
         }

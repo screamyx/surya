@@ -7,6 +7,7 @@ mod card;
 mod chips;
 mod columns_strip;
 pub mod demo;
+pub mod demo_banner;
 mod header;
 mod edit;
 pub mod model;
