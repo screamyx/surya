@@ -554,7 +554,27 @@ impl SessionsEngine {
             self.interrupt(chat_id).await?;
         }
 
+        // Resolve first: it can fail (`HarnessError::NotInstalled`, or a lazy
+        // factory that errors), and a claim ahead of it would leave a row -
+        // and at a new cwd a freshly minted project - for a run that never
+        // started. Nothing below this line may fail before the claim either.
         let harness = self.inner.registry.resolve(harness_id)?;
+        // Claim BEFORE anything is written, and before the first status
+        // mirror. The command path claims in `DocHost::execute`, but mail
+        // delivery and the crash auto-resume reach here without going through
+        // it. Idempotent on an existing row; an error means the chat is
+        // deleted and this run must not start.
+        //
+        // Above `doc_handle` for a reason: that reopens the transcript
+        // `purge_chat` took, `write_user_message` below would persist into
+        // the orphaned doc, and `last_requests.insert` re-arms the mail
+        // fallback #147 clears - so a refusal landing after any of them would
+        // undo the cascade's teardown on the way out. It would also leave the
+        // next mail pump dispatching, refusing and requeuing, which aborts
+        // that pass for every agent behind this one.
+        if let Some(ws) = self.inner.workspace() {
+            ws.claim_chat(chat_id, &request.cwd)?;
+        }
         let handle = self.doc_handle(chat_id)?;
         let user_id = message_id.unwrap_or_else(new_id);
         handle.write_user_message(&user_id, &request.prompt, now_ms())?;
@@ -659,17 +679,6 @@ impl SessionsEngine {
                 routed_steers: Arc::new(Mutex::new(std::collections::VecDeque::new())),
             },
         );
-        // Claim BEFORE the first status mirror. The command path claims in
-        // `DocHost::execute`, but mail delivery and the crash auto-resume
-        // reach here without going through it, and `record_session` refuses a
-        // status for a chat with no row - so on those paths the run's opening
-        // Working never reached the workspace doc. Idempotent: `claim_chat`
-        // is a no-op when the row is already there.
-        if let Some(ws) = self.inner.workspace()
-            && let Err(err) = ws.claim_chat(chat_id, &request.cwd)
-        {
-            tracing::warn!(chat = %chat_id, error = %err, "claim before dispatch failed");
-        }
         self.set_status(chat_id, SessionStatus::Working, true);
         // AFTER Working (same causal-order guarantee as the steer path): the
         // lastMessageAt bump must never be observable ahead of the live run.
