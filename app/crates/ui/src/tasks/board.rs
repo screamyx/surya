@@ -18,6 +18,7 @@ use surya_rpc::{RpcClient, methods};
 use super::card::CardDrag;
 use super::chips::count_chip;
 use super::edit::EditSheet;
+use super::header;
 use super::model::{BoardModel, COLUMNS, DropTarget, column_label};
 use crate::composer::{ComposerInput, ComposerInputEvent};
 use crate::theme::{Theme, hairline};
@@ -190,49 +191,6 @@ impl TasksPane {
         cx.notify();
     }
 
-    fn render_header(&self, theme: &Theme) -> gpui::Div {
-        let count = self.model.len();
-        div()
-            .flex()
-            .flex_row()
-            .items_end()
-            .justify_between()
-            .px(px(16.0))
-            .pt(px(24.0))
-            .pb(px(12.0))
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_end()
-                    .gap(px(8.0))
-                    .child(
-                        div()
-                            .text_size(ui_rems(30.0))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(theme.text) // TOKEN: surya.heading
-                            .child(self.space_name.clone()),
-                    )
-                    .child(
-                        div()
-                            .pb(px(6.0))
-                            .text_size(ui_rems(13.0))
-                            .text_color(theme.text_muted)
-                            .child(SharedString::from(format!(
-                                "{count} task{}",
-                                if count == 1 { "" } else { "s" }
-                            ))),
-                    ),
-            )
-            .child(
-                div()
-                    .pb(px(6.0))
-                    .text_size(ui_rems(13.0))
-                    .text_color(theme.text_muted)
-                    .child("Agents pull from Queued when they go idle."),
-            )
-    }
-
     fn render_column(
         &mut self,
         ix: usize,
@@ -392,7 +350,7 @@ impl Render for TasksPane {
             .flex_col()
             .bg(theme.bg) // TOKEN: surya.page_bg
             .text_color(theme.text)
-            .child(self.render_header(&theme))
+            .child(header::render(&self.space_name, self.model.len(), &theme))
             .children(error)
             .child(board)
             .children(sheet)
