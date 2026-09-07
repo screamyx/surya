@@ -211,15 +211,45 @@ fn cheapest_model(models: &[Model]) -> Option<String> {
     small.or(models.last()).map(|m| m.id.clone())
 }
 
-/// First line, stripped of quote/heading dressing, capped at 60 chars.
+/// The longest title we keep. A model asked for a short title sometimes
+/// answers with a whole sentence, so there has to be a cap.
+const TITLE_MAX: usize = 60;
+
+/// First line, stripped of quote/heading dressing, cut to [`TITLE_MAX`].
+///
+/// A title longer than the cap ends at a WORD boundary and gets an ellipsis.
+/// The cut used to be a bare `.take(60)`, which stopped mid-word and said
+/// nothing: a session header read "Before I wire the reconciliation path I
+/// need two decisions f" - exactly 60 characters, the word "from" beheaded -
+/// while the sidebar and the agent tree elided the same title properly with
+/// "…". The header was not too narrow; the string arrived already cut
+/// (E2E-UI-06).
+///
+/// The ellipsis is one character, so the whole result still fits the cap.
 fn clean_title(raw: &str) -> String {
     let first = raw.trim().lines().next().unwrap_or("");
-    first
+    let cleaned = first
         .trim_start_matches(['"', '\'', '#', ' ', '\t'])
-        .trim_end_matches(['"', '\'', ' ', '\t'])
-        .chars()
-        .take(60)
-        .collect()
+        .trim_end_matches(['"', '\'', ' ', '\t']);
+    if cleaned.chars().count() <= TITLE_MAX {
+        return cleaned.to_string();
+    }
+    // One char of the budget belongs to the ellipsis.
+    let head: String = cleaned.chars().take(TITLE_MAX - 1).collect();
+    // Back up to the last space, so the title ends on a whole word. A single
+    // word longer than the cap has no space to back up to; that one is cut
+    // where it stands rather than thrown away.
+    let trimmed = match head.rsplit_once(' ') {
+        Some((upto, _)) if !upto.trim().is_empty() => upto,
+        _ => head.as_str(),
+    };
+    // Sentence enders go too. A multi-sentence answer is exactly the shape
+    // that caused this bug, and backing up to a word boundary inside one
+    // would otherwise leave "I did it.…".
+    format!(
+        "{}…",
+        trimmed.trim_end_matches([' ', ',', ';', ':', '-', '.', '!', '?'])
+    )
 }
 
 /// Drive one titling run through the harness: no steering, questions resolved
@@ -296,5 +326,55 @@ mod tests {
         assert_eq!(clean_title("\"Fix Login Flow\"\nextra"), "Fix Login Flow");
         assert_eq!(clean_title("# Add Dark Mode  "), "Add Dark Mode");
         assert_eq!(clean_title("   "), "");
+    }
+
+    /// E2E-UI-06: the header showed "Before I wire the reconciliation path I
+    /// need two decisions f" - the bare `.take(60)` beheaded "from" and left
+    /// no ellipsis, so the title read as a sentence that simply stopped.
+    #[test]
+    fn a_long_title_ends_on_a_whole_word_with_an_ellipsis() {
+        let cut = clean_title("Before I wire the reconciliation path I need two decisions from you.");
+        assert_eq!(cut, "Before I wire the reconciliation path I need two decisions…");
+        assert!(
+            !cut.ends_with("decisions f"),
+            "the old cut stopped mid-word: {cut:?}"
+        );
+        assert!(cut.chars().count() <= TITLE_MAX);
+    }
+
+    /// A title made of several sentences is the shape that caused the bug.
+    /// Backing up to a word boundary can land just past a full stop, and
+    /// "I did it.…" reads as a typo rather than a cut.
+    #[test]
+    fn a_sentence_end_is_not_left_stranded_before_the_ellipsis() {
+        // The backup lands exactly on the full stop that ends the first
+        // sentence, because the next word runs past the cap.
+        let cut = clean_title("Fix the login flow and rewrite the session store. Reconciliation comes next.");
+        assert_eq!(cut, "Fix the login flow and rewrite the session store…");
+        for stranded in [".…", "!…", "?…", ",…", " …"] {
+            assert!(
+                !cut.ends_with(stranded),
+                "{stranded:?} left dangling before the ellipsis: {cut:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_title_that_fits_is_left_exactly_as_it_is() {
+        let short = "Fix the login flow";
+        assert_eq!(clean_title(short), short, "no ellipsis on a title that fits");
+        // Exactly at the cap is still untouched - the cap is inclusive.
+        let exact: String = std::iter::repeat_n('a', TITLE_MAX).collect();
+        assert_eq!(clean_title(&exact), exact);
+    }
+
+    #[test]
+    fn one_unbroken_word_longer_than_the_cap_is_still_cut() {
+        // No space to back up to. Better a hard cut with an ellipsis than
+        // throwing the whole title away.
+        let word: String = std::iter::repeat_n('x', 80).collect();
+        let out = clean_title(&word);
+        assert!(out.ends_with('…'));
+        assert_eq!(out.chars().count(), TITLE_MAX);
     }
 }
