@@ -1839,11 +1839,12 @@ impl Shell {
                         .collect()
                 };
                 for device_id in &device_ids {
+                    let Some(image) = att.image() else { continue; };
                     crate::attachments::seed_attachment(
                         device_id,
                         &pending_path,
                         &att.name,
-                        att.image.clone(),
+                        image.clone(),
                     );
                 }
                 let text = crate::attachments::with_attachments(
