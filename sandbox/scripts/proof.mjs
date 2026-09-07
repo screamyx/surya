@@ -70,19 +70,22 @@ try {
     await page.getByRole('button', { name: 'Dismiss preview event' }).click();
   }
   // The rail routes, as shell.rs does: the frame stays and the outlet changes.
+  // Scope to the shell rail: a ported screen may carry its own aria-current.
+  const rail = page.locator('nav[aria-label="Main navigation"] [aria-current="page"]');
   // A rail destination marks itself current; the three off-rail ones clear it.
+  // Needs you carries its waiting badge in the accessible name, so match the prefix.
   for (const [label, current] of [['Home', 'Home'], ['Agents', 'Agents'], ['Tasks', 'Tasks'],
     ['Files', 'Files'], ['Needs you', 'Needs you']]) {
-    await page.getByRole('button', { name: label, exact: true }).click();
+    await page.getByRole('button', { name: new RegExp(`^${label}`) }).first().click();
     assert.equal(await page.locator('aside').count(), 1, `${label} keeps the rail`);
-    assert.ok((await page.locator('[aria-current="page"]').innerText()).startsWith(current), label);
+    assert.ok((await rail.innerText()).startsWith(current), label);
   }
   for (const label of ['Open browser', 'Toggle right pane', 'Local only']) {
     await page.getByRole('button', { name: label, exact: true }).click();
     assert.equal(await page.locator('aside').count(), 1, `${label} keeps the rail`);
-    assert.equal(await page.locator('[aria-current="page"]').count(), 0, label);
+    assert.equal(await rail.count(), 0, label);
   }
-  await page.getByRole('button', { name: 'Needs you', exact: true }).click();
+  await page.getByRole('button', { name: /^Needs you/ }).first().click();
   // Portable static render for the repository's file-based visual gates.
   for (const theme of ['light', 'dark']) {
     await page.goto(`${base}/?proof=1&theme=${theme}&state=seeded`);
