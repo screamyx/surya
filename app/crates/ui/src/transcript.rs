@@ -40,6 +40,8 @@ use gpui::{
 };
 
 use surya_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus};
+
+pub mod stopped;
 use surya_proto::ToolCall;
 
 use crate::markdown::parser::{
@@ -995,6 +997,10 @@ pub struct Row {
     /// settled row, beside the timestamp; tools and transport-only metadata
     /// are deliberately excluded.
     pub copy_text: Option<SharedString>,
+    /// The user cut this turn short. Set on the same LAST row the timestamp
+    /// lands on, so the mark reads as belonging to the turn that ended
+    /// (E2E-CHAT-02, `stopped`).
+    pub stopped: bool,
 }
 
 /// Absolute hover-timestamp label, e.g. "Jul 1, 3:45 PM" — the exact
@@ -1192,6 +1198,7 @@ pub fn rows_for_entry(
             // `createdAt` exists — the optimistic echo included).
             timestamp: Some(entry.created_at),
             copy_text,
+            stopped: false,
         }];
     }
 
@@ -1221,6 +1228,7 @@ pub fn rows_for_entry(
                 entry_id: entry.id.clone().into(),
                 timestamp: None,
                 copy_text: None,
+                stopped: false,
             });
             *group_ix += 1;
         };
@@ -1342,6 +1350,7 @@ pub fn rows_for_entry(
                                 entry_id: entry_id.clone(),
                                 timestamp: None,
                                 copy_text: None,
+                                stopped: false,
                                 kind: if streaming {
                                     RowKind::LiveMarkdown {
                                         tree: tree.clone(),
@@ -1381,6 +1390,7 @@ pub fn rows_for_entry(
                             entry_id: entry_id.clone(),
                             timestamp: None,
                             copy_text: None,
+                            stopped: false,
                         });
                     }
                     MessagePart::Permission {
@@ -1412,6 +1422,7 @@ pub fn rows_for_entry(
                             entry_id: entry_id.clone(),
                             timestamp: None,
                             copy_text: None,
+                            stopped: false,
                         });
                     }
                     MessagePart::Error {
@@ -1429,6 +1440,7 @@ pub fn rows_for_entry(
                             entry_id: entry_id.clone(),
                             timestamp: None,
                             copy_text: None,
+                            stopped: false,
                         });
                     }
                     MessagePart::Card {
@@ -1464,6 +1476,7 @@ pub fn rows_for_entry(
                             entry_id: entry_id.clone(),
                             timestamp: None,
                             copy_text: None,
+                            stopped: false,
                         });
                     }
                     // Tools and thoughts are grouped by the outer arms;
@@ -1490,6 +1503,9 @@ pub fn rows_for_entry(
     if !streaming && let Some(last) = rows.last_mut() {
         last.timestamp = Some(entry.created_at);
         last.copy_text = assistant_copy_text(entry);
+        // The stop mark rides the same last row as the timestamp: it belongs
+        // to the turn that ended, not to a block inside it (E2E-CHAT-02).
+        last.stopped = stopped::is_stopped(entry.status);
         last.version ^= 1 << 62;
     }
     rows
@@ -4538,6 +4554,7 @@ impl Transcript {
         let copied_message = self.copied_message.as_ref() == Some(&row.entry_id);
         let copy_text = row.copy_text.clone();
         let copy_entry_id = row.entry_id.clone();
+        let row_stopped = row.stopped;
         let strip = row.timestamp.map(|ms| {
             let timestamp = div()
                 .text_size(crate::typography::ui_rems(12.0))
@@ -4595,6 +4612,13 @@ impl Transcript {
                 // text's first-character x, user label's right edge on the
                 // bubble's right edge (user-reported 4px drift).
                 .when(is_user_row, |el| el.justify_end())
+                .gap(px(Theme::SPACE_SM))
+                // The stop mark is OUTSIDE the hover fade below on purpose.
+                // The timestamp and copy button are things you go looking
+                // for; "Stopped" is the answer to "why is this short", and a
+                // cue you have to hunt for with the pointer does not answer
+                // it (E2E-CHAT-02).
+                .when(row_stopped, |el| el.child(stopped::mark(&theme)))
                 .when(hovered, |el| {
                     el.child(motion::fade_quick(
                         SharedString::from(format!("meta-{}", row.id)),
@@ -6741,6 +6765,7 @@ mod tests {
             entry_id: entry_id.into(),
             timestamp: None,
             copy_text: None,
+            stopped: false,
         }
     }
 
