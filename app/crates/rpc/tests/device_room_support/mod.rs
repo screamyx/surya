@@ -42,17 +42,17 @@ use surya_rpc::{
 // Fake relay (the DO semantics, in-memory)
 // ---------------------------------------------------------------------------
 
-pub enum Out {
+enum Out {
     Frame(Vec<u8>),
     Close,
 }
 
 #[derive(Default)]
-pub struct RelayState {
+struct RelayState {
     host: Option<mpsc::UnboundedSender<Out>>,
     clients: HashMap<String, mpsc::UnboundedSender<Out>>,
     /// Zombie-path simulation: the host stays "connected" (no bounce) but
-    /// client→host frames vanish — the 2026-08-19 dead edge↔host leg.
+    /// client-to-host frames vanish - the 2026-08-19 dead edge-host leg.
     blackhole_host_bound: bool,
 }
 
@@ -97,8 +97,8 @@ impl FakeRelay {
         wait_until(|| self.host_connected()).await;
     }
 
-    /// Swallow client→host frames while keeping the host registered — the
-    /// zombie relay path (client↔edge healthy, edge↔host dead).
+    /// Swallow client-to-host frames while keeping the host registered - the
+    /// zombie relay path (client-to-edge healthy, edge-to-host dead).
     pub fn set_blackhole_host_bound(&self, on: bool) {
         self.state.lock().expect("lock").blackhole_host_bound = on;
     }
@@ -118,13 +118,13 @@ impl FakeRelay {
     }
 }
 
-pub fn relay_error(code: &str) -> Vec<u8> {
+fn relay_error(code: &str) -> Vec<u8> {
     serde_json::json!({ "error": code })
         .to_string()
         .into_bytes()
 }
 
-pub async fn handle_socket(stream: tokio::net::TcpStream, state: Arc<Mutex<RelayState>>) {
+async fn handle_socket(stream: tokio::net::TcpStream, state: Arc<Mutex<RelayState>>) {
     let mut uri = String::new();
     let ws =
         match tokio_tungstenite::accept_hdr_async(stream, |req: &WsRequest, res: WsResponse| {
@@ -275,7 +275,7 @@ impl TestService {
     }
 }
 
-pub struct StreamGuard(Arc<AtomicUsize>);
+struct StreamGuard(Arc<AtomicUsize>);
 
 impl Drop for StreamGuard {
     fn drop(&mut self) {
