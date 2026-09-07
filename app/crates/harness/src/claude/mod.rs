@@ -821,8 +821,9 @@ fn handle_control_request(
         return;
     }
     if req.request.tool_name != "AskUserQuestion" {
-        // Ungated (headless parity): answer on the spot, no round trip.
-        if !permission.is_gated() {
+        // Ungated (headless parity), or one of the sidecar's own drawing
+        // tools: answer on the spot, no round trip.
+        if !permission.is_gated() || surya::is_auto_allowed(&req.request.tool_name) {
             let line = control_response_line(&req.request_id, allow_response(req.request.input));
             let _ = stdin_tx.send(StdinMsg::Line(line));
             return;

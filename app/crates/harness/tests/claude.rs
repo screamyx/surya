@@ -940,3 +940,59 @@ async fn a_subagent_show_card_is_held_back_too() {
         "subagent card_events={cards} chips={chips}; inner={inner:?}"
     );
 }
+
+/// Drawing a card must not cost the user a permission prompt (decisions 8 and
+/// 11), while everything else stays gated.
+///
+/// Two runs with the same recorder. The first is the control: it proves the
+/// recorder is wired and does see a gated tool. Only then does the second
+/// run's empty list mean anything - without the control, a gate that was
+/// never consulted at all would pass just as quietly.
+#[tokio::test]
+async fn show_card_never_reaches_the_permission_gate() {
+    fn recorder(
+        seen: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) -> surya_harness::permission::PermissionGate {
+        surya_harness::permission::PermissionGate::new(move |request| {
+            seen.lock().expect("the recorder is not poisoned").push(request.tool_name.clone());
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let _ = tx.send(surya_proto::PermissionDecision::Allow);
+            rx
+        })
+    }
+
+    let control = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let (mut control_controls, _steer, _token) = controls("A");
+    control_controls.permission = recorder(control.clone());
+    run_to_end(&harness(), request("scenario:permission"), control_controls).await;
+    let control_saw = control.lock().expect("not poisoned").clone();
+    assert_eq!(
+        control_saw,
+        vec!["Bash".to_string()],
+        "the recorder sees a gated tool: {control_saw:?}"
+    );
+
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let (mut card_controls, _steer, _token) = controls("B");
+    card_controls.permission = recorder(seen.clone());
+    let events = run_to_end(&harness(), request("scenario:card"), card_controls).await;
+    let card_saw = seen.lock().expect("not poisoned").clone();
+    let result = events.iter().find_map(|e| match e {
+        AgentEvent::Done { result, .. } => result.clone(),
+        _ => None,
+    });
+    println!(
+        "control asked={} card asked={} tools={card_saw:?} result={result:?}",
+        control_saw.len(),
+        card_saw.len()
+    );
+    assert_eq!(
+        card_saw.len(),
+        0,
+        "control={control_saw:?} card asked={} tools={card_saw:?}",
+        card_saw.len()
+    );
+    // The fixture blocks on the answer and reports "show_card was not
+    // auto-allowed" if it never came, so a completed run is the other half.
+    assert_eq!(result.as_deref(), Some("done!"), "the run still completed");
+}

@@ -45,6 +45,22 @@ pub const SHOW_CARD_TOOL: &str = "mcp__surya__show_card";
 /// app's transcript detection depends on this string.
 pub const SERVER_NAME: &str = "surya";
 
+/// The sidecar tools a run may call without asking the user. Drawing a card
+/// and listing the workspace's own cards are what the agent does to answer;
+/// stopping the run for a prompt each time would make cards unusable
+/// (decisions 8 and 11).
+///
+/// This is an explicit list of names, not a `mcp__surya__` prefix. The
+/// sidecar serves three tools, and the third is `send_message` - one agent
+/// reaching another. That one stays gated, and so does anything added later.
+const AUTO_ALLOWED: [&str; 2] = ["mcp__surya__show_card", "mcp__surya__list_cards"];
+
+/// Exact match only. A lookalike like `mcp__surya__show_card_evil` is a
+/// different tool and stays gated.
+pub fn is_auto_allowed(tool: &str) -> bool {
+    AUTO_ALLOWED.contains(&tool)
+}
+
 /// The generated paths, ready to hand to the CLI.
 pub struct SuryaFiles {
     /// `None` when the sidecar is not installed here. The run still gets the
@@ -671,5 +687,53 @@ mod missing_sidecar_tests {
         .expect("installed");
         assert!(files.mcp_config.is_some(), "the sidecar is here, so the tools are");
         assert!(files.system_append.exists());
+    }
+}
+
+#[cfg(test)]
+mod auto_allow_tests {
+    use super::*;
+
+    #[test]
+    fn the_drawing_tools_are_allowed_and_the_rest_are_not() {
+        let cases = [
+            ("mcp__surya__show_card", true),
+            ("mcp__surya__list_cards", true),
+            // One agent reaching another never skips the prompt (decision 19).
+            ("mcp__surya__send_message", false),
+            ("Bash", false),
+            ("AskUserQuestion", false),
+            // Exact match: a lookalike is a different tool.
+            ("mcp__surya__show_card_evil", false),
+            ("mcp__surya__show_car", false),
+            ("show_card", false),
+            ("", false),
+        ];
+        let mut asked = 0;
+        let mut agreed = 0;
+        for (tool, want) in cases {
+            asked += 1;
+            if is_auto_allowed(tool) == want {
+                agreed += 1;
+            } else {
+                eprintln!("is_auto_allowed({tool:?}) != {want}");
+            }
+        }
+        assert_eq!((asked, agreed), (9, 9), "asked={asked} agreed={agreed}");
+    }
+
+    /// The sidecar serves three tools. If a fourth arrives, this fails until
+    /// someone decides whether it is safe to draw without asking.
+    #[test]
+    fn the_allowlist_names_two_of_the_sidecars_three_tools() {
+        assert_eq!(AUTO_ALLOWED.len(), 2, "allowed={:?}", AUTO_ALLOWED);
+        assert!(
+            AUTO_ALLOWED.contains(&SHOW_CARD_TOOL),
+            "the tool the normalizer watches is one of them"
+        );
+        assert!(
+            AUTO_ALLOWED.iter().all(|t| t.starts_with("mcp__surya__")),
+            "every allowed name is a sidecar tool: {AUTO_ALLOWED:?}"
+        );
     }
 }
