@@ -103,8 +103,8 @@ export function Gallery({ screen, fixture, onEvent }: GalleryProps) {
   if (screen === 'spaces') {
     return fill(<SpacesShell spaces={seeded ? seededSpaces : []} chats={seeded ? seededChats : []}
       agentRows={seeded ? seededAgentRows : []} tabs={seeded ? seededSurfaceTabs : []}
-      target={seeded ? 'surya @ dtry' : null} harness={seeded ? 'claude' : 'none'}
-      gitDetected={true} localDeviceId="dtry" jumpHints={false}
+      target={seeded ? 'surya @ WINBOX' : null} harness={seeded ? 'claude' : 'none'}
+      gitDetected={true} localDeviceId="WINBOX" jumpHints={false}
       onOpenChat={id => onEvent(`OpenChat(${id})`)}
       onSetArchived={(id, on) => onEvent(`SetArchived(${id}, ${String(on)})`)}
       onOpenChatMenu={id => onEvent(`ChatMenu(${id})`)} onAddSpace={() => onEvent('AddSpace')}

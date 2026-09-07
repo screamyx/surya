@@ -92,7 +92,7 @@ export const seededPickers: PickersFixture = {
     { id: 'notes', name: 'notes', gitDetected: false },
   ],
   devices: [
-    { id: 'dtry', name: 'dtry', online: true, local: true },
+    { id: 'WINBOX', name: 'WINBOX', online: true, local: true },
     { id: 'devbox', name: 'devbox', online: true, local: false },
     { id: 'mini', name: 'mini', online: false, local: false },
   ],
@@ -100,7 +100,7 @@ export const seededPickers: PickersFixture = {
   selectedHarness: 'claude-code',
   selectedModelId: 'claude-opus-5',
   selectedSpaceId: 'surya',
-  selectedDeviceId: 'dtry',
+  selectedDeviceId: 'WINBOX',
   branch: 'main',
   checkout: 'local',
   yolo: 'off',

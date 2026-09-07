@@ -65,7 +65,7 @@ export const defaultSidebarView: SidebarView = {
 };
 
 export const seededSpaces: readonly SpaceRow[] = [
-  { id: 'surya', name: 'surya', deviceTag: '@ dtry', offline: false },
+  { id: 'surya', name: 'surya', deviceTag: '@ WINBOX', offline: false },
   { id: 'luvus', name: 'luvus', deviceTag: '@ devbox', offline: false },
   { id: 'agb', name: 'agb', deviceTag: '@ buildbox', offline: true },
 ];
@@ -73,19 +73,19 @@ export const seededSpaces: readonly SpaceRow[] = [
 export const seededChats: readonly ChatRow[] = [
   {
     id: 'wire-tasks', title: 'Wire the Tasks pane into the shell',
-    folder: 'surya @ dtry', deviceId: 'dtry', deviceName: 'dtry', timeAgo: '2m',
+    folder: 'surya @ WINBOX', deviceId: 'WINBOX', deviceName: 'WINBOX', timeAgo: '2m',
     branch: 'wire-tasks-pane', changeRequest: { number: '266', state: 'open' },
     harness: 'claude', status: 'awaiting-input', send: 'normal', archived: false,
   },
   {
     id: 'folder-filter', title: 'The folder filter searches the whole folder',
-    folder: 'surya @ dtry', deviceId: 'dtry', deviceName: 'dtry', timeAgo: '11m',
+    folder: 'surya @ WINBOX', deviceId: 'WINBOX', deviceName: 'WINBOX', timeAgo: '11m',
     branch: 'fix-folder-filter', changeRequest: null,
     harness: 'claude', status: 'working', send: 'normal', archived: false,
   },
   {
     id: 'fold-text-dim', title: 'Fold text_dim, a text tier that stopped being real',
-    folder: 'surya @ dtry', deviceId: 'dtry', deviceName: 'dtry', timeAgo: '1h',
+    folder: 'surya @ WINBOX', deviceId: 'WINBOX', deviceName: 'WINBOX', timeAgo: '1h',
     branch: 'fold-text-dim', changeRequest: { number: '183', state: 'merged' },
     harness: 'claude', status: 'completed', send: 'normal', archived: false,
   },
@@ -121,7 +121,7 @@ export const seededChats: readonly ChatRow[] = [
   },
   {
     id: 'archived-env', title: 'Local environment configuration',
-    folder: 'surya @ dtry', deviceId: 'dtry', deviceName: 'dtry', timeAgo: '4d',
+    folder: 'surya @ WINBOX', deviceId: 'WINBOX', deviceName: 'WINBOX', timeAgo: '4d',
     branch: null, changeRequest: null,
     harness: 'openai', status: 'idle', send: 'normal', archived: true,
   },
@@ -139,14 +139,14 @@ export type SurfaceTab = { key: string; title: string; icon: 'git-branch' | 'bot
 export const seededSurfaceTabs: readonly SurfaceTab[] = [
   { key: 'diff', title: 'Changes', icon: 'git-branch' },
   { key: 'files', title: 'Files', icon: 'folder' },
-  { key: 'subagent', title: 'sbx-spaces', icon: 'bot' },
+  { key: 'subagent', title: 'scan the fold call sites', icon: 'bot' },
   { key: 'terminal', title: 'Terminal', icon: 'terminal' },
 ];
 
 /// The agent tree rows the Agents section wraps. The tree itself is
 /// inbox/agents.rs and belongs to another screen; these stand in for it.
 export const seededAgentRows: readonly { id: string; label: string; depth: number }[] = [
-  { id: 'jag', label: 'jag-0907-maroon', depth: 0 },
-  { id: 'spaces', label: 'sbx-spaces', depth: 1 },
-  { id: 'pickers', label: 'sbx-pickers', depth: 1 },
+  { id: 'lead', label: 'fold the duplicate rows', depth: 0 },
+  { id: 'scan', label: 'scan the fold call sites', depth: 1 },
+  { id: 'rows', label: 'rewrite the row helper', depth: 1 },
 ];

@@ -45,11 +45,11 @@ export const seededAccounts: AccountsProps = {
   accounts: [...claudeAccounts, ...codexAccounts],
   warnings: [{ harness: 'codex', message: 'The Codex profile directory is not readable, so usage may be stale.' }],
   devices: [
-    { id: 'device-dtry', name: 'dtry', platform: 'windows' },
+    { id: 'device-WINBOX', name: 'WINBOX', platform: 'windows' },
     { id: 'device-book', name: 'Ada Book', platform: 'macos' },
     { id: 'device-phone', name: 'Ada Phone', platform: 'ios' },
   ],
-  localDeviceId: 'device-dtry',
+  localDeviceId: 'device-WINBOX',
   busyAccountId: undefined,
   actionError: undefined,
   loadError: undefined,

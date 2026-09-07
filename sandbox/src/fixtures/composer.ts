@@ -142,7 +142,7 @@ const BASE: ComposerModel = {
   harnessTabs: HARNESS_TABS,
   models: MODELS,
   selectedModelId: 'opus-5',
-  device: 'dtry',
+  device: 'WINBOX',
   deviceOffline: false,
   project: 'surya',
   git: true,

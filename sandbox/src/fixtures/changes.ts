@@ -122,5 +122,5 @@ export const seededChangeRequest: ChangeRequestSummary = {
   number: 186,
   state: 'open',
   title: 'fix(picker): the folder filter searches the whole folder, not one page',
-  url: 'https://github.com/screamyx/surya/pull/186',
+  url: 'https://github.com/orchard/surya/pull/186',
 };

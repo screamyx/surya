@@ -12,7 +12,7 @@ export const seededTasks: readonly BoardTask[] = [
   {
     id: 't-5', spaceId: 'space-demo', status: 'queued', rank: 0, createdAt: '09:41',
     title: 'Media tab scrolls sideways after Library upload (#553)',
-    links: ['https://github.com/screamyx/project-jag/issues/553'],
+    links: ['https://github.com/orchard/project-jag/issues/553'],
   },
   {
     id: 't-1', spaceId: 'space-demo', status: 'running', rank: 0, createdAt: '09:42',
@@ -31,7 +31,7 @@ export const seededTasks: readonly BoardTask[] = [
   {
     id: 't-4', spaceId: 'space-demo', status: 'done', rank: 0, createdAt: '09:45',
     title: 'Tile jumps when a photo finishes uploading', owner: 'heron',
-    links: ['https://github.com/screamyx/project-jag/pull/591'],
+    links: ['https://github.com/orchard/project-jag/pull/591'],
   },
   {
     id: 't-6', spaceId: 'space-demo', status: 'queued', rank: 0, createdAt: '09:46',

@@ -13,9 +13,9 @@ export const seededCommits: readonly HistoryCommit[] = [
   {
     sha: 'a7c1f3049e2b6d8a5c1477fe0b93a2d611c8ee40',
     parentShas: ['4261fa7', '6d461b9'],
-    subject: 'Merge pull request #186 from screamyx/fix-folder-filter',
-    authorName: 'screamyx',
-    authorEmail: 'screamyx@example.com',
+    subject: 'Merge pull request #186 from orchard/fix-folder-filter',
+    authorName: 'orchard',
+    authorEmail: 'orchard@example.com',
     authoredAt: '2026-09-07T18:41:02+08:00',
     refs: [
       { kind: 'branch', label: 'main' },
@@ -29,8 +29,8 @@ export const seededCommits: readonly HistoryCommit[] = [
     sha: '4261fa76b0d13e8f5a2c9047bb6e1d3a8c05f912',
     parentShas: ['adaf897'],
     subject: 'fix(picker): the folder filter searches the whole folder, not one page',
-    authorName: 'screamyx',
-    authorEmail: 'screamyx@example.com',
+    authorName: 'orchard',
+    authorEmail: 'orchard@example.com',
     authoredAt: '2026-09-07T16:12:44+08:00',
     refs: [],
   },
@@ -47,8 +47,8 @@ export const seededCommits: readonly HistoryCommit[] = [
     sha: 'adaf897b1c6045ea92f38b7d5106ce43a8f2b0d7',
     parentShas: ['e860f77'],
     subject: 'fix(ui): fold text_dim, a text tier that stopped being real',
-    authorName: 'screamyx',
-    authorEmail: 'screamyx@example.com',
+    authorName: 'orchard',
+    authorEmail: 'orchard@example.com',
     authoredAt: '2026-09-06T11:58:07+08:00',
     refs: [],
   },
@@ -65,8 +65,8 @@ export const seededCommits: readonly HistoryCommit[] = [
     sha: '70d66f1e5b2843ac09d7f61b3e05c928a4d1f7b3',
     parentShas: ['2ebc1ad'],
     subject: 'fix(ui): the Agents rail entry reveals the tree it names',
-    authorName: 'screamyx',
-    authorEmail: 'screamyx@example.com',
+    authorName: 'orchard',
+    authorEmail: 'orchard@example.com',
     authoredAt: '2026-09-04T20:47:33+08:00',
     refs: [],
   },
@@ -136,4 +136,4 @@ export const historyFixtures: Record<HistoryFixture, Omit<GitHistoryProps, 'onOp
 
 /// GitHistoryCount reads head_commit_count and the selected chat row's branch.
 export const historyCount = 1284;
-export const historyBranch = 'sandbox/port-in-sbx-history';
+export const historyBranch = 'fix-folder-filter';

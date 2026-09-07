@@ -22,7 +22,7 @@ export type DeviceRow = {
 export type WorkspaceScope = 'local' | 'synced' | 'development';
 
 export const seededDevices: readonly DeviceRow[] = [
-  { id: 'dev-8f3a91c40b27e5d6', name: 'dtry', platform: 'windows', version: '0.4.2',
+  { id: 'dev-8f3a91c40b27e5d6', name: 'WINBOX', platform: 'windows', version: '0.4.2',
     online: true, lastSeenLabel: 'just now', addedLabel: 'Added 41d ago' },
   { id: 'dev-2c7be04a19f8d3aa', name: 'devbox', platform: 'linux', version: '0.4.2',
     online: true, lastSeenLabel: 'just now', addedLabel: 'Added 41d ago' },
