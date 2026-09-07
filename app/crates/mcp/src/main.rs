@@ -18,15 +18,9 @@
 //! printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | surya-mcp
 //! ```
 
-mod browser;
-mod cards;
-mod config;
-mod mail;
-mod protocol;
-mod shapes;
-mod tasks;
-
 use std::io::{BufRead, Write};
+
+use surya_mcp::{config, protocol};
 
 fn main() {
     let config = config::Config::from_env();

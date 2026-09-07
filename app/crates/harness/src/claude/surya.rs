@@ -4,9 +4,12 @@
 //! everything:
 //!
 //! - `--mcp-config <file>` starts the `surya-mcp` sidecar, which gives the
-//!   agent `show_card`, `send_message` and `list_cards`. Claude Code exposes
+//!   agent cards (`show_card`, `list_cards`), agent mail (`send_message`),
+//!   the task board (`list_tasks`, `create_task`, `update_task`) and the
+//!   browser pane (`browser_open` and its five siblings). Claude Code exposes
 //!   them to the model as `mcp__surya__<tool>`, and the app watches the
-//!   transcript for `mcp__surya__show_card`.
+//!   transcript for `mcp__surya__show_card`. All of them run without asking
+//!   the user; see `AUTO_ALLOWED`.
 //! - `--append-system-prompt-file <file>` tells the agent it is inside a
 //!   desktop app and when a card beats prose. The flag is absent from
 //!   `claude --help` on 2.1.261 but the CLI accepts it and honors it
@@ -45,15 +48,45 @@ pub const SHOW_CARD_TOOL: &str = "mcp__surya__show_card";
 /// app's transcript detection depends on this string.
 pub const SERVER_NAME: &str = "surya";
 
-/// The sidecar tools a run may call without asking the user. Drawing a card
-/// and listing the workspace's own cards are what the agent does to answer;
-/// stopping the run for a prompt each time would make cards unusable
-/// (decisions 8 and 11).
+/// Every sidecar tool a run may call without asking the user.
 ///
-/// This is an explicit list of names, not a `mcp__surya__` prefix. The
-/// sidecar serves three tools, and the third is `send_message` - one agent
-/// reaching another. That one stays gated, and so does anything added later.
-const AUTO_ALLOWED: [&str; 2] = ["mcp__surya__show_card", "mcp__surya__list_cards"];
+/// These are surya's own abilities, not the machine's. The agent draws a
+/// card, reads and writes the workspace task board, reaches another agent,
+/// and drives the app's browser pane. Each of those is how the agent answers
+/// at all, and stopping the run for a prompt every time made them unusable:
+/// a gated run parked on its first `list_tasks` and the user saw a permission
+/// row where they expected a board.
+///
+/// The owner widened this to the whole sidecar on 2026-09-08, browser tools
+/// included, having been told those drive the owner's own browser profile.
+/// Decisions 8, 11 and 19 carry the note.
+///
+/// It stays an explicit list of exact names rather than an
+/// `mcp__surya__` prefix, and that is the point of the list: a prefix would
+/// auto-allow whatever a future sidecar grows, sight unseen, and would also
+/// pass a lookalike. A new tool has to be added here on purpose.
+const AUTO_ALLOWED: [&str; 12] = [
+    // cards
+    "mcp__surya__show_card",
+    "mcp__surya__list_cards",
+    // agent mail
+    "mcp__surya__send_message",
+    // task board
+    "mcp__surya__list_tasks",
+    "mcp__surya__create_task",
+    "mcp__surya__update_task",
+    // browser pane
+    "mcp__surya__browser_open",
+    "mcp__surya__browser_snapshot",
+    "mcp__surya__browser_click",
+    "mcp__surya__browser_type",
+    "mcp__surya__browser_screenshot",
+    "mcp__surya__browser_eval",
+];
+
+/// The prefix Claude Code puts on the sidecar's tools. Named because the
+/// test builds the same ids the CLI does.
+pub const TOOL_PREFIX: &str = "mcp__surya__";
 
 /// Exact match only. A lookalike like `mcp__surya__show_card_evil` is a
 /// different tool and stays gated.
