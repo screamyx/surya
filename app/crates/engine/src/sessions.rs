@@ -653,7 +653,7 @@ impl SessionsEngine {
         // Working never reached the workspace doc. Idempotent: `claim_chat`
         // is a no-op when the row is already there.
         if let Some(ws) = self.inner.workspace()
-            && let Err(err) = ws.claim_chat(chat_id, Some(&request.cwd))
+            && let Err(err) = ws.claim_chat(chat_id, &request.cwd)
         {
             tracing::warn!(chat = %chat_id, error = %err, "claim before dispatch failed");
         }
