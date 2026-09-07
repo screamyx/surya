@@ -1,11 +1,16 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const base = process.env.SANDBOX_URL ?? 'http://127.0.0.1:5177';
 const out = resolve(root, 'proof');
 mkdirSync(out, { recursive: true });
+// Per-user, because a fixed /tmp path is another account's file on a shared box.
+const audit = process.env.SANDBOX_AUDIT_DIR
+  ?? resolve(tmpdir(), `surya-sandbox-audit-${process.getuid?.() ?? 'user'}`);
+mkdirSync(audit, { recursive: true });
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 });
 page.setDefaultTimeout(5000);
@@ -72,7 +77,7 @@ try {
     const css = await page.evaluate(() => [...document.styleSheets].flatMap(sheet => [...sheet.cssRules].map(rule => rule.cssText)).join('\n'));
     const body = await page.locator('body').innerHTML();
     const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Needs you ${theme} audit</title><style>${css.replaceAll('url("/fonts/', `url("file://${root}/public/fonts/`)}</style></head><body>${body.replace(/<script[\s\S]*?<\/script>/g, '')}</body></html>`;
-    writeFileSync(`/tmp/surya-sandbox-${theme}-audit.html`, html);
+    writeFileSync(resolve(audit, `${theme}-audit.html`), html);
   }
   const references = {
     dark: '/store/surya-gallery/windows-needsyou-seeded-dark-1440x900.png',
@@ -91,5 +96,6 @@ try {
   assert.deepEqual(failures, []);
   assert.ok(measurements.every(m => !m.overflow));
   writeFileSync(resolve(out, 'measurements.json'), `${JSON.stringify(measurements, null, 2)}\n`);
+  console.log(`Audit HTML written to ${audit}`);
   console.log('Browser proof passed: four theme/state frames, count/badge/empty/no-composer, mouse/keyboard callbacks, fixture switches, sidebar toggle, 16 frame actions, no runtime errors or desktop overflow.');
 } finally { await browser.close(); }
