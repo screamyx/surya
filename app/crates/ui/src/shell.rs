@@ -4523,6 +4523,7 @@ impl Shell {
                      on: bool,
                      enabled: bool,
                      theme: &Theme| {
+            let bg = crate::nav_rail::row_backgrounds(theme, on, enabled);
             div()
                 .id(id)
                 .flex()
@@ -4533,8 +4534,13 @@ impl Shell {
                 .rounded(px(8.0))
                 .text_size(crate::typography::ui_rems(13.0))
                 .text_color(if enabled { theme.text } else { theme.text_faint })
-                .when(on, |d| d.bg(theme.element_active))
-                .when(enabled, |d| d.cursor_pointer().hover(|d| d.bg(theme.element_hover)))
+                // Rest and hover come from one place, so hover can never
+                // take a SELECTED row back to the unselected wash and blank
+                // the only cue that this is where you are (E2E-UI-03).
+                .when_some(bg.rest, |d, rest| d.bg(rest))
+                .when_some(bg.hover, |d, wash| {
+                    d.cursor_pointer().hover(move |d| d.bg(wash))
+                })
                 .child(
                     icon(icon_path)
                         .size(px(15.0))

@@ -42,6 +42,7 @@ pub mod links;
 pub mod loaders;
 pub mod markdown;
 pub mod motion;
+pub mod nav_rail;
 pub mod notify;
 pub mod permission_options;
 pub mod pickers;
