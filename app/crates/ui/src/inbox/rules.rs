@@ -10,6 +10,7 @@ use surya_proto::{AllowRule, RuleScope};
 use surya_rpc::methods;
 
 use crate::inbox::chrome::{ButtonTone, body_text, button, command_text, empty_state, row_card};
+use crate::inbox::model::AlwaysAllowScope;
 use crate::state::AppState;
 use crate::theme::Theme;
 use crate::typography::ui_rems;
@@ -130,7 +131,13 @@ impl RulesPane {
                     .map(|path| path.trim_end_matches('/'))
                     .and_then(|path| path.rsplit('/').next())
                     .filter(|name| !name.is_empty())
-                    .unwrap_or("this workspace");
+                    // Falls back to the SAME words the permission card and
+                    // the Needs you chip use for this reach, taken from the
+                    // one place that owns them. Written out separately it
+                    // said "this workspace" while both other surfaces said
+                    // "this project" (PERM-03 fixed those two and missed
+                    // this one).
+                    .unwrap_or_else(|| AlwaysAllowScope::ThisWorkspace.label());
                 format!("{}, in {folder}", rule.tool_name)
             }
         }
@@ -241,7 +248,26 @@ mod tests {
         // rather than showing an empty gap.
         assert_eq!(
             RulesPane::scope_line(&rule(RuleScope::Workspace, None)),
-            "Bash, in this workspace"
+            "Bash, in this project"
+        );
+    }
+
+    /// The fallback is the third surface to name this reach, and it was the
+    /// one PERM-03 missed: the card and the Needs you chip were changed to
+    /// "project" and this still said "workspace".
+    ///
+    /// Pinned to the label rather than to a literal, so the three cannot
+    /// drift apart again without a failure here.
+    #[test]
+    fn the_pathless_fallback_uses_the_same_words_as_the_card_and_the_chip() {
+        let shared = AlwaysAllowScope::ThisWorkspace.label();
+        assert_eq!(
+            RulesPane::scope_line(&rule(RuleScope::Workspace, None)),
+            format!("Bash, in {shared}")
+        );
+        assert!(
+            !RulesPane::scope_line(&rule(RuleScope::Workspace, None)).contains("workspace"),
+            "workspace is the engine's word for this scope, never the user's"
         );
     }
 }
