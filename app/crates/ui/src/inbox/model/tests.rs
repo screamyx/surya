@@ -174,7 +174,7 @@ fn allow_and_deny_without_remember_send_no_rule() {
 fn the_scope_toggle_has_two_positions_and_says_which() {
     let scope = AlwaysAllowScope::default();
     assert_eq!(scope, AlwaysAllowScope::ThisWorkspace);
-    assert_eq!(scope.label(), "this workspace");
+    assert_eq!(scope.label(), "this project"); // PERM-03: as the card says
     assert_eq!(scope.toggled(), AlwaysAllowScope::Everywhere);
     assert_eq!(scope.toggled().label(), "everywhere");
     assert_eq!(scope.toggled().toggled(), scope);

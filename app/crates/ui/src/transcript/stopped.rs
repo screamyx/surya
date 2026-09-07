@@ -92,9 +92,13 @@ mod tests {
 
     #[test]
     fn the_mark_says_the_same_word_the_agent_tree_says() {
-        // Decision 17 names the fourth agent state "Stopped". The transcript
-        // must not invent a second word for the same thing.
-        assert_eq!(STOPPED_LABEL, "Stopped");
+        // Decision 17 names the fourth agent state "Stopped". Compared
+        // against the INBOX's own word rather than a second literal, so the
+        // two surfaces cannot drift apart without this failing.
+        assert_eq!(
+            STOPPED_LABEL,
+            crate::inbox::model::badge_for(surya_proto::NeedsYouKind::Failed)
+        );
     }
 
     /// E2E-CHAT-02: pressing stop cut the text mid-word and left nothing in

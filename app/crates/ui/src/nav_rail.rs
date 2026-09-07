@@ -44,12 +44,15 @@ pub fn row_backgrounds(theme: &Theme, selected: bool, enabled: bool) -> RowBackg
     RowBackgrounds { rest, hover }
 }
 
-/// The selected wash, more of it. Hue and saturation are untouched - that is
-/// the whole point, since the hue IS the selection cue.
+/// The selected wash, more of it. The selected HUE has to survive, since it
+/// is the cue the finding was about.
 ///
-/// A translucent plate deepens by stacking the hover wash's alpha on its own.
-/// An opaque one has no alpha left to give, so the wash is composited over it
-/// instead, which lands in the same direction.
+/// A translucent plate deepens by stacking the hover wash's alpha on its own,
+/// leaving hue and saturation exactly as they were. An opaque one has no
+/// alpha left to give, so the wash is composited over it with `flatten`,
+/// which does move hue and saturation a little - it stays recognisably the
+/// selected colour, which is what matters, but "untouched" would be too
+/// strong a word for that branch.
 fn deepen(active: Hsla, hover: Hsla) -> Hsla {
     if active.a < 1.0 {
         hsla(active.h, active.s, active.l, (active.a + hover.a).min(1.0))
@@ -80,6 +83,9 @@ mod tests {
         assert_eq!(plain.hover, Some(theme.element_hover));
     }
 
+    /// The translucent branch, which is what `Theme::dark()` ships: hue and
+    /// saturation come through untouched. The opaque branch is covered
+    /// separately below and is allowed to move them.
     #[test]
     fn hover_deepens_the_selected_row_and_keeps_its_hue() {
         let theme = theme();
