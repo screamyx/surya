@@ -1241,6 +1241,11 @@ pub struct Shell {
     /// visible while something waits, gone when nothing does (decision 20's
     /// quiet state). `Some` means they said otherwise with mod-shift-i.
     inbox_shown: Option<bool>,
+    /// The chat an inbox Retry is waiting on. `AppState` holds only the
+    /// SELECTED chat's transcript, so the prompt cannot be read at click
+    /// time - the id waits here until that chat's transcript arrives and
+    /// `on_state_changed` fires the send (E2E-CHAT-03).
+    pending_retry: Option<String>,
     /// `SURYA_OPEN_PANE=files|tasks|browser`: open that surface on first
     /// render (headless proof runs that cannot click), consumed once. Files
     /// and Tasks wait until a space is known; the browser needs none.
@@ -1564,6 +1569,7 @@ impl Shell {
             keyboard_home: None,
             agents_rail: None,
             inbox_shown: None,
+            pending_retry: None,
             debug_open_pane: std::env::var("SURYA_OPEN_PANE").ok(),
             right_tab_drag: None,
             right_tab_press: None,
@@ -1657,7 +1663,31 @@ impl Shell {
 
     // ---- splash ----
 
+    /// The chat an inbox Retry is waiting on. Cleared the moment the send
+    /// goes out, or the moment the user navigates away (E2E-CHAT-03).
+    fn take_pending_retry(&mut self, cx: &mut Context<Self>) -> Option<String> {
+        let chat_id = self.pending_retry.clone()?;
+        let s = self.state.read(cx);
+        // Still on the way to that chat: wait for the next frame.
+        if s.selected_chat.as_deref() != Some(chat_id.as_str()) {
+            return None;
+        }
+        // Selected, but the transcript has not landed yet. An empty
+        // transcript is indistinguishable from "not arrived", so waiting is
+        // the safe read: a chat with no user turn simply never fires, which
+        // is the same outcome as sending nothing.
+        let prompt = crate::transcript::retry::last_prompt(&s.transcript)?;
+        self.pending_retry = None;
+        Some(prompt)
+    }
+
     fn on_state_changed(&mut self, state: &Entity<AppState>, cx: &mut Context<Self>) {
+        // An inbox Retry parked its chat id here; send once that chat's
+        // transcript is really on screen.
+        if let Some(prompt) = self.take_pending_retry(cx) {
+            self.composer
+                .update(cx, |composer, cx| composer.send_text(prompt, cx));
+        }
         if let Some(notice) = state.update(cx, |state, _| state.take_deep_link_notice()) {
             self.sidebar_notice = Some(notice.into());
         }
@@ -2147,6 +2177,26 @@ impl Shell {
                 .update(cx, |state, cx| state.select_chat(Some(chat_id), cx));
         })
         .detach();
+        // Retry: open the chat AND run its last prompt again. Same route as
+        // OpenChat, plus the send - the transcript is already on screen by
+        // the time the prompt goes out, so the new turn appears where the
+        // user is looking (E2E-CHAT-03).
+        // Retry: open the chat, then run its last prompt again.
+        //
+        // The send CANNOT happen here. `AppState` holds the transcript of the
+        // SELECTED chat only - there is no per-chat cache for main chats - so
+        // reading it at this point would read the chat the user is leaving,
+        // and re-send the wrong prompt into the right chat. The chat id is
+        // parked instead and `on_state_changed` fires the send once that
+        // chat's transcript has actually arrived (E2E-CHAT-03).
+        cx.subscribe(&pane, |this, _, event: &crate::inbox::RetryChat, cx| {
+            let chat_id = event.0.clone();
+            this.inbox_shown = Some(false);
+            this.pending_retry = Some(chat_id.clone());
+            this.state
+                .update(cx, |state, cx| state.select_chat(Some(chat_id), cx));
+        })
+        .detach();
         self.inbox_pane = Some(pane.clone());
         Some(pane)
     }
@@ -2581,6 +2631,14 @@ impl Shell {
                     *frozen,
                     cx,
                 );
+            }
+            // Retry re-sends the prompt as a NEW turn down the same path a
+            // typed message takes. The stopped turn stays in the transcript
+            // as history (E2E-CHAT-03).
+            TranscriptEvent::RetryTurn { prompt } => {
+                let prompt = prompt.clone();
+                self.composer
+                    .update(cx, |composer, cx| composer.send_text(prompt, cx));
             }
             // A card button's answer goes to the agent as the user's turn,
             // through the composer's send path so a live run is steered and

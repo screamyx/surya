@@ -18,7 +18,7 @@ pub mod rules;
 pub(crate) mod watch;
 
 pub use agents::{AgentsRail, SelectChat};
-pub use needs_you::{NeedsYouPane, OpenChat};
+pub use needs_you::{NeedsYouPane, OpenChat, RetryChat};
 pub use rules::RulesPane;
 
 use gpui::{Context, Entity, Render, Window, div, prelude::*, px};

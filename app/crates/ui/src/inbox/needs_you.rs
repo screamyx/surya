@@ -34,6 +34,17 @@ pub struct OpenChat(pub String);
 
 impl gpui::EventEmitter<OpenChat> for NeedsYouPane {}
 
+/// A stopped run's Retry: open the chat AND run its last prompt again.
+///
+/// Decision 17 puts a Retry button on a stopped agent's inbox row, beside
+/// the reason and the detail. The `retryable` flag reached `InboxRow` and
+/// was then read by nobody, so the row offered only "Open chat"
+/// (E2E-CHAT-03).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetryChat(pub String);
+
+impl gpui::EventEmitter<RetryChat> for NeedsYouPane {}
+
 pub struct NeedsYouPane {
     /// The page's own place in the focus chain.
     ///
