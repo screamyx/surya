@@ -515,37 +515,24 @@ async fn captured_live_background_subagent_frames_replay_correctly() {
     // second result). Replayed through the fake-CLI transport so the whole
     // driver path (wire parse → normalize → run loop) is exercised, not just
     // the normalizer.
+    //
+    // The capture is named to the CHECKED-IN fake CLI through the prompt,
+    // `scenario:replay:<path>`, and nothing is written at run time. This test
+    // used to write its own replayer script and exec it, which is what made
+    // the suite flaky on Linux: the write fd is inherited by a sibling test's
+    // fork, and execve answers ETXTBSY until that child reaches its own exec.
+    // Renaming into place does not help, the block is on the inode. See
+    // `tests/exec_race.rs`, which pins both facts.
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
         .join("claude")
         .join("live-2.1.228-background-subagent.jsonl");
-    let script = std::fs::read_to_string(&fixture).expect("fixture readable");
-    // A one-off cat-style fake CLI: reads the prompt line, plays the capture.
-    // The capture contains one can_use_tool control_request; the driver
-    // auto-allows it on stdin, which this replayer ignores.
-    let dir = std::env::temp_dir().join(format!("claude-replay-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("tmp dir");
-    let frames = dir.join("frames.jsonl");
-    std::fs::write(&frames, &script).expect("frames written");
-    let cli = dir.join("replay.sh");
-    std::fs::write(
-        &cli,
-        format!(
-            "#!/bin/sh\nread -r _first || exit 1\ncat '{}'\n",
-            frames.display()
-        ),
-    )
-    .expect("replayer written");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&cli, std::fs::Permissions::from_mode(0o755)).unwrap();
-    }
-
-    let harness = ClaudeHarness::new().with_executable(&cli);
+    assert!(fixture.is_file(), "capture missing: {fixture:?}");
+    let cli = harness();
     let (controls, _steer, _token) = controls("A");
-    let events = run_to_end(&harness, request("replay"), controls).await;
+    let prompt = format!("scenario:replay:{}", fixture.display());
+    let events = run_to_end(&cli, request(&prompt), controls).await;
 
     // One SessionStarted (the wake init dedupes), two Dones (eager + wake).
     assert_eq!(
@@ -619,8 +606,6 @@ async fn captured_live_background_subagent_frames_replay_correctly() {
         )),
         "subagent Bash call arrives tagged: {events:?}"
     );
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Live smoke against the REAL claude CLI (2.1.x, must be installed + authed):

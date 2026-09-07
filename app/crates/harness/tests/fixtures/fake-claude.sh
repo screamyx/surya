@@ -205,6 +205,19 @@ case "$first" in
   emit '{"type":"result","subtype":"error_max_turns","errors":[],"usage":{"input_tokens":1,"output_tokens":2},"session_id":"sess-err"}'
   ;;
 
+*scenario:replay:*)
+  # Play a captured transcript back verbatim. The capture to play is named
+  # in the prompt, `scenario:replay:<path>`, so the test does not have to
+  # write a one-off replayer script and exec it. Writing an executable and
+  # spawning it from this test binary is what made the suite flaky: another
+  # test's fork inherits the open write fd and Linux answers the exec with
+  # ETXTBSY. See the comment on the replay test in claude.rs.
+  frames=${first#*scenario:replay:}
+  frames=${frames%%\"*}
+  [ -f "$frames" ] || { emit '{"type":"result","subtype":"error_during_execution","errors":["replay capture not found"],"session_id":"sess-replay"}'; exit 1; }
+  cat "$frames"
+  ;;
+
 *)
   emit '{"type":"result","subtype":"error_during_execution","errors":["unknown scenario"],"usage":{"input_tokens":0,"output_tokens":0},"session_id":"sess-x"}'
   ;;
