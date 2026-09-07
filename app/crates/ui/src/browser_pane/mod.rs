@@ -252,17 +252,23 @@ impl Render for BrowserPane {
 /// the white page surface: cef3 measured the darkest pixel of it at
 /// (232,232,234) on (255,255,255), about 1.2:1, on Windows dark.
 ///
-/// `text_faint` is deliberately not used for the hint. The palette holds it to
-/// a 4.1:1 floor as placeholder and disabled-control copy, which WCAG 1.4.3
-/// exempts (theme.rs `text_tones_clear_wcag_aa`). This note is not incidental:
-/// it is the only thing telling a person why the browser is empty and how to
-/// get it back, so every line of it clears AA.
+/// `text_faint` is deliberately not used. The palette holds it to a 4.1:1
+/// floor as placeholder and disabled-control copy, which WCAG 1.4.3 exempts
+/// (theme.rs `text_tones_clear_wcag_aa`). This note is not incidental: it is
+/// the only thing telling a person why the browser is empty and how to get it
+/// back, so every line of it clears AA.
+///
+/// The hint takes the same tone as the sentence and is separated by the gap
+/// alone. There is no third text tier to reach for: `text_dim` resolved to
+/// `text_muted` for every theme the app actually ran, so a third tier here
+/// would have existed in the tests and not on screen. The owner ruled the
+/// token folded (issue #172).
 fn note_colors(theme: &Theme) -> NoteColors {
     NoteColors {
         plane: theme.surface,
         label: theme.text,
         line: theme.text_muted,
-        hint: theme.text_dim,
+        hint: theme.text_muted,
     }
 }
 
@@ -285,8 +291,9 @@ fn off_pane(note: &surya_browser::OffNote, theme: &Theme) -> gpui::Div {
         .text_size(crate::typography::ui_rems(12.0))
         .child(div().text_color(colors.label).child(note.label))
         .child(div().text_color(colors.line).child(note.line));
-    // The way out sits under the sentence, quieter but still readable, so the
-    // eye reads what happened before it reads what to do about it.
+    // The way out sits under the sentence, separated by the gap rather than by
+    // a third tone (see `note_colors`), so the eye reads what happened before
+    // it reads what to do about it.
     if let Some(hint) = note.hint {
         pane = pane.child(div().text_color(colors.hint).child(hint));
     }
@@ -296,14 +303,37 @@ fn off_pane(note: &surya_browser::OffNote, theme: &Theme) -> gpui::Div {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::theme::contrast_ratio;
+    use crate::theme::{contrast_ratio, Appearance};
+    use surya_theme::{AccentSelection, SurfacePreference};
+
+    /// The palettes the app actually runs, built the way the shell builds
+    /// them.
+    ///
+    /// `Theme::dark()` and `Theme::light()` are hardcoded fallbacks and are
+    /// NOT what ships: the registry path rewrites several tones on the way
+    /// through (theme.rs:1198-1221). A test that measured only the fallbacks
+    /// would pass while the screen disagreed, which is exactly how the hint
+    /// tone went unnoticed. See issue #172.
+    fn shipping_themes() -> Vec<Theme> {
+        [(Appearance::Dark, "zeron-dark"), (Appearance::Light, "zeron-light")]
+            .into_iter()
+            .map(|(appearance, id)| {
+                Theme::for_selection(
+                    appearance,
+                    id,
+                    AccentSelection::ThemeDefault,
+                    SurfacePreference::default(),
+                )
+            })
+            .collect()
+    }
 
     /// Every line of the note clears WCAG AA against the plane it is drawn on,
-    /// in both appearances. Fails if the note goes back onto the white page
-    /// surface: the shell's dark-mode text measures about 1.2:1 there.
+    /// in both appearances, in the palettes that ship and in the fallbacks.
     #[test]
     fn every_line_of_the_note_clears_aa_on_its_own_plane() {
-        for theme in [Theme::dark(), Theme::light()] {
+        let themes = shipping_themes().into_iter().chain([Theme::dark(), Theme::light()]);
+        for theme in themes {
             let colors = note_colors(&theme);
             for (name, tone) in
                 [("label", colors.label), ("line", colors.line), ("hint", colors.hint)]
@@ -318,23 +348,25 @@ mod tests {
         }
     }
 
-    /// What the fix is for, kept as a measurement rather than a memory.
+    /// The note never lands on the white page surface.
     ///
-    /// The label is the tone that was photographed on Windows dark: its pixel
-    /// read (232,232,234) on a (255,255,255) page surface, about 1.2:1. No
-    /// tone the note uses is readable on that plane, so the plane is never
-    /// white.
+    /// That plane is right for a real page and wrong here: the label was
+    /// photographed on Windows dark at (232,232,234) on (255,255,255). The
+    /// ratio is reported rather than asserted, because whether the palette
+    /// happens to read badly on white is the palette's business and improving
+    /// it should not fail this test. What must hold is the plane.
     #[test]
-    fn the_white_page_surface_is_not_readable_for_the_note() {
-        let dark = Theme::dark();
-        let label_on_white = contrast_ratio(dark.text, gpui::white());
-        assert!(label_on_white < 1.5, "the photographed pair, got {label_on_white:.2}:1");
-        for (name, tone) in
-            [("label", dark.text), ("line", dark.text_muted), ("hint", dark.text_dim)]
-        {
-            let ratio = contrast_ratio(tone, gpui::white());
-            assert!(ratio < 4.5, "{name} reads {ratio:.2}:1 on white, so it needs no fix");
+    fn the_white_page_surface_is_not_the_notes_plane() {
+        for theme in shipping_themes() {
+            let colors = note_colors(&theme);
+            let label_on_white = contrast_ratio(colors.label, gpui::white());
+            assert_ne!(
+                colors.plane,
+                gpui::white(),
+                "{:?}: the note is back on the page surface, where its label reads \
+                 {label_on_white:.2}:1",
+                theme.appearance
+            );
         }
-        assert_ne!(note_colors(&dark).plane, gpui::white());
     }
 }
