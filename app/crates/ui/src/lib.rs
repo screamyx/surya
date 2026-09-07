@@ -278,6 +278,37 @@ pub fn run_app(config: UiConfig) {
     });
 }
 
+/// What the OS calls the window: the taskbar, Alt+Tab, window switchers and
+/// screen readers all read this. Matches `app_id`.
+const WINDOW_TITLE: &str = "surya";
+
+/// The window's titlebar options.
+///
+/// The title is the OS-level name, not text the app paints. Left unset it
+/// reaches the platform as an empty string (gpui_windows window.rs:455-462
+/// hands `titlebar.title.unwrap_or("")` to `CreateWindowEx` as the window
+/// name; x11 window.rs:545 and wayland window.rs:578 read the same field), so
+/// the window had no name anywhere outside itself: `Get-Process surya |
+/// Select-Object MainWindowTitle` came back empty (E2E-WIN-01).
+///
+/// Setting it does not put text on the custom-drawn strip. macOS:
+/// frameless-inset chrome like the original Electron app (`titleBarStyle:
+/// "hiddenInset"`, traffic lights at 14,15 - feature-inventory §1.1), and
+/// with `appears_transparent` gpui calls
+/// `setTitleVisibility_(NSWindowTitleHidden)` (gpui_macos window.rs:966-967),
+/// so the title names the window for Mission Control and the Window menu and
+/// paints nothing. On Linux/Windows `appears_transparent` hides the system
+/// titlebar for our own chrome; harmless where unsupported.
+fn titlebar() -> TitlebarOptions {
+    TitlebarOptions {
+        title: Some(WINDOW_TITLE.into()),
+        appears_transparent: true,
+        // Centered on the titlebar's content line (40px bar, content
+        // shifted 4px down, lights ~12px tall -> center 22).
+        traffic_light_position: Some(gpui::point(px(14.), px(14.))),
+    }
+}
+
 /// Open the 1320×880 main window (min 900×600) with [`shell::Shell`] as the
 /// root view. Called at boot and again from `on_reopen` if the dock icon is
 /// clicked after ⌘W closed the window.
@@ -310,19 +341,7 @@ fn open_main_window(state: gpui::Entity<state::AppState>, boot: EngineBootConfig
             // from the missing `set_menus` call (nil `NSApp.mainMenu`), not
             // from window kind/level, and `appears_transparent` only affects
             // the titlebar, not the menu bar.
-            // macOS: frameless-inset chrome like the original Electron app
-            // (`titleBarStyle: "hiddenInset"`, traffic lights at 14,15 —
-            // feature-inventory §1.1). No title text — the strip is
-            // custom-drawn (zed sets `title: None` the same way). On
-            // Linux/Windows `appears_transparent` hides the system titlebar
-            // for our custom-drawn chrome; harmless where unsupported.
-            titlebar: Some(TitlebarOptions {
-                title: None,
-                appears_transparent: true,
-                // Centered on the titlebar's content line (40px bar, content
-                // shifted 4px down, lights ~12px tall → center 22).
-                traffic_light_position: Some(gpui::point(px(14.), px(14.))),
-            }),
+            titlebar: Some(titlebar()),
             // Our own titlebar strip drags the window (WindowControlArea::
             // Drag + start_window_move) — mark the content view app-owned
             // so AppKit neither dead-zones the strip nor delays clicks.
@@ -364,4 +383,28 @@ fn open_main_window(state: gpui::Entity<state::AppState>, boot: EngineBootConfig
     // `WindowOptions` value is applied during creation, before the view is
     // attached; re-pushing it here means a window is never left opaque.
     appearance::reapply_window_background(cx);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// E2E-WIN-01: the window must carry a name for the OS, or the taskbar,
+    /// Alt+Tab, window switchers and screen readers have nothing to call it.
+    /// This is the whole fix, so it is the whole test: put `None` back and it
+    /// fails.
+    #[test]
+    fn the_window_is_named_for_the_os() {
+        assert_eq!(titlebar().title.as_deref(), Some("surya"));
+    }
+
+    /// Naming the window must not have disturbed the frameless chrome: the
+    /// custom strip needs the system titlebar transparent, and the traffic
+    /// lights stay where the layout puts them.
+    #[test]
+    fn naming_the_window_leaves_the_custom_chrome_alone() {
+        let bar = titlebar();
+        assert!(bar.appears_transparent);
+        assert_eq!(bar.traffic_light_position, Some(gpui::point(px(14.), px(14.))));
+    }
 }
