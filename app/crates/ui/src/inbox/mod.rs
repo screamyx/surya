@@ -268,6 +268,22 @@ pub mod demo {
                 exact: false,
                 created_at: at(0),
             },
+            // A workspace rule with no usable path. The engine stores the
+            // scope and the path apart, so a rule can keep the first and
+            // lose the second, and that is the row whose words this branch
+            // fixes. The other two rows both have a folder or are global, so
+            // without this one the pathless fallback never renders and there
+            // is nothing to photograph.
+            AllowRule {
+                id: "rule-3".into(),
+                name: "Write in the current project".into(),
+                scope: RuleScope::Workspace,
+                workspace_path: None,
+                tool_name: "Write".into(),
+                pattern: "*".into(),
+                exact: false,
+                created_at: at(0),
+            },
         ]
     }
 }

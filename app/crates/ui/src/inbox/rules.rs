@@ -10,6 +10,7 @@ use surya_proto::{AllowRule, RuleScope};
 use surya_rpc::methods;
 
 use crate::inbox::chrome::{ButtonTone, body_text, button, command_text, empty_state, row_card};
+use crate::inbox::model::AlwaysAllowScope;
 use crate::state::AppState;
 use crate::theme::Theme;
 use crate::typography::ui_rems;
@@ -130,7 +131,13 @@ impl RulesPane {
                     .map(|path| path.trim_end_matches('/'))
                     .and_then(|path| path.rsplit('/').next())
                     .filter(|name| !name.is_empty())
-                    .unwrap_or("this workspace");
+                    // Falls back to the SAME words the permission card and
+                    // the Needs you chip use for this reach, taken from the
+                    // one place that owns them. Written out separately it
+                    // said "this workspace" while both other surfaces said
+                    // "this project" (PERM-03 fixed those two and missed
+                    // this one).
+                    .unwrap_or_else(|| AlwaysAllowScope::ThisWorkspace.label());
                 format!("{}, in {folder}", rule.tool_name)
             }
         }
@@ -241,7 +248,47 @@ mod tests {
         // rather than showing an empty gap.
         assert_eq!(
             RulesPane::scope_line(&rule(RuleScope::Workspace, None)),
-            "Bash, in this workspace"
+            "Bash, in this project"
+        );
+    }
+
+    /// The fallback is the third surface to name this reach, and it was the
+    /// one PERM-03 missed: the card and the Needs you chip were changed to
+    /// "project" and this still said "workspace".
+    ///
+    /// Pinned to the label rather than to a literal, so the three cannot
+    /// drift apart again without a failure here.
+    #[test]
+    fn the_pathless_fallback_uses_the_same_words_as_the_card_and_the_chip() {
+        let shared = AlwaysAllowScope::ThisWorkspace.label();
+        assert_eq!(
+            RulesPane::scope_line(&rule(RuleScope::Workspace, None)),
+            format!("Bash, in {shared}")
+        );
+        assert!(
+            !RulesPane::scope_line(&rule(RuleScope::Workspace, None)).contains("workspace"),
+            "workspace is the engine's word for this scope, never the user's"
+        );
+    }
+
+    /// The fix is real and unphotographable at the same time unless a demo
+    /// row reaches it. `--inbox-demo` is the only thing that builds this
+    /// page (`demo_run.rs` calls `RulesPane::demo(demo::rules())`, and
+    /// nothing else constructs one), so the fixture is the whole rig.
+    ///
+    /// The two original rows yield "in orchard" and "everywhere". Drop the
+    /// third and this fails, which is the point: the screenshot the PR ships
+    /// would show two rows that were never broken.
+    #[test]
+    fn the_demo_fixture_renders_the_pathless_fallback() {
+        let lines: Vec<String> = crate::inbox::demo::rules()
+            .iter()
+            .map(RulesPane::scope_line)
+            .collect();
+        let wanted = format!("in {}", AlwaysAllowScope::ThisWorkspace.label());
+        assert!(
+            lines.iter().any(|line| line.ends_with(&wanted)),
+            "no --inbox-demo row reaches the pathless fallback; the rules page shows {lines:?}"
         );
     }
 }
