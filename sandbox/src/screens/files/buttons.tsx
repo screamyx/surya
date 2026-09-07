@@ -1,13 +1,14 @@
 // Rust: app/crates/ui/src/popover.rs (btn_ghost, btn_primary, btn_danger),
 // the three buttons files/editor.rs hands to notice().
 
-// Ghost button: quiet text, hover wash. The native hover is a blended fade
-// (motion::hover_blend over HOVER_FADE); the class pair is its rest and hover
-// ends, with the fade left for the motion seat.
+// Ghost button: quiet text, hover wash. Both ends fade rather than snap:
+// popover.rs:998 and :999 blend the label colour and the fill through
+// motion::hover_blend, driven by the hover_listener at :1007. motion-hover-fade
+// is that blend, 150ms EASE_TAILWIND over colour, background and border.
 export function btnGhost(label: string, id: string, onPress: () => void) {
   return (
     <button key={id} type="button" data-action={id} onClick={onPress}
-      className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:text-text hover:bg-wash/5">
+      className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer motion-hover-fade hover:text-text hover:bg-wash/5">
       {label}
     </button>
   );

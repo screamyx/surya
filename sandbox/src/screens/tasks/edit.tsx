@@ -8,6 +8,12 @@
 // Notes and Links are multi-line ComposerInputs natively. They are single
 // line here: a textarea draws a browser resize grabber and the whitelist has
 // no resize utility to suppress it.
+// Motion: popover.rs:663 modal_with wraps the card in motion::dialog_in, so the
+// sheet fades up 2px over 180ms on mount. Natively that wrapper is a bare div
+// around the frosted card; here the card carries the class itself, since the
+// wrapper has nothing else on it. The three btn_ghost footers blend their
+// label and fill over HOVER_FADE (popover.rs:998, :999, :1007); btn_primary
+// and btn_danger use a plain .hover(opacity) and keep snapping.
 import type { TaskStatus } from './model';
 import { COLUMNS, columnLabel } from './model';
 
@@ -63,7 +69,7 @@ export function renderSheet(
     <div className="absolute top-0 bottom-0 left-0 right-0 bg-on-solid/50 flex items-center justify-center">
       <div role="dialog" aria-label={editing ? 'Edit task' : 'New task'} data-sheet="task-edit-sheet"
         onKeyDown={event => { if (event.key === 'Escape') onCancel(); }}
-        className="w-96 p-5 rounded-xl bg-surface-dialog border border-wash/10 flex flex-col text-text">
+        className="relative motion-dialog-in w-96 p-5 rounded-xl bg-surface-dialog border border-wash/10 flex flex-col text-text">
         <span className="text-ui-14 font-semibold text-text">{editing ? 'Edit task' : 'New task'}</span>
         {field('Title', 'Title', sheet.title, next => onSheet({ ...sheet, title: next }), onSubmit)}
         <div className="mt-2.5 flex flex-col gap-1.5">
@@ -88,7 +94,7 @@ export function renderSheet(
             <span className="text-ui-13 text-text-muted">Delete this task? Agents lose it too.</span>
             <div className="flex flex-row gap-2">
               <button type="button" onClick={() => onSheet({ ...sheet, confirmDelete: false })}
-                className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text focus:bg-wash/5">Keep</button>
+                className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer motion-hover-fade hover:bg-wash/5 hover:text-text focus:bg-wash/5">Keep</button>
               <button type="button" onClick={onDelete}
                 className="px-3 py-1.5 rounded-lg bg-danger-strong text-ui-13 font-medium text-on-accent cursor-pointer">Delete</button>
             </div>
@@ -97,11 +103,11 @@ export function renderSheet(
           <div className="mt-4 flex flex-row items-center justify-between">
             <div>
               {editing && <button type="button" onClick={() => onSheet({ ...sheet, confirmDelete: true })}
-                className="px-3 py-1.5 rounded-lg text-ui-13 text-danger cursor-pointer hover:bg-wash/5 focus:bg-wash/5">Delete…</button>}
+                className="px-3 py-1.5 rounded-lg text-ui-13 text-danger cursor-pointer motion-hover-fade hover:bg-wash/5 focus:bg-wash/5">Delete…</button>}
             </div>
             <div className="flex flex-row gap-2">
               <button type="button" onClick={onCancel}
-                className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text focus:bg-wash/5">Cancel</button>
+                className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer motion-hover-fade hover:bg-wash/5 hover:text-text focus:bg-wash/5">Cancel</button>
               <button type="button" onClick={onSubmit}
                 className="px-3 py-1.5 rounded-lg bg-text text-ui-13 font-medium text-on-solid cursor-pointer">{editing ? 'Save' : 'Add task'}</button>
             </div>

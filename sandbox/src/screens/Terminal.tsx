@@ -27,13 +27,17 @@ export type TerminalPanelProps = {
   embedded?: boolean;
   /// Stands in for a pointer drag over the strip. Drag itself does not port.
   draggedKey?: string | null;
+  /// panel.rs's `over`: the slot the dragged tab is currently above. With
+  /// `draggedKey` it is the whole of the native drag state, and the two
+  /// together drive the TAB_SLIDE tween on the siblings.
+  dragOverKey?: string | null;
   onNewTab: () => void;
   onCloseTab: (key: string) => void;
   onToggleTerminal: () => void;
 };
 
 export function TerminalPanel({ tabs, activeKey, selectedChat, embedded = false, draggedKey = null,
-  onNewTab, onCloseTab, onToggleTerminal }: TerminalPanelProps) {
+  dragOverKey = null, onNewTab, onCloseTab, onToggleTerminal }: TerminalPanelProps) {
   const [selected, setSelected] = useState(activeKey);
   const [terminalHovered, setTerminalHovered] = useState(false);
   const [scrollbarHovered, setScrollbarHovered] = useState(false);
@@ -44,7 +48,7 @@ export function TerminalPanel({ tabs, activeKey, selectedChat, embedded = false,
     return (
       <div data-terminal="panel" className={embedded
         ? 'size-full flex items-center justify-center text-ui-12 text-text-faint'
-        : 'size-full flex items-center justify-center bg-bg text-ui-12 text-text-faint'}>
+        : 'size-full flex items-center justify-center bg-terminal-background text-ui-12 text-text-faint'}>
         Select a chat to open a terminal
       </div>
     );
@@ -52,8 +56,8 @@ export function TerminalPanel({ tabs, activeKey, selectedChat, embedded = false,
   return (
     <div data-terminal="panel" className={embedded
       ? 'size-full flex flex-col'
-      : 'size-full flex flex-col bg-bg'}>
-      {!embedded && renderTabBar(tabs, active?.key ?? '', draggedKey,
+      : 'size-full flex flex-col bg-terminal-background'}>
+      {!embedded && renderTabBar(tabs, active?.key ?? '', draggedKey, dragOverKey,
         key => { setSelected(key); setFocused(false); },
         key => { onCloseTab(key); setFocused(false); },
         () => { onNewTab(); setFocused(false); },
