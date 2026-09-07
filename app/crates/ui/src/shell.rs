@@ -6930,8 +6930,8 @@ impl Shell {
     /// and all. The banner used to sit at a fixed `TITLEBAR_HEIGHT + 8`, which
     /// was the transcript's top back when nothing came between them. The page
     /// title now starts at `TITLEBAR_HEIGHT + 10`, so the fixed offset put the
-    /// banner squarely on the session title (surya-cef3, on the owner's dtry
-    /// build). Following `top` puts it back on the transcript, which is the
+    /// banner squarely on the session title (seen on a Windows build).
+    /// Following `top` puts it back on the transcript, which is the
     /// surface it was always meant to cover.
     /// The skew message to show, or None when there is none or the user
     /// dismissed this one. The banner and the layout above it must agree
@@ -8082,8 +8082,8 @@ impl Shell {
 
     /// The way past a Failed gate for a remote engine, by where the dial came
     /// from. A saved server that will not answer must not lock the user out:
-    /// two buttons that need no text editor (owner, dtry, 2026-09-05: a saved
-    /// pc-ajim:22 entry). A `--engine` / `SURYA_ENGINE` target is not the
+    /// two buttons that need no text editor (owner, 2026-09-05: a saved
+    /// entry on port 22). A `--engine` / `SURYA_ENGINE` target is not the
     /// app's to forget (lib.rs: the flag beats the saved server), so the gate
     /// says where to remove it instead.
     fn render_failed_server_escape(
