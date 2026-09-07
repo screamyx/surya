@@ -53,7 +53,13 @@ pub fn entries(
             StripEntry {
                 label: column_label(*status),
                 count: counts(*status),
-                visible: right > scrolled && left < scrolled + viewport_w,
+                // An UNMEASURED viewport is 0, and 0 would read as "nothing
+                // is on screen" - dimming every column on the very first
+                // frame, which is the frame this fix exists for. Mirrors
+                // `max_scroll`: before the geometry is known, assume the
+                // board is showing what it can.
+                visible: viewport_w <= 0.0
+                    || (right > scrolled && left < scrolled + viewport_w),
             }
         })
         .collect()
@@ -66,8 +72,8 @@ pub fn render(entries: &[StripEntry], theme: &Theme) -> gpui::Div {
         .flex_row()
         .items_center()
         .gap(px(10.0))
-        .px(px(16.0))
-        .pb(px(8.0))
+        .px(px(Theme::SPACE_LG))
+        .pb(px(Theme::SPACE_SM))
         .children(entries.iter().enumerate().map(|(ix, entry)| {
             let dim = !entry.visible;
             div()
@@ -268,5 +274,18 @@ mod tests {
     #[test]
     fn a_real_measurement_wins_once_it_arrives() {
         assert_eq!(max_scroll(999.0, 488.0), 999.0);
+    }
+
+    /// The first paint has no measurement yet, so `viewport_w` is 0. Reading
+    /// that as "nothing visible" would dim the whole strip on the exact
+    /// frame the fade fix targets.
+    #[test]
+    fn an_unmeasured_viewport_shows_everything_rather_than_nothing() {
+        let strip = entries(none, 0.0, 0.0, 220.0, 16.0);
+        assert_eq!(strip.len(), 4);
+        assert!(
+            strip.iter().all(|e| e.visible),
+            "before it has measured, the board must not report every column off screen"
+        );
     }
 }
