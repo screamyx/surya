@@ -107,21 +107,36 @@ const resolved = JSON.parse(readFileSync(resolve(root, 'src/theme.ts'), 'utf8')
 // site reads it through .text_color(), so it joins the text- family alone.
 const syntaxFields = [...theme.split('pub struct SyntaxPalette {')[1].split('\n}')[0]
   .matchAll(/pub (\w+): Hsla/g)].map(m => `syntax-${m[1].replaceAll('_', '-')}`);
+// Theme.terminal is a TerminalColors, and its ansi member is an array, so it is
+// invisible to the sweep for the same reason. terminal::view::resolve_color
+// feeds a cell's foreground AND its background from the same value, so the
+// palette joins both families; the selection is only ever a fill quad
+// (view.rs:503), so it is a background alone. Nothing paints a terminal border.
+const terminalFields = [...theme.split('pub struct TerminalColors {')[1].split('\n}')[0]
+  .matchAll(/pub (\w+): (?:Hsla|\[Hsla; (\d+)\])/g)].flatMap(([, field, arity]) =>
+    arity ? Array.from({ length: Number(arity) }, (_, i) => `terminal-${field}-${i}`)
+      : [`terminal-${field.replaceAll('_', '-')}`]);
+const terminalPaint = terminalFields.filter(name => name !== 'terminal-selection');
 const alphaSuffixes = Object.keys(resolved.dark)
   .filter(key => ['dark', 'light'].every(mode => /\/ 1\)$/.test(resolved[mode][key])))
   .map(key => key.replaceAll('_', '-'));
 for (const suffix of alphaSuffixes) {
-  if (![...colors, ...syntaxFields].includes(suffix)) throw new Error(`Opaque token ${suffix} has no Rust field`);
+  if (![...colors, ...syntaxFields, ...terminalFields].includes(suffix)) {
+    throw new Error(`Opaque token ${suffix} has no Rust field`);
+  }
 }
 for (const [prefix, method] of [['bg-', 'bg'], ['text-', 'text_color'], ['border-', 'border_color']]) {
   if (!methods.has(method)) throw new Error(`Missing ${method}`);
-  const suffixes = prefix === 'text-' ? [...colors, ...syntaxFields] : colors;
+  const suffixes = [...colors,
+    ...(prefix === 'text-' ? syntaxFields : []),
+    ...(prefix === 'bg-' ? terminalFields : prefix === 'text-' ? terminalPaint : [])];
   families.push({ prefix, suffixes, alpha: [5, 10, 14, 50, 88],
     alphaSuffixes: suffixes.filter(suffix => alphaSuffixes.includes(suffix)),
     gpui: `.${method}(theme.<suffix_underscored>)`,
     alphaGpui: `.${method}(theme.<suffix_underscored>.opacity(alpha / 100))`,
     note: 'wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand(); '
-      + 'a syntax- suffix maps to theme.syntax.<field>, the color SyntaxPalette::color() returns for that HighlightKind'  });
+      + 'a syntax- suffix maps to theme.syntax.<field>, the color SyntaxPalette::color() returns for that HighlightKind; '
+      + 'a terminal-ansi-N suffix maps to theme.terminal.ansi[N], what terminal::view::resolve_color returns for CellColor::Indexed(N)'  });
 }
 const variants = {};
 // Each variant is one interaction style method read in div.rs. `focus-within:`

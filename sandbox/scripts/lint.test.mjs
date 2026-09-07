@@ -189,7 +189,7 @@ test('a token folded out of the Rust theme stops linting clean', async () => {
 });
 
 test('the mono family and the syntax palette are admitted, and nothing near them', async () => {
-  const { faces, families, syntaxPalette } = await import('./fonts-syntax.mjs');
+  const { faces, families, syntaxPalette } = await import('./native-palettes.mjs');
   const { block, fields } = await import('./rust-colors.mjs');
   const root = resolve(import.meta.dirname, '..');
   const read = path => readFileSync(resolve(root, '..', path), 'utf8').replace(/\/\/[^\n]*/g, '');
@@ -235,4 +235,50 @@ test('the mono family and the syntax palette are admitted, and nothing near them
   // paints it with punctuation, so there is no token of its own to name.
   for (const cls of ['text-syntax-embedded', 'text-syntax-type', 'text-syntax-nonesuch',
     'text-syntax', 'text-comment', 'text-keyword']) assert.ok(!allowedClass(cls), cls);
+});
+
+test('the terminal palette is admitted on the verbs that paint it', async () => {
+  const { terminalPalette } = await import('./native-palettes.mjs');
+  const { block, fields, split, evaluate, color } = await import('./rust-colors.mjs');
+  const root = resolve(import.meta.dirname, '..');
+  const read = path => readFileSync(resolve(root, '..', path), 'utf8').replace(/\/\/[^\n]*/g, '');
+  const theme = read('app/crates/ui/src/theme.rs');
+  const builtins = read('app/crates/theme/src/builtins.rs');
+  const themes = JSON.parse(readFileSync(resolve(root, 'src/theme.ts'), 'utf8')
+    .match(/export const themes = ([\s\S]*?) as const;/)[1]);
+  const css = readFileSync(resolve(root, 'src/tailwind.css'), 'utf8');
+  const variant = block(builtins, 'fn variant(seed:');
+
+  for (const mode of ['dark', 'light']) {
+    const dark = mode === 'dark';
+    const seedFields = fields(block(block(builtins, `fn comet_${mode}()`), 'variant(Seeds'));
+    const seed = Object.fromEntries(Object.entries(seedFields).filter(([, v]) => /^"#[a-f0-9]{6}"$/i.test(v))
+      .map(([k, v]) => [`seed.${k}`, color(JSON.parse(v))]));
+    const env = { ...seed, dark };
+    for (const statement of split(variant.slice(0, variant.indexOf('ThemeVariant {')), ';')) {
+      const m = statement.match(/let (?:mut )?(\w+) = ([\s\S]*)$/);
+      if (m && !['accent', 'dark', 'colors'].includes(m[1])) env[m[1]] = evaluate(m[2], env);
+    }
+    const palette = terminalPalette(theme, builtins, seedFields, env);
+    // background, foreground, selection and sixteen ANSI slots.
+    assert.equal(Object.keys(palette).length, 19);
+    for (const [field, value] of Object.entries(palette)) {
+      const token = `terminal-${field.replaceAll('_', '-')}`;
+      assert.equal(themes[mode][`terminal_${field}`],
+        `rgb(${value.slice(0, 3).join(' ')} / ${Number((value[3] / 255).toFixed(6))})`, `${mode}.${field}`);
+      assert.match(css, new RegExp(`--color-${token}: var\\(--surya-${token}\\);`), token);
+      // A cell takes its foreground and its background from the same value.
+      assert.ok(allowedClass(`bg-${token}`), `bg-${token}`);
+      assert.equal(allowedClass(`text-${token}`), token !== 'terminal-selection', `text-${token}`);
+      // Nothing in the Rust paints a terminal border.
+      assert.ok(!allowedClass(`border-${token}`), `border-${token}`);
+    }
+  }
+  // The selection is a translucent fill, so it takes no alpha modifier either.
+  assert.ok(allowedClass('bg-terminal-background/50'), 'bg-terminal-background/50');
+  assert.ok(!allowedClass('bg-terminal-selection/50'), 'bg-terminal-selection/50');
+  // 16..255 are computed from the index by terminal::view::extended_indexed_rgb,
+  // not held by the theme, so there is no token past slot 15.
+  for (const cls of ['bg-terminal-ansi-16', 'bg-terminal-ansi-255', 'bg-terminal-ansi-1.0',
+    'bg-terminal-ansi', 'bg-terminal', 'bg-ansi-1', 'bg-terminal-cursor']) assert.ok(!allowedClass(cls), cls);
 });

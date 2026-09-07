@@ -84,6 +84,25 @@
   --color-syntax-attribute: var(--surya-syntax-attribute);
   --color-syntax-label: var(--surya-syntax-label);
   --color-syntax-invalid: var(--surya-syntax-invalid);
+  --color-terminal-background: var(--surya-terminal-background);
+  --color-terminal-foreground: var(--surya-terminal-foreground);
+  --color-terminal-selection: var(--surya-terminal-selection);
+  --color-terminal-ansi-0: var(--surya-terminal-ansi-0);
+  --color-terminal-ansi-1: var(--surya-terminal-ansi-1);
+  --color-terminal-ansi-2: var(--surya-terminal-ansi-2);
+  --color-terminal-ansi-3: var(--surya-terminal-ansi-3);
+  --color-terminal-ansi-4: var(--surya-terminal-ansi-4);
+  --color-terminal-ansi-5: var(--surya-terminal-ansi-5);
+  --color-terminal-ansi-6: var(--surya-terminal-ansi-6);
+  --color-terminal-ansi-7: var(--surya-terminal-ansi-7);
+  --color-terminal-ansi-8: var(--surya-terminal-ansi-8);
+  --color-terminal-ansi-9: var(--surya-terminal-ansi-9);
+  --color-terminal-ansi-10: var(--surya-terminal-ansi-10);
+  --color-terminal-ansi-11: var(--surya-terminal-ansi-11);
+  --color-terminal-ansi-12: var(--surya-terminal-ansi-12);
+  --color-terminal-ansi-13: var(--surya-terminal-ansi-13);
+  --color-terminal-ansi-14: var(--surya-terminal-ansi-14);
+  --color-terminal-ansi-15: var(--surya-terminal-ansi-15);
   --font-sans: "Geist", sans-serif;
   --font-mono: "Geist Mono", monospace;
   --text-ui-10: 0.625rem;
@@ -168,6 +187,25 @@
   --surya-syntax-attribute: rgb(34 211 238 / 1);
   --surya-syntax-label: rgb(96 165 250 / 1);
   --surya-syntax-invalid: rgb(248 113 113 / 1);
+  --surya-terminal-background: rgb(9 9 9 / 1);
+  --surya-terminal-foreground: rgb(232 232 234 / 1);
+  --surya-terminal-selection: rgb(255 255 255 / 0.219608);
+  --surya-terminal-ansi-0: rgb(36 36 36 / 1);
+  --surya-terminal-ansi-1: rgb(248 113 113 / 1);
+  --surya-terminal-ansi-2: rgb(74 222 128 / 1);
+  --surya-terminal-ansi-3: rgb(250 204 21 / 1);
+  --surya-terminal-ansi-4: rgb(96 165 250 / 1);
+  --surya-terminal-ansi-5: rgb(192 132 252 / 1);
+  --surya-terminal-ansi-6: rgb(34 211 238 / 1);
+  --surya-terminal-ansi-7: rgb(212 212 216 / 1);
+  --surya-terminal-ansi-8: rgb(82 82 91 / 1);
+  --surya-terminal-ansi-9: rgb(252 165 165 / 1);
+  --surya-terminal-ansi-10: rgb(134 239 172 / 1);
+  --surya-terminal-ansi-11: rgb(253 224 71 / 1);
+  --surya-terminal-ansi-12: rgb(147 197 253 / 1);
+  --surya-terminal-ansi-13: rgb(216 180 254 / 1);
+  --surya-terminal-ansi-14: rgb(103 232 249 / 1);
+  --surya-terminal-ansi-15: rgb(250 250 250 / 1);
 }
 [data-theme="light"] {
   --surya-bg: rgb(255 255 255 / 1);
@@ -235,6 +273,25 @@
   --surya-syntax-attribute: rgb(14 116 144 / 1);
   --surya-syntax-label: rgb(37 99 235 / 1);
   --surya-syntax-invalid: rgb(185 28 28 / 1);
+  --surya-terminal-background: rgb(250 250 250 / 1);
+  --surya-terminal-foreground: rgb(48 48 53 / 1);
+  --surya-terminal-selection: rgb(0 0 0 / 0.160784);
+  --surya-terminal-ansi-0: rgb(31 31 31 / 1);
+  --surya-terminal-ansi-1: rgb(220 38 38 / 1);
+  --surya-terminal-ansi-2: rgb(22 163 74 / 1);
+  --surya-terminal-ansi-3: rgb(180 83 9 / 1);
+  --surya-terminal-ansi-4: rgb(37 99 235 / 1);
+  --surya-terminal-ansi-5: rgb(147 51 234 / 1);
+  --surya-terminal-ansi-6: rgb(14 116 144 / 1);
+  --surya-terminal-ansi-7: rgb(63 63 70 / 1);
+  --surya-terminal-ansi-8: rgb(113 113 122 / 1);
+  --surya-terminal-ansi-9: rgb(185 28 28 / 1);
+  --surya-terminal-ansi-10: rgb(21 128 61 / 1);
+  --surya-terminal-ansi-11: rgb(146 64 14 / 1);
+  --surya-terminal-ansi-12: rgb(29 78 216 / 1);
+  --surya-terminal-ansi-13: rgb(126 34 206 / 1);
+  --surya-terminal-ansi-14: rgb(21 94 117 / 1);
+  --surya-terminal-ansi-15: rgb(24 24 27 / 1);
 }
 html, body, #root { height: 100%; }
 /* Motion catalog, generated from app/crates/{ui,proto}/src/motion.rs. */

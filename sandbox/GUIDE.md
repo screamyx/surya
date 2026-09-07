@@ -29,6 +29,7 @@ identical defaults. The following pairs are exact within this sandbox:
 | `font-medium`, `font-semibold` | `.font_weight(FontWeight::MEDIUM)`, `.font_weight(FontWeight::SEMIBOLD)` |
 | `font-sans`, `font-mono` | `.font_family(theme.font_sans.clone())`, `.font_family(theme.font_mono.clone())` |
 | `text-syntax-keyword` | `.text_color(theme.syntax.keyword)` |
+| `bg-terminal-ansi-1` | `theme.terminal.ansi[1]` |
 | `leading-normal` | `.line_height(relative(1.5))` |
 | `truncate` | `.truncate()` |
 | `overflow-y-scroll` | `.id("stable-id").overflow_y_scroll()` |
@@ -105,6 +106,7 @@ All 24 fields are now tokens, admitted on `text-` only, because
 |---|---|
 | `text-syntax-comment` | `.text_color(theme.syntax.comment)` |
 | `text-syntax-keyword` | `.text_color(theme.syntax.keyword)` |
+| `bg-terminal-ansi-1` | `theme.terminal.ansi[1]` |
 | `text-syntax-string`, `-string-special`, `-escape` | `theme.syntax.string`, `.string_special`, `.escape` |
 | `text-syntax-number`, `-boolean`, `-constant` | `theme.syntax.number`, `.boolean`, `.constant` |
 | `text-syntax-type-name`, `-type-builtin`, `-constructor` | `theme.syntax.type_name`, `.type_builtin`, `.constructor` |
@@ -123,6 +125,55 @@ every field from the theme variant's twelve seed colours through
 `builtins.rs::syntax()`, and that is the chain the generator follows. It throws
 if a field would fall back to the built-in `oklch()` expressions, which the
 colour reader cannot evaluate.
+
+### Terminal
+
+`Theme::terminal` is a `TerminalColors`, and its `ansi` member is a
+`[Hsla; 16]`, so nineteen more colours were invisible to the token sweep for the
+same reason the syntax palette was. A ported terminal had the mono family and
+none of its own colours.
+
+| Tailwind | GPUI |
+|---|---|
+| `bg-terminal-background`, `text-terminal-background` | `theme.terminal.background`, what `resolve_color` returns for `CellColor::Background` |
+| `bg-terminal-foreground`, `text-terminal-foreground` | `theme.terminal.foreground`, `CellColor::Foreground` |
+| `bg-terminal-selection` | `theme.terminal.selection` |
+| `bg-terminal-ansi-0` to `-15`, and the same on `text-` | `theme.terminal.ansi[N]`, `CellColor::Indexed(N)` |
+
+Do not reach for `bg-bg` or `text-text` in a terminal. The terminal background
+is its own near-black, not the page background, and `code-wash` and `code-text`
+are the accent-family inline-code pair, not a terminal.
+
+Three decisions worth stating, because each could have gone another way.
+
+**Sixteen indexed names, not colour names.** The Rust is `pub ansi: [Hsla; 16]`
+and `terminal::view.rs` reads it as `theme.terminal.ansi[ix as usize]`. Nothing
+in the Rust calls slot 1 red or slot 5 magenta, and a theme is free to seed them
+however it likes, so a name would be a claim the source does not make. The index
+is the ANSI slot number and nothing more.
+
+**Both `bg-` and `text-`, except the selection.** `resolve_color` takes a
+`CellColor` and returns a colour, and a cell uses that same function for its
+foreground and its background, so every one of these values is legitimately
+either. The selection is different: `view.rs:503` only ever pushes it as a
+`fill` quad behind the text, so it is a background alone. Nothing paints a
+terminal border, so `border-terminal-*` is rejected.
+
+**`terminal-` on the front of all of them.** `background`, `foreground` and
+`selection` would otherwise shadow the `bg`, `text` and `selection` theme roles,
+which are different colours for different surfaces. One prefix per Rust struct,
+the same as `syntax-`.
+
+The values resolve the same way every other token does, from the comet variants:
+`variant()` builds the palette from the seed's `terminal_background`, the seed
+text hardened to 4.5 against it, a border-tone selection wash, and one of the
+`ANSI_*` constants. `Theme::from_variant` hardens the terminal foreground a
+second time only when the variant is not a curated builtin, which these two are,
+so that branch never runs. The generator throws if that guard disappears.
+
+Slots 16 to 255 are not tokens. `terminal::view::extended_indexed_rgb` computes
+them from the index, appearance-dependent, so they are not theme colours and
+`bg-terminal-ansi-16` is rejected.
 
 ## Motion
 
@@ -352,8 +403,16 @@ The toolkit's independent JSON palette is not the app palette.
   generator throws in that case rather than emitting a guessed colour.
 - Highlighting itself is not ported. A screen spells the token per span; the
   parser, the capture precedence and `HighlightKind` stay in Rust.
-- `theme.terminal` (`TerminalColors`, the ANSI16 palette) is still not a token.
-  A ported terminal has the mono family but not its own colours.
+- `theme.glyph` (`GlyphPalette`: light, mid, deep) is the last colour-carrying
+  `Theme` field the token sweep still misses. It is what `mini_glyph_spinner`
+  tints its rows with, and `scripts/rust-colors.mjs` already skips it explicitly
+  in `accentRoles()`. Three colours, same shape as the two fixed here.
+- Terminal slots 16 to 255 are computed from the index by
+  `extended_indexed_rgb`, not held by the theme, so a ported terminal can spell
+  the sixteen theme slots and nothing above them.
+- The terminal is painted with `canvas` fill quads in Rust, not with divs, so a
+  browser terminal built from `bg-terminal-*` elements matches the colours but
+  not the run-merging the native renderer does per row.
 
 ## Documentation
 
