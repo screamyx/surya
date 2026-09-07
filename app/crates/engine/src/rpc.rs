@@ -206,6 +206,10 @@ struct DeleteWorktreeParams {
 struct ListFoldersParams {
     #[serde(default)]
     path: Option<String>,
+    /// Filter applied on this device, before the listing is capped. Absent or
+    /// empty lists the whole level, as before.
+    #[serde(default)]
+    query: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1914,7 +1918,7 @@ impl RpcService for EngineRpc {
                 let p: ListFoldersParams = parse_params(params)?;
                 let listing = self
                     .repos
-                    .list_folders(p.path)
+                    .list_folders(p.path, p.query)
                     .await
                     .map_err(|e| RpcError::Failed(e.to_string()))?;
                 RpcReply::value(&listing)

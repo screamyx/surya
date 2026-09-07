@@ -10,6 +10,7 @@
 
 use super::*;
 use super::confirm_target::confirm_path;
+use super::folder_load::FolderLoad;
 use crate::pickers::{breadcrumbs, browser_rows, completion_prefix_len, parent_path};
 use gpui::FocusHandle;
 use surya_proto::{ChatIndicator, Device, DriveEntry, DriveListing, FolderListing, Space};
@@ -220,6 +221,13 @@ pub(super) struct AddSpaceFlow {
     /// view (`scroll_to_item`).
     list_scroll: gpui::ScrollHandle,
     focus_pending: bool,
+    /// The filter the CURRENT listing was asked for with.
+    ///
+    /// Clearing the query is itself an edit, so a descent (which clears it)
+    /// queues a refilter for the folder it just moved to. Without this the
+    /// refilter would cancel the descent's own in-flight call and reissue it
+    /// behind the debounce, making every descent 150 ms slower for nothing.
+    loaded_query: String,
     load_task: Option<Task<()>>,
     drives_task: Option<Task<()>>,
     submit_task: Option<Task<()>>,
@@ -1589,6 +1597,10 @@ impl Shell {
                 if let Some(flow) = this.add_space.as_mut() {
                     flow.active = 0;
                 }
+                // The list on screen is capped, so the new query has to go
+                // back to the device (E2E-PROJ-01). Debounced, and the rows
+                // stay put while it is in flight.
+                this.refilter_space_folders(cx);
                 cx.notify();
             }
         });
@@ -1607,6 +1619,7 @@ impl Shell {
             focus: cx.focus_handle(),
             list_scroll: gpui::ScrollHandle::new(),
             focus_pending: true,
+            loaded_query: String::new(),
             load_task: None,
             drives_task: None,
             submit_task: None,
@@ -1865,6 +1878,36 @@ impl Shell {
 
     /// ListFolders on the flow's device (relay-forwarded when remote).
     pub(super) fn load_space_folders(&mut self, path: Option<String>, cx: &mut Context<Self>) {
+        self.load_space_folders_for(path, FolderLoad::Browse, cx);
+    }
+
+    /// Re-ask the device for the current level with the current filter.
+    ///
+    /// The listing is capped, so on a large directory filtering client-side
+    /// searches a page the answer was never in (E2E-PROJ-01). The query has
+    /// to reach the disk.
+    pub(super) fn refilter_space_folders(&mut self, cx: &mut Context<Self>) {
+        let Some(flow) = self.add_space.as_ref() else {
+            return;
+        };
+        // Nothing new to ask. See `loaded_query`.
+        if flow.search.read(cx).text().trim() == flow.loaded_query {
+            return;
+        }
+        let path = flow.browser_path.clone();
+        self.load_space_folders_for(path, FolderLoad::Refilter, cx);
+    }
+
+    /// ListFolders on the flow's device (relay-forwarded when remote).
+    ///
+    /// `kind` says whether this is a move or a keystroke; see
+    /// [`FolderLoad`] for what each one does to the list and the timing.
+    fn load_space_folders_for(
+        &mut self,
+        path: Option<String>,
+        kind: FolderLoad,
+        cx: &mut Context<Self>,
+    ) {
         let Some(engine) = self.state.read(cx).engine().cloned() else {
             return;
         };
@@ -1888,15 +1931,32 @@ impl Shell {
         // This is the one funnel all nine rebrowse paths run through, so it
         // is the one place the rule can be stated once. Keyboard descents
         // already hold the input and re-asking for it is a no-op there.
-        flow.focus_pending = true;
+        //
+        // A refilter is the one load that does NOT want this: it is caused
+        // by typing into that very box, so the box already has focus.
+        flow.focus_pending = kind.wants_the_search_box();
+        // The filter goes with every call: the device applies it before it
+        // caps, so a match past the cap is still reachable.
+        let query = flow.search.read(cx).text().trim().to_string();
+        flow.loaded_query = query.clone();
         flow.browser_path = path.clone();
-        flow.browser = Loadable::Loading;
+        if kind.clears_the_list() {
+            flow.browser = Loadable::Loading;
+            flow.list_scroll.set_offset(gpui::Point::default());
+        }
         flow.active = 0;
-        flow.list_scroll.set_offset(gpui::Point::default());
+        // Replacing the task cancels the one in flight, which is what makes
+        // the debounce a debounce.
         flow.load_task = Some(cx.spawn(async move |this, cx| {
+            if let Some(wait) = kind.debounce() {
+                cx.background_executor().timer(wait).await;
+            }
             let mut params = serde_json::Map::new();
             if let Some(p) = &path {
                 params.insert("path".into(), serde_json::Value::String(p.clone()));
+            }
+            if !query.is_empty() {
+                params.insert("query".into(), serde_json::Value::String(query.clone()));
             }
             // Only target remote devices — local calls skip the relay.
             if let (Some(target), local) = (&device_id, &local)
