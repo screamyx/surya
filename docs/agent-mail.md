@@ -91,11 +91,19 @@ inherits the local/synced boundary.
 
 Ingress from the surya-mcp seat, both live at once:
 
-- `$XDG_RUNTIME_DIR/surya/mail.sock` - one JSON object per line, replies with
+- `<data dir>/mail.sock` - one JSON object per line, replies with
   the receipt;
-- `~/.surya/mail.jsonl` - appended records, tailed from the end.
+- `<data dir>/mail.jsonl` - appended records, tailed from the end.
 
 Record: `{"from":"…","to":"…","body":"…","toDevice":"…"?}`.
+
+One channel per engine, and the first engine to bind a socket keeps it.
+Both paths default under `SURYA_DATA_DIR`, so giving an engine its own data directory gives it its own mail channel; `SURYA_MAIL_SOCKET` and `SURYA_MAIL_LOG` still override either half.
+Ownership is an `flock` on a `.lock` file beside the socket, held for as long as the listener, so two engines starting at the same instant cannot both believe they won.
+A second engine that finds a live socket logs `mail socket not started` and runs on the jsonl and RPC routes instead.
+Both defaults used to hang off the machine rather than the engine, the socket off `$XDG_RUNTIME_DIR` and the jsonl off `$HOME`, and an engine unlinked whatever socket it found.
+So a second engine took the first one's mail and left it unreachable with nothing logged, and on Windows, where there is no socket, the two shared the jsonl outright.
+The sidecar resolves both the same way, because it writes what the engine reads.
 
 CLI shim, so an agb-shaped skill can alias to it:
 
@@ -123,6 +131,7 @@ devices, and auth.
 | `app/crates/ui/src/transcript/mail_row.rs` | 268 | the row the owner sees |
 | `app/crates/ui/src/transcript/demo_mail.rs` | 139 | `SURYA_DEMO_MAIL`, for the shot |
 | `app/crates/engine/src/mail/ingress.rs` | 361 | socket and jsonl ingress |
+| `app/crates/engine/src/mail/socket.rs` | 148 | who owns the mail socket, and when a stale one may go |
 | `app/crates/engine/src/mail/rpc.rs` | 120 | the four calls |
 | `app/apps/surya/src/mail_cli.rs` | 119 | the CLI shim |
 | `app/crates/engine/tests/agent_mail.rs` | 185 | the proof |

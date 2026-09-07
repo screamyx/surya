@@ -16,6 +16,8 @@ mod envelope;
 mod ingress;
 pub mod origin;
 mod rpc;
+#[cfg(unix)]
+mod socket;
 mod store;
 
 use std::sync::Arc;

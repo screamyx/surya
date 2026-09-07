@@ -32,6 +32,10 @@ cd "$ROOT"
 command -v cargo >/dev/null 2>&1 || PATH="$HOME/.cargo/bin:$PATH"
 CARGO="${SURYA_SMOKE_CARGO:-$([ -x /store/surya-cargo ] && echo /store/surya-cargo || echo cargo)}"
 WORK="$(mktemp -d /tmp/surya-smoke.XXXXXX)"
+# Isolate every ingress route, not just each engine's data and RPC port.
+export SURYA_MAIL_SOCKET="$WORK/mail.sock" SURYA_MAIL_LOG="$WORK/mail.jsonl"
+export XDG_RUNTIME_DIR="$WORK/runtime"
+mkdir -m 700 "$XDG_RUNTIME_DIR"
 FAKE_CLAUDE="$ROOT/crates/harness/tests/fixtures/fake-claude.sh"
 FAILURES=0
 SKIPS=0

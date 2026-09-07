@@ -738,6 +738,7 @@ async fn a_resolved_show_card_call_emits_one_card_event_in_transcript_order() {
         mcp_binary: None,
         card_store: Some(store.to_string_lossy().into()),
         mail_socket: None,
+        mail_log: None,
         catalog_id: None,
     });
     let (controls, _steer, _token) = controls("A");
@@ -871,6 +872,7 @@ async fn a_configured_store_with_no_record_shows_the_chip_not_an_empty_card() {
         mcp_binary: None,
         card_store: Some(store.to_string_lossy().into()),
         mail_socket: None,
+        mail_log: None,
         catalog_id: None,
     });
     let (controls, _steer, _token) = controls("A");

@@ -55,6 +55,15 @@ fn current_uid() -> String {
     std::env::var("USERNAME").unwrap_or_else(|_| "user".into())
 }
 
+/// The engine's data directory, and so the mail channel's home.
+///
+/// The engine resolves this identically in `crates/engine/src/mail/ingress.rs`.
+/// It writes what that reads, so a default only one side moves stops mail with
+/// no error anywhere (surya#216).
+fn data_dir() -> PathBuf {
+    env_path("SURYA_DATA_DIR").unwrap_or_else(home_dir)
+}
+
 /// `~/.surya`, falling back to the runtime dir when HOME is unset.
 fn home_dir() -> PathBuf {
     match env_path("HOME") {
@@ -75,8 +84,8 @@ impl Config {
             card_store: env_path("SURYA_CARD_STORE")
                 .unwrap_or_else(|| home_dir().join("cards.jsonl")),
             mail_socket: env_path("SURYA_MAIL_SOCKET")
-                .unwrap_or_else(|| runtime_dir().join("mail.sock")),
-            mail_log: env_path("SURYA_MAIL_LOG").unwrap_or_else(|| home_dir().join("mail.jsonl")),
+                .unwrap_or_else(|| data_dir().join("mail.sock")),
+            mail_log: env_path("SURYA_MAIL_LOG").unwrap_or_else(|| data_dir().join("mail.jsonl")),
         }
     }
 

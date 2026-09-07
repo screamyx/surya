@@ -72,6 +72,7 @@ fn request(store: &Path) -> RunRequest {
             mcp_binary: None,
             card_store: Some(store.to_string_lossy().into()),
             mail_socket: None,
+            mail_log: None,
             catalog_id: None,
         }),
         prompt: "scenario:card".into(),

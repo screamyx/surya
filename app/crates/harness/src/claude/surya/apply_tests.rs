@@ -10,6 +10,7 @@ fn options(binary: &Path) -> SuryaOptions {
         mcp_binary: Some(binary.to_string_lossy().into()),
         card_store: None,
         mail_socket: None,
+        mail_log: None,
         catalog_id: None,
     }
 }

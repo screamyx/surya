@@ -20,11 +20,12 @@ use crate::mail::MailIngressPaths;
 
 /// Where a run's shown cards are recorded for the app to read back.
 ///
-/// One file per chat under `~/.surya`, the same root the mail ingress
-/// resolves - NOT the headless engine's data dir, which is `SURYA_DATA_DIR`
-/// or `~/.local/share/surya-engine`. There was no prior convention to follow
-/// - the app reads whatever path the options carry - so this is a choice,
-/// recorded in `docs/decisions.md` under decision 14.
+/// One file per chat under `~/.surya`. That used to be the root the mail
+/// ingress resolved, which is what decision 14 recorded; since #224 the mail
+/// paths default under `SURYA_DATA_DIR` and this one does not follow them.
+/// So the card store is now per-OS-user while mail is per-engine, and two
+/// engines under one user share it. Tracked separately; decision 14 carries
+/// the amendment.
 fn card_store(chat_id: &str) -> PathBuf {
     crate::mail::surya_home_dir()
         .join("cards")
@@ -64,6 +65,13 @@ pub(crate) fn options_for(chat_id: &str, cwd: &str) -> SuryaOptions {
         // the sidecar falls back to it on its own.
         mail_socket: MailIngressPaths::detect()
             .socket
+            .map(|p| p.to_string_lossy().into_owned()),
+        // Named, not left to the sidecar's own default. Both sides derive it
+        // from SURYA_DATA_DIR now, so they agree either way, but only if the
+        // sidecar inherited that variable - and the mcp-config env block is
+        // the one place that does not depend on inheritance.
+        mail_log: MailIngressPaths::detect()
+            .jsonl
             .map(|p| p.to_string_lossy().into_owned()),
         // Basic catalog unless the workspace ships its own. The sidecar
         // resolves `<cwd>/.surya/cards` itself, so naming a catalog here is
