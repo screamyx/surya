@@ -51,6 +51,7 @@ pub mod popover;
 pub mod rail;
 pub mod settings;
 pub mod shell;
+mod skew_banner;
 pub mod sound;
 pub mod state;
 pub mod surya;
