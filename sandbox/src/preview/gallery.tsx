@@ -27,6 +27,8 @@ import { ServersPage } from '../screens/settings/servers';
 import { DevicesPage } from '../screens/settings/devices';
 import { HarnessesPage } from '../screens/settings/harnesses';
 import { ShortcutsPage } from '../screens/settings/shortcuts';
+import { AccountsPage } from '../screens/settings/accounts';
+import { AppearancePage } from '../screens/settings/appearance';
 import { emptySections, seededSections } from '../fixtures/agents';
 import { longNameRule, pathlessRule, seededRules } from '../fixtures/rules';
 import { seededAgentRows, seededChats, seededSpaces, seededSurfaceTabs } from '../fixtures/spaces';
@@ -47,6 +49,9 @@ import {
 import {
   defaultKeymap, localDeviceId, seededDevices, seededHarnesses, seededKeymap, shortcutCatalog,
 } from '../fixtures/settings_devices';
+import {
+  emptyAccounts, emptyAppearance, seededAccounts, seededAppearance,
+} from '../fixtures/settings_appearance';
 
 export type ScreenId =
   | 'needs-you' | 'inbox' | 'rules' | 'spaces' | 'tasks' | 'files' | 'terminal'
@@ -217,6 +222,30 @@ function renderSettingsSection(id: string, seeded: boolean, onEvent: (action: st
       onToggle={(rowId, on) => onEvent(`SetHarnessEnabled(${rowId}, ${String(on)})`)}
       onTargetDevice={rowId => onEvent(`TargetDevice(${rowId})`)} onRetry={() => onEvent('ListHarnesses')}
       onYoloDefault={on => onEvent(`YoloDefault(${String(on)})`)} />;
+  }
+  if (id === 'agents') {
+    const a = seeded ? seededAccounts : emptyAccounts;
+    return <AccountsPage status={a.status} accounts={a.accounts} warnings={a.warnings}
+      devices={a.devices} localDeviceId={a.localDeviceId} busyAccountId={a.busyAccountId}
+      actionError={a.actionError} loadError={a.loadError} login={a.login}
+      onRefresh={() => onEvent('RefreshAccounts')}
+      onAddAccount={harness => onEvent(`AddAccount(${harness})`)}
+      onSwitchAccount={id2 => onEvent(`SwitchAccount(${id2})`)}
+      onForgetAccount={id2 => onEvent(`ForgetAccount(${id2})`)} />;
+  }
+  if (id === 'appearance') {
+    const v = seeded ? seededAppearance : emptyAppearance;
+    return <AppearancePage mode={v.mode} themes={v.themes} lightVariants={v.lightVariants}
+      darkVariants={v.darkVariants} accent={v.accent} surface={v.surface}
+      resolvedSurface={v.resolvedSurface} motion={v.motion} systemReducedMotion={v.systemReducedMotion}
+      font={v.font} fontChoices={v.fontChoices} fontSize={v.fontSize} fontSizes={v.fontSizes}
+      fontFailed={v.fontFailed} library={v.library} libraryWarning={v.libraryWarning}
+      onSetMode={mode => onEvent(`SetMode(${mode})`)}
+      onSetTheme={(kind, variantId) => onEvent(`SetTheme(${kind}, ${variantId})`)}
+      onSetAccent={accent => onEvent(`SetAccent(${String(accent)})`)}
+      onSetMotion={motion => onEvent(`SetMotion(${motion})`)}
+      onSetFont={font => onEvent(`SetFont(${font})`)}
+      onSetFontSize={size => onEvent(`SetFontSize(${size})`)} />;
   }
   if (id === 'shortcuts') {
     return <ShortcutsPage catalog={shortcutCatalog} keymap={seeded ? seededKeymap : defaultKeymap}
