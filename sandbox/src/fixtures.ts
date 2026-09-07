@@ -6,8 +6,8 @@ export const seededRows: readonly InboxRow[] = [
 ];
 export type Fixture = 'seeded' | 'empty';
 export const emptyChats = [
-  { title: 'Dock Row Tone Feature Work', project: 'luvus @ pc-ajim', age: '4h', branch: 'dock-row-tone' },
-  { title: 'Optional Tone And Spans', project: 'luvus @ pc-ajim', age: '14h', branch: 'dock-row-tone' },
-  { title: 'Display All Leads Table', project: '@ pc-ajim', age: '15h', branch: '' },
-  { title: '**Local Environment Configuration', project: 'Downloads @ pc-ajim', age: '19h', branch: '' },
+  { title: 'Dock Row Tone Feature Work', project: 'luvus @ devbox', age: '4h', branch: 'dock-row-tone' },
+  { title: 'Optional Tone And Spans', project: 'luvus @ devbox', age: '14h', branch: 'dock-row-tone' },
+  { title: 'Display All Leads Table', project: '@ devbox', age: '15h', branch: '' },
+  { title: '**Local Environment Configuration', project: 'Downloads @ devbox', age: '19h', branch: '' },
 ];

@@ -1,7 +1,7 @@
 # Probe: zero-copy browser frames on Windows, 2026-09-05
 
 Seat surya-browser-gpu, branch `feat/browser-d3d11`, with surya-browser-gpu-fork on the gpui side (screamyx/gpui-surya PR 1, rev a07e957).
-Box: dtry, RTX 4080, release build with the browser feature, pane 518x786 device pixels.
+Box: winbox, RTX 4080, release build with the browser feature, pane 518x786 device pixels.
 
 ## What was asked
 
@@ -40,7 +40,7 @@ Unset, the CPU path runs unchanged.
 
 ## Measured
 
-Same page both runs: a CSS spinner plus a `requestAnimationFrame` counter, served from pc-ajim. Flag off 50 seconds; flag on 45 seconds, at the reviewed code (0fdd33e, 21:02).
+Same page both runs: a CSS spinner plus a `requestAnimationFrame` counter, served from devbox. Flag off 50 seconds; flag on 45 seconds, at the reviewed code (0fdd33e, 21:02).
 
 | | flag off (CPU path) | flag on (zero-copy) |
 | --- | --- | --- |

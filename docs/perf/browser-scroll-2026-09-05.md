@@ -2,7 +2,7 @@
 
 Seat `surya-browser-perf`.
 Owner order 20:21: "measure first (after cef browser gpu work)".
-The record this builds on is haktui's `docs/spike-scroll-frame-rate-2026-08-28.md`, rounds one to three, all measured on the same box (dtry, RTX 4080, 120 Hz screen).
+The record this builds on is haktui's `docs/spike-scroll-frame-rate-2026-08-28.md`, rounds one to three, all measured on the same box (winbox, RTX 4080, 120 Hz screen).
 
 ## The instruments (PR #86)
 
@@ -24,7 +24,7 @@ The record this builds on is haktui's `docs/spike-scroll-frame-rate-2026-08-28.m
 | `SURYA_CEF_FPS=<n>` | display rate, capped at 120 | CEF's `windowless_frame_rate`; a value over 120 is clamped and the log says so, a non-number is refused and the display decides |
 | `SURYA_COARSE_TIMER=1` | off | skip `timeBeginPeriod(1)`. The 1 ms tick is a declared default on both pump paths (see `clock.rs` `fine_timer`): never released, and Windows returns the process to its default tick while the window is in the background, since PR 3 dropped the power-throttling opt-out that used to prevent that |
 
-## Run recipe on dtry
+## Run recipe on winbox
 
 Release build with the browser feature, one run at a time, GUI slot from surya-remote, session 1.
 Each run is one self-test and one switch set:
@@ -38,7 +38,7 @@ Then `Select-String 'selftest:' *.log`.
 
 ## Rehearsal of the scripts, 21:49 to 21:52 (not the baseline)
 
-Build: the PR 2 tree (e68ee56, clock default, without #85), release, dtry, session 1, one run at a time.
+Build: the PR 2 tree (e68ee56, clock default, without #85), release, winbox, session 1, one run at a time.
 The screen reports 175 Hz (`browser: frame rate 120 (display reports 175 Hz)`), so CEF is capped at 120.
 Lines from `docs/perf/dtry/lines.py runs/*.out.log`:
 
@@ -55,9 +55,9 @@ The self-test spaces its sixty wheel events with gpui's 16 ms timer, so on Windo
 ## Baseline, main with #85 (zero-copy) in, PR #86 instruments
 
 Measured 01:10 to 01:14 on 2026-09-06 by seat `surya-browser-perf2`.
-Build: tree `d5234ca` (main after #85, with #86 merged in; osprey's merge commit on `feat/browser-perf`), release, `E:\surya-perf-target`, dtry session 1, one run at a time, GUI slot from surya-cef3.
+Build: tree `d5234ca` (main after #85, with #86 merged in; osprey's merge commit on `feat/browser-perf`), release, `E:\surya-perf-target`, winbox session 1, one run at a time, GUI slot from surya-cef3.
 On this tree the pump's default is the pool timer (`browser: pump base=8ms timer=pool`), `SURYA_PUMP_TIMER=clock` selects #86's clock, and CEF is capped at 60 (`client.rs` line 49, `set_windowless_frame_rate(60)`; PR 2's `display.rs` is not in this tree, so no `browser: frame rate` line is printed).
-Logs: `E:\surya-perf-runs\<run>.out.log` on dtry, copies in `/tmp/perf2-runs/` on the build box.
+Logs: `E:\surya-perf-runs\<run>.out.log` on winbox, copies in `/tmp/perf2-runs/` on the build box.
 Lines from `docs/perf/dtry/lines.py`, exact:
 
 | run | switch | line |
@@ -80,14 +80,14 @@ The same numbers in the comparison's shape:
 
 Read against haktui's first row (pool timer, CEF cap 60: 108 / 64): surya's baseline paints at the same CEF rate and renders every paint (120 app frames for 117 CEF frames), so the app side is already ahead of haktui's before any lever moves.
 The 30.9 ms timer is the Windows thread-pool tick haktui measured; #86's clock brings it to 16.3 ms on this box, the same as haktui's own clock.
-The dtry screen reports 175 Hz (PR 2's rehearsal line above), not the 120 Hz written at the top of this file.
+The winbox screen reports 175 Hz (PR 2's rehearsal line above), not the 120 Hz written at the top of this file.
 
 ## After each change
 
 Measured 02:06 to 02:15 on 2026-09-06 by seat `surya-browser-perf2`.
-Build: the PR 2 tree rebased on `d5234ca` (`0b3e1a05`: clock default, CEF at the display rate capped at 120, `timeBeginPeriod(1)` plus the coalescing opt-out), release, `E:\surya-perf-target`, dtry session 1, one run at a time, GUI slot from surya-cef3.
+Build: the PR 2 tree rebased on `d5234ca` (`0b3e1a05`: clock default, CEF at the display rate capped at 120, `timeBeginPeriod(1)` plus the coalescing opt-out), release, `E:\surya-perf-target`, winbox session 1, one run at a time, GUI slot from surya-cef3.
 Every run printed `browser: frame rate 120 (display reports 175 Hz)` except the `SURYA_CEF_FPS=60` run (`browser: frame rate 60 (SURYA_CEF_FPS)`).
-Logs: `E:\surya-perf-runs\<run>.out.log` on dtry, copies in `/tmp/perf2-runs/` on the build box.
+Logs: `E:\surya-perf-runs\<run>.out.log` on winbox, copies in `/tmp/perf2-runs/` on the build box.
 Lines from `docs/perf/dtry/lines.py`, exact:
 
 | run | switches | line |
@@ -116,7 +116,7 @@ What the numbers say:
 1. CEF at the display rate is the lever that doubles the frames shown: 66 to 127 a second on scroll, 121 to 241 CEF frames in the two-second animation, and the app renders every one of them (`shown` is within two of `cef_frames` on every run).
 2. The clock does not add frames on surya (212 shown with it, 221 without, the same 127 a second once normalised), because every CEF paint already gets a render on both timer paths; the timer never decided frames here the way it did in haktui.
 3. The clock is better in what it controls: a 16 ms timer fires in 16.5 ms instead of 30.9 ms, the worst paint-to-draw on scroll drops from 9.5 ms to 5.9 ms at CEF 60 and from 8.8 ms to 7.4 ms at CEF 120, and idle CPU is 1.3% against 1.5%. Single runs, so the p2d max and idle deltas are indications, the timer delta is not in doubt.
-4. So PR 2 ships with both defaults on (decision 27: a flag defaults on only where dtry measures better): CEF at the display rate because it doubles frames, the clock because its own measure halves and nothing it touches got worse. `SURYA_PUMP_TIMER=pool` and `SURYA_CEF_FPS=60` stay as the controls.
+4. So PR 2 ships with both defaults on (decision 27: a flag defaults on only where winbox measures better): CEF at the display rate because it doubles frames, the clock because its own measure halves and nothing it touches got worse. `SURYA_PUMP_TIMER=pool` and `SURYA_CEF_FPS=60` stay as the controls.
 
 ## (c) DXGI frame latency 1 needs a fork change
 

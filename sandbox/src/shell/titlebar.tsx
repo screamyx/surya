@@ -18,7 +18,7 @@ export function renderTitlebar(fixture: Fixture, sidebarOpen: boolean, onEvent: 
     </div>
     <div className="flex-1 min-w-0 flex flex-row items-center gap-1.5 pl-1.5 text-ui-12 text-text-faint">
       <span className="size-3.5 text-claude-brand">{renderIcon('claude-mark')}</span>
-      <span className="truncate">{fixture === 'seeded' ? 'surya @ DTRY' : 'luvus @ pc-ajim'}</span>
+      <span className="truncate">{fixture === 'seeded' ? 'surya @ WINBOX' : 'luvus @ devbox'}</span>
     </div>
     <div className="flex flex-row items-center gap-3">
       {iconButton('sidebar-minimalistic', 'Toggle right pane', onEvent)}

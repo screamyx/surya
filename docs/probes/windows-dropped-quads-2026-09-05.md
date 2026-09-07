@@ -34,11 +34,11 @@ The "underlines" that dropped in the Add server dialog are 1px border-only quads
 
 Round 4's ruled-out list stands: window background mode and theme colours are not involved, and neither is the D3D11 blend state (`directx_renderer.rs:1411-1427` is upstream's SrcAlpha/InvSrcAlpha, unchanged).
 
-## Reproduction on dtry (DEBUG build)
+## Reproduction on winbox (DEBUG build)
 
-Box: dtry, NVIDIA GeForce RTX 4080 (plus the AMD iGPU), Windows PowerShell 5.1, cargo 1.97.1 MSVC.
+Box: winbox, NVIDIA GeForce RTX 4080 (plus the AMD iGPU), Windows PowerShell 5.1, cargo 1.97.1 MSVC.
 Tree: this repo at 3407d5f (main 4737c75 plus PR #52), shipped to `E:\surya-cef`, own cargo home `E:\surya-cef-cargo` (a copy of surya-remote's) and target `E:\surya-cef-target`.
-Engine: the remote service on this box (`ws://pc-ajim:27700`, saved Servers entry), the app on the last selected chat "Display All Leads Table".
+Engine: the remote service on this box (`ws://devbox:27700`, saved Servers entry), the app on the last selected chat "Display All Leads Table".
 Shots: `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)` of the surya window from a session-1 scheduled task (`E:\surya-cef-pshot.ps1`), because the window came up behind the owner's terminal and Chrome and `SetForegroundWindow` from a task does not raise it.
 `SURYA_DEMO_CARDS` was set but the fixture chat never seeded within the 22 s before the shot (no "demo cards seeded" line), so the comparison uses a real chat instead of the a2ui cards.
 
@@ -62,7 +62,7 @@ The only difference between the two binaries is the 32-byte field in the two HLS
 
 Cargo notes for whoever repeats this: a change inside a git checkout under `CARGO_HOME` does not trigger a rebuild (`rerun-if-changed` on `shaders.hlsl` is not enough for a git dependency), hence the `cargo clean -p gpui_windows`.
 The first debug build from a warm cargo home and a cold target took 3m18s; the patched rebuild 36s.
-Left on dtry: `E:\surya-cef`, `E:\surya-cef-cargo`, `E:\surya-cef-target`, `E:\surya-cef-*.ps1`, the two shots; the scheduled tasks are deleted and the app is stopped.
+Left on winbox: `E:\surya-cef`, `E:\surya-cef-cargo`, `E:\surya-cef-target`, `E:\surya-cef-*.ps1`, the two shots; the scheduled tasks are deleted and the app is stopped.
 
 ## Fixed in RC1 (12:35, release build)
 
@@ -86,9 +86,9 @@ The fix belongs in the gpui fork (a new rev pinned in `app/Cargo.toml:71-72`), n
 
 # Round 4 (surya-remote): primary buttons paint as dim text on Windows
 
-Date: 2026-09-05, 09:16 to 10:00 local. Seat surya-remote, round 4 on dtry.
-Build: `main` at ca5abe9 (theme PR #2 merged as a139718), `cargo build --release -p surya` on dtry, cargo 1.97.1, exe 09:18:50.
-Engine: the Linux service unit on the tailnet, dialed from the saved Servers entry (`ws://pc-ajim:27700`, token).
+Date: 2026-09-05, 09:16 to 10:00 local. Seat surya-remote, round 4 on winbox.
+Build: `main` at ca5abe9 (theme PR #2 merged as a139718), `cargo build --release -p surya` on winbox, cargo 1.97.1, exe 09:18:50.
+Engine: the Linux service unit on the tailnet, dialed from the saved Servers entry (`ws://devbox:27700`, token).
 Screenshots are native Windows captures cropped to the app window (1336x888), stored under `docs/images/`.
 
 ## Answer

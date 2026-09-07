@@ -9,14 +9,14 @@ name: CI
 #            metered on a private one. The `if:` on the job is the switch:
 #            it runs only when the repository is public, so merging this
 #            file before the repository is flipped costs no minutes.
-#   windows  [self-hosted, surya-win], the owner's PC "dtry". Runs at idle
+#   windows  [self-hosted, surya-win], the owner's PC "winbox". Runs at idle
 #            priority, reuses a warm target directory on E:, and deletes
 #            what it packs. See the guarantees on the job itself.
 #
-# This replaces the two self-hosted Linux runners on pc-ajim (decision 24):
-# pc-ajim-surya at /store/gha-runner-surya and pc-ajim-surya-2 at
+# This replaces the two self-hosted Linux runners on devbox (decision 24):
+# devbox-surya at /store/gha-runner-surya and devbox-surya-2 at
 # /store/gha-runner-surya-2. They are retired by hand after this workflow
-# has one green run, not by this file. pc-ajim is the swarm's build box and
+# has one green run, not by this file. devbox is the swarm's build box and
 # CI was competing with every seat on it for cores.
 #
 # Decision 28 says Windows is the product and Linux is a test bench. The
@@ -70,12 +70,12 @@ env:
   # and over. CI builds a given commit once, so the incremental directory is
   # never read back, and it is large: leaving it on is the quickest way to
   # push the Linux cache past the 10 GB a repository gets before GitHub
-  # starts evicting, and to fill E: on dtry faster.
+  # starts evicting, and to fill E: on winbox faster.
   CARGO_INCREMENTAL: "0"
 
 jobs:
   # ---------------------------------------------------------------- linux --
-  # The same five steps as the pc-ajim job, in the same order, which is the
+  # The same five steps as the devbox job, in the same order, which is the
   # order that fails fastest. The six headless crates first (no gpui, the
   # useful signal), then the whole-workspace check, then ui's tests and
   # a2ui's, then the smoke (one engine over the real websocket, driven by the
@@ -100,10 +100,10 @@ jobs:
       - uses: actions/checkout@v4
 
       # AGENTS.md says CI never runs `sudo rm -rf` or `apt-get`. That rule is
-      # about pc-ajim, which is the owner's own shared machine. A hosted
+      # about devbox, which is the owner's own shared machine. A hosted
       # runner is a fresh throwaway VM that is destroyed when the job ends,
       # so both of the next two steps are safe here and both are needed: the
-      # pc-ajim job could drop them only because that box already had the
+      # devbox job could drop them only because that box already had the
       # libraries and the disk. These two steps are restored verbatim from
       # the hosted-era file at 3790d41 (decision 24 said moving back would be
       # "one `runs-on` edit plus restoring those steps").
@@ -135,7 +135,7 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           echo "rustc=$(rustc -V | tr ' ' '-')" >> "$GITHUB_OUTPUT"
 
-      # The pc-ajim runners cached by building into one persistent
+      # The devbox runners cached by building into one persistent
       # CARGO_TARGET_DIR that survived between runs. A hosted runner is a
       # fresh machine every time, so the cache has to be uploaded and
       # downloaded.
@@ -189,7 +189,7 @@ jobs:
       # at rmeta, so this step still codegens and links the ui test binary
       # itself. It sits here for fail-fast order, not for reuse: a broken
       # workspace should fail before anything spends time on a test binary.
-      # It was the most expensive step on pc-ajim and it is load-sensitive:
+      # It was the most expensive step on devbox and it is load-sensitive:
       #   run 34001992513, quiet runner:   40s of a 6m51s run
       #   run 34021004960, loaded runner: 875s of a 52m51s run
       # A hosted runner has no other tenant, so the quiet number is the one
@@ -207,7 +207,7 @@ jobs:
 
   # -------------------------------------------------------------- windows --
   # The product build (decision 28). Same commands deploy/windows/build.ps1
-  # runs by hand today on dtry, so CI and the owner's own build cannot drift.
+  # runs by hand today on winbox, so CI and the owner's own build cannot drift.
   #
   # The owner's two conditions, verbatim (2026-09-07 02:05):
   #   "the low priority run dont effect my non-gaming day to day use"
@@ -219,14 +219,14 @@ jobs:
     # account the service logs on as. A pull request from a fork carries code
     # the fork's author wrote, including this file. Once the repository is
     # public anyone can open one, so without this line the first fork PR
-    # after the flip would run arbitrary code on dtry. Pushes to main are
+    # after the flip would run arbitrary code on winbox. Pushes to main are
     # safe (only someone with write access makes one) and so is a pull
     # request whose head branch lives in this repository.
     if: >-
       github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, surya-win]
-    # A warm incremental build measured 2m32s to 4m54s on dtry. A cold one
+    # A warm incremental build measured 2m32s to 4m54s on winbox. A cold one
     # after a `cargo clean` is the long tail this covers.
     timeout-minutes: 90
     env:
@@ -312,7 +312,7 @@ jobs:
       #
       # deploy/windows/install-runner.ps1 can also pin the priority in the
       # registry, but that is opt-in (-Ifeo) and off by default: the registry
-      # key is keyed on the executable NAME, and dtry runs a second Actions
+      # key is keyed on the executable NAME, and winbox runs a second Actions
       # runner (haktui's, out of C:\gha-runner) whose executables are called
       # the same thing. Setting it there would quietly re-prioritise someone
       # else's runner. This line only ever touches surya's own job.

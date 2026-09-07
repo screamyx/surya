@@ -106,7 +106,7 @@ mod tests {
     #[test]
     fn inline_mode_runs_the_closure_before_returning() {
         // The inline branch, whatever SURYA_CEF_THREADED says in this shell;
-        // the threaded branch needs a live CEF and is proven on dtry.
+        // the threaded branch needs a live CEF and is proven on winbox.
         let ran = Arc::new(Mutex::new(false));
         let seen = ran.clone();
         on_ui_with(false, move || *seen.lock().unwrap() = true);

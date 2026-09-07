@@ -70,7 +70,7 @@ These heuristics are not proof of taste or accessibility.
 Everything in this change lives under `sandbox/`; nothing under `app/` changes.
 The existing CI builds Rust only and excludes documentation pushes, so its workflow
 is left unchanged. It never installs or builds this sandbox. No cargo commands or
-Windows/dtry operations were used for this JS-only change.
+Windows/winbox operations were used for this JS-only change.
 
 Run `npm run proof` with the dev server on port 5177. The capture script accepts
 `CHROMIUM_PATH` and `SANDBOX_URL`; it falls back to the committed reference images

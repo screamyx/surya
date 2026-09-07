@@ -278,7 +278,7 @@ impl Device {
             CPUAccessFlags: 0,
             // SHARED alone would hand out a legacy handle; NTHANDLE alone is
             // refused. Together: an NT handle, no keyed mutex (the fork seat
-            // proved this pair on dtry, 2026-09-05 20:08).
+            // proved this pair on winbox, 2026-09-05 20:08).
             MiscFlags: (D3D11_RESOURCE_MISC_SHARED.0 | D3D11_RESOURCE_MISC_SHARED_NTHANDLE.0) as u32,
         };
         let mut dst = None;

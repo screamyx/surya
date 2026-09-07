@@ -27,7 +27,7 @@ same default control before testing both together.
 
 ## Validation status
 
-**Matched dtry numbers are pending.** No performance benefit is established.
+**Matched winbox numbers are pending.** No performance benefit is established.
 The independent latency integration at `22caa8129706500380995c453eddc0d81a7ebeb3`
 and present integration at `b0c43c0cd368039694a51d316fa6bdbbce3129f2` each passed
 Windows release builds with `--locked` (`BUILD_EXIT=0`). The previous combined

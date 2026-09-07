@@ -207,7 +207,7 @@ fn pass_panics() -> u64 {
 /// - The clock's own wait is a high-resolution waitable timer and does not
 ///   need it. Everything else in the process that sleeps on the tick does:
 ///   the pool-timer control path, `Condvar::wait_timeout`, gpui's timers.
-///   The dtry numbers in docs/perf/browser-scroll-2026-09-05.md were taken
+///   The winbox numbers in docs/perf/browser-scroll-2026-09-05.md were taken
 ///   with it on, so it stays on rather than moving the measured default.
 /// - It is never released: since Windows 10 2004 the request is per process,
 ///   and Windows itself drops the process back to the default tick while its

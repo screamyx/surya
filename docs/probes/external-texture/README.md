@@ -13,7 +13,7 @@ images. The integration must be reviewed and proven separately.
 
 ## Measured proof
 
-Machine: dtry, Windows Rust/Cargo 1.97.1. Isolated source, Cargo home, and target
+Machine: winbox, Windows Rust/Cargo 1.97.1. Isolated source, Cargo home, and target
 paths were `E:\surya-gpufork`, `E:\surya-gpufork-cargo`, and
 `E:\surya-gpufork-target`. No release build cache was modified.
 
