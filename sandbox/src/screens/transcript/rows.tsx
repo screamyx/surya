@@ -1,6 +1,6 @@
 // Rust: app/crates/ui/src/transcript.rs (Transcript::render_row, top_gap_for,
 // the hover metadata strip and its copy action).
-import { icon } from './icons';
+import { renderIcon } from '../../icons';
 import { renderBlock } from './markdown';
 import { errorChip, inputChip, permissionChip } from './chips';
 import { renderToolGroup } from './tool_group';
@@ -79,7 +79,7 @@ function metadataStrip(row: TranscriptRow, ui: TranscriptUi) {
             <button type="button" data-copy-message={row.entryId} aria-label="Copy message"
               onClick={() => ui.onCopyMessage(row.entryId, row.copyText ?? '')}
               className="size-6 flex items-center justify-center rounded-md cursor-pointer text-text-muted motion-hover-fade hover:bg-wash/10 active:bg-element-active focus:bg-wash/10">
-              <span className="size-3.5 flex items-center justify-center">{copied ? icon('check') : icon('copy')}</span>
+              <span className="size-3.5 flex items-center justify-center">{copied ? renderIcon('check') : renderIcon('copy')}</span>
             </button>
           )}
         </div>

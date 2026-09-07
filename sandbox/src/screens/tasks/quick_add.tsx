@@ -3,7 +3,7 @@
 // The native box is a ComposerInput entity with the PaletteSearch key
 // context; here it is a plain input, so the caret, IME and key contexts are
 // not ported. The go button's hover(|s| s.opacity(0.9)) has no admitted step.
-import { renderIcon } from '../../shell/icons';
+import { renderIcon } from '../../icons';
 
 export function renderQuickAdd(
   text: string,

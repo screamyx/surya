@@ -7,7 +7,7 @@
 // What remains under "tab strip" is the right pane's surface chips.
 import type { SurfaceTab } from '../../fixtures/spaces';
 import { menuRow, popoverCard } from '../popover';
-import { renderIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 /// cycle_target: the chat one step from the selection in the sidebar order,
 /// wrapping at both ends. Nothing selected enters the list at the end it

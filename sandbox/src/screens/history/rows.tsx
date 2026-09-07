@@ -3,7 +3,7 @@
 // Render helpers on the same pane, not second stateful components.
 import type { ReactNode } from 'react';
 import type { HistoryCommit, HistoryGraphRow, HistoryRef, HistoryRefKind, HistorySegmentShape } from '../History';
-import { cloudIcon, refreshIcon, tagIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 // history.rs constants, lines 21 to 34.
 const ROW_HEIGHT = 36;
@@ -60,7 +60,7 @@ export function refDescription(reference: HistoryRef) {
 }
 
 function refIcon(kind: HistoryRefKind) {
-  return kind === 'branch' ? gitBranchIcon : kind === 'remote' ? cloudIcon : tagIcon;
+  return kind === 'branch' ? gitBranchIcon : kind === 'remote' ? renderIcon('cloud') : renderIcon('tag');
 }
 
 // git-branch geometry, copied from app/crates/ui/assets/icons/git-branch.svg.
@@ -237,7 +237,7 @@ export function renderLoadOlder(loading: boolean, hasError: boolean, onLoadOlder
           : 'h-7 px-3 flex items-center justify-center gap-1.5 rounded-lg border border-border bg-surface-raised/88 text-ui-11 text-text-muted cursor-pointer hover:bg-element-hover hover:border-border-strong hover:text-text active:bg-element-active focus:bg-element-hover'}>
         {!loading && (
           <span aria-hidden="true" className="size-3 flex-none text-text-faint">
-            {hasError ? refreshIcon : altArrowDownIcon}
+            {hasError ? renderIcon('refresh') : altArrowDownIcon}
           </span>
         )}
         {label}

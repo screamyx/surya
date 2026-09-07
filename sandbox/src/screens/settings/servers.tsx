@@ -7,7 +7,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { pageColumn, pageHeader, pageSubtitle, fieldLabel, sectionCard, cardRow, rowTile,
   rowTitle, metaLine, badgeActive, ghostAction, errorStrip } from './widgets';
-import type { SettingsIcon } from './widgets';
+import type { IconName } from '../../icons';
 
 export type ServerRow = { id: string; name: string; host: string; port: number; tokenSet: boolean };
 // Rust: settings/servers/active.rs ActiveRow.
@@ -27,7 +27,7 @@ export type ServersProps = {
 };
 
 // Rust: ServersPage::render_row. `tail` is the RowTail enum.
-function renderRow(first: boolean, title: string, meta: readonly string[], icon: SettingsIcon,
+function renderRow(first: boolean, title: string, meta: readonly string[], icon: IconName,
   tail: ReactNode, remove: ReactNode) {
   return cardRow(first, (
     <>

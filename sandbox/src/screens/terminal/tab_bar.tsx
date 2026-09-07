@@ -2,8 +2,7 @@
 // 1382, TabGhost at 325, slide_offset at 93). An explicit split of the
 // oversized panel.rs, the same move shell.tsx makes for shell.rs. Render
 // helpers, not stateful components.
-import { renderIcon } from '../../shell/icons';
-import { renderTerminalIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 /// One tab of the selected chat, mirroring TerminalTab's rendered fields.
 /// `title` is already Self::display_title: the OSC title wins over "Terminal N".
@@ -46,7 +45,7 @@ function renderTab(tab: TerminalTabModel, selected: boolean,
       <button type="button" aria-label={`Select terminal: ${tab.title}`}
         onClick={() => onSelectTab(tab.key)}
         className="flex-1 min-w-0 flex flex-row items-center gap-1.5 text-left cursor-pointer">
-        <span className="size-4 flex-none">{renderTerminalIcon()}</span>
+        <span className="size-4 flex-none">{renderIcon('terminal')}</span>
         <span className="flex-1 min-w-0 truncate">{tab.title}</span>
       </button>
       <button type="button" aria-label={`Close terminal: ${tab.title}`}

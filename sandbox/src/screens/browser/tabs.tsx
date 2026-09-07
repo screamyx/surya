@@ -3,7 +3,7 @@
 // Render helpers on the same pane, not second stateful components.
 import type { ReactNode } from 'react';
 import type { BrowserTab } from '../Browser';
-import { renderIcon } from '../../shell/icons';
+import { renderIcon } from '../../icons';
 import { tabTitle } from './state';
 
 // tabs.rs TAB_MAX_WIDTH 168px and TAB_MIN_WIDTH 56px. 56 is min-w-14 exactly;

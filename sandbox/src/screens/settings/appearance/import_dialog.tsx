@@ -5,8 +5,8 @@
 import type { ReactNode } from 'react';
 import { compactAction, primaryButton } from './chips';
 import { importScenePreview, palettePreview } from './previews';
-import { pageIcon } from './icons';
-import { settingsIcon } from '../widgets';
+import { renderIcon } from '../../../icons';
+import { } from '../widgets';
 import type { ImportReport, InstallMode, ThemeVariantOption } from '../appearance';
 
 export type ImportDialogState = {
@@ -84,7 +84,7 @@ function variantRow(
           className={selected
             ? 'size-5 rounded-sm border border-accent bg-accent flex items-center justify-center cursor-pointer'
             : 'size-5 rounded-sm border border-border-strong bg-bg flex items-center justify-center cursor-pointer hover:border-accent active:bg-wash/10 focus:border-accent'}>
-          {selected && <span className="size-3 flex text-on-accent">{settingsIcon('check')}</span>}
+          {selected && <span className="size-3 flex text-on-accent">{renderIcon('check')}</span>}
         </button>
         {palettePreview()}
         <div className="flex-1 min-w-0">
@@ -111,7 +111,7 @@ export function renderImportDialog(state: ImportDialogState, callbacks: ImportDi
   if (compiled === undefined) {
     body = (
       <div className="mt-3.5 flex flex-row items-start gap-2 text-ui-11 leading-normal text-text-faint">
-        <span className="size-3.5 flex-none mt-0.25 flex">{pageIcon('info-circle')}</span>
+        <span className="size-3.5 flex-none mt-0.25 flex">{renderIcon('info-circle')}</span>
         <span>Surya finds light and dark variants automatically.</span>
       </div>
     );
@@ -147,7 +147,7 @@ export function renderImportDialog(state: ImportDialogState, callbacks: ImportDi
           </div>
           <button type="button" data-action="theme-import-close" aria-label="Close" onClick={callbacks.onClose}
             className="size-7 rounded-md border border-border bg-surface-raised/14 flex items-center justify-center cursor-pointer hover:bg-surface-raised-hover active:bg-surface-raised focus:bg-surface-raised-hover">
-            <span className="size-3 flex text-text-muted">{settingsIcon('close')}</span>
+            <span className="size-3 flex text-text-muted">{renderIcon('close')}</span>
           </button>
         </div>
         <div className="max-h-96 overflow-y-scroll px-5 pb-4 flex flex-col">
@@ -172,7 +172,7 @@ export function renderImportDialog(state: ImportDialogState, callbacks: ImportDi
           {body}
           {state.error !== undefined && (
             <div className="mt-3 p-2.5 rounded-lg bg-danger/10 flex flex-row items-start gap-2 text-ui-11 leading-normal text-danger">
-              <span className="size-3.5 flex-none mt-0.25 flex">{settingsIcon('danger-triangle')}</span>
+              <span className="size-3.5 flex-none mt-0.25 flex">{renderIcon('danger-triangle')}</span>
               <span className="flex-1 min-w-0 truncate">{state.error}</span>
             </div>
           )}

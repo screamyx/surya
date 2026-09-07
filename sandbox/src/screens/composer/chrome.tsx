@@ -1,8 +1,8 @@
 // Rust: app/crates/ui/src/badges.rs (render).
 // The popover and button helpers this screen used to carry are now in
 // ../popover.tsx, mirroring popover.rs, shared with the spaces sidebar.
-import type { IconName } from './icons';
-import { renderIcon } from './icons';
+import type { IconName } from '../../icons';
+import { renderIcon } from '../../icons';
 
 /// badges.rs::render - the 24px pill the comments chip wears.
 export function messageBadge(icon: IconName, label: string) {

@@ -4,7 +4,7 @@
 // Its six cells sit at phases 0, 1/6, 5/6, 2/6, 4/6, 3/6 of the 750ms period, and
 // the catalog only carries the 3x3 spinner's quarter-period phases, so it stays
 // still. See the report's Gaps.
-import { cloudIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 // mini_glyph_spinner's 2x3 grid, one tint per row from theme.glyph.rows(),
 // which is [light, mid, deep]. The generator now emits all three.
@@ -34,7 +34,7 @@ export function GitHistoryFetchButton({ fetching, onFetchAll }: GitHistoryFetchB
         ? 'h-6 px-2 flex-none flex items-center justify-center gap-1.5 rounded-md bg-wash/5 cursor-default'
         : 'h-6 px-2 flex-none flex items-center justify-center gap-1.5 rounded-md cursor-pointer motion-hover-fade hover:bg-wash/14 active:bg-wash/10 focus:bg-wash/14'}>
       {fetching ? renderBusyGlyph() : (
-        <span aria-hidden="true" className="size-3 flex-none text-text-muted/88">{cloudIcon}</span>
+        <span aria-hidden="true" className="size-3 flex-none text-text-muted/88">{renderIcon('cloud')}</span>
       )}
       <span className={fetching
         ? 'whitespace-nowrap text-ui-11 text-text-faint'

@@ -14,7 +14,7 @@ import { renderYoloChip, renderModelChip, renderTargetSelectors, renderFooter } 
 import { renderHarnessModelPopover } from './composer/model_popover';
 import { renderFileMentionPopup, renderSlashPopup } from './composer/popups';
 import { renderPermission, renderWizard } from './composer/panels';
-import { renderIcon } from './composer/icons';
+import { renderIcon } from '../icons';
 import { MentionPathTooltip } from './composer/mention_tooltip';
 
 export type ComposerProps = {

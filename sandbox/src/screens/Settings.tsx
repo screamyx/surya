@@ -4,10 +4,10 @@
 // The section rail is the settings route's sidebar; the pane is the outlet.
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { settingsIcon } from './settings/widgets';
-import type { SettingsIcon } from './settings/widgets';
+import { renderIcon } from '../icons';
+import type { IconName } from '../icons';
 
-export type SettingsSection = { id: string; label: string; icon: SettingsIcon };
+export type SettingsSection = { id: string; label: string; icon: IconName };
 export type SettingsProps = {
   sections: readonly SettingsSection[];
   section: string;
@@ -35,7 +35,7 @@ export function SettingsWindow({ sections, section, renderSection, onOpenSection
                 className={item.id === current
                   ? 'flex flex-row items-center gap-2 rounded-lg px-2 py-1.5 text-ui-13 text-left cursor-pointer bg-wash/10 font-medium text-text hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'
                   : 'flex flex-row items-center gap-2 rounded-lg px-2 py-1.5 text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
-                <span className="flex-none size-4 flex text-text-muted">{settingsIcon(item.icon)}</span>
+                <span className="flex-none size-4 flex text-text-muted">{renderIcon(item.icon)}</span>
                 {item.label}
               </button>
             ))}
@@ -44,7 +44,7 @@ export function SettingsWindow({ sections, section, renderSection, onOpenSection
         <div className="px-2 pb-3">
           <button type="button" data-action="settings-back" onClick={onBack}
             className="w-full flex flex-row items-center gap-1.5 rounded-lg px-2 py-1.5 text-ui-13 text-left text-text-muted cursor-pointer hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover">
-            <span className="flex-none size-4 flex text-text-muted">{settingsIcon('alt-arrow-left')}</span>
+            <span className="flex-none size-4 flex text-text-muted">{renderIcon('alt-arrow-left')}</span>
             Back
           </button>
         </div>

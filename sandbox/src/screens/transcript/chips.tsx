@@ -1,6 +1,6 @@
 // Rust: app/crates/ui/src/transcript.rs (error_chip, input_chip,
 // permission_chip).
-import { icon } from './icons';
+import { renderIcon } from '../../icons';
 
 /// Rust: `error_chip`. A subtle red-tinted wash, never a bare red-stroke box:
 /// a 20px red tile holding the danger triangle, a medium "Error" label, then
@@ -12,7 +12,7 @@ export function errorChip(message: string) {
     <div className="py-1 w-full">
       <div className="w-full flex items-center gap-2 overflow-hidden rounded-lg border border-danger/14 bg-danger/5 px-2 py-1.5 text-ui-12">
         <div className="flex-none size-5 rounded-md bg-danger/14 flex items-center justify-center text-danger-muted/88">
-          <span className="size-3 flex items-center justify-center">{icon('danger-triangle')}</span>
+          <span className="size-3 flex items-center justify-center">{renderIcon('danger-triangle')}</span>
         </div>
         <div className="flex-none font-medium text-danger-muted/88">Error</div>
         <div className="min-w-0 flex-1 text-text/88">{message}</div>
@@ -30,7 +30,7 @@ export function inputChip(header: string, resolved: boolean) {
     <div className="py-1 w-full">
       <div className="h-8 w-full flex items-center gap-2 overflow-hidden rounded-lg border border-wash/10 bg-wash/5 px-2 text-ui-12">
         <div className="flex-none size-5 rounded-md bg-wash/10 flex items-center justify-center text-text-muted">
-          <span className="size-3 flex items-center justify-center">{icon('chat-round-line')}</span>
+          <span className="size-3 flex items-center justify-center">{renderIcon('chat-round-line')}</span>
         </div>
         <div className="flex-none font-medium text-text-muted">Question</div>
         <div className="min-w-0 flex-1 truncate whitespace-nowrap text-text/88">{value}</div>
@@ -58,7 +58,7 @@ export function permissionChip(
     <div className="py-1 w-full">
       <div className="h-8 w-full flex items-center gap-2 overflow-hidden rounded-lg border border-wash/10 bg-wash/5 px-2 text-ui-12">
         <div className="flex-none size-5 rounded-md bg-wash/10 flex items-center justify-center text-text-muted">
-          <span className="size-3 flex items-center justify-center">{icon('key-minimalistic')}</span>
+          <span className="size-3 flex items-center justify-center">{renderIcon('key-minimalistic')}</span>
         </div>
         <div className="flex-none font-medium text-text-muted">{toolName}</div>
         <div className="min-w-0 flex-1 truncate whitespace-nowrap text-text/88">{value}</div>

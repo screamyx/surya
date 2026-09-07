@@ -3,7 +3,7 @@
 // SidebarViewOptionsTooltip (67). Render helpers on the same pane.
 import type { SidebarView, SpaceRow } from '../../fixtures/spaces';
 import { menuHeading, menuRow, menuSeparator, paintedQuery, popoverCard, searchInputFrame } from '../popover';
-import { renderIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 /// SIDEBAR_VIEW_ROWS, with the labels, icons and settings field each reads.
 /// The first four are radio-style and dismiss the menu; the Show toggles stay

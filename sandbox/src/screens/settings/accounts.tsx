@@ -5,12 +5,12 @@
 // calls live in app/crates/ui/src/popover.rs.
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { pageIcon } from './appearance/icons';
 import { trackedUpper } from './appearance/chips';
 import {
   badge, badgeActive, errorStrip, ghostAction, pageColumn, pageHeader, pageSubtitle,
-  sectionCard, settingsIcon, warningStrip,
+  sectionCard, warningStrip,
 } from './widgets';
+import { renderIcon } from '../../icons';
 
 export type ProviderId = 'claude-code' | 'codex' | 'cursor';
 export type UsageWindow = { label: string; usedFraction: number; reset?: string };
@@ -145,7 +145,7 @@ function renderAccountRow(
               className={busy
                 ? 'rounded-md px-1.5 py-1 text-text-muted cursor-pointer opacity-50'
                 : 'rounded-md px-1.5 py-1 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text'}>
-              <span className="size-3.5 flex">{settingsIcon('trash-bin-minimalistic')}</span>
+              <span className="size-3.5 flex">{renderIcon('trash-bin-minimalistic')}</span>
             </button>
             {account.switchable && (
               <button type="button" data-switch={account.id} onClick={() => onSwitch?.(account.id)}
@@ -328,7 +328,7 @@ export function AccountsPage(props: AccountsProps) {
           ? 'flex-none h-7 px-2 rounded-md flex flex-row items-center gap-1.5 cursor-pointer bg-wash/5'
           : 'flex-none h-7 px-2 rounded-md flex flex-row items-center gap-1.5 cursor-pointer hover:bg-wash/5 active:bg-wash/10 focus:bg-wash/5'}>
         <span className="size-4 flex-none flex text-text-muted">
-          {settingsIcon(platformGlyph(selected?.platform ?? 'macos'))}
+          {renderIcon(platformGlyph(selected?.platform ?? 'macos'))}
         </span>
         <span className="min-w-0 truncate text-ui-12 font-medium text-text">{selected?.name ?? 'This device'}</span>
         <span className={effective === props.localDeviceId
@@ -336,7 +336,7 @@ export function AccountsPage(props: AccountsProps) {
           : 'size-1.5 rounded-full flex-none bg-wash/14'} />
         <span className={deviceMenuOpen
           ? 'size-3.5 flex-none flex text-text-muted'
-          : 'size-3.5 flex-none flex text-text-faint/50'}>{pageIcon('sort-vertical')}</span>
+          : 'size-3.5 flex-none flex text-text-faint/50'}>{renderIcon('sort-vertical')}</span>
       </button>
       {deviceMenuOpen && (
         <div className="absolute top-7 right-0">
@@ -355,7 +355,7 @@ export function AccountsPage(props: AccountsProps) {
                 className={isActive
                   ? 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer bg-element-active text-text'
                   : 'motion-hover-fade flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
-                <span className="size-4 flex-none flex text-text-muted">{settingsIcon(platformGlyph(device.platform))}</span>
+                <span className="size-4 flex-none flex text-text-muted">{renderIcon(platformGlyph(device.platform))}</span>
                 <span className="flex-1 min-w-0 truncate">{device.name}</span>
                 {isLocal && <span className="flex-none text-ui-10 text-text-faint/50">You</span>}
                 <span className={isLocal ? 'size-1.5 rounded-full flex-none bg-success' : 'size-1.5 rounded-full flex-none bg-wash/14'} />
@@ -375,7 +375,7 @@ export function AccountsPage(props: AccountsProps) {
       <div key={provider.id} className="mt-6 flex flex-col">
         <div className="flex flex-row items-center gap-2">
           <div className="flex-none size-6 flex items-center justify-center">
-            <span className="size-4 flex text-text-muted">{pageIcon(providerMark(provider.id))}</span>
+            <span className="size-4 flex text-text-muted">{renderIcon(providerMark(provider.id))}</span>
           </div>
           <div className="text-ui-14 font-medium text-text">{provider.name}</div>
         </div>
@@ -396,7 +396,7 @@ export function AccountsPage(props: AccountsProps) {
           <div className="flex flex-row items-center gap-2">
             <div className="flex-none size-6 flex items-center justify-center">
               <span className={provider.id === 'claude-code' ? 'size-4 flex text-claude-brand' : 'size-4 flex text-text-muted'}>
-                {pageIcon(providerMark(provider.id))}
+                {renderIcon(providerMark(provider.id))}
               </span>
             </div>
             <div className="text-ui-14 font-medium text-text">{provider.name}</div>
@@ -454,7 +454,7 @@ function loadErrorStrip(message: string, onRetry?: () => void) {
   return (
     <button type="button" onClick={onRetry} data-action="accounts-load-error"
       className="mt-4 px-4 py-3 rounded-xl border border-danger/14 bg-danger/5 text-ui-12 text-danger-muted/88 flex flex-row items-start gap-2 w-full text-left cursor-pointer hover:bg-danger/10 active:bg-danger/14 focus:bg-danger/10">
-      <span className="flex-none mt-0.5 size-4 flex">{settingsIcon('danger-triangle')}</span>
+      <span className="flex-none mt-0.5 size-4 flex">{renderIcon('danger-triangle')}</span>
       <span className="min-w-0 flex flex-col">
         <span>{message}</span>
         <span className="mt-1 text-ui-11 text-text-muted">Click to retry</span>
@@ -476,7 +476,7 @@ function ghostActionWithIcon(label: string, onClick?: () => void) {
   return (
     <button type="button" onClick={onClick} data-action={label}
       className="flex-none flex flex-row items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-ui-12 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text">
-      <span className="flex-none size-4 flex">{pageIcon('add-circle')}</span>
+      <span className="flex-none size-4 flex">{renderIcon('add-circle')}</span>
       {label}
     </button>
   );

@@ -2,7 +2,7 @@
 // footer_label (2342); and app/crates/ui/src/yolo.rs - chip (132).
 import type { ReactNode } from 'react';
 import { icon } from './popover';
-import type { IconName } from './icons';
+import type { IconName } from '../../icons';
 import type { YoloState } from '../../fixtures/pickers';
 
 /// trigger_chip: the ghost pill in the composer's actions row. Brand mark, the

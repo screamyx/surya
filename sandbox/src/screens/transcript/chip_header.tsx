@@ -1,7 +1,7 @@
 // Rust: app/crates/ui/src/transcript.rs (chip_header_row, chip_header,
 // ChipTrail, tool_icon_path).
-import { icon } from './icons';
-import type { IconName } from './icons';
+import { renderIcon } from '../../icons';
+import type { IconName } from '../../icons';
 import { miniGlyphSpinner } from './loaders';
 
 /// Rust: `ToolItem` in transcript.rs, reduced to the fields the chip paints.
@@ -45,7 +45,7 @@ export function chipHeaderRow(tool: ToolItem, trail: ChipTrail | undefined) {
     <div className="h-7 w-full min-w-0 flex flex-row items-center gap-2 px-2 text-ui-12">
       <div className="size-4 flex-none rounded-sm bg-wash/10 flex items-center justify-center text-text-muted">
         <span className="size-3 flex items-center justify-center">
-          {icon(tool.isThought === true ? 'chat-round-line' : tool.glyph)}
+          {renderIcon(tool.isThought === true ? 'chat-round-line' : tool.glyph)}
         </span>
       </div>
       <div className={failed
@@ -69,7 +69,7 @@ function trailTile(trail: ChipTrail) {
   if (trail.type === 'openArrow') {
     return (
       <div className="size-4 flex-none rounded-sm bg-wash/5 flex items-center justify-center text-text-muted">
-        <span className="size-2.5 flex items-center justify-center">{icon('arrow-up-right')}</span>
+        <span className="size-2.5 flex items-center justify-center">{renderIcon('arrow-up-right')}</span>
       </div>
     );
   }

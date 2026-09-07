@@ -1,7 +1,6 @@
 // Rust: app/crates/ui/src/browser_pane/bar.rs (row, zoom_reading, button).
 // Render helpers on the same pane, not second stateful components.
-import { renderIcon } from '../../shell/icons';
-import { renderBrowserIcon } from './icons';
+import { renderIcon } from '../../icons';
 import { plainTooltip } from './tabs';
 import { zoomLabel, ZOOM_DEFAULT } from './state';
 
@@ -31,7 +30,7 @@ export function row(props: BarProps) {
     <div className="flex-none h-9 px-2 gap-1 flex flex-row items-center border-b border-border">
       {button('browser-back', renderIcon('arrow-left'), 'Back', props.canBack, props.hovered, props.onHover, props.onBack)}
       {button('browser-forward', renderIcon('arrow-right'), 'Forward', props.canForward, props.hovered, props.onHover, props.onForward)}
-      {button('browser-reload', props.loading ? renderIcon('close') : renderBrowserIcon('refresh'),
+      {button('browser-reload', props.loading ? renderIcon('close') : renderIcon('refresh'),
         props.loading ? 'Stop' : 'Reload', true, props.hovered, props.onHover, props.onReloadOrStop)}
       {field(props)}
     </div>

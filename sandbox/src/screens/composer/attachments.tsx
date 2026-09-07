@@ -2,7 +2,7 @@
 // and Composer::render_comments_chip (3974); app/crates/ui/src/attachments.rs,
 // lightbox (801) and StagedAttachment (185).
 import type { StagedAttachment } from '../../fixtures/composer';
-import { renderIcon } from './icons';
+import { renderIcon } from '../../icons';
 import { messageBadge } from './chrome';
 
 // comments.rs::chip_label - the count the badge names.

@@ -1,7 +1,7 @@
 // Rust: app/crates/ui/src/composer.rs, Composer::render_send_button (6254) and
 // the `composer-attach` paperclip built inline in Composer::render (6655).
 import type { SendMode } from '../../fixtures/composer';
-import { renderIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 // render_send_button: a 28px filled circle - up arrow to send or steer, a dark
 // rounded square on the same light circle to stop.

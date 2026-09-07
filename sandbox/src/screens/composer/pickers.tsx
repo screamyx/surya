@@ -2,8 +2,8 @@
 // (2174), footer_chip (2279), footer_label, render_target_selectors (2371) and
 // render_footer (2454); app/crates/ui/src/yolo.rs, chip (132).
 import type { ComposerModel, PickerKind, YoloState } from '../../fixtures/composer';
-import { renderIcon } from './icons';
-import type { IconName } from './icons';
+import { renderIcon } from '../../icons';
+import type { IconName } from '../../icons';
 
 // yolo.rs::YoloState::suffix - the muted second tone on the chip.
 export function yoloSuffix(state: YoloState) {

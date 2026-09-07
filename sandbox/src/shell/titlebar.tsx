@@ -1,7 +1,7 @@
 // Rust: shell.rs render_title_bar / render_titlebar_cluster / caption controls.
 import type { Destination } from '../shell';
 import type { Fixture } from '../fixtures';
-import { renderIcon } from './icons';
+import { renderIcon } from '../icons';
 export function iconButton(icon: Parameters<typeof renderIcon>[0], label: string,
   act: ((value: string) => void) | (() => void)) {
   return <button key={label} type="button" aria-label={label} title={label} onClick={() => act(label)}

@@ -2,7 +2,7 @@
 // status corner, and app/crates/ui/src/change_requests.rs pull_request_badge
 // on the Sidebar surface. Render helpers on the same pane, not components.
 import type { ChatRow, ChatStatus, SendState } from '../../fixtures/spaces';
-import { renderIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 /// spaces.rs status_dot_color, with render_chat_row's send-truth overrides in
 /// front of it: an undelivered send is danger, a queued one warning. Native

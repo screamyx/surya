@@ -6,9 +6,10 @@
 import { useState } from 'react';
 import type { DeviceRow, HarnessRow, LoadState } from '../../fixtures/settings_devices';
 import { cardRow, errorStrip, metaLine, pageColumn, pageHeader, pageSubtitle,
-  rowTitle, sectionCard, settingsIcon, toggleSwitch } from './widgets';
-import type { SettingsIcon } from './widgets';
+  rowTitle, sectionCard, toggleSwitch } from './widgets';
 import { yoloDefaultSection } from './harnesses/yolo_default';
+import { renderIcon } from '../../icons';
+import type { IconName } from '../../icons';
 
 export type HarnessesProps = {
   harnesses: readonly HarnessRow[];
@@ -32,7 +33,7 @@ const SUBTITLE = 'Choose which coding agents the composer offers. The setting is
   + "device can't be enabled there.";
 
 /// Rust: crate::pickers::platform_glyph inside render_device_switcher.
-function platformGlyph(platform: string): SettingsIcon {
+function platformGlyph(platform: string): IconName {
   if (platform === 'macos' || platform === 'darwin') return 'laptop';
   if (platform === 'ios' || platform === 'android') return 'smartphone';
   return 'monitor';
@@ -96,7 +97,7 @@ function deviceSwitcherTrigger(devices: readonly DeviceRow[], localDeviceId: str
         ? 'flex-none h-7 px-2 rounded-md flex flex-row items-center gap-1.5 cursor-pointer bg-wash/5 text-text'
         : 'flex-none h-7 px-2 rounded-md flex flex-row items-center gap-1.5 cursor-pointer hover:bg-wash/5 active:bg-wash/10 focus:bg-wash/5 text-text'}>
       <span className="flex-none size-4 flex text-text-muted">
-        {settingsIcon(platformGlyph(selected ? selected.platform : 'macos'))}
+        {renderIcon(platformGlyph(selected ? selected.platform : 'macos'))}
       </span>
       <span className="min-w-0 truncate text-ui-12 font-medium text-text">
         {selected ? selected.name : 'This device'}
@@ -131,7 +132,7 @@ function deviceMenu(devices: readonly DeviceRow[], localDeviceId: string | null,
             ? 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-text cursor-pointer bg-wash/10 text-left'
             : 'motion-hover-fade flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-text cursor-pointer hover:bg-wash/10 active:bg-wash/14 focus:bg-wash/10 text-left'}>
           <span className="flex-none size-4 flex text-text-muted">
-            {settingsIcon(platformGlyph(device.platform))}
+            {renderIcon(platformGlyph(device.platform))}
           </span>
           <span className="flex-1 min-w-0 truncate">{device.name}</span>
           {device.id === localDeviceId && <span className="flex-none text-ui-10 text-text-faint/50">You</span>}
@@ -221,7 +222,7 @@ export function HarnessesPage({ harnesses, state, loadError, toggleError, device
         <div className="mt-2 flex flex-row">
           <button type="button" onClick={onRetry} data-action="Retry"
             className="flex-none flex flex-row items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-ui-12 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text">
-            <span className="flex-none size-3.5 flex">{settingsIcon('refresh')}</span>
+            <span className="flex-none size-3.5 flex">{renderIcon('refresh')}</span>
             Retry
           </button>
         </div>

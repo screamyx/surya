@@ -5,7 +5,7 @@ import type { ChatRow } from '../../fixtures/spaces';
 import type { ChatRowCallbacks } from './rows';
 import { renderArchivedRow } from './rows';
 import { sidebarDisclosureBody, sidebarDisclosureHeader } from './agents_entry';
-import { renderIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 /// The native pager: ten rows to start, twenty-five more a click.
 export const ARCHIVED_INITIAL = 10;

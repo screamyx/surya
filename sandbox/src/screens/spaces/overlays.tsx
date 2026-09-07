@@ -2,7 +2,7 @@
 // space row's right-click menu, the rename dialog, and the remove
 // confirmation. Render helpers on the same pane.
 import { btnDanger, btnGhost, btnPrimary, dialogBody, dialogCard, dialogTitle, menuRow, menuSeparator, modalScrim, paintedQuery, popoverCard } from '../popover';
-import { renderIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 /// The space context menu: Rename, a hairline, then Remove in danger tone.
 /// The native menu is positioned at the pointer; here it anchors to the

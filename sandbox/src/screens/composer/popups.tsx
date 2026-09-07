@@ -2,7 +2,7 @@
 // (4323) and Composer::render_slash_popup (4631). Both span the full pill
 // width and share the same card shape; the @ and / tokens are exclusive.
 import type { MentionResult, SlashCommand } from '../../fixtures/composer';
-import { renderIcon } from './icons';
+import { renderIcon } from '../../icons';
 import { menuPopover, menuRow, skeletonRows } from '../popover';
 
 function errorNote(message: string) {

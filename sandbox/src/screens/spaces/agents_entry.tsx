@@ -4,7 +4,7 @@
 // shell/spaces.rs sidebar_disclosure_header (155) and
 // sidebar_disclosure_chevron (333).
 import type { ReactNode } from 'react';
-import { renderIcon } from './icons';
+import { renderIcon } from '../../icons';
 
 /// Is the agent tree on screen? Both what the section renders on and what the
 /// rail entry lights on, so the row can never disagree with what is below it.

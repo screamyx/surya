@@ -6,8 +6,8 @@
 // in Rust: this page emits onChanged(keymap).
 import { useState } from 'react';
 import type { Keymap, ShortcutDef } from '../../fixtures/settings_devices';
-import { fieldLabel, pageColumn, pageHeader, pageSubtitle, sectionCard,
-  settingsIcon } from './widgets';
+import { fieldLabel, pageColumn, pageHeader, pageSubtitle, sectionCard } from './widgets';
+import { renderIcon } from '../../icons';
 
 export type ShortcutsProps = {
   catalog: readonly ShortcutDef[];
@@ -165,7 +165,7 @@ export function ShortcutsPage({ catalog, keymap, onChanged }: ShortcutsProps) {
             className={disabled
               ? 'flex-none flex flex-row items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-ui-12 text-text-muted opacity-50'
               : 'flex-none flex flex-row items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-ui-12 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text'}>
-            <span className="flex-none size-3.5 flex">{settingsIcon('refresh')}</span>
+            <span className="flex-none size-3.5 flex">{renderIcon('refresh')}</span>
             Restore defaults
           </button>
         </div>

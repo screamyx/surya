@@ -3,8 +3,8 @@
 // the theme, accent, glass and motion rows above them.
 import type { ReactNode } from 'react';
 import { compactAction, primaryButton } from './chips';
-import { pageIcon } from './icons';
-import { cardRow, metaLine, rowTitle, settingsIcon } from '../widgets';
+import { renderIcon } from '../../../icons';
+import { cardRow, metaLine, rowTitle } from '../widgets';
 import type { CustomThemeEntry } from '../appearance';
 
 export type LibraryCallbacks = {
@@ -24,7 +24,7 @@ function renderLibraryEntry(entry: CustomThemeEntry, callbacks: LibraryCallbacks
     <>
       <div className="flex-none size-9 rounded-lg border border-border bg-wash/5 flex items-center justify-center">
         <span className="size-4 flex text-text-muted">
-          {entry.linked ? settingsIcon('global') : pageIcon('document')}
+          {entry.linked ? renderIcon('global') : renderIcon('document')}
         </span>
       </div>
       <div className="flex-1 min-w-0">
@@ -56,7 +56,7 @@ export function renderThemeLibraryRows(
     <div key="theme-library">{cardRow(false, (
       <>
         <div className="flex-none size-9 rounded-lg border border-border bg-wash/5 flex items-center justify-center">
-          <span className="size-4 flex text-text-muted">{pageIcon('folder-with-files')}</span>
+          <span className="size-4 flex text-text-muted">{renderIcon('folder-with-files')}</span>
         </div>
         <div className="flex-1 min-w-0">
           {rowTitle('Theme library')}

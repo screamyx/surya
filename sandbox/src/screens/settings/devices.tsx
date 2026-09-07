@@ -5,8 +5,9 @@
 import { useState } from 'react';
 import type { DeviceRow, WorkspaceScope } from '../../fixtures/settings_devices';
 import { cardRow, errorStrip, metaLine, pageColumn, pageHeader, pageSubtitle,
-  rowTile, rowTitle, sectionCard, settingsIcon } from './widgets';
-import type { SettingsIcon } from './widgets';
+  rowTile, rowTitle, sectionCard } from './widgets';
+import { renderIcon } from '../../icons';
+import type { IconName } from '../../icons';
 
 export type DevicesProps = {
   devices: readonly DeviceRow[];
@@ -40,7 +41,7 @@ export function shortId(id: string) {
   return id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id;
 }
 
-function platformGlyph(platform: string): SettingsIcon {
+function platformGlyph(platform: string): IconName {
   if (platform === 'macos' || platform === 'darwin') return 'laptop';
   if (platform === 'web') return 'global';
   if (platform === 'ios' || platform === 'android') return 'smartphone';
@@ -154,7 +155,7 @@ export function DevicesPage({ devices, localDeviceId, workspaceScope, error,
             <button type="button" onClick={() => openRename(device)}
               aria-label={`Rename ${device.name}`} data-action="Rename"
               className="flex-none flex flex-row items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-ui-12 text-text-muted cursor-pointer opacity-55 hover:opacity-100 hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:opacity-100 focus:bg-wash/5 focus:text-text">
-              <span className="flex-none size-3.5 flex">{settingsIcon('pen')}</span>
+              <span className="flex-none size-3.5 flex">{renderIcon('pen')}</span>
               Rename
             </button>
           </>))

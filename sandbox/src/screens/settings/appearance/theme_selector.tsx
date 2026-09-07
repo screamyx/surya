@@ -4,8 +4,8 @@
 // passes `open` in and the toggle out.
 import { palettePreview } from './previews';
 import { trackedUpper } from './chips';
-import { pageIcon } from './icons';
-import { settingsIcon } from '../widgets';
+import { renderIcon } from '../../../icons';
+import { } from '../widgets';
 import type { ThemeVariantOption } from '../appearance';
 
 export function renderThemeSelector(
@@ -26,7 +26,7 @@ export function renderThemeSelector(
         {palettePreview()}
         <span className="flex-1 min-w-0 truncate text-ui-12 font-medium text-text text-left">{selected?.name ?? 'Theme'}</span>
         <span className={open ? 'size-3.5 flex-none flex text-text-muted' : 'size-3.5 flex-none flex text-text-faint/50'}>
-          {pageIcon('sort-vertical')}
+          {renderIcon('sort-vertical')}
         </span>
       </button>
       {open && (
@@ -44,7 +44,7 @@ export function renderThemeSelector(
                   : 'motion-hover-fade flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
                 {palettePreview()}
                 <span className="flex-1 min-w-0 truncate">{variant.name}</span>
-                {active && <span className="size-3.5 flex-none flex text-accent">{settingsIcon('check')}</span>}
+                {active && <span className="size-3.5 flex-none flex text-accent">{renderIcon('check')}</span>}
               </button>
             );
           })}

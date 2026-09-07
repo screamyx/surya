@@ -4,7 +4,7 @@ import type { Destination } from '../shell';
 import type { Fixture } from '../fixtures';
 import { emptyChats } from '../fixtures';
 import { badge } from '../screens/chrome';
-import { renderIcon } from './icons';
+import { renderIcon } from '../icons';
 import { iconButton } from './titlebar';
 const destinations = [
   { label: 'Home', icon: 'home', to: 'chat' },

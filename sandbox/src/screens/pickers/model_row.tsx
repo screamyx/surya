@@ -3,7 +3,7 @@
 // hover cursor and activation all key on it. The 2px inter-row gap is baked
 // into each item's bottom padding so every item is the same height.
 import { icon, kbdHint } from './popover';
-import type { IconName } from './icons';
+import type { IconName } from '../../icons';
 import type { HarnessId, ModelRow } from '../../fixtures/pickers';
 
 /// harness_brand_icon (3856): the Claude mark keeps its brand orange even on

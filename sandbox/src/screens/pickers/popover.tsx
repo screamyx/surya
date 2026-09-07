@@ -5,8 +5,8 @@
 // error_row (1117). Plain render helpers, not components.
 import type { ReactNode } from 'react';
 import { frosted } from './frost';
-import { renderIcon } from './icons';
-import type { IconName } from './icons';
+import { renderIcon } from '../../icons';
+import type { IconName } from '../../icons';
 
 /// crate::icons::icon(path).size(px(n)) at the sizes this screen paints. The
 /// mark takes its paint from the parent's text token through currentColor.
