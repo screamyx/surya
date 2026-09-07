@@ -1,6 +1,6 @@
 // Rust: app/crates/ui/src/inbox/rules.rs (RulesPane, the Render impl at line 175).
 import { renderRule } from './rules/rows';
-import { emptyState } from './rules/chrome';
+import { emptyState } from './chrome';
 
 // Rust: app/crates/proto/src/state.rs:181, RuleScope. Serialized camelCase.
 export type RuleScope = 'workspace' | 'global';

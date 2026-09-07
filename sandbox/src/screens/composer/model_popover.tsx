@@ -2,7 +2,7 @@
 // (2998) and Pickers::render_model_row (3325).
 import type { HarnessTab, ModelRow } from '../../fixtures/composer';
 import { renderIcon } from './icons';
-import { kbdHint, emptyNote } from './chrome';
+import { kbdHint, emptyNote } from '../popover';
 import { jumpLabel } from './key_chips';
 
 export type ModelPopoverState = {

@@ -3,7 +3,8 @@
 // AgentGroup); the grouping and roll-up logic stays in Rust and arrives as props.
 import { useState } from 'react';
 import { renderRow } from './agents/rows';
-import { emptyState, groupHeading } from './agents/chrome';
+import { emptyState } from './chrome';
+import { groupHeading } from './agents/chrome';
 
 /// Rust: surya_proto::AgentState, flattened with its NeedsYou kind.
 export type AgentStateKind =

@@ -6,7 +6,7 @@
 // the sidebar IS the session list and the titlebar names the selected one.
 // What remains under "tab strip" is the right pane's surface chips.
 import type { SurfaceTab } from '../../fixtures/spaces';
-import { menuRow, popoverCard } from './chrome';
+import { menuRow, popoverCard } from '../popover';
 import { renderIcon } from './icons';
 
 /// cycle_target: the chat one step from the selection in the sidebar order,

@@ -2,7 +2,7 @@
 // RulesPane::render_rule at line 139).
 // Render helpers on the same pane, not a second stateful component.
 import type { AllowRule } from '../Rules';
-import { bodyText, button, commandText, rowCard } from './chrome';
+import { bodyText, button, commandText, rowCard } from '../chrome';
 
 // rules.rs:123. "Bash, in project-jag" / "Bash, everywhere" - where a rule
 // reaches, said in words rather than as a path the user has to parse.

@@ -3,7 +3,7 @@
 // lines and their order.
 import type { ReactNode } from 'react';
 import type { PermissionRequest, WizardModel } from '../../fixtures/composer';
-import { trackedUpper, btnGhost, btnPrimary } from './chrome';
+import { trackedUpper, btnGhost, btnPrimary } from '../popover';
 
 // The panel chrome both sheets wear: the composer pill's own shape.
 function panel(label: string, children: ReactNode) {
@@ -117,7 +117,7 @@ export function renderWizard(
       </div>
       <div className="flex flex-row justify-between items-center px-4 pb-4 pt-1">
         {wizard.page > 0 ? btnGhost('Back', onBack) : <span />}
-        {btnPrimary(last ? 'Submit' : 'Next', !canAdvance, onAdvance)}
+        {btnPrimary(last ? 'Submit' : 'Next', onAdvance, !canAdvance)}
       </div>
     </>
   ));

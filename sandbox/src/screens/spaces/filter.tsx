@@ -2,7 +2,7 @@
 // render_spaces_menu (936), render_sidebar_view_menu (620) and
 // SidebarViewOptionsTooltip (67). Render helpers on the same pane.
 import type { SidebarView, SpaceRow } from '../../fixtures/spaces';
-import { menuHeading, menuRow, menuSeparator, paintedQuery, popoverCard, searchInputFrame } from './chrome';
+import { menuHeading, menuRow, menuSeparator, paintedQuery, popoverCard, searchInputFrame } from '../popover';
 import { renderIcon } from './icons';
 
 /// SIDEBAR_VIEW_ROWS, with the labels, icons and settings field each reads.

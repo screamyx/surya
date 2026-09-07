@@ -1,7 +1,8 @@
 // Rust: app/crates/ui/src/inbox/agents.rs, AgentsRail::render_row.
 // Render helper on the same pane, not a second stateful component.
 import type { AgentRow } from '../Agents';
-import { badge, dot, stateTone } from './chrome';
+import { badge, dot } from '../chrome';
+import { stateTone } from './chrome';
 
 // Children step in; the indent IS the tree. Rust: .pl(px(6.0 + depth * 14.0)).
 // Four admitted steps: 6px, 20px, 32px (native 34px) and 48px. Deeper rows

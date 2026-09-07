@@ -3,7 +3,7 @@
 // width and share the same card shape; the @ and / tokens are exclusive.
 import type { MentionResult, SlashCommand } from '../../fixtures/composer';
 import { renderIcon } from './icons';
-import { popoverCard, menuRow, skeletonRows } from './chrome';
+import { menuPopover, menuRow, skeletonRows } from '../popover';
 
 function errorNote(message: string) {
   return <div className="px-3 py-2.5 text-ui-12 text-danger-muted">{message}</div>;
@@ -21,14 +21,15 @@ export function renderFileMentionPopup(
   onActive: (index: number) => void,
   onAccept: (path: string) => void,
 ) {
-  if (loading && results.length === 0) return popoverCard(skeletonRows(3));
-  if (error !== null) return popoverCard(errorNote(error));
-  if (results.length === 0) return popoverCard(note('No matching files'));
-  return popoverCard(
+  if (loading && results.length === 0) return menuPopover(skeletonRows(3));
+  if (error !== null) return menuPopover(errorNote(error));
+  if (results.length === 0) return menuPopover(note('No matching files'));
+  return menuPopover(
     <div data-list="mention" className="max-h-80 flex flex-col overflow-y-scroll">
       {results.map((result, index) => menuRow(
-        index === active, `file-mention-result-${index}`,
+        index === active, false,
         () => { onActive(index); onAccept(result.path); },
+        `file-mention-result-${index}`,
         <span className="w-full flex flex-row items-center gap-2">
           <span className="size-3.5 flex-none text-text-muted">
             {result.isDir ? renderIcon('folder') : renderIcon('document')}
@@ -49,14 +50,15 @@ export function renderSlashPopup(
   onActive: (index: number) => void,
   onAccept: (name: string) => void,
 ) {
-  if (loading && commands.length === 0) return popoverCard(skeletonRows(3));
-  if (error !== null) return popoverCard(errorNote(error));
-  if (commands.length === 0) return popoverCard(note('This agent has no slash commands'));
-  return popoverCard(
+  if (loading && commands.length === 0) return menuPopover(skeletonRows(3));
+  if (error !== null) return menuPopover(errorNote(error));
+  if (commands.length === 0) return menuPopover(note('This agent has no slash commands'));
+  return menuPopover(
     <div data-list="slash" className="max-h-80 flex flex-col overflow-y-scroll">
       {commands.map((command, index) => menuRow(
-        index === active, `slash-result-${index}`,
+        index === active, false,
         () => { onActive(index); onAccept(command.name); },
+        `slash-result-${index}`,
         <span className="w-full flex flex-row items-center gap-2">
           <span className="size-3.5 flex-none text-text-muted">{renderIcon('command')}</span>
           <span className="flex-none text-ui-12 font-medium text-text">/{command.name}</span>
