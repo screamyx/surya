@@ -132,8 +132,86 @@ async fn a_removed_project_takes_its_chat_out_of_the_session_list() {
         "the removed chat to leave the session list",
     )
     .await;
+
+    // And it STAYS gone. Leaving on the first look is the easy half: the
+    // cascade drops the chat before its teardown task, so this assertion used
+    // to land while the interrupted run was still settling, and the run's
+    // terminal transition put the entry straight back afterwards. A fixed
+    // window on purpose - it asserts that nothing arrives.
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            !sessions.borrow().iter().any(|s| s.chat_id == "chat-1"),
+            "the removed chat came back to the session list: {:?}",
+            sessions.borrow().clone()
+        );
+    }
     assert!(
         core.sessions.session_status("chat-1").is_none(),
         "session_status still answers for a chat that is gone"
+    );
+}
+
+/// `deleteChat` mid-run, which is the certain case rather than the racy one.
+///
+/// That path does not interrupt the run (`rpc.rs`, `MutateParams::DeleteChat`
+/// deletes, purges and drops, and returns). So the run keeps going and its
+/// terminal `set_status` lands after the drop every time - re-creating the
+/// entry unless creation is gated on the chat still having a row.
+#[tokio::test(flavor = "multi_thread")]
+async fn deleting_a_chat_mid_run_does_not_leave_it_in_the_list() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let core = assemble(dir.path());
+    let client = surya_rpc::memory_client(core.rpc_service());
+    let sessions = core.sessions.watch_sessions();
+
+    client
+        .call(
+            methods::MUTATE,
+            serde_json::json!({
+                "op": "createSpace", "spaceId": "space-1",
+                "deviceId": core.device_id, "path": CWD
+            }),
+        )
+        .await
+        .expect("create space");
+    client
+        .call(
+            methods::MUTATE,
+            serde_json::json!({ "op": "createChat", "chatId": "chat-1", "spaceId": "space-1" }),
+        )
+        .await
+        .expect("create chat");
+    core.sessions
+        .dispatch("chat-1", HarnessId::Mock, run_request("migrate"), None)
+        .await
+        .expect("dispatch");
+    wait_for(
+        || sessions.borrow().iter().any(|s| s.chat_id == "chat-1"),
+        "the run to reach the session list",
+    )
+    .await;
+
+    client
+        .call(
+            methods::MUTATE,
+            serde_json::json!({ "op": "deleteChat", "chatId": "chat-1" }),
+        )
+        .await
+        .expect("delete chat");
+
+    // The run is still live and will settle on its own. Nothing it does on
+    // the way out may put the chat back.
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(
+            !sessions.borrow().iter().any(|s| s.chat_id == "chat-1"),
+            "the deleted chat is in the session list: {:?}",
+            sessions.borrow().clone()
+        );
+    }
+    assert!(
+        core.sessions.session_status("chat-1").is_none(),
+        "session_status still answers for a deleted chat"
     );
 }
