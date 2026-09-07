@@ -357,6 +357,19 @@ impl SessionsEngine {
         // is `request_from_chat_row`, which needs a row the cascade removed,
         // so mail holds instead.
         lock(&self.inner.last_requests).remove(chat_id);
+        // And the status entry, republishing the list so watchers see it go.
+        // `session_status`, `any_active` and the `WatchSessions` feed all read
+        // this map: leaving the entry keeps a removed chat in a client's
+        // session list, and keeps the updater's "do not restart from under a
+        // run" gate counting a run that cannot exist.
+        {
+            let mut statuses = lock(&self.inner.statuses);
+            if statuses.remove(chat_id).is_some() {
+                let mut list: Vec<Session> = statuses.values().cloned().collect();
+                list.sort_by(|a, b| a.chat_id.cmp(&b.chat_id));
+                self.inner.sessions_tx.send_replace(list);
+            }
+        }
         for request_id in self.inner.states.drop_chat(chat_id) {
             let Some(engine_tx) = engine_tx.as_ref() else {
                 continue;
