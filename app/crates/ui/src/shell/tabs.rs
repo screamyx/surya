@@ -6,6 +6,8 @@
 
 use super::*;
 
+mod boot;
+
 /// The chat one step from `selected` in the sidebar `order`, wrapping at both
 /// ends. Pure.
 ///
@@ -63,23 +65,16 @@ impl Shell {
         }
     }
 
-    /// Boot landing: the most recently active visible chat once the first
-    /// chats frame has synced (manual selection wins; no chats → the
-    /// new-session canvas shows).
+    /// Restore the newest chat in the saved project, or its empty canvas.
     pub(super) fn boot_select_chat(&mut self, cx: &mut Context<Self>) {
-        let first = {
-            let state = self.state.read(cx);
-            if !state.chats_synced || state.selected_chat.is_some() || state.auto_selected {
-                return;
-            }
-            state
-                .overview_chats(Utc::now())
-                .first()
-                .map(|(_, c)| c.id.clone())
-        };
-        if let Some(first) = first {
-            self.state
-                .update(cx, |s, cx| s.select_chat(Some(first), cx));
+        let target = boot::landing(self.state.read(cx), self.settings.space_filter.as_deref());
+        if let Some(target) = target {
+            self.state.update(cx, |s, cx| {
+                s.select_chat(target, cx);
+                // An empty landing is complete too; later syncs must not
+                // replace the canvas while the user is composing there.
+                s.auto_selected = true;
+            });
         }
     }
 
