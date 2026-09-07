@@ -1,5 +1,6 @@
 //! Tests for the surya block: the generated files, the missing-sidecar
-//! fallback, and the auto-allow list.
+//! fallback, and the auto-allow list. What `apply` puts on the command line
+//! is in `apply_tests.rs`.
 
 #[cfg(test)]
 mod prepare_tests {

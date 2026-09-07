@@ -238,38 +238,13 @@ impl ClaudeHarness {
             cmd.arg("--settings");
             cmd.arg(Value::Object(settings).to_string());
         }
-        // surya's own abilities (decision 5): the `surya-mcp` sidecar plus the
-        // prompt append that teaches the agent when a card beats prose. Only
-        // when the caller asked for them, so every other harness and every
-        // test spawns exactly the command it did before.
-        if let Some(options) = &request.surya
-            && let Some(files) = surya::prepare(options, &request.cwd)
-        {
-            // The tools are conditional on the sidecar being installed; the
-            // prompt append and the denial below are NOT. A missing binary
-            // costs show_card, never decision 19's single mail channel.
-            if let Some(mcp_config) = &files.mcp_config {
-                cmd.arg("--mcp-config");
-                cmd.arg(mcp_config);
-            }
-            cmd.arg("--append-system-prompt-file");
-            cmd.arg(&files.system_append);
-            // The cards skill, as a one-skill plugin. Without this the agent
-            // is told a card beats prose and given no reference for writing
-            // one; with it the skill shows up as `surya:surya-cards`. Only
-            // these two args are gated on it - everything above still applies
-            // when the skill could not be written.
-            if let Some(plugin_dir) = &files.plugin_dir {
-                cmd.arg("--plugin-dir");
-                cmd.arg(plugin_dir);
-            }
-            // surya is the host of every agent, so surya owns mail
-            // (decision 19). The CLI's own cross-session messaging talks to
-            // Claude Code sessions surya does not know about, and an agent
-            // told to message a peer reaches for it first - measured on
-            // 2026-09-05, the model called the built-in SendMessage and never
-            // touched ours. Deny both so there is one mail channel.
-            cmd.args(["--disallowed-tools", surya::DENIED_TOOLS]);
+        // surya's own abilities (decision 5): the `surya-mcp` sidecar, the
+        // prompt append, the identity marker and the single mail channel.
+        // Only when the caller asked for them, so every other harness and
+        // every test spawns exactly the command it did before. The flags
+        // themselves live in `surya.rs`, next to the files they name.
+        if let Some(options) = &request.surya {
+            surya::apply(&mut cmd, options, &request.cwd);
         }
         if !request.cwd.is_empty() {
             cmd.current_dir(&request.cwd);
@@ -304,6 +279,11 @@ impl ClaudeHarness {
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .kill_on_drop(true);
+        // `exe` may be a shell wrapper rather than the CLI itself. A wrapper's
+        // own tool whitelist still applies on top of ours and is harmless; the
+        // house-rules prompt it would otherwise add is already skipped,
+        // because surya runs with `--print` and passes its own
+        // `--append-system-prompt-file`.
         let mut child = cmd.spawn().map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
                 HarnessError::NotInstalled(exe.display().to_string())
@@ -980,10 +960,22 @@ mod tests {
     fn no_surya_option_means_no_extra_flags() {
         let args = args_of(&request());
         assert!(!args.iter().any(|a| a == "--mcp-config"), "{args:?}");
+        assert!(!args.iter().any(|a| a == "--strict-mcp-config"), "{args:?}");
         assert!(
             !args.iter().any(|a| a == "--append-system-prompt-file"),
             "{args:?}"
         );
+        // And nothing marks the child as a surya agent, because it is not one.
+        let marked: Vec<String> = ClaudeHarness::new()
+            .build_command(&PathBuf::from("/bin/true"), &request())
+            .as_std()
+            .get_envs()
+            .filter_map(|(key, _)| {
+                let key = key.to_string_lossy().into_owned();
+                key.starts_with("SURYA_").then_some(key)
+            })
+            .collect();
+        assert!(marked.is_empty(), "{marked:?}");
     }
 
     #[test]
