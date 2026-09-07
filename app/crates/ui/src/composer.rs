@@ -5038,8 +5038,8 @@ impl Composer {
             SendButtonMode::Stop => self.interrupt(cx),
             _ if no_content => {}
             _ if self.send_blocked(cx) => {}
-            SendButtonMode::Send => self.send(text, false, cx),
-            SendButtonMode::Steer => self.send(text, true, cx),
+            SendButtonMode::Send => self.send(text, false, true, cx),
+            SendButtonMode::Steer => self.send(text, true, true, cx),
         }
     }
 
@@ -5051,14 +5051,30 @@ impl Composer {
             return;
         }
         let steer = self.run_live(cx);
-        self.send(text, steer, cx);
+        self.send(text, steer, true, cx);
+    }
+
+    /// Send that deliberately leaves the composer's staged attachments where
+    /// they are.
+    ///
+    /// A Retry re-runs a PROMPT (E2E-CHAT-03). Anything staged in the strip
+    /// since then belongs to the message the user is still composing, and
+    /// `send` snapshots-and-CLEARS the strip, so routing Retry through it
+    /// would silently attach that unsent image to the retried turn and empty
+    /// the strip under them.
+    pub fn send_retry(&mut self, text: String, cx: &mut Context<Self>) {
+        if text.trim().is_empty() || self.send_blocked(cx) {
+            return;
+        }
+        let steer = self.run_live(cx);
+        self.send(text, steer, false, cx);
     }
 
     /// Queue a Run (or Steer) doc command with an optimistic echo. New chats
     /// thread the picked config in: worktree creation (when the isolated toggle
     /// is on), `Mutate createChat` with the `ChatConfig` + cwd, and the model /
     /// reasoning / options on the Run request itself (§1.7).
-    fn send(&mut self, text: String, steer: bool, cx: &mut Context<Self>) {
+    fn send(&mut self, text: String, steer: bool, take_staged: bool, cx: &mut Context<Self>) {
         let Some(engine) = self.state.read(cx).engine().cloned() else {
             self.failure = Some("Engine not connected".into());
             self.failure_key = None; // global — meaningful on every chat
@@ -5119,10 +5135,15 @@ impl Composer {
         // Snapshot-and-clear NOW (use-attachments.ts takeAttachments): the
         // strip empties the instant you hit send; a failure hands the files
         // back into the chat's stash.
-        let staged = self
-            .attachments
-            .remove(&self.current_key)
-            .unwrap_or_default();
+        // `take_staged` is false only for a Retry, which must not consume
+        // files the user staged for a message they have not sent yet.
+        let staged = if take_staged {
+            self.attachments
+                .remove(&self.current_key)
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         // `typed` keeps the user's own words for the failure hand-back below:
         // restoring the folded prompt would paste the comment block into the
         // input as literal text.

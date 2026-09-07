@@ -8,7 +8,7 @@
 use gpui::{Context, SharedString, div, prelude::*, px};
 use surya_proto::{NeedsYouKind, PermissionDecision};
 
-use super::{NeedsYouPane, OpenChat};
+use super::{NeedsYouPane, OpenChat, RetryChat};
 use crate::inbox::chrome::{
     ButtonTone, badge, body_text, button, command_text, hint_chip, kind_color, row_line,
     setting_chip,
@@ -254,7 +254,21 @@ impl NeedsYouPane {
             }
             NeedsYouKind::Failed => {
                 let chat_id = row.chat_id.clone();
+                let retry_id = row.chat_id.clone();
                 actions
+                    // Decision 17: a stopped agent "wants Retry or Give up",
+                    // and the engine already says which runs can be retried.
+                    // A run that cannot be is not offered the button rather
+                    // than given a dead one (E2E-CHAT-03).
+                    .when(row.retryable, |el| {
+                        el.child(
+                            button(theme, ButtonTone::Primary, "Retry")
+                                .id(SharedString::from(format!("retry-{}", row.id)))
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    cx.emit(RetryChat(retry_id.clone()));
+                                })),
+                        )
+                    })
                     .child(
                         button(theme, ButtonTone::Quiet, "Open chat")
                             .id(SharedString::from(format!("open-{}", row.id)))

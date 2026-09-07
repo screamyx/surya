@@ -42,6 +42,7 @@ use gpui::{
 use surya_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus};
 
 pub mod stopped;
+pub mod retry;
 use surya_proto::ToolCall;
 
 use crate::markdown::parser::{
@@ -1001,6 +1002,10 @@ pub struct Row {
     /// lands on, so the mark reads as belonging to the turn that ended
     /// (E2E-CHAT-02, `stopped`).
     pub stopped: bool,
+    /// The prompt a Retry on this turn would re-send. `Some` only on the
+    /// LAST row of a turn that stopped, and only when there is a user prompt
+    /// behind it to send (E2E-CHAT-03, `retry`).
+    pub retry_prompt: Option<SharedString>,
 }
 
 /// Absolute hover-timestamp label, e.g. "Jul 1, 3:45 PM" — the exact
@@ -1199,6 +1204,7 @@ pub fn rows_for_entry(
             timestamp: Some(entry.created_at),
             copy_text,
             stopped: false,
+            retry_prompt: None,
         }];
     }
 
@@ -1229,6 +1235,7 @@ pub fn rows_for_entry(
                 timestamp: None,
                 copy_text: None,
                 stopped: false,
+                retry_prompt: None,
             });
             *group_ix += 1;
         };
@@ -1351,6 +1358,7 @@ pub fn rows_for_entry(
                                 timestamp: None,
                                 copy_text: None,
                                 stopped: false,
+                                retry_prompt: None,
                                 kind: if streaming {
                                     RowKind::LiveMarkdown {
                                         tree: tree.clone(),
@@ -1391,6 +1399,7 @@ pub fn rows_for_entry(
                             timestamp: None,
                             copy_text: None,
                             stopped: false,
+                            retry_prompt: None,
                         });
                     }
                     MessagePart::Permission {
@@ -1423,6 +1432,7 @@ pub fn rows_for_entry(
                             timestamp: None,
                             copy_text: None,
                             stopped: false,
+                            retry_prompt: None,
                         });
                     }
                     MessagePart::Error {
@@ -1441,6 +1451,7 @@ pub fn rows_for_entry(
                             timestamp: None,
                             copy_text: None,
                             stopped: false,
+                            retry_prompt: None,
                         });
                     }
                     MessagePart::Card {
@@ -1477,6 +1488,7 @@ pub fn rows_for_entry(
                             timestamp: None,
                             copy_text: None,
                             stopped: false,
+                            retry_prompt: None,
                         });
                     }
                     // Tools and thoughts are grouped by the outer arms;
@@ -2441,6 +2453,10 @@ enum BlobFetch {
 /// Shell-facing events (the transcript itself hosts no surfaces).
 #[derive(Debug, Clone)]
 pub enum TranscriptEvent {
+    /// A stopped turn's Retry: re-send this prompt as a new turn. The shell
+    /// hands it to the composer's send path, the same route a card button
+    /// answer takes (E2E-CHAT-03).
+    RetryTurn { prompt: String },
     /// A spawn chip's "Open subagent" affordance: open the subagent's
     /// transcript as a right-pane tab. `chat_id` is the doc the chip lives
     /// in (the frozen blob is keyed `{chat_id}/{doc_id}`); `frozen` means
@@ -3580,7 +3596,19 @@ impl Transcript {
 
         let mut new_rows: Vec<Row> = Vec::new();
         for entry in &entries {
+            let before = new_rows.len();
             new_rows.extend(self.rows_for(entry, false));
+            // A stopped turn carries the prompt its Retry would re-send.
+            // Set HERE rather than inside `rows_for`, which is handed one
+            // entry and cannot look back for the prompt - and whose row
+            // cache is keyed on that entry alone, so a value derived from a
+            // neighbour has no business in it (E2E-CHAT-03).
+            if retry::is_retryable(entry.status)
+                && let Some(prompt) = retry::prompt_before(&entries, &entry.id)
+                && let Some(last) = new_rows[before..].last_mut()
+            {
+                last.retry_prompt = Some(prompt.into());
+            }
         }
         for echo in &echoes {
             new_rows.extend(self.rows_for(echo, true));
@@ -4555,6 +4583,7 @@ impl Transcript {
         let copy_text = row.copy_text.clone();
         let copy_entry_id = row.entry_id.clone();
         let row_stopped = row.stopped;
+        let retry_prompt = row.retry_prompt.clone();
         let strip = row.timestamp.map(|ms| {
             let timestamp = div()
                 .text_size(crate::typography::ui_rems(12.0))
@@ -4613,12 +4642,23 @@ impl Transcript {
                 // bubble's right edge (user-reported 4px drift).
                 .when(is_user_row, |el| el.justify_end())
                 .gap(px(Theme::SPACE_SM))
-                // The stop mark is OUTSIDE the hover fade below on purpose.
-                // The timestamp and copy button are things you go looking
-                // for; "Stopped" is the answer to "why is this short", and a
-                // cue you have to hunt for with the pointer does not answer
-                // it (E2E-CHAT-02).
+                // Both of these sit OUTSIDE the hover fade below. The
+                // timestamp and copy button are things you go looking for.
+                // "Stopped" is the answer to "why is this short"
+                // (E2E-CHAT-02) and Retry is the way to run it again
+                // (E2E-CHAT-03); neither works as a cue you have to hunt for
+                // with the pointer.
                 .when(row_stopped, |el| el.child(stopped::mark(&theme)))
+                .when_some(retry_prompt, |el, prompt| {
+                    el.child(retry::control(&theme).id(SharedString::from(format!(
+                        "retry-{}",
+                        row.id
+                    ))).on_click(cx.listener(move |_, _, _, cx| {
+                        cx.emit(TranscriptEvent::RetryTurn {
+                            prompt: prompt.to_string(),
+                        });
+                    })))
+                })
                 .when(hovered, |el| {
                     el.child(motion::fade_quick(
                         SharedString::from(format!("meta-{}", row.id)),
@@ -6766,6 +6806,7 @@ mod tests {
             timestamp: None,
             copy_text: None,
             stopped: false,
+            retry_prompt: None,
         }
     }
 
