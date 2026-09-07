@@ -445,6 +445,17 @@ pub fn apply_files(cmd: &mut Command, options: &SuryaOptions, files: Option<Sury
     // agent whether or not its config could be written.
     cmd.env("SURYA_AGENT_ID", &options.agent_id);
     cmd.env("SURYA_WORKSPACE", &options.workspace);
+    // Surya's own MCP config and nothing else. Without this flag the CLI also
+    // loads the MCP servers configured on the box, so the agent gets foreign
+    // tools beside surya's own, and an agent told to message a peer can reach
+    // one of those instead of `mcp__surya__send_message`. Surya hands the
+    // agent its abilities (decision 5); the box does not add to them.
+    //
+    // Unconditional, like the two variables above, because the case with no
+    // `--mcp-config` to pin is the leaky one: measured on the CLI, a plain
+    // run loaded 8 of this box's servers and the same run with this flag
+    // alone loaded 0 and exposed no `mcp__` tool at all.
+    cmd.arg("--strict-mcp-config");
 
     let Some(files) = files else {
         return;
@@ -455,13 +466,6 @@ pub fn apply_files(cmd: &mut Command, options: &SuryaOptions, files: Option<Sury
     if let Some(mcp_config) = &files.mcp_config {
         cmd.arg("--mcp-config");
         cmd.arg(mcp_config);
-        // This config and nothing else. Without it the CLI also loads the MCP
-        // servers configured on the box, so the agent gets foreign tools
-        // sitting beside surya's own, and an agent told to message a peer can
-        // reach one of those instead of `mcp__surya__send_message`. Surya
-        // hands the agent its abilities (decision 5); the box does not add to
-        // them behind surya's back.
-        cmd.arg("--strict-mcp-config");
     }
     cmd.arg("--append-system-prompt-file");
     cmd.arg(&files.system_append);
