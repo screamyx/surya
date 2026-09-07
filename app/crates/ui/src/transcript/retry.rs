@@ -74,6 +74,33 @@ fn user_text(entry: &SessionMessageEntry) -> Option<String> {
     (!text.trim().is_empty()).then_some(text)
 }
 
+/// What a parked inbox Retry should do on this frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Parked {
+    /// The chat is not on screen yet. Keep the id and look again.
+    Wait,
+    /// The chat is up. Look for its last prompt and send.
+    Arrived,
+    /// The user selected a DIFFERENT chat. Drop the id.
+    ///
+    /// Without this the parked id survived indefinitely and fired a run
+    /// nobody asked for the next time that chat was opened, which could be
+    /// much later.
+    Disarm,
+}
+
+/// Decide from the parked chat id and what is currently selected.
+///
+/// Pure so the three outcomes can be asserted without a window.
+pub fn parked_state(parked: &str, selected: Option<&str>) -> Parked {
+    match selected {
+        Some(id) if id == parked => Parked::Arrived,
+        // Still on the way: nothing is selected yet.
+        None => Parked::Wait,
+        Some(_) => Parked::Disarm,
+    }
+}
+
 /// The control itself: a quiet text button in the footer strip.
 pub fn control(theme: &Theme) -> Div {
     div()
@@ -175,6 +202,17 @@ mod tests {
             prompt_before(&entries, "a1"),
             None,
             "re-sending whitespace would burn a run on nothing"
+        );
+    }
+
+    #[test]
+    fn a_parked_retry_waits_arrives_or_disarms() {
+        assert_eq!(parked_state("c1", Some("c1")), Parked::Arrived);
+        assert_eq!(parked_state("c1", None), Parked::Wait, "still on the way");
+        assert_eq!(
+            parked_state("c1", Some("c2")),
+            Parked::Disarm,
+            "the user went elsewhere; holding the id would fire an unasked run later"
         );
     }
 }

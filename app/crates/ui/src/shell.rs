@@ -1663,19 +1663,25 @@ impl Shell {
 
     // ---- splash ----
 
-    /// The chat an inbox Retry is waiting on. Cleared the moment the send
-    /// goes out, or the moment the user navigates away (E2E-CHAT-03).
+    /// The chat an inbox Retry is waiting on. Cleared when the send goes
+    /// out, and cleared when the user selects a DIFFERENT chat instead
+    /// (E2E-CHAT-03).
     fn take_pending_retry(&mut self, cx: &mut Context<Self>) -> Option<String> {
         let chat_id = self.pending_retry.clone()?;
         let s = self.state.read(cx);
-        // Still on the way to that chat: wait for the next frame.
-        if s.selected_chat.as_deref() != Some(chat_id.as_str()) {
-            return None;
+        use crate::transcript::retry::Parked;
+        match crate::transcript::retry::parked_state(&chat_id, s.selected_chat.as_deref()) {
+            Parked::Arrived => {}
+            Parked::Wait => return None,
+            Parked::Disarm => {
+                self.pending_retry = None;
+                return None;
+            }
         }
-        // Selected, but the transcript has not landed yet. An empty
+        // Selected, but the transcript may not have landed. An empty
         // transcript is indistinguishable from "not arrived", so waiting is
-        // the safe read: a chat with no user turn simply never fires, which
-        // is the same outcome as sending nothing.
+        // the safe read - and the arm above bounds the wait, because
+        // navigating away disarms.
         let prompt = crate::transcript::retry::last_prompt(&s.transcript)?;
         self.pending_retry = None;
         Some(prompt)
@@ -1686,7 +1692,7 @@ impl Shell {
         // transcript is really on screen.
         if let Some(prompt) = self.take_pending_retry(cx) {
             self.composer
-                .update(cx, |composer, cx| composer.send_text(prompt, cx));
+                .update(cx, |composer, cx| composer.send_retry(prompt, cx));
         }
         if let Some(notice) = state.update(cx, |state, _| state.take_deep_link_notice()) {
             self.sidebar_notice = Some(notice.into());
@@ -2638,7 +2644,7 @@ impl Shell {
             TranscriptEvent::RetryTurn { prompt } => {
                 let prompt = prompt.clone();
                 self.composer
-                    .update(cx, |composer, cx| composer.send_text(prompt, cx));
+                    .update(cx, |composer, cx| composer.send_retry(prompt, cx));
             }
             // A card button's answer goes to the agent as the user's turn,
             // through the composer's send path so a live run is steered and
