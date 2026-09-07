@@ -313,6 +313,23 @@ pub enum StateOutcome {
     Reseeded,
 }
 
+/// What the registry knows about a chat id.
+///
+/// Three answers, not two. The registry tombstones rather than erases, so a
+/// chat that was deleted and a chat that has no row are separate facts, and
+/// callers deciding whether to revive a run read them opposite ways: a
+/// tombstone is a refusal, absence is how a brand-new chat starts and how a
+/// crash that beat the debounced registry write looks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatState {
+    /// A row is there and is not a tombstone.
+    Live,
+    /// A row is there and it is a tombstone: the chat was deleted.
+    Tombstoned,
+    /// No row at all: never written, or written and not yet synced here.
+    Unknown,
+}
+
 /// Bump to force every client ONE full resync on its next boot (persisted
 /// snapshots below this epoch zero their cursor on load). 1 = the
 /// cursor-jump healing (ack/gap fixes below).
@@ -654,7 +671,7 @@ impl RegistryDoc {
     }
 
     /// The same, keeping a tombstone. A deleted row is not the same fact as a
-    /// row that was never written, and one caller needs to tell them apart.
+    /// row that was never written, and [`Self::chat_state`] tells them apart.
     fn overlay_row_with_tombstones(&self, kind: &str, id: &str) -> Option<RegistryRow> {
         let mut row = self
             .authoritative
@@ -960,23 +977,30 @@ impl RegistryDoc {
         Ok(true)
     }
 
-    /// Has this chat's row been DELETED, as opposed to never written?
+    /// Live, tombstoned, or unknown. The one primitive the three chat-lifetime
+    /// guards read; [`Self::chat_tombstoned`] and [`Self::chat_exists`] are
+    /// its two boolean views.
     ///
-    /// The registry tombstones rather than erases, so the two are separable -
-    /// and they mean opposite things to a caller deciding whether to revive a
-    /// run. A chat with no row at all may simply predate a debounced write.
-    pub fn chat_tombstoned(&self, chat_id: &str) -> bool {
-        self.overlay_row_with_tombstones(KIND_CHATS, chat_id)
-            .is_some_and(|row| row.deleted)
+    /// Presence, not parse. [`Self::chat`] answers `None` for a row that is
+    /// present but malformed (`row_to` drops it), so it cannot be used to
+    /// decide "this chat is gone" - a live chat with one bad field would read
+    /// as deleted and lose every write a guard covers.
+    pub fn chat_state(&self, chat_id: &str) -> ChatState {
+        match self.overlay_row_with_tombstones(KIND_CHATS, chat_id) {
+            Some(row) if row.deleted => ChatState::Tombstoned,
+            Some(_) => ChatState::Live,
+            None => ChatState::Unknown,
+        }
     }
 
-    /// Does the chat have a row? Presence only.
-    ///
-    /// [`Self::chat`] answers `None` for a row that is present but malformed
-    /// (`row_to` drops it), so it cannot be used to decide "this chat is
-    /// gone" - a live chat with one bad field would read as deleted.
+    /// Has this chat's row been DELETED, as opposed to never written?
+    pub fn chat_tombstoned(&self, chat_id: &str) -> bool {
+        self.chat_state(chat_id) == ChatState::Tombstoned
+    }
+
+    /// Does the chat have a live row? A tombstone is not one.
     pub fn chat_exists(&self, chat_id: &str) -> bool {
-        self.row_exists(KIND_CHATS, chat_id)
+        self.chat_state(chat_id) == ChatState::Live
     }
 
     pub fn chat(&self, chat_id: &str) -> Result<Option<Chat>, DocError> {

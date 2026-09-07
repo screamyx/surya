@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use chrono::Utc;
 use tokio::sync::watch;
 
-use surya_doc::{DeletedSpace, REGISTRY_DOC_ID, RegistryDoc, WorkspaceDoc};
+use surya_doc::{ChatState, DeletedSpace, REGISTRY_DOC_ID, RegistryDoc, WorkspaceDoc};
 use surya_proto::{Chat, ChatConfig, Device, Session, Space, Task};
 use surya_sync::{DocsStore, RegistryClient, RegistryTuning};
 
@@ -860,17 +860,22 @@ impl WorkspaceHost {
         }
     }
 
+    /// Live, tombstoned, or unknown ([`RegistryDoc::chat_state`]). Presence,
+    /// not parse: a present-but-malformed row still reads Live, because
+    /// "cannot parse it" is not "it is gone".
+    pub fn chat_state(&self, chat_id: &str) -> ChatState {
+        self.read(|doc| doc.chat_state(chat_id))
+    }
+
     /// Was this chat's row deleted, as opposed to never written? The
     /// registry tombstones rather than erases, so the two are separable.
     pub fn chat_tombstoned(&self, chat_id: &str) -> bool {
-        self.read(|doc| doc.chat_tombstoned(chat_id))
+        self.chat_state(chat_id) == ChatState::Tombstoned
     }
 
-    /// Does the chat have a row? Presence only, like
-    /// [`RegistryDoc::chat_exists`]: a present-but-malformed row still counts
-    /// as there, because "cannot parse it" is not "it is gone".
+    /// Does the chat have a live row? A tombstone is not one.
     pub fn chat_exists(&self, chat_id: &str) -> bool {
-        self.read(|doc| doc.chat_exists(chat_id))
+        self.chat_state(chat_id) == ChatState::Live
     }
 
     /// Session-status row upsert (sessions engine transitions land here too, in
@@ -896,22 +901,25 @@ impl WorkspaceHost {
     /// A guard, not the ordering. Every dispatch path claims the chat before
     /// its first status mirror (`SessionsEngine::dispatch_with`), so a live
     /// chat always has a row by the time a transition arrives here.
+    ///
+    /// Unlike its siblings this one refuses Unknown as well as Tombstoned.
+    /// That is deliberate and unchanged: a claim mints the row it needs, so a
+    /// status arriving for a chat with no row is out of order, not early.
     pub fn record_session(&self, session: &Session) {
-        let result = self.mutate(|doc| {
-            if !doc.chat_exists(&session.chat_id) {
-                return None;
-            }
-            Some(doc.upsert_session(session))
+        let result = self.mutate(|doc| match doc.chat_state(&session.chat_id) {
+            ChatState::Live => Ok(doc.upsert_session(session)),
+            other => Err(other),
         });
         match result {
-            None => tracing::debug!(
+            Err(state) => tracing::debug!(
                 chat = %session.chat_id,
-                "session row refused: the chat has no row"
+                ?state,
+                "session row refused: the chat is not live"
             ),
-            Some(Err(err)) => {
+            Ok(Err(err)) => {
                 tracing::warn!(chat = %session.chat_id, error = %err, "registry session write failed")
             }
-            Some(Ok(())) => {}
+            Ok(Ok(())) => {}
         }
     }
 
