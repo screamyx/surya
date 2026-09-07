@@ -27,17 +27,26 @@ identical defaults. The following pairs are exact within this sandbox:
 | `bg-warning/14` | `.bg(theme.warning.opacity(0.14))` |
 | `text-ui-13` | `.text_size(ui_rems(13.0))` |
 | `font-medium`, `font-semibold` | `.font_weight(FontWeight::MEDIUM)`, `.font_weight(FontWeight::SEMIBOLD)` |
+| `font-sans`, `font-mono` | `.font_family(theme.font_sans.clone())`, `.font_family(theme.font_mono.clone())` |
+| `text-syntax-keyword` | `.text_color(theme.syntax.keyword)` |
 | `leading-normal` | `.line_height(relative(1.5))` |
 | `truncate` | `.truncate()` |
 | `overflow-y-scroll` | `.id("stable-id").overflow_y_scroll()` |
 | `hover:bg-element-hover` | `.hover(\|s\| s.bg(theme.element_hover))` |
 | `active:bg-element-active` | `.active(\|s\| s.bg(theme.element_active))` |
 | `focus:bg-element-hover` | `.track_focus(&handle).focus(\|s\| s.bg(theme.element_hover))` |
+| `focus-visible:border-accent` | `.track_focus(&handle).focus_visible(\|s\| s.border_color(theme.accent))` |
+| `focus-within:bg-surface` | `.track_focus(&handle).in_focus(\|s\| s.bg(theme.surface))` |
+| `group` on the parent, `group-hover:text-accent` on the child | `.group("id")` and `.group_hover("id", \|s\| s.text_color(theme.accent))` |
+| `group-active:bg-element-active` | `.group_active("id", \|s\| s.bg(theme.element_active))` |
 
 Alpha modifiers such as `bg-warning/14` are admitted only on opaque tokens (and
 the native `wash` helper). Tailwind multiplies existing alpha while GPUI
 `opacity()` replaces it, so modifiers on already-translucent tokens are rejected
-rather than silently changing the paint.
+rather than silently changing the paint. Which tokens qualify is derived from
+`src/theme.ts`, not listed by hand: a token that is opaque in both appearances
+may carry a modifier. `text-dim` linted clean and painted nothing for months
+after the Rust theme dropped the field, which is what a hand-written list buys.
 
 Numeric spacing uses Tailwind's 0.25rem unit, not pixels. At the default 16px root,
 `p-2` is 8px. Rust uses both fixed `px` and scalable `ui_rems`; preserve the original
@@ -49,20 +58,171 @@ also set a different line height. Generated `text-ui-*` preserves GPUI default
 
 ## Banned constructs and unsupported semantics
 
-No grid, transitions, animation, responsive prefixes, arbitrary values/properties,
-negative or important modifiers, selectors, pseudo-elements, group/peer/data/aria
-variants, transforms, filters, backdrop blur, CSS variables in classes, gradients,
-CSS shadows, sticky/fixed positioning, tables, or CSS outside the generated Tailwind
-entry. No inline `style`, stylesheet injection, DOM mutation, JSX spreads, dynamic
-class construction, or unreviewed imports. Literal classes or ternaries of complete
-literal class lists are allowed. The lint fails closed on other expressions.
+No grid, responsive prefixes, arbitrary values or properties, negative or
+important modifiers, selectors, pseudo-elements, peer/data/aria variants,
+transforms, filters, backdrop blur, CSS variables in classes, gradients, CSS
+shadows, sticky/fixed positioning, tables, or CSS outside the generated Tailwind
+entry. No inline `style`, stylesheet injection, DOM mutation, JSX spreads,
+dynamic class construction, or unreviewed imports. Literal classes or ternaries
+of complete literal class lists are allowed. The lint fails closed on other
+expressions.
 
-Some of these exist in the fork (including grid and animation). They are excluded
-by this portable subset because a Tailwind spelling alone does not capture the
-native layout or lifecycle contract. Browser-only APIs such as sticky positioning,
-pseudo-elements, media queries and DOM effects have no direct admitted GPUI pair.
-Do not silently widen the whitelist to make a browser design pass. Add the verified
-method mapping, generator rule, rejection tests and guide explanation together.
+Some of these exist in the fork (including grid). They are excluded by this
+portable subset because a Tailwind spelling alone does not capture the native
+layout or lifecycle contract. Do not silently widen the whitelist to make a
+browser design pass. Add the verified method mapping, generator rule, rejection
+tests and guide explanation together.
+
+## Type and code colour
+
+`font-mono` is `theme.font_mono`, which is Geist Mono. Use it for the diff
+viewer, the terminal, transcript code blocks and the file editor, the same four
+surfaces the native app puts it on.
+
+`scripts/gen-theme.mjs` ships exactly the faces `ui/src/typography.rs` registers
+with gpui: eight Geist and eight Geist Mono, in weights 400, 500, 600 and 700
+with an italic of each. Before this, three sans faces shipped and the browser
+synthesized `font-bold` and `italic` from the regular weight, which is not what
+the native pane draws. The face list, the `@font-face` rules and the files under
+`public/fonts` all come from that one Rust array.
+
+`theme.font_sans_fixed` gets no class. It is a distinct `Theme` field but it
+names the same family as `font_sans` in both appearances, which `theme.rs`
+asserts at line 2571. The generator throws rather than guessing if that changes.
+
+### Syntax
+
+`Theme::syntax` is a `SyntaxPalette`, not an `Hsla`, so it never reached the
+scalar token sweep and every code line in a ported screen painted flat at
+`text-text/88`. That is the native colour of an unhighlighted line, so a
+highlighted pane looked like a plain one.
+
+All 24 fields are now tokens, admitted on `text-` only, because
+`SyntaxPalette` is paint-only and every Rust call site reads it through
+`.text_color()`.
+
+| Tailwind | GPUI |
+|---|---|
+| `text-syntax-comment` | `.text_color(theme.syntax.comment)` |
+| `text-syntax-keyword` | `.text_color(theme.syntax.keyword)` |
+| `text-syntax-string`, `-string-special`, `-escape` | `theme.syntax.string`, `.string_special`, `.escape` |
+| `text-syntax-number`, `-boolean`, `-constant` | `theme.syntax.number`, `.boolean`, `.constant` |
+| `text-syntax-type-name`, `-type-builtin`, `-constructor` | `theme.syntax.type_name`, `.type_builtin`, `.constructor` |
+| `text-syntax-function`, `-function-builtin`, `-macro-name` | `theme.syntax.function`, `.function_builtin`, `.macro_name` |
+| `text-syntax-property`, `-variable`, `-variable-special`, `-parameter` | the same fields |
+| `text-syntax-operator`, `-punctuation`, `-tag`, `-attribute`, `-label` | the same fields |
+| `text-syntax-invalid` | `.text_color(theme.syntax.invalid)` |
+
+Each token is the colour `SyntaxPalette::color()` returns for the matching
+`surya_syntax::HighlightKind`. There is no `text-syntax-embedded`: `Embedded`
+is a `HighlightKind` that `color()` paints with `punctuation`, so it is not a
+field and gets no token of its own.
+
+The resolved values are not `SyntaxPalette::dark()`. `from_variant` overrides
+every field from the theme variant's twelve seed colours through
+`builtins.rs::syntax()`, and that is the chain the generator follows. It throws
+if a field would fall back to the built-in `oklch()` expressions, which the
+colour reader cannot evaluate.
+
+## Motion
+
+Animation is admitted, and only as the native catalog. `app/crates/ui/src/motion.rs`
+and `app/crates/proto/src/motion.rs` are the source; `scripts/motion.mjs` reads
+every duration, delay, curve and endpoint out of them and emits both the
+whitelist entries and the `@keyframes`, `@utility` and reduced-motion rules in
+`src/tailwind.css`. Both files are recorded with their sha256 in
+`whitelist.json`'s `sources` and in `src/theme.ts`'s `provenance`, so a curve
+change in Rust turns `npm run lint` red.
+
+There is no free duration, delay or easing utility. `duration-500`,
+`ease-[cubic-bezier(0.16,1,0.3,1)]`, `transition-colors` and `animate-spin` are
+all rejected. A designer picks a catalog entry or does not animate: a 320ms
+tween that reads well in the browser is a value the native app cannot produce.
+
+### Entrances and exits
+
+Each of these is one `motion.rs` helper, wrapped in Rust as
+`with_animation(id, SPEC.animation(), ...)`.
+
+| Tailwind | GPUI | Spec |
+|---|---|---|
+| `motion-fade-in` | `motion::fade_in(id, element)` | 500ms `EASE_OUT_EXPO`, opacity 0 to 1, top 4px to 0 |
+| `motion-fade-quick` | `motion::fade_quick(id, element)` | 150ms `EASE`, opacity 0 to 1 |
+| `motion-menu-in` | `motion::menu_in(id, element)` | 140ms `EASE`, opacity 0.3 to 1, top -2px to 0 |
+| `motion-menu-out` | `motion::menu_out(id, t, element)` | 100ms `EASE`, opacity 1 to 0, top 0 to -2px |
+| `motion-dialog-in` | `motion::dialog_in(id, element)` | 180ms `EASE`, opacity 0 to 1, top 2px to 0 |
+| `motion-splash-out` | `motion::splash_out(id, element)` | 500ms `EASE` after a 150ms hold, opacity 1 to 0, top 0 to -6px |
+| `motion-chevron` | `changes.rs` fold chevron over `motion::CHEVRON` | 200ms `EASE`, opacity 0.25 to 1 |
+
+`motion-fade-in`, `motion-menu-in`, `motion-menu-out`, `motion-dialog-in` and
+`motion-tab-slide` move a relative inset, so they need `relative` or `absolute`
+on the same element. The lint rejects them without one. This is not a style
+rule: a GPUI `Style::default()` is `Position::Relative` and a CSS box is
+`static`, so a `top` the native app paints does nothing in the browser.
+
+### Transitions
+
+These four are hand-rolled tweens in Rust rather than `with_animation`, so the
+class carries the catalog timing and the properties its call sites blend.
+
+| Tailwind | GPUI |
+|---|---|
+| `motion-hover-fade` | `motion::hover_blend(key, rest, hover)` with `.on_hover(motion::hover_listener(key))`, 150ms `EASE_TAILWIND` on color, background and border |
+| `motion-resize` | `shell.rs` `WidthTween` over `motion::RESIZE`, 200ms `EASE_OUT` on width and height |
+| `motion-collapse` | `changes.rs` fold body over `motion::COLLAPSE`, 180ms `EASE_OUT` on height |
+| `motion-tab-slide` | `terminal/panel.rs` tab reorder over `motion::TAB_SLIDE`, 150ms `EASE_OUT` on left |
+
+GPUI `.hover()` snaps by construction. `motion-hover-fade` is the browser
+spelling of the manual blend the native app runs so a hover wash fades instead.
+A hover that is meant to snap simply omits it.
+
+### Loaders
+
+Both loaders paint one repeating cell per grid position, offset by a phase the
+pure math in `proto/src/motion.rs` computes. A negative CSS `animation-delay`
+is that same offset, so each position gets its own class and there is no
+arbitrary per-cell value to write.
+
+| Tailwind | GPUI |
+|---|---|
+| `motion-surya-pulse-0` to `-4` | `loaders.rs::surya_loader` cell i, `motion::staggered_phase(delta, i, PULSE_STAGGER)`, 2400ms, opacity 0.08 to 1 and size 90% to 100% |
+| `motion-gradient-spin-0` to `-3` | `loaders.rs::gradient_spinner` cell at distance d, `proto::gspin_cell_phase`, 750ms, opacity 1 to 0.1 and back |
+
+The pulse cell breathes inside a fixed slot, exactly as in Rust: put the cell in
+a sized parent and let the keyframes drive its percentage width and height. The
+gradient spinner is a 3x3 grid whose cell distances are `[[3,2,3],[2,1,2],[1,0,1]]`.
+
+### Reduced motion
+
+`App::reduce_motion` is honored by every `with_animation` element in gpui:
+oneshots snap to their end state, repeating ones to phase zero, and no frames
+are scheduled. Media queries are banned in classes, so the browser equivalent is
+generated once into `src/tailwind.css` as an unlayered
+`@media (prefers-reduced-motion: reduce)` block that pins each `motion-*` class
+to that same rest or end state. It sits outside Tailwind's layers, so it wins
+without `!important`. No screen spells the preference, the same way no Rust
+caller does.
+
+### What is not admitted
+
+- **Scale and rotate.** GPUI divs have no scale or rotate transform at the
+  pinned revision, only `svg` transformations. `motion.rs` says so itself, and
+  `menu_in`/`dialog_in` approximate their CSS scale component with fade plus
+  translate. `scale-95` and `rotate-90` are rejected, and the browser gets the
+  same approximation the native app paints.
+- **`disabled:`.** GPUI has `hover`, `active`, `focus`, `focus_visible`,
+  `in_focus`, `group_hover` and `group_active` and no disabled style at all.
+  A disabled control is a different literal class list, not a variant.
+- **`motion-safe:` and `motion-reduce:`.** Media-query variants. The generated
+  block above covers the one preference that has a native pair.
+- **`SCROLL_GLIDE`.** `rail.rs` drives 500ms `EASE_IN_OUT` over `scrollTop`
+  itself. CSS `scroll-behavior: smooth` picks its own duration, so there is no
+  honest class.
+- **The animated surya mark.** `loaders.rs::surya_mark_loader` staggers 34
+  cells along a flight axis; that is 34 arbitrary delays, not a finite set.
+- **The sidebar chevron rotation.** `shell/spaces.rs` rotates an svg through
+  `Transformation::rotate` over `COLLAPSE`. `motion-chevron` is the diff pane's
+  crossfade, which is a different element.
 
 ## State and events
 
@@ -171,6 +331,29 @@ The toolkit's independent JSON palette is not the app palette.
   the native theme first, not in sandbox-only overrides.
 - This desktop frame keeps the native fixed sidebar and gutters. Narrow mobile
   screens are not a new design target; no responsive rules are added.
+- `whitelist.json` still records GPUI revision `a07e9577ec788feb73c06fe7e307a3df8adaa895`
+  while `app/Cargo.toml` now pins `3640743b70a6e4647d90249fc6ccc5398322648a`. The
+  motion work did not rebase the whitelist onto the newer revision; nothing here
+  was read from it. Regenerating against the new pin is its own change.
+- The gradient spinner's per-row tints are raw hex in
+  `proto::motion::GSPIN_ROW_TINTS`, not theme tokens, so the sandbox has no
+  admitted color for them. `motion-gradient-spin-*` carries the timing only and
+  a screen picks an admitted token for the cell fill.
+- Reduced motion is generated into the stylesheet, so a screen cannot opt out of
+  it or preview it by writing a class. Preview it with the browser preference.
+- `motion-collapse` and `motion-tab-slide` are CSS transitions between two class
+  lists, while Rust drives them as `with_animation` elements from measured
+  pixel values. The timing matches; the trigger does not, and a port back has to
+  restore the tween and its epoch key.
+- The syntax tokens resolve the two comet variants, the same as every other
+  token. A user-supplied theme that seeds fewer than the twelve syntax colours
+  would fall back to `SyntaxPalette::dark()`, whose `oklch()` and
+  `git_graph_tone()` expressions `scripts/rust-colors.mjs` cannot evaluate. The
+  generator throws in that case rather than emitting a guessed colour.
+- Highlighting itself is not ported. A screen spells the token per span; the
+  parser, the capture precedence and `HighlightKind` stay in Rust.
+- `theme.terminal` (`TerminalColors`, the ANSI16 palette) is still not a token.
+  A ported terminal has the mono family but not its own colours.
 
 ## Documentation
 

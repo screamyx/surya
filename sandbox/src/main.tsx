@@ -5,11 +5,16 @@ import { Shell } from './shell';
 import type { Appearance } from './theme';
 import type { Fixture } from './fixtures';
 import { seededRows } from './fixtures';
+import type { ScreenId } from './preview/gallery';
+import { Gallery, screenMenu } from './preview/gallery';
 import './tailwind.css';
 const query = new URLSearchParams(window.location.search);
+const asked = query.get('screen') ?? '';
+const first: ScreenId | 'shell' = screenMenu.some(s => s.id === asked) ? (asked as ScreenId) : 'shell';
 function Preview() {
   const [theme, setTheme] = useState<Appearance>(query.get('theme') === 'light' ? 'light' : 'dark');
   const [fixture, setFixture] = useState<Fixture>(query.get('state') === 'empty' ? 'empty' : 'seeded');
+  const [screen, setScreen] = useState<ScreenId | 'shell'>(first);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [event, setEvent] = useState('');
   const rows = fixture === 'seeded' ? seededRows : [];
@@ -18,11 +23,18 @@ function Preview() {
     else setEvent(`Preview event: ${action}`);
   }
   return <div data-theme={theme} className="h-full relative font-sans">
-    <Shell rows={rows} fixture={fixture} sidebarOpen={sidebarOpen} onEvent={onEvent}
-      onOpenChat={id => onEvent(`OpenChat(${id})`)} />
+    {screen === 'shell'
+      ? <Shell rows={rows} fixture={fixture} sidebarOpen={sidebarOpen} onEvent={onEvent}
+          onOpenChat={id => onEvent(`OpenChat(${id})`)} />
+      : <Gallery screen={screen} fixture={fixture} onEvent={onEvent} />}
     {(query.get('proof') !== '1' || event) && <div className="absolute bottom-4 right-4 flex flex-col gap-2 p-3 rounded-lg border border-border bg-surface-overlay text-text text-ui-12">
       {query.get('proof') !== '1' && <div className="flex items-center gap-2">
         <span className="text-text-faint">Preview</span>
+        <select aria-label="Screen" value={screen} onChange={e => setScreen(e.target.value as ScreenId | 'shell')}
+          className="px-2 py-1 rounded-md border border-border-strong bg-surface text-text cursor-pointer hover:bg-element-hover focus:bg-element-hover">
+          <option value="shell">Shell</option>
+          {screenMenu.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+        </select>
         <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="px-2 py-1 rounded-md border border-border-strong cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover">{theme === 'dark' ? 'Use light' : 'Use dark'}</button>
         <button type="button" onClick={() => setFixture(fixture === 'seeded' ? 'empty' : 'seeded')} className="px-2 py-1 rounded-md border border-border-strong cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover">{fixture === 'seeded' ? 'Show empty' : 'Show seeded'}</button>
       </div>}

@@ -25,8 +25,16 @@ export function lintSource(source, file = 'src/Example.tsx', contract) {
     if (ts.isJsxExpression(node) || ts.isParenthesizedExpression(node)) {
       if (node.expression) classes(node.expression); else fail(node, 'Empty class expression');
     } else if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-      for (const cls of node.text.trim().split(/\s+/).filter(Boolean)) {
+      const list = node.text.trim().split(/\s+/).filter(Boolean);
+      for (const cls of list) {
         if (!allowedClass(cls)) fail(node, `Class not in whitelist: ${cls}`);
+      }
+      // A gpui div is Position::Relative by default and a CSS box is static, so
+      // an animation that moves a relative inset paints nothing in the browser
+      // unless the same element is positioned. See whitelist.motionNeedsPosition.
+      const moving = list.find(cls => whitelist.motionNeedsPosition.includes(cls));
+      if (moving && !list.some(cls => cls === 'relative' || cls === 'absolute')) {
+        fail(node, `${moving} moves a relative inset: pair it with relative or absolute`);
       }
     } else if (ts.isConditionalExpression(node)) {
       classes(node.whenTrue); classes(node.whenFalse);

@@ -2,8 +2,21 @@
 @import "tailwindcss" source(none);
 @source "./**/*.{ts,tsx}";
 @font-face { font-family: "Geist"; src: url("/fonts/Geist.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/fonts/Geist-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
 @font-face { font-family: "Geist"; src: url("/fonts/Geist-Medium.ttf") format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/fonts/Geist-MediumItalic.ttf") format("truetype"); font-weight: 500; font-style: italic; font-display: swap; }
 @font-face { font-family: "Geist"; src: url("/fonts/Geist-SemiBold.ttf") format("truetype"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/fonts/Geist-SemiBoldItalic.ttf") format("truetype"); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/fonts/Geist-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist"; src: url("/fonts/Geist-BoldItalic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/GeistMono.ttf") format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/GeistMono-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/GeistMono-Medium.ttf") format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/GeistMono-MediumItalic.ttf") format("truetype"); font-weight: 500; font-style: italic; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/GeistMono-SemiBold.ttf") format("truetype"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/GeistMono-SemiBoldItalic.ttf") format("truetype"); font-weight: 600; font-style: italic; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/GeistMono-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+@font-face { font-family: "Geist Mono"; src: url("/fonts/GeistMono-BoldItalic.ttf") format("truetype"); font-weight: 700; font-style: italic; font-display: swap; }
 @theme inline {
   --color-*: initial;
   --color-bg: var(--surya-bg);
@@ -47,7 +60,32 @@
   --color-diff-hunk-bg: var(--surya-diff-hunk-bg);
   --color-wash: var(--surya-wash);
   --color-claude-brand: var(--surya-claude-brand);
+  --color-syntax-comment: var(--surya-syntax-comment);
+  --color-syntax-keyword: var(--surya-syntax-keyword);
+  --color-syntax-string: var(--surya-syntax-string);
+  --color-syntax-string-special: var(--surya-syntax-string-special);
+  --color-syntax-escape: var(--surya-syntax-escape);
+  --color-syntax-number: var(--surya-syntax-number);
+  --color-syntax-boolean: var(--surya-syntax-boolean);
+  --color-syntax-type-name: var(--surya-syntax-type-name);
+  --color-syntax-type-builtin: var(--surya-syntax-type-builtin);
+  --color-syntax-constructor: var(--surya-syntax-constructor);
+  --color-syntax-function: var(--surya-syntax-function);
+  --color-syntax-function-builtin: var(--surya-syntax-function-builtin);
+  --color-syntax-macro-name: var(--surya-syntax-macro-name);
+  --color-syntax-property: var(--surya-syntax-property);
+  --color-syntax-constant: var(--surya-syntax-constant);
+  --color-syntax-variable: var(--surya-syntax-variable);
+  --color-syntax-variable-special: var(--surya-syntax-variable-special);
+  --color-syntax-parameter: var(--surya-syntax-parameter);
+  --color-syntax-operator: var(--surya-syntax-operator);
+  --color-syntax-punctuation: var(--surya-syntax-punctuation);
+  --color-syntax-tag: var(--surya-syntax-tag);
+  --color-syntax-attribute: var(--surya-syntax-attribute);
+  --color-syntax-label: var(--surya-syntax-label);
+  --color-syntax-invalid: var(--surya-syntax-invalid);
   --font-sans: "Geist", sans-serif;
+  --font-mono: "Geist Mono", monospace;
   --text-ui-10: 0.625rem;
   --text-ui-10--line-height: round(nearest, 1.618034em, 1px);
   --text-ui-11: 0.6875rem;
@@ -106,6 +144,30 @@
   --surya-diff-hunk-bg: rgb(139 124 246 / 0.078431);
   --surya-wash: rgb(234.60000000000002 234.60000000000002 234.60000000000002 / 1);
   --surya-claude-brand: rgb(217 119 87 / 1);
+  --surya-syntax-comment: rgb(146 146 154 / 1);
+  --surya-syntax-keyword: rgb(139 124 246 / 1);
+  --surya-syntax-string: rgb(52 211 153 / 1);
+  --surya-syntax-string-special: rgb(34 211 238 / 1);
+  --surya-syntax-escape: rgb(34 211 238 / 1);
+  --surya-syntax-number: rgb(250 204 21 / 1);
+  --surya-syntax-boolean: rgb(250 204 21 / 1);
+  --surya-syntax-type-name: rgb(192 132 252 / 1);
+  --surya-syntax-type-builtin: rgb(192 132 252 / 1);
+  --surya-syntax-constructor: rgb(192 132 252 / 1);
+  --surya-syntax-function: rgb(96 165 250 / 1);
+  --surya-syntax-function-builtin: rgb(96 165 250 / 1);
+  --surya-syntax-macro-name: rgb(139 124 246 / 1);
+  --surya-syntax-property: rgb(244 114 182 / 1);
+  --surya-syntax-constant: rgb(250 204 21 / 1);
+  --surya-syntax-variable: rgb(232 232 234 / 1);
+  --surya-syntax-variable-special: rgb(139 124 246 / 1);
+  --surya-syntax-parameter: rgb(232 232 234 / 1);
+  --surya-syntax-operator: rgb(139 124 246 / 1);
+  --surya-syntax-punctuation: rgb(161 161 170 / 1);
+  --surya-syntax-tag: rgb(244 114 182 / 1);
+  --surya-syntax-attribute: rgb(34 211 238 / 1);
+  --surya-syntax-label: rgb(96 165 250 / 1);
+  --surya-syntax-invalid: rgb(248 113 113 / 1);
 }
 [data-theme="light"] {
   --surya-bg: rgb(255 255 255 / 1);
@@ -149,5 +211,148 @@
   --surya-diff-hunk-bg: rgb(91 67 232 / 0.070588);
   --surya-wash: rgb(25.5 25.5 25.5 / 1);
   --surya-claude-brand: rgb(217 119 87 / 1);
+  --surya-syntax-comment: rgb(107 114 128 / 1);
+  --surya-syntax-keyword: rgb(91 67 232 / 1);
+  --surya-syntax-string: rgb(21 128 61 / 1);
+  --surya-syntax-string-special: rgb(14 116 144 / 1);
+  --surya-syntax-escape: rgb(14 116 144 / 1);
+  --surya-syntax-number: rgb(161 98 7 / 1);
+  --surya-syntax-boolean: rgb(161 98 7 / 1);
+  --surya-syntax-type-name: rgb(126 34 206 / 1);
+  --surya-syntax-type-builtin: rgb(126 34 206 / 1);
+  --surya-syntax-constructor: rgb(126 34 206 / 1);
+  --surya-syntax-function: rgb(37 99 235 / 1);
+  --surya-syntax-function-builtin: rgb(37 99 235 / 1);
+  --surya-syntax-macro-name: rgb(91 67 232 / 1);
+  --surya-syntax-property: rgb(190 24 93 / 1);
+  --surya-syntax-constant: rgb(161 98 7 / 1);
+  --surya-syntax-variable: rgb(48 48 53 / 1);
+  --surya-syntax-variable-special: rgb(91 67 232 / 1);
+  --surya-syntax-parameter: rgb(48 48 53 / 1);
+  --surya-syntax-operator: rgb(91 67 232 / 1);
+  --surya-syntax-punctuation: rgb(82 82 91 / 1);
+  --surya-syntax-tag: rgb(190 24 93 / 1);
+  --surya-syntax-attribute: rgb(14 116 144 / 1);
+  --surya-syntax-label: rgb(37 99 235 / 1);
+  --surya-syntax-invalid: rgb(185 28 28 / 1);
 }
 html, body, #root { height: 100%; }
+/* Motion catalog, generated from app/crates/{ui,proto}/src/motion.rs. */
+@keyframes surya-fade-in { from { opacity: 0; top: 4px; } to { opacity: 1; top: 0px; } }
+@keyframes surya-fade-quick { from { opacity: 0; } to { opacity: 1; } }
+@keyframes surya-menu-in { from { opacity: 0.3; top: -2px; } to { opacity: 1; top: 0px; } }
+@keyframes surya-menu-out { from { opacity: 1; top: 0px; } to { opacity: 0; top: -2px; } }
+@keyframes surya-dialog-in { from { opacity: 0; top: 2px; } to { opacity: 1; top: 0px; } }
+@keyframes surya-splash-out { from { opacity: 1; top: 0px; } to { opacity: 0; top: -6px; } }
+@keyframes surya-chevron { from { opacity: 0.25; } to { opacity: 1; } }
+@keyframes surya-pulse {
+  0% { opacity: 0.08; width: 90%; height: 90%; }
+  5% { opacity: 0.1025; width: 90.2447%; height: 90.2447%; }
+  10% { opacity: 0.1679; width: 90.9549%; height: 90.9549%; }
+  15% { opacity: 0.2696; width: 92.0611%; height: 92.0611%; }
+  20% { opacity: 0.3979; width: 93.4549%; height: 93.4549%; }
+  25% { opacity: 0.54; width: 95%; height: 95%; }
+  30% { opacity: 0.6821; width: 96.5451%; height: 96.5451%; }
+  35% { opacity: 0.8104; width: 97.9389%; height: 97.9389%; }
+  40% { opacity: 0.9121; width: 99.0451%; height: 99.0451%; }
+  45% { opacity: 0.9775; width: 99.7553%; height: 99.7553%; }
+  50% { opacity: 1; width: 100%; height: 100%; }
+  55% { opacity: 0.9775; width: 99.7553%; height: 99.7553%; }
+  60% { opacity: 0.9121; width: 99.0451%; height: 99.0451%; }
+  65% { opacity: 0.8104; width: 97.9389%; height: 97.9389%; }
+  70% { opacity: 0.6821; width: 96.5451%; height: 96.5451%; }
+  75% { opacity: 0.54; width: 95%; height: 95%; }
+  80% { opacity: 0.3979; width: 93.4549%; height: 93.4549%; }
+  85% { opacity: 0.2696; width: 92.0611%; height: 92.0611%; }
+  90% { opacity: 0.1679; width: 90.9549%; height: 90.9549%; }
+  95% { opacity: 0.1025; width: 90.2447%; height: 90.2447%; }
+  100% { opacity: 0.08; width: 90%; height: 90%; }
+}
+@keyframes surya-gradient-spin {
+  0% { opacity: 1; }
+  45% { opacity: 0.1; }
+  92% { opacity: 0.1; }
+  100% { opacity: 1; }
+}
+@utility motion-fade-in {
+  animation: surya-fade-in 500ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@utility motion-fade-quick {
+  animation: surya-fade-quick 150ms cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+@utility motion-menu-in {
+  animation: surya-menu-in 140ms cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+@utility motion-menu-out {
+  animation: surya-menu-out 100ms cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+@utility motion-dialog-in {
+  animation: surya-dialog-in 180ms cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+@utility motion-splash-out {
+  animation: surya-splash-out 500ms cubic-bezier(0.25, 0.1, 0.25, 1) 150ms both;
+}
+@utility motion-chevron {
+  animation: surya-chevron 200ms cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+@utility motion-hover-fade {
+  transition: color 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+@utility motion-resize {
+  transition: width 200ms cubic-bezier(0, 0, 0.58, 1), height 200ms cubic-bezier(0, 0, 0.58, 1);
+}
+@utility motion-collapse {
+  transition: height 180ms cubic-bezier(0, 0, 0.58, 1);
+}
+@utility motion-tab-slide {
+  transition: left 150ms cubic-bezier(0, 0, 0.58, 1);
+}
+@utility motion-surya-pulse-0 {
+  animation: surya-pulse 2400ms linear -2400ms infinite;
+}
+@utility motion-surya-pulse-1 {
+  animation: surya-pulse 2400ms linear -2250ms infinite;
+}
+@utility motion-surya-pulse-2 {
+  animation: surya-pulse 2400ms linear -2100ms infinite;
+}
+@utility motion-surya-pulse-3 {
+  animation: surya-pulse 2400ms linear -1950ms infinite;
+}
+@utility motion-surya-pulse-4 {
+  animation: surya-pulse 2400ms linear -1800ms infinite;
+}
+@utility motion-gradient-spin-0 {
+  animation: surya-gradient-spin 750ms linear 0ms infinite;
+}
+@utility motion-gradient-spin-1 {
+  animation: surya-gradient-spin 750ms linear -187.5ms infinite;
+}
+@utility motion-gradient-spin-2 {
+  animation: surya-gradient-spin 750ms linear -375ms infinite;
+}
+@utility motion-gradient-spin-3 {
+  animation: surya-gradient-spin 750ms linear -562.5ms infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .motion-fade-in { animation: none; transition: none; opacity: 1; top: 0px; }
+  .motion-fade-quick { animation: none; transition: none; opacity: 1; }
+  .motion-menu-in { animation: none; transition: none; opacity: 1; top: 0px; }
+  .motion-menu-out { animation: none; transition: none; opacity: 0; top: -2px; }
+  .motion-dialog-in { animation: none; transition: none; opacity: 1; top: 0px; }
+  .motion-splash-out { animation: none; transition: none; opacity: 0; top: -6px; }
+  .motion-chevron { animation: none; transition: none; opacity: 1; }
+  .motion-hover-fade { animation: none; transition: none; }
+  .motion-resize { animation: none; transition: none; }
+  .motion-collapse { animation: none; transition: none; }
+  .motion-tab-slide { animation: none; transition: none; }
+  .motion-surya-pulse-0 { animation: none; transition: none; opacity: 0.08; width: 90%; height: 90%; }
+  .motion-surya-pulse-1 { animation: none; transition: none; opacity: 0.115; width: 90.3806%; height: 90.3806%; }
+  .motion-surya-pulse-2 { animation: none; transition: none; opacity: 0.2147; width: 91.4645%; height: 91.4645%; }
+  .motion-surya-pulse-3 { animation: none; transition: none; opacity: 0.364; width: 93.0866%; height: 93.0866%; }
+  .motion-surya-pulse-4 { animation: none; transition: none; opacity: 0.54; width: 95%; height: 95%; }
+  .motion-gradient-spin-0 { animation: none; transition: none; opacity: 1; }
+  .motion-gradient-spin-1 { animation: none; transition: none; opacity: 0.5; }
+  .motion-gradient-spin-2 { animation: none; transition: none; opacity: 0.1; }
+  .motion-gradient-spin-3 { animation: none; transition: none; opacity: 0.1; }
+}

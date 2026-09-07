@@ -3,24 +3,39 @@
   "defaultLineHeight": 1.618034,
   "sources": [
     {
+      "origin": "gpui",
       "path": "crates/gpui/src/styled.rs",
       "sha256": "02867cf3e34756a2d99dc6b5777c758263c07a280f27f527498f17e9ed17f268"
     },
     {
+      "origin": "gpui",
       "path": "crates/gpui_macros/src/styles.rs",
       "sha256": "5fbd5dac9b7cdc954860a018f6b6925e49c82b4dcfe29424ecea828d47a3ff40"
     },
     {
+      "origin": "gpui",
       "path": "crates/gpui/src/elements/div.rs",
       "sha256": "a9039d28f58848b6cdccec33463c1a7698202e4f84d4f6c5ad9ad286c821518d"
     },
     {
+      "origin": "gpui",
       "path": "crates/gpui/src/geometry.rs",
       "sha256": "e4841901151cd2ce42f8599754671bd7ec45ab49ce88e9d0708ba93ee32b7a39"
     },
     {
+      "origin": "gpui",
       "path": "crates/gpui/src/style.rs",
       "sha256": "d0e09cedcf3861f219d91d16c4e3d96bacee158dc2e0d7c3a371e6cb7ec933ad"
+    },
+    {
+      "origin": "surya",
+      "path": "app/crates/ui/src/motion.rs",
+      "sha256": "34fb5dad9858a138c62d0a1b3b883c68309592987a2ad2bbc4e1eb2223ca7d08"
+    },
+    {
+      "origin": "surya",
+      "path": "app/crates/proto/src/motion.rs",
+      "sha256": "5c3684a75203f0db21dd077f93e506a1b9f91c86a860adb20244c07a44d9bcb1"
     }
   ],
   "exact": {
@@ -103,6 +118,7 @@
     "font-semibold": ".font_weight(FontWeight::SEMIBOLD)",
     "font-bold": ".font_weight(FontWeight::BOLD)",
     "font-sans": ".font_family(theme.font_sans.clone())",
+    "font-mono": ".font_family(theme.font_mono.clone())",
     "leading-normal": ".line_height(relative(1.5))",
     "leading-gpui": ".line_height(phi())",
     "leading-none": ".line_height(relative(1.0))",
@@ -116,7 +132,28 @@
     "opacity-0": ".opacity(0)",
     "opacity-50": ".opacity(0.5)",
     "opacity-55": ".opacity(0.55)",
-    "opacity-100": ".opacity(1)"
+    "opacity-100": ".opacity(1)",
+    "motion-fade-in": "crate::motion::fade_in(\"stable-id\", element)",
+    "motion-fade-quick": "crate::motion::fade_quick(\"stable-id\", element)",
+    "motion-menu-in": "crate::motion::menu_in(\"stable-id\", element)",
+    "motion-menu-out": "crate::motion::menu_out(\"stable-id\", t, element)",
+    "motion-dialog-in": "crate::motion::dialog_in(\"stable-id\", element)",
+    "motion-splash-out": "crate::motion::splash_out(\"stable-id\", element)",
+    "motion-chevron": "changes.rs fold chevron over motion::CHEVRON",
+    "motion-hover-fade": "motion::hover_blend(key, rest, hover) with .on_hover(motion::hover_listener(key))",
+    "motion-resize": "shell.rs WidthTween over motion::RESIZE",
+    "motion-collapse": "changes.rs fold body over motion::COLLAPSE",
+    "motion-tab-slide": "terminal/panel.rs tab reorder over motion::TAB_SLIDE",
+    "motion-surya-pulse-0": "loaders.rs::surya_loader cell 0 (motion::staggered_phase(delta, 0, PULSE_STAGGER))",
+    "motion-surya-pulse-1": "loaders.rs::surya_loader cell 1 (motion::staggered_phase(delta, 1, PULSE_STAGGER))",
+    "motion-surya-pulse-2": "loaders.rs::surya_loader cell 2 (motion::staggered_phase(delta, 2, PULSE_STAGGER))",
+    "motion-surya-pulse-3": "loaders.rs::surya_loader cell 3 (motion::staggered_phase(delta, 3, PULSE_STAGGER))",
+    "motion-surya-pulse-4": "loaders.rs::surya_loader cell 4 (motion::staggered_phase(delta, 4, PULSE_STAGGER))",
+    "motion-gradient-spin-0": "loaders.rs::gradient_spinner cell at distance 0 (proto::gspin_cell_phase)",
+    "motion-gradient-spin-1": "loaders.rs::gradient_spinner cell at distance 1 (proto::gspin_cell_phase)",
+    "motion-gradient-spin-2": "loaders.rs::gradient_spinner cell at distance 2 (proto::gspin_cell_phase)",
+    "motion-gradient-spin-3": "loaders.rs::gradient_spinner cell at distance 3 (proto::gspin_cell_phase)",
+    "group": ".group(\"stable-id\")"
   },
   "families": [
     {
@@ -261,7 +298,7 @@
     },
     {
       "prefix": "bg-",
-      "suffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "element-hover", "element-active", "border", "border-strong", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "accent-wash", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "warning-wash", "success", "busy", "success-muted", "surface-raised-hover", "band", "input-bg", "selection", "cursor", "caret", "danger-strong", "code-text", "code-wash", "diff-add", "diff-del", "diff-hunk-bg", "wash", "claude-brand"],
+      "suffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "element-hover", "element-active", "border", "border-strong", "text", "text-muted", "text-faint", "solid", "on-solid", "accent", "accent-strong", "accent-wash", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "warning-wash", "success", "busy", "success-muted", "surface-raised-hover", "band", "input-bg", "selection", "cursor", "caret", "danger-strong", "code-text", "code-wash", "diff-add", "diff-del", "diff-hunk-bg", "wash", "claude-brand"],
       "alpha": [
         5,
         10,
@@ -269,14 +306,14 @@
         50,
         88
       ],
-      "alphaSuffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "success", "success-muted", "busy", "caret", "danger-strong", "code-text", "diff-add", "diff-del", "wash"],
+      "alphaSuffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "text", "text-muted", "text-faint", "solid", "on-solid", "accent", "accent-strong", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "success", "busy", "success-muted", "surface-raised-hover", "caret", "danger-strong", "code-text", "diff-add", "diff-del", "wash", "claude-brand"],
       "gpui": ".bg(theme.<suffix_underscored>)",
       "alphaGpui": ".bg(theme.<suffix_underscored>.opacity(alpha / 100))",
-      "note": "wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand()"
+      "note": "wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand(); a syntax- suffix maps to theme.syntax.<field>, the color SyntaxPalette::color() returns for that HighlightKind"
     },
     {
       "prefix": "text-",
-      "suffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "element-hover", "element-active", "border", "border-strong", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "accent-wash", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "warning-wash", "success", "busy", "success-muted", "surface-raised-hover", "band", "input-bg", "selection", "cursor", "caret", "danger-strong", "code-text", "code-wash", "diff-add", "diff-del", "diff-hunk-bg", "wash", "claude-brand"],
+      "suffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "element-hover", "element-active", "border", "border-strong", "text", "text-muted", "text-faint", "solid", "on-solid", "accent", "accent-strong", "accent-wash", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "warning-wash", "success", "busy", "success-muted", "surface-raised-hover", "band", "input-bg", "selection", "cursor", "caret", "danger-strong", "code-text", "code-wash", "diff-add", "diff-del", "diff-hunk-bg", "wash", "claude-brand", "syntax-comment", "syntax-keyword", "syntax-string", "syntax-string-special", "syntax-escape", "syntax-number", "syntax-boolean", "syntax-type-name", "syntax-type-builtin", "syntax-constructor", "syntax-function", "syntax-function-builtin", "syntax-macro-name", "syntax-property", "syntax-constant", "syntax-variable", "syntax-variable-special", "syntax-parameter", "syntax-operator", "syntax-punctuation", "syntax-tag", "syntax-attribute", "syntax-label", "syntax-invalid"],
       "alpha": [
         5,
         10,
@@ -284,14 +321,14 @@
         50,
         88
       ],
-      "alphaSuffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "success", "success-muted", "busy", "caret", "danger-strong", "code-text", "diff-add", "diff-del", "wash"],
+      "alphaSuffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "text", "text-muted", "text-faint", "solid", "on-solid", "accent", "accent-strong", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "success", "busy", "success-muted", "surface-raised-hover", "caret", "danger-strong", "code-text", "diff-add", "diff-del", "wash", "claude-brand", "syntax-comment", "syntax-keyword", "syntax-string", "syntax-string-special", "syntax-escape", "syntax-number", "syntax-boolean", "syntax-type-name", "syntax-type-builtin", "syntax-constructor", "syntax-function", "syntax-function-builtin", "syntax-macro-name", "syntax-property", "syntax-constant", "syntax-variable", "syntax-variable-special", "syntax-parameter", "syntax-operator", "syntax-punctuation", "syntax-tag", "syntax-attribute", "syntax-label", "syntax-invalid"],
       "gpui": ".text_color(theme.<suffix_underscored>)",
       "alphaGpui": ".text_color(theme.<suffix_underscored>.opacity(alpha / 100))",
-      "note": "wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand()"
+      "note": "wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand(); a syntax- suffix maps to theme.syntax.<field>, the color SyntaxPalette::color() returns for that HighlightKind"
     },
     {
       "prefix": "border-",
-      "suffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "element-hover", "element-active", "border", "border-strong", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "accent-wash", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "warning-wash", "success", "busy", "success-muted", "surface-raised-hover", "band", "input-bg", "selection", "cursor", "caret", "danger-strong", "code-text", "code-wash", "diff-add", "diff-del", "diff-hunk-bg", "wash", "claude-brand"],
+      "suffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "element-hover", "element-active", "border", "border-strong", "text", "text-muted", "text-faint", "solid", "on-solid", "accent", "accent-strong", "accent-wash", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "warning-wash", "success", "busy", "success-muted", "surface-raised-hover", "band", "input-bg", "selection", "cursor", "caret", "danger-strong", "code-text", "code-wash", "diff-add", "diff-del", "diff-hunk-bg", "wash", "claude-brand"],
       "alpha": [
         5,
         10,
@@ -299,18 +336,23 @@
         50,
         88
       ],
-      "alphaSuffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "text", "text-muted", "text-faint", "text-dim", "solid", "on-solid", "accent", "accent-strong", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "success", "success-muted", "busy", "caret", "danger-strong", "code-text", "diff-add", "diff-del", "wash"],
+      "alphaSuffixes": ["bg", "surface", "surface-raised", "surface-card", "surface-dialog", "surface-overlay", "text", "text-muted", "text-faint", "solid", "on-solid", "accent", "accent-strong", "on-accent", "danger", "danger-muted", "warning", "warning-muted", "success", "busy", "success-muted", "surface-raised-hover", "caret", "danger-strong", "code-text", "diff-add", "diff-del", "wash", "claude-brand"],
       "gpui": ".border_color(theme.<suffix_underscored>)",
       "alphaGpui": ".border_color(theme.<suffix_underscored>.opacity(alpha / 100))",
-      "note": "wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand()"
+      "note": "wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand(); a syntax- suffix maps to theme.syntax.<field>, the color SyntaxPalette::color() returns for that HighlightKind"
     }
   ],
   "variants": {
     "hover:": ".hover(|s| s.<mapped_style>)",
     "active:": ".active(|s| s.<mapped_style>)",
-    "focus:": ".focus(|s| s.<mapped_style>) with .track_focus(&handle)"
+    "focus:": ".focus(|s| s.<mapped_style>) with .track_focus(&handle)",
+    "focus-visible:": ".focus_visible(|s| s.<mapped_style>) with .track_focus(&handle)",
+    "focus-within:": ".in_focus(|s| s.<mapped_style>) with .track_focus(&handle)",
+    "group-hover:": ".group_hover(\"stable-id\", |s| s.<mapped_style>) with .group(\"stable-id\") on the ancestor",
+    "group-active:": ".group_active(\"stable-id\", |s| s.<mapped_style>) with .group(\"stable-id\") on the ancestor"
   },
+  "motionNeedsPosition": ["motion-fade-in", "motion-menu-in", "motion-menu-out", "motion-dialog-in", "motion-splash-out", "motion-tab-slide"],
   "reactImports": ["useState"],
   "reactTypeImports": ["ReactNode"],
-  "notes": ["Finite subset, not every fork capability.", "No composed variants.", "Default Tailwind text sizes and shadows intentionally omitted."]
+  "notes": ["Finite subset, not every fork capability.", "No composed variants.", "Default Tailwind text sizes and shadows intentionally omitted.", "gpui source paths are relative to the gpui-surya checkout; surya ones to this repository.", "motion-* classes carry a fixed catalog timing. There is no free duration, delay or easing utility.", "A motion-* class that moves a relative inset needs relative or absolute beside it: gpui divs default to Position::Relative, CSS boxes to static."]
 }

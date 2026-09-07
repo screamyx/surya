@@ -15,6 +15,18 @@ export const provenance = [
   {
     "path": "app/crates/ui/src/icons.rs",
     "sha256": "3ae068d136f5eedb48c825f52bd5f4d9a1b733671c101568a1e5b7e8fbf0d28e"
+  },
+  {
+    "path": "app/crates/ui/src/typography.rs",
+    "sha256": "b6b87600aa41b5275772be01b8f13452fca9987d48d4e11724af62964c89b196"
+  },
+  {
+    "path": "app/crates/ui/src/motion.rs",
+    "sha256": "34fb5dad9858a138c62d0a1b3b883c68309592987a2ad2bbc4e1eb2223ca7d08"
+  },
+  {
+    "path": "app/crates/proto/src/motion.rs",
+    "sha256": "5c3684a75203f0db21dd077f93e506a1b9f91c86a860adb20244c07a44d9bcb1"
   }
 ] as const;
 export const themes = {
@@ -59,7 +71,31 @@ export const themes = {
     "diff_del": "rgb(220 38 38 / 1)",
     "diff_hunk_bg": "rgb(91 67 232 / 0.070588)",
     "wash": "rgb(25.5 25.5 25.5 / 1)",
-    "claude_brand": "rgb(217 119 87 / 1)"
+    "claude_brand": "rgb(217 119 87 / 1)",
+    "syntax_comment": "rgb(107 114 128 / 1)",
+    "syntax_keyword": "rgb(91 67 232 / 1)",
+    "syntax_string": "rgb(21 128 61 / 1)",
+    "syntax_string_special": "rgb(14 116 144 / 1)",
+    "syntax_escape": "rgb(14 116 144 / 1)",
+    "syntax_number": "rgb(161 98 7 / 1)",
+    "syntax_boolean": "rgb(161 98 7 / 1)",
+    "syntax_type_name": "rgb(126 34 206 / 1)",
+    "syntax_type_builtin": "rgb(126 34 206 / 1)",
+    "syntax_constructor": "rgb(126 34 206 / 1)",
+    "syntax_function": "rgb(37 99 235 / 1)",
+    "syntax_function_builtin": "rgb(37 99 235 / 1)",
+    "syntax_macro_name": "rgb(91 67 232 / 1)",
+    "syntax_property": "rgb(190 24 93 / 1)",
+    "syntax_constant": "rgb(161 98 7 / 1)",
+    "syntax_variable": "rgb(48 48 53 / 1)",
+    "syntax_variable_special": "rgb(91 67 232 / 1)",
+    "syntax_parameter": "rgb(48 48 53 / 1)",
+    "syntax_operator": "rgb(91 67 232 / 1)",
+    "syntax_punctuation": "rgb(82 82 91 / 1)",
+    "syntax_tag": "rgb(190 24 93 / 1)",
+    "syntax_attribute": "rgb(14 116 144 / 1)",
+    "syntax_label": "rgb(37 99 235 / 1)",
+    "syntax_invalid": "rgb(185 28 28 / 1)"
   },
   "dark": {
     "bg": "rgb(6 6 6 / 1)",
@@ -102,7 +138,31 @@ export const themes = {
     "diff_del": "rgb(248 113 113 / 1)",
     "diff_hunk_bg": "rgb(139 124 246 / 0.078431)",
     "wash": "rgb(234.60000000000002 234.60000000000002 234.60000000000002 / 1)",
-    "claude_brand": "rgb(217 119 87 / 1)"
+    "claude_brand": "rgb(217 119 87 / 1)",
+    "syntax_comment": "rgb(146 146 154 / 1)",
+    "syntax_keyword": "rgb(139 124 246 / 1)",
+    "syntax_string": "rgb(52 211 153 / 1)",
+    "syntax_string_special": "rgb(34 211 238 / 1)",
+    "syntax_escape": "rgb(34 211 238 / 1)",
+    "syntax_number": "rgb(250 204 21 / 1)",
+    "syntax_boolean": "rgb(250 204 21 / 1)",
+    "syntax_type_name": "rgb(192 132 252 / 1)",
+    "syntax_type_builtin": "rgb(192 132 252 / 1)",
+    "syntax_constructor": "rgb(192 132 252 / 1)",
+    "syntax_function": "rgb(96 165 250 / 1)",
+    "syntax_function_builtin": "rgb(96 165 250 / 1)",
+    "syntax_macro_name": "rgb(139 124 246 / 1)",
+    "syntax_property": "rgb(244 114 182 / 1)",
+    "syntax_constant": "rgb(250 204 21 / 1)",
+    "syntax_variable": "rgb(232 232 234 / 1)",
+    "syntax_variable_special": "rgb(139 124 246 / 1)",
+    "syntax_parameter": "rgb(232 232 234 / 1)",
+    "syntax_operator": "rgb(139 124 246 / 1)",
+    "syntax_punctuation": "rgb(161 161 170 / 1)",
+    "syntax_tag": "rgb(244 114 182 / 1)",
+    "syntax_attribute": "rgb(34 211 238 / 1)",
+    "syntax_label": "rgb(96 165 250 / 1)",
+    "syntax_invalid": "rgb(248 113 113 / 1)"
   }
 } as const;
 export type Appearance = keyof typeof themes;

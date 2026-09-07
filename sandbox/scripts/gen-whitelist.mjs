@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
+import { motionClasses, motionSources, translatingMotionClasses } from './motion.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const checkout = resolve(process.argv[2] ?? '/tmp/surya-sandbox-gpui');
@@ -73,35 +74,84 @@ for (const [weight, name] of Object.entries({ normal: 'NORMAL', medium: 'MEDIUM'
   add(`font-${weight}`, 'font_weight', `FontWeight::${name}`);
 }
 add('font-sans', 'font_family', 'theme.font_sans.clone()');
+add('font-mono', 'font_family', 'theme.font_mono.clone()');
 add('leading-normal', 'line_height', 'relative(1.5)');
 add('leading-gpui', 'line_height', 'phi()');
 add('leading-none', 'line_height', 'relative(1.0)');
 for (const px of [10, 11, 12, 13, 14, 16, 20]) add(`text-ui-${px}`, 'text_size', `ui_rems(${px}.0)`);
 for (const n of [0, 50, 55, 100]) add(`opacity-${n}`, 'opacity', `${n / 100}`);
+// Motion. These classes are the only admitted animation vocabulary, and they
+// come from the surya catalog rather than from gpui: gpui has no transition or
+// keyframe API, so the pair for each one is a `motion.rs` helper or the tween
+// its call site runs. scripts/motion.mjs reads every duration, curve and
+// endpoint out of the Rust so a designer cannot dial a value gpui cannot paint.
+Object.assign(exact, motionClasses());
+// A group marker for the group-hover / group-active variants below.
+if (!div.includes('fn group(')) throw new Error('Missing group');
+exact.group = '.group("stable-id")';
 const theme = readFileSync(resolve(root, '../app/crates/ui/src/theme.rs'), 'utf8');
 const struct = theme.split('pub struct Theme {')[1].split('\n}')[0];
 const colors = [...struct.matchAll(/pub (\w+): Hsla/g)].map(m => m[1].replaceAll('_', '-'));
 // wash is the native appearance-dependent black/white helper, used by Shell.
 colors.push('wash', 'claude-brand');
+// Which tokens may carry an alpha modifier is derived, not listed. Tailwind
+// multiplies a token's existing alpha and gpui `opacity()` replaces it, so the
+// two only agree where the token is already opaque. src/theme.ts holds the
+// resolved value of every token in both appearances, so read the alpha there.
+// text_dim passed this gate as a hand-written name for months after #183 folded
+// it out of the Rust theme: a class that linted clean and painted nothing.
+const resolved = JSON.parse(readFileSync(resolve(root, 'src/theme.ts'), 'utf8')
+  .match(/export const themes = ([\s\S]*?) as const;/)[1]);
+// Theme.syntax is a SyntaxPalette rather than an Hsla, so it is not a Theme
+// field and does not reach the sweep above. It is paint-only and every call
+// site reads it through .text_color(), so it joins the text- family alone.
+const syntaxFields = [...theme.split('pub struct SyntaxPalette {')[1].split('\n}')[0]
+  .matchAll(/pub (\w+): Hsla/g)].map(m => `syntax-${m[1].replaceAll('_', '-')}`);
+const alphaSuffixes = Object.keys(resolved.dark)
+  .filter(key => ['dark', 'light'].every(mode => /\/ 1\)$/.test(resolved[mode][key])))
+  .map(key => key.replaceAll('_', '-'));
+for (const suffix of alphaSuffixes) {
+  if (![...colors, ...syntaxFields].includes(suffix)) throw new Error(`Opaque token ${suffix} has no Rust field`);
+}
 for (const [prefix, method] of [['bg-', 'bg'], ['text-', 'text_color'], ['border-', 'border_color']]) {
   if (!methods.has(method)) throw new Error(`Missing ${method}`);
-  families.push({ prefix, suffixes: colors, alpha: [5, 10, 14, 50, 88],
-    alphaSuffixes: ['bg', 'surface', 'surface-raised', 'surface-card', 'surface-dialog', 'surface-overlay', 'text', 'text-muted', 'text-faint', 'text-dim', 'solid', 'on-solid', 'accent', 'accent-strong', 'on-accent', 'danger', 'danger-muted', 'warning', 'warning-muted', 'success', 'success-muted', 'busy', 'caret', 'danger-strong', 'code-text', 'diff-add', 'diff-del', 'wash'],
+  const suffixes = prefix === 'text-' ? [...colors, ...syntaxFields] : colors;
+  families.push({ prefix, suffixes, alpha: [5, 10, 14, 50, 88],
+    alphaSuffixes: suffixes.filter(suffix => alphaSuffixes.includes(suffix)),
     gpui: `.${method}(theme.<suffix_underscored>)`,
     alphaGpui: `.${method}(theme.<suffix_underscored>.opacity(alpha / 100))`,
-    note: 'wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand()'  });
+    note: 'wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand(); '
+      + 'a syntax- suffix maps to theme.syntax.<field>, the color SyntaxPalette::color() returns for that HighlightKind'  });
 }
 const variants = {};
-for (const variant of ['hover', 'active', 'focus']) {
-  if (!div.includes(`fn ${variant}(`)) throw new Error(`Missing state ${variant}`);
-  variants[`${variant}:`] = `.${variant}(|s| s.<mapped_style>)${variant === 'focus' ? ' with .track_focus(&handle)' : ''}`;
+// Each variant is one interaction style method read in div.rs. `focus-within:`
+// is gpui's `in_focus`, which applies when the tracked handle's subtree holds
+// focus (`focus_handle.within_focused`). gpui has no disabled style, so there
+// is no `disabled:` here.
+for (const [variant, method, suffix] of [
+  ['hover', 'hover', ''],
+  ['active', 'active', ''],
+  ['focus', 'focus', ' with .track_focus(&handle)'],
+  ['focus-visible', 'focus_visible', ' with .track_focus(&handle)'],
+  ['focus-within', 'in_focus', ' with .track_focus(&handle)'],
+]) {
+  if (!div.includes(`fn ${method}(`)) throw new Error(`Missing state ${method}`);
+  variants[`${variant}:`] = `.${method}(|s| s.<mapped_style>)${suffix}`;
 }
-const out = { revision, defaultLineHeight, sources: paths.map((path, i) => ({ path,
-  sha256: createHash('sha256').update(sources[i]).digest('hex') })),
-  exact, families, variants,
+for (const [variant, method] of [['group-hover', 'group_hover'], ['group-active', 'group_active']]) {
+  if (!div.includes(`fn ${method}(`)) throw new Error(`Missing state ${method}`);
+  variants[`${variant}:`] = `.${method}("stable-id", |s| s.<mapped_style>) with .group("stable-id") on the ancestor`;
+}
+const out = { revision, defaultLineHeight,
+  sources: [...paths.map((path, i) => ({ origin: 'gpui', path,
+    sha256: createHash('sha256').update(sources[i]).digest('hex') })), ...motionSources],
+  exact, families, variants, motionNeedsPosition: translatingMotionClasses,
   reactImports: ['useState'], reactTypeImports: ['ReactNode'],
   notes: ['Finite subset, not every fork capability.', 'No composed variants.',
-    'Default Tailwind text sizes and shadows intentionally omitted.'] };
+    'Default Tailwind text sizes and shadows intentionally omitted.',
+    'gpui source paths are relative to the gpui-surya checkout; surya ones to this repository.',
+    'motion-* classes carry a fixed catalog timing. There is no free duration, delay or easing utility.',
+    'A motion-* class that moves a relative inset needs relative or absolute beside it: gpui divs default to Position::Relative, CSS boxes to static.'] };
 // Compact entries keep the contract readable and below the repository line cap.
 const json = JSON.stringify(out, null, 2).replace(/\[\n\s+((?:"[^"]*",?\s*)+)\n\s*\]/g,
   (_, items) => `[${items.replace(/\s*\n\s*/g, ' ').trim()}]`);

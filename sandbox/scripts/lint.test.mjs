@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -89,4 +89,150 @@ test('skills quote the same wrong/right code that the example lint evaluates', a
       assert.ok(readFileSync(resolve(root, file), 'utf8').includes(snippets[i]), `${file}: skill excerpt drifted from tested source`);
     }
   }
+});
+
+test('the motion catalog is admitted and its near misses are not', () => {
+  for (const cls of ['motion-fade-in', 'motion-fade-quick', 'motion-menu-in', 'motion-menu-out',
+    'motion-dialog-in', 'motion-splash-out', 'motion-chevron', 'motion-hover-fade', 'motion-resize',
+    'motion-collapse', 'motion-tab-slide', 'motion-surya-pulse-0', 'motion-surya-pulse-4',
+    'motion-gradient-spin-0', 'motion-gradient-spin-3', 'group', 'group-hover:bg-element-hover',
+    'group-active:bg-element-active', 'focus-visible:border-accent', 'focus-within:bg-surface',
+  ]) assert.ok(allowedClass(cls), cls);
+  for (const cls of [
+    // Durations, delays and curves the catalog does not carry.
+    'duration-500', 'duration-150', 'delay-150', 'ease-out', 'ease-linear',
+    'ease-[cubic-bezier(0.16,1,0.3,1)]', 'transition', 'transition-all', 'transition-colors',
+    // Transforms. gpui divs have neither scale nor rotate at the pinned revision.
+    'scale-95', 'scale-100', 'rotate-90', 'translate-y-1', 'transform',
+    // Stock Tailwind animation, and cells outside the generated grids.
+    'animate-spin', 'animate-pulse', 'animate-none', 'motion-fade-out',
+    'motion-surya-pulse-5', 'motion-gradient-spin-4', 'motion-scroll-glide',
+    // Variants with no gpui pair, and the media-query variants.
+    'disabled:opacity-50', 'motion-safe:motion-fade-in', 'motion-reduce:hidden',
+    'hover:group-hover:bg-surface', 'group-hover:', 'peer-hover:flex',
+  ]) assert.ok(!allowedClass(cls), cls);
+});
+
+test('an animation that moves a relative inset must carry a position', () => {
+  for (const cls of ['motion-fade-in', 'motion-menu-in', 'motion-menu-out', 'motion-dialog-in',
+    'motion-splash-out', 'motion-tab-slide']) {
+    assert.match(lintSource(`const a = <div className="${cls}" />;`).join(''), /pair it with relative or absolute/, cls);
+    assert.deepEqual(lintSource(`const a = <div className="${cls} relative" />;`), [], cls);
+    assert.deepEqual(lintSource(`const a = <div className="${cls} absolute" />;`), [], cls);
+  }
+  // The catalog helpers that only fade set no inset, so they need no position.
+  for (const cls of ['motion-fade-quick', 'motion-chevron', 'motion-hover-fade']) {
+    assert.deepEqual(lintSource(`const a = <div className="${cls}" />;`), [], cls);
+  }
+  // Each branch of a ternary is checked on its own.
+  assert.match(lintSource('const a = <div className={on ? "motion-menu-in relative" : "motion-menu-out"} />;').join(''),
+    /motion-menu-out moves a relative inset/);
+});
+
+test('every admitted motion class paints, at a duration read from motion.rs', async () => {
+  const { motionClasses, motionSources } = await import('./motion.mjs');
+  const root = resolve(import.meta.dirname, '..');
+  const whitelist = JSON.parse(readFileSync(resolve(root, 'whitelist.json'), 'utf8'));
+  const css = readFileSync(resolve(root, 'src/tailwind.css'), 'utf8');
+  const classes = Object.keys(motionClasses());
+  assert.ok(classes.length > 0);
+  for (const cls of classes) {
+    assert.ok(Object.hasOwn(whitelist.exact, cls), `${cls} missing from the whitelist`);
+    assert.ok(css.includes(`@utility ${cls} {`), `${cls} emits no Tailwind utility`);
+    assert.match(css, new RegExp(`\\n  \\.${cls} \\{ animation: none; transition: none;`),
+      `${cls} does not snap under prefers-reduced-motion`);
+  }
+  // Provenance: the stylesheet and the whitelist both stamp the Rust they read.
+  const provenance = JSON.parse(readFileSync(resolve(root, 'src/theme.ts'), 'utf8')
+    .match(/export const provenance = ([\s\S]*?) as const;/)[1]);
+  for (const source of motionSources) {
+    assert.ok(whitelist.sources.some(s => s.path === source.path && s.sha256 === source.sha256),
+      `${source.path} drifted from whitelist.json`);
+    assert.ok(provenance.some(s => s.path === source.path && s.sha256 === source.sha256),
+      `${source.path} drifted from src/theme.ts`);
+  }
+  // No duration or delay in the motion block that the catalog cannot produce.
+  const block = css.slice(css.indexOf('/* Motion catalog'));
+  const catalog = new Set(['0ms']);
+  for (const [, ms] of readFileSync(resolve(root, '../app/crates/ui/src/motion.rs'), 'utf8')
+    .matchAll(/MotionSpec::new\((\d+),|with_delay\((\d+)\)/g)) catalog.add(`${ms}ms`);
+  const cellDelays = new Set([...block.matchAll(/animation: surya-[\w-]+ (\d+)ms linear (-?[\d.]+)ms infinite/g)]
+    .map(m => `${m[2]}ms`));
+  for (const [, value] of block.matchAll(/(-?[\d.]+ms)/g)) {
+    assert.ok(catalog.has(value) || cellDelays.has(value), `${value} is not a catalog timing`);
+  }
+});
+
+test('a token folded out of the Rust theme stops linting clean', async () => {
+  const root = resolve(import.meta.dirname, '..');
+  const whitelist = JSON.parse(readFileSync(resolve(root, 'whitelist.json'), 'utf8'));
+  const themes = JSON.parse(readFileSync(resolve(root, 'src/theme.ts'), 'utf8')
+    .match(/export const themes = ([\s\S]*?) as const;/)[1]);
+  const fields = Object.keys(themes.dark).map(key => key.replaceAll('_', '-'));
+  // text-dim was folded out of the Rust theme in #183. A class the linter
+  // accepts and the stylesheet cannot paint is worse than a rejected one.
+  for (const cls of ['text-text-dim', 'bg-text-dim', 'border-text-dim', 'bg-text-dim/50']) {
+    assert.ok(!allowedClass(cls), cls);
+  }
+  for (const family of whitelist.families.filter(f => f.alphaSuffixes)) {
+    for (const suffix of family.suffixes) {
+      assert.ok(fields.includes(suffix), `${family.prefix}${suffix} names no generated token`);
+    }
+    // An alpha modifier only agrees with gpui `opacity()` on an opaque token.
+    for (const suffix of family.alphaSuffixes) {
+      const key = suffix.replaceAll('-', '_');
+      for (const mode of ['dark', 'light']) {
+        assert.match(themes[mode][key], /\/ 1\)$/, `${family.prefix}${suffix}/50 is not opaque in ${mode}`);
+      }
+    }
+  }
+});
+
+test('the mono family and the syntax palette are admitted, and nothing near them', async () => {
+  const { faces, families, syntaxPalette } = await import('./fonts-syntax.mjs');
+  const { block, fields } = await import('./rust-colors.mjs');
+  const root = resolve(import.meta.dirname, '..');
+  const read = path => readFileSync(resolve(root, '..', path), 'utf8').replace(/\/\/[^\n]*/g, '');
+  const theme = read('app/crates/ui/src/theme.rs');
+  const builtins = read('app/crates/theme/src/builtins.rs');
+  const themes = JSON.parse(readFileSync(resolve(root, 'src/theme.ts'), 'utf8')
+    .match(/export const themes = ([\s\S]*?) as const;/)[1]);
+  const css = readFileSync(resolve(root, 'src/tailwind.css'), 'utf8');
+
+  assert.ok(allowedClass('font-mono'), 'font-mono');
+  for (const cls of ['font-serif', 'font-geist', 'font-fixed', 'font-mono-fallback']) {
+    assert.ok(!allowedClass(cls), cls);
+  }
+  // Every face gpui registers must ship and have a rule, or a weight silently
+  // synthesizes in the browser and the type reads wrong against the native pane.
+  const { sans, mono } = families(theme);
+  assert.match(css, new RegExp(`--font-mono: "${mono}", monospace;`));
+  for (const [family, constant] of [[sans, 'GEIST'], [mono, 'GEIST_MONO']]) {
+    for (const face of faces(read('app/crates/ui/src/typography.rs'), constant)) {
+      assert.ok(css.includes(`@font-face { font-family: "${family}"; src: url("/fonts/${face.file}.ttf")`
+        + ` format("truetype"); font-weight: ${face.weight}; font-style: ${face.style};`), face.file);
+      assert.ok(existsSync(resolve(root, `public/fonts/${face.file}.ttf`)), `${face.file}.ttf not shipped`);
+    }
+  }
+
+  // Every SyntaxPalette field is a token in both appearances and a text- class.
+  const seed = mode => fields(block(block(builtins, `fn comet_${mode}()`), 'variant(Seeds')).syntax;
+  for (const mode of ['dark', 'light']) {
+    const palette = syntaxPalette(theme, builtins, seed(mode));
+    assert.equal(Object.keys(palette).length, 24);
+    for (const [field, value] of Object.entries(palette)) {
+      const token = `syntax-${field.replaceAll('_', '-')}`;
+      assert.ok(allowedClass(`text-${token}`), `text-${token}`);
+      // Paint-only in Rust: SyntaxPalette is only ever read through text_color.
+      assert.ok(!allowedClass(`bg-${token}`), `bg-${token}`);
+      assert.ok(!allowedClass(`border-${token}`), `border-${token}`);
+      assert.equal(themes[mode][`syntax_${field}`],
+        `rgb(${value.slice(0, 3).join(' ')} / ${Number((value[3] / 255).toFixed(6))})`, `${mode}.${field}`);
+      assert.match(css, new RegExp(`--color-${token}: var\\(--surya-${token}\\);`), token);
+    }
+  }
+  // Embedded is a HighlightKind, not a palette field: SyntaxPalette::color()
+  // paints it with punctuation, so there is no token of its own to name.
+  for (const cls of ['text-syntax-embedded', 'text-syntax-type', 'text-syntax-nonesuch',
+    'text-syntax', 'text-comment', 'text-keyword']) assert.ok(!allowedClass(cls), cls);
 });
