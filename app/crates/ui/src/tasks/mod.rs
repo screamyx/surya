@@ -5,6 +5,7 @@
 pub mod board;
 mod card;
 mod chips;
+mod columns_strip;
 pub mod demo;
 mod header;
 mod edit;
