@@ -48,6 +48,7 @@ pub use page::{navigate_to, FindState, Page};
 pub use tabs::{active_tab, page, set_zoom, tab_activate, tab_close, tab_open, tabs, zoom, TabId, TabInfo};
 pub use pump::{counters, pump};
 pub use scheme::set_color_scheme;
+pub use off::OffNote;
 pub use surface::{panel, surface, surface_origin};
 pub use zero_copy::counters as zero_copy_counters;
 
@@ -79,6 +80,17 @@ pub(crate) fn off_reason() -> Option<off::Off> {
 /// subprocesses, no Chromium start-up, and the pane shows a placeholder.
 pub fn disabled() -> bool {
     off_reason().is_some()
+}
+
+/// What to tell the person when there is no page, or `None` while there is
+/// one.
+///
+/// The caller draws it. This crate has gpui and nothing else, so it cannot
+/// reach comet's tokens, and the pane's page area is white: a note painted
+/// here without them is near-white on white. The words are ours, the paint is
+/// the shell's.
+pub fn off_note() -> Option<OffNote> {
+    off_reason().map(off::note)
 }
 
 /// What sits behind a page that paints no background of its own. Opaque

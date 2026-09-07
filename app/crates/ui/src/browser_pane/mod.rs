@@ -33,8 +33,8 @@ mod tabs;
 mod zoom;
 
 use gpui::{
-    div, prelude::*, px, AnyElement, App, Context, Entity, FocusHandle, Focusable as _, Render,
-    SharedString, Subscription, Window,
+    div, prelude::*, px, AnyElement, App, Context, Entity, FocusHandle, Focusable as _, Hsla,
+    Render, SharedString, Subscription, Window,
 };
 
 use crate::composer::{ComposerInput, ComposerInputEvent};
@@ -231,8 +231,110 @@ impl Render for BrowserPane {
                     .flex_1()
                     .min_h_0()
                     .w_full()
-                    .bg(gpui::white())
-                    .child(backend::panel(&self.page_focus)),
+                    .map(|page| match backend::off_note() {
+                        // No page, so no white plane: the note sits on the
+                        // shell's own surface in the shell's own tones.
+                        Some(note) => page.bg(theme.surface).child(off_pane(&note, &theme)),
+                        // A page that paints no background of its own should
+                        // be white, the way it is in a browser.
+                        None => {
+                            page.bg(gpui::white()).child(backend::panel(&self.page_focus))
+                        }
+                    }),
             )
+    }
+}
+
+/// The plane the "no page" note sits on and the three tones on it.
+///
+/// One function so the test measures exactly what the renderer paints. The
+/// note used to have no colours at all, so it inherited the shell's text onto
+/// the white page surface: cef3 measured the darkest pixel of it at
+/// (232,232,234) on (255,255,255), about 1.2:1, on Windows dark.
+///
+/// `text_faint` is deliberately not used for the hint. The palette holds it to
+/// a 4.1:1 floor as placeholder and disabled-control copy, which WCAG 1.4.3
+/// exempts (theme.rs `text_tones_clear_wcag_aa`). This note is not incidental:
+/// it is the only thing telling a person why the browser is empty and how to
+/// get it back, so every line of it clears AA.
+fn note_colors(theme: &Theme) -> NoteColors {
+    NoteColors {
+        plane: theme.surface,
+        label: theme.text,
+        line: theme.text_muted,
+        hint: theme.text_dim,
+    }
+}
+
+struct NoteColors {
+    plane: Hsla,
+    label: Hsla,
+    line: Hsla,
+    hint: Hsla,
+}
+
+/// The note itself, painted on [`note_colors`].
+fn off_pane(note: &surya_browser::OffNote, theme: &Theme) -> gpui::Div {
+    let colors = note_colors(theme);
+    let mut pane = div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .gap(px(6.0))
+        .p(px(14.0))
+        .text_size(crate::typography::ui_rems(12.0))
+        .child(div().text_color(colors.label).child(note.label))
+        .child(div().text_color(colors.line).child(note.line));
+    // The way out sits under the sentence, quieter but still readable, so the
+    // eye reads what happened before it reads what to do about it.
+    if let Some(hint) = note.hint {
+        pane = pane.child(div().text_color(colors.hint).child(hint));
+    }
+    pane
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::contrast_ratio;
+
+    /// Every line of the note clears WCAG AA against the plane it is drawn on,
+    /// in both appearances. Fails if the note goes back onto the white page
+    /// surface: the shell's dark-mode text measures about 1.2:1 there.
+    #[test]
+    fn every_line_of_the_note_clears_aa_on_its_own_plane() {
+        for theme in [Theme::dark(), Theme::light()] {
+            let colors = note_colors(&theme);
+            for (name, tone) in
+                [("label", colors.label), ("line", colors.line), ("hint", colors.hint)]
+            {
+                let ratio = contrast_ratio(tone, colors.plane);
+                assert!(
+                    ratio >= 4.5,
+                    "{:?} {name} is {ratio:.2}:1 on its plane, below AA",
+                    theme.appearance
+                );
+            }
+        }
+    }
+
+    /// What the fix is for, kept as a measurement rather than a memory.
+    ///
+    /// The label is the tone that was photographed on Windows dark: its pixel
+    /// read (232,232,234) on a (255,255,255) page surface, about 1.2:1. No
+    /// tone the note uses is readable on that plane, so the plane is never
+    /// white.
+    #[test]
+    fn the_white_page_surface_is_not_readable_for_the_note() {
+        let dark = Theme::dark();
+        let label_on_white = contrast_ratio(dark.text, gpui::white());
+        assert!(label_on_white < 1.5, "the photographed pair, got {label_on_white:.2}:1");
+        for (name, tone) in
+            [("label", dark.text), ("line", dark.text_muted), ("hint", dark.text_dim)]
+        {
+            let ratio = contrast_ratio(tone, gpui::white());
+            assert!(ratio < 4.5, "{name} reads {ratio:.2}:1 on white, so it needs no fix");
+        }
+        assert_ne!(note_colors(&dark).plane, gpui::white());
     }
 }
