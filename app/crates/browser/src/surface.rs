@@ -102,9 +102,8 @@ pub fn panel(focus: &gpui::FocusHandle) -> gpui::AnyElement {
 
 /// The page pixels, filling whatever bounds the parent gives them.
 pub fn surface() -> gpui::AnyElement {
-    if crate::disabled() {
-        return placeholder("Browser off", "SURYA_NO_BROWSER is set, or CEF failed to start")
-            .into_any_element();
+    if let Some(off) = crate::off_reason() {
+        return placeholder(&crate::off::note(off)).into_any_element();
     }
     canvas(
         // The page area as a hitbox, so the page's own pointer shape applies
@@ -171,15 +170,22 @@ pub fn surface() -> gpui::AnyElement {
     .into_any_element()
 }
 
-/// What the pane shows when there is no browser in it.
-pub fn placeholder(label: &'static str, note: &'static str) -> gpui::Div {
-    div()
+/// What the pane shows when there is no browser in it. The words come from
+/// `off.rs`, which knows which of the three reasons this is.
+fn placeholder(note: &crate::off::Note) -> gpui::Div {
+    let mut pane = div()
         .size_full()
         .flex()
         .flex_col()
         .gap(px(6.0))
         .p(px(14.0))
         .text_size(px(12.0))
-        .child(div().child(label))
-        .child(div().opacity(0.6).child(note))
+        .child(div().child(note.label))
+        .child(div().opacity(0.6).child(note.line));
+    // The way out sits under the sentence, quieter again, so the eye reads
+    // what happened before it reads what to do about it.
+    if let Some(hint) = note.hint {
+        pane = pane.child(div().opacity(0.4).child(hint));
+    }
+    pane
 }
