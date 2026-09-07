@@ -344,3 +344,38 @@ fn a_corrupt_file_starts_empty_rather_than_allowing_anything() {
             .is_none()
     );
 }
+
+/// E2E-PERM-02: the card's "Always allow" line sends `pattern: ""` with
+/// workspace scope, and that means ONE command, not the project. This test
+/// pins the behaviour the label now describes: the same file is allowed
+/// without asking, the next file in the same project still asks.
+///
+/// If this ever starts covering the second file, the label in `surya-ui`'s
+/// `permission_options.rs` is wrong again and has to follow.
+#[test]
+fn a_remembered_write_covers_that_file_only_not_the_project() {
+    let dir = tempfile::tempdir().unwrap();
+    let rules = AllowRules::open(dir.path());
+    let workspace = "/repos/project-jag";
+    let one = request("Write", "/repos/project-jag/one.txt");
+    // Exactly what the card sends: workspace scope, empty pattern, no name.
+    let remember = RememberRule {
+        scope: RuleScope::Workspace,
+        pattern: String::new(),
+        name: None,
+    };
+    let rule = AllowRules::from_remember(&remember, &one, workspace).unwrap();
+    assert!(rule.exact, "an empty pattern pins the command literally");
+    assert_eq!(rule.pattern, "/repos/project-jag/one.txt");
+    rules.add(rule).unwrap();
+
+    assert!(
+        rules.matching(&one, workspace).is_some(),
+        "the file the user answered for is allowed without asking again"
+    );
+    let two = request("Write", "/repos/project-jag/two.txt");
+    assert!(
+        rules.matching(&two, workspace).is_none(),
+        "the next file in the same project still asks - the card says so"
+    );
+}

@@ -1,9 +1,9 @@
 //! The lines on a permission card, and what each one commits the user to.
 //!
 //! Three of them existed before yolo mode: allow this once, write a rule that
-//! allows it forever in this project, deny. The fourth answers this request
-//! and switches the CHAT into yolo mode, which is the same thing the composer
-//! chip does and is revertible in one click.
+//! allows EXACTLY THIS command forever in this project, deny. The fourth
+//! answers this request and switches the CHAT into yolo mode, which is the
+//! same thing the composer chip does and is revertible in one click.
 //!
 //! Its own module so the table and the key mapping can be read and tested
 //! without going through the composer (`composer.rs` is far past the 500-line
@@ -16,8 +16,13 @@ use surya_proto::PermissionDecision;
 pub enum PermissionAnswer {
     /// This request, this once.
     Allow,
-    /// This request, and an always-allow RULE for the project. Permanent, and
-    /// it outlives the chat.
+    /// This request, and an always-allow RULE for the project. The rule is
+    /// pinned to THIS exact command: the engine stores it with `exact` set
+    /// (`AllowRules::from_remember`), so the next command, or the next file,
+    /// asks again. The label says so - it used to read "Always allow in this
+    /// project", which promised a project-wide grant the rule never gave
+    /// (E2E-PERM-02). Widening happens on the approval-policy page, in the
+    /// open. Permanent, and it outlives the chat.
     AllowAlways,
     /// This request, and the chat stops asking: yolo mode on. A mode, not a
     /// rule - nothing is written to the always-allow table and the chip turns
@@ -31,7 +36,7 @@ impl PermissionAnswer {
     pub fn label(self) -> &'static str {
         match self {
             PermissionAnswer::Allow => "Allow",
-            PermissionAnswer::AllowAlways => "Always allow in this project",
+            PermissionAnswer::AllowAlways => "Always allow exactly this in this project",
             PermissionAnswer::Deny => "Deny",
             PermissionAnswer::AllowAndStopAsking => "Allow, and stop asking in this chat",
         }
@@ -105,6 +110,23 @@ mod tests {
             a.decision(),
             None,
             "the flip answers the parked request; a second answer would fail"
+        );
+    }
+
+    /// E2E-PERM-02: the rule the engine writes for this line is pinned to
+    /// the one command the card showed (`AllowRules::from_remember` stores it
+    /// with `exact`), so the label must not promise the project. "Always
+    /// allow in this project" did, and the next file prompted again.
+    #[test]
+    fn always_allow_says_it_covers_only_this_command() {
+        let label = PermissionAnswer::AllowAlways.label();
+        assert!(
+            label.contains("exactly this"),
+            "the line that writes a rule must say the rule is one command: {label:?}"
+        );
+        assert_ne!(
+            label, "Always allow in this project",
+            "the old label promised a project-wide grant the rule never gave"
         );
     }
 

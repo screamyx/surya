@@ -197,6 +197,11 @@ impl AlwaysAllowScope {
 /// be refused by the engine's anchoring check so the click would just error.
 /// Broadening a rule happens on the approval-policy page, deliberately, not
 /// by this view guessing what the user meant.
+///
+/// Both buttons that send this block SAY so - "Always allow exactly this"
+/// here and on the composer card. They used to say "Always allow" and
+/// "Always allow in this project", which read as a grant for the whole
+/// project, and the next file asked again (E2E-PERM-02).
 pub fn remember_for(_row: &InboxRow, scope: AlwaysAllowScope) -> RememberRule {
     RememberRule {
         scope: scope.rule_scope(),
