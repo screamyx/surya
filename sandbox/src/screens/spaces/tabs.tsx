@@ -83,27 +83,29 @@ export function renderRightTabStrip(p: TabStripProps) {
           aria-expanded={p.plusOpen} aria-haspopup="menu" data-trigger="right-surface-add"
           className={p.plusOpen
             ? 'size-6 flex-none flex items-center justify-center rounded-md cursor-pointer bg-wash/10'
-            : 'size-6 flex-none flex items-center justify-center rounded-md cursor-pointer hover:bg-wash/10 active:bg-wash/14 focus:bg-wash/10'}>
+            : 'size-6 flex-none flex items-center justify-center rounded-md cursor-pointer motion-hover-fade hover:bg-wash/10 active:bg-wash/14 focus:bg-wash/10'}>
           <span className="size-3.5 text-text-muted">{renderIcon('plus')}</span>
         </button>
         {p.plusOpen && (
           <div className="absolute top-6 right-0 w-40">
-            {popoverCard(
-              <div className="flex flex-col gap-0.5">
-                {menuRow(false, false, () => p.onAddSurface('terminal'), 'right-plus-terminal', (
-                  <>
-                    <span className="size-3.5 flex-none text-text-muted">{renderIcon('terminal')}</span>
-                    <span>Terminal</span>
-                  </>
-                ))}
-                {p.gitDetected && menuRow(false, false, () => p.onAddSurface('diff'), 'right-plus-diff', (
-                  <>
-                    <span className="size-3.5 flex-none text-text-muted">{renderIcon('git-branch')}</span>
-                    <span>Git</span>
-                  </>
-                ))}
-              </div>
-            )}
+            <div className="relative motion-menu-in">
+              {popoverCard(
+                <div className="flex flex-col gap-0.5">
+                  {menuRow(false, false, () => p.onAddSurface('terminal'), 'right-plus-terminal', (
+                    <>
+                      <span className="size-3.5 flex-none text-text-muted">{renderIcon('terminal')}</span>
+                      <span>Terminal</span>
+                    </>
+                  ))}
+                  {p.gitDetected && menuRow(false, false, () => p.onAddSurface('diff'), 'right-plus-diff', (
+                    <>
+                      <span className="size-3.5 flex-none text-text-muted">{renderIcon('git-branch')}</span>
+                      <span>Git</span>
+                    </>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>

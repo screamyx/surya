@@ -11,7 +11,8 @@ export function popoverCard(children: ReactNode) {
 }
 
 /// menu_row_nav: a selected row wears the card wash, the keyboard cursor the
-/// same lighter one, and never both at once.
+/// same lighter one, and never both at once. menu_row installs its
+/// motion::hover_blend on neither of those, so only the resting branches fade.
 export function menuRow(selected: boolean, highlighted: boolean, onClick: () => void,
   key: string, children: ReactNode, danger?: boolean) {
   const on = selected || highlighted;
@@ -21,10 +22,10 @@ export function menuRow(selected: boolean, highlighted: boolean, onClick: () => 
       className={danger
         ? (on
           ? 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-danger bg-wash/10 hover:bg-wash/14 active:bg-wash/14 focus:bg-wash/14'
-          : 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-danger hover:bg-wash/10 active:bg-wash/10 focus:bg-wash/10')
+          : 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-danger motion-hover-fade hover:bg-wash/10 active:bg-wash/10 focus:bg-wash/10')
         : (on
           ? 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text bg-wash/10 hover:bg-wash/14 active:bg-wash/14 focus:bg-wash/14'
-          : 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text/88 hover:bg-wash/10 hover:text-text active:bg-wash/10 focus:bg-wash/10')}>
+          : 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text/88 motion-hover-fade hover:bg-wash/10 hover:text-text active:bg-wash/10 focus:bg-wash/10')}>
       {children}
     </button>
   );
@@ -75,11 +76,14 @@ export function dialogBody(copy: string) {
   return <p className="text-ui-13 leading-normal text-text-muted">{copy}</p>;
 }
 
+/// btn_ghost blends its text and its wash through motion::hover_blend.
 export function btnGhost(label: string, onClick: () => void) {
   return <button type="button" onClick={onClick}
-    className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5">{label}</button>;
+    className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer motion-hover-fade hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5">{label}</button>;
 }
 
+/// btn_primary and btn_danger take a plain gpui .hover() opacity step, which
+/// snaps. No fade here, and opacity is outside HOVER_FADE's properties anyway.
 export function btnPrimary(label: string, onClick: () => void) {
   return <button type="button" onClick={onClick}
     className="px-3 py-1.5 rounded-lg bg-text text-ui-13 font-medium text-on-solid cursor-pointer hover:opacity-100 active:opacity-50 focus:opacity-100">{label}</button>;
@@ -90,7 +94,11 @@ export function btnDanger(label: string, onClick: () => void) {
     className="px-3 py-1.5 rounded-lg bg-danger-strong text-ui-13 font-medium text-on-accent cursor-pointer hover:opacity-100 active:opacity-50 focus:opacity-100">{label}</button>;
 }
 
-/// modal: the scrim the dialogs float over. popover::scrim_alpha(0.60).
+/// modal: the scrim the dialogs float over. popover::scrim_alpha(0.60). The
+/// scrim itself is static in Rust; motion::dialog_in wraps the card only, so
+/// the DIALOG_IN class rides an inner box and the scrim keeps its own inset.
 export function modalScrim(children: ReactNode) {
-  return <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center bg-bg/50">{children}</div>;
+  return <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center bg-bg/50">
+    <div className="relative motion-dialog-in">{children}</div>
+  </div>;
 }

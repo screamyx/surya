@@ -44,6 +44,9 @@ export function sidebarDisclosureHeader(label: string, open: boolean,
 
 /// render_sidebar_disclosure_body. The native body tweens its height with
 /// COLLAPSE and rides a 0.35-to-1 opacity reveal; here it is present or gone.
+/// motion-collapse transitions height, and spaces.rs:1265 computes the target
+/// in pixels from the row count. The sandbox has no admitted way to set an
+/// arbitrary pixel height, so the tween stays a gap rather than a guess.
 export function sidebarDisclosureBody(open: boolean, children: ReactNode) {
   if (!open) return null;
   return <div className="w-full flex-none flex flex-col pt-1 overflow-hidden">{children}</div>;

@@ -194,7 +194,7 @@ export function SpacesShell(p: SpacesShellProps) {
   const [tabHover, setTabHover] = useState<string | null>(null);
   const [plusOpen, setPlusOpen] = useState(false);
   return (
-    <div className="size-full relative flex flex-row bg-surface text-text font-sans leading-gpui">
+    <div className="size-full relative motion-fade-in flex flex-row bg-surface text-text font-sans leading-gpui">
       <SpacesSidebar spaces={p.spaces} chats={p.chats} agentRows={p.agentRows}
         localDeviceId={p.localDeviceId} jumpHints={p.jumpHints}
         onOpenChat={p.onOpenChat} onSetArchived={p.onSetArchived}

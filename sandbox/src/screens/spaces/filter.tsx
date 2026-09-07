@@ -54,18 +54,20 @@ export function renderSidebarViewMenu(view: SidebarView, active: number | null,
       )));
   return (
     <div className="absolute top-7.5 right-0 w-55">
-      {popoverCard(
-        <div className="flex flex-col">
-          {menuHeading('Organize')}
-          <div className="flex flex-col gap-0.5">{section('organize')}</div>
-          {menuSeparator('sep-sort')}
-          {menuHeading('Sort')}
-          <div className="flex flex-col gap-0.5">{section('sort')}</div>
-          {menuSeparator('sep-show')}
-          {menuHeading('Show')}
-          <div className="flex flex-col gap-0.5">{section('show')}</div>
-        </div>
-      )}
+      <div className="relative motion-menu-in">
+        {popoverCard(
+          <div className="flex flex-col">
+            {menuHeading('Organize')}
+            <div className="flex flex-col gap-0.5">{section('organize')}</div>
+            {menuSeparator('sep-sort')}
+            {menuHeading('Sort')}
+            <div className="flex flex-col gap-0.5">{section('sort')}</div>
+            {menuSeparator('sep-show')}
+            {menuHeading('Show')}
+            <div className="flex flex-col gap-0.5">{section('show')}</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -79,38 +81,40 @@ export function renderSpacesMenu(spaces: readonly SpaceRow[], filter: string | n
   const matches = spaces.filter(space => space.name.toLowerCase().includes(query.toLowerCase()));
   return (
     <div className="absolute top-7.5 left-0 w-55">
-      {popoverCard(
-        <div className="flex flex-col">
-          {searchInputFrame(paintedQuery(query, 'Search projects'))}
-          <div className="flex flex-col gap-0.5 max-h-80 overflow-y-scroll">
-            {menuRow(filter === null, active === 0, () => onPick(null), 'spaces-menu-row-all', (
-              <>
-                <span className="size-3.75 flex-none text-text-muted/88">{renderIcon('folder')}</span>
-                <span className="flex-1 min-w-0 truncate whitespace-nowrap">All projects</span>
-              </>
-            ))}
-            {matches.map((space, ix) => (
-              <div key={space.id} onContextMenu={() => onSpaceMenu(space.id)}>
-                {menuRow(filter === space.id, active === ix + 1, () => onPick(space.id),
-                  'spaces-menu-row-' + space.id, (
-                    <>
-                      <span className="size-3.75 flex-none text-text-muted/88">{renderIcon('folder')}</span>
-                      <span className="flex-1 min-w-0 truncate whitespace-nowrap">{space.name}</span>
-                      <span className="flex-none text-ui-10 text-text-muted/50">{space.deviceTag}</span>
-                      {space.offline && <span className="size-3 flex-none text-warning/88">{renderIcon('wifi-off')}</span>}
-                    </>
-                  ))}
-              </div>
-            ))}
-            {menuRow(false, active === matches.length + 1, onAddSpace, 'spaces-menu-row-add', (
-              <>
-                <span className="size-3.75 flex-none text-text-muted/88">{renderIcon('plus')}</span>
-                <span className="flex-1 min-w-0 truncate whitespace-nowrap">New project...</span>
-              </>
-            ))}
+      <div className="relative motion-menu-in">
+        {popoverCard(
+          <div className="flex flex-col">
+            {searchInputFrame(paintedQuery(query, 'Search projects'))}
+            <div className="flex flex-col gap-0.5 max-h-80 overflow-y-scroll">
+              {menuRow(filter === null, active === 0, () => onPick(null), 'spaces-menu-row-all', (
+                <>
+                  <span className="size-3.75 flex-none text-text-muted/88">{renderIcon('folder')}</span>
+                  <span className="flex-1 min-w-0 truncate whitespace-nowrap">All projects</span>
+                </>
+              ))}
+              {matches.map((space, ix) => (
+                <div key={space.id} onContextMenu={() => onSpaceMenu(space.id)}>
+                  {menuRow(filter === space.id, active === ix + 1, () => onPick(space.id),
+                    'spaces-menu-row-' + space.id, (
+                      <>
+                        <span className="size-3.75 flex-none text-text-muted/88">{renderIcon('folder')}</span>
+                        <span className="flex-1 min-w-0 truncate whitespace-nowrap">{space.name}</span>
+                        <span className="flex-none text-ui-10 text-text-muted/50">{space.deviceTag}</span>
+                        {space.offline && <span className="size-3 flex-none text-warning/88">{renderIcon('wifi-off')}</span>}
+                      </>
+                    ))}
+                </div>
+              ))}
+              {menuRow(false, active === matches.length + 1, onAddSpace, 'spaces-menu-row-add', (
+                <>
+                  <span className="size-3.75 flex-none text-text-muted/88">{renderIcon('plus')}</span>
+                  <span className="flex-1 min-w-0 truncate whitespace-nowrap">New project...</span>
+                </>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -146,7 +150,7 @@ export function renderSpacesFilter(p: FilterProps) {
           aria-expanded={p.menuOpen} aria-haspopup="menu"
           className={p.menuOpen
             ? 'w-full h-7.5 flex flex-row items-center gap-2 rounded-lg px-2 text-ui-13 font-medium text-text bg-element-hover cursor-pointer'
-            : 'w-full h-7.5 flex flex-row items-center gap-2 rounded-lg px-2 text-ui-13 font-medium text-text/88 cursor-pointer hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
+            : 'w-full h-7.5 flex flex-row items-center gap-2 rounded-lg px-2 text-ui-13 font-medium text-text/88 cursor-pointer motion-hover-fade hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
           <span className="size-4 flex-none text-text-muted">{renderIcon('folder')}</span>
           <span className="flex-1 min-w-0 flex flex-row items-center gap-1.5">
             <span className="min-w-0 truncate whitespace-nowrap">{space ? space.name : 'All projects'}</span>

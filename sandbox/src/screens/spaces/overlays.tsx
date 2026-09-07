@@ -10,23 +10,25 @@ import { renderIcon } from './icons';
 export function renderSpaceMenu(onRename: () => void, onRemove: () => void) {
   return (
     <div className="absolute top-20 left-4 w-40" data-menu="space-context">
-      {popoverCard(
-        <div className="flex flex-col">
-          {menuRow(false, false, onRename, 'space-menu-rename', (
-            <>
-              <span className="size-4 flex-none text-text-muted">{renderIcon('pen')}</span>
-              <span>Rename...</span>
-            </>
-          ))}
-          {menuSeparator('space-menu-sep')}
-          {menuRow(false, false, onRemove, 'space-menu-delete', (
-            <>
-              <span className="size-4 flex-none text-danger">{renderIcon('trash-bin-minimalistic')}</span>
-              <span>Remove...</span>
-            </>
-          ), true)}
-        </div>
-      )}
+      <div className="relative motion-menu-in">
+        {popoverCard(
+          <div className="flex flex-col">
+            {menuRow(false, false, onRename, 'space-menu-rename', (
+              <>
+                <span className="size-4 flex-none text-text-muted">{renderIcon('pen')}</span>
+                <span>Rename...</span>
+              </>
+            ))}
+            {menuSeparator('space-menu-sep')}
+            {menuRow(false, false, onRemove, 'space-menu-delete', (
+              <>
+                <span className="size-4 flex-none text-danger">{renderIcon('trash-bin-minimalistic')}</span>
+                <span>Remove...</span>
+              </>
+            ), true)}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

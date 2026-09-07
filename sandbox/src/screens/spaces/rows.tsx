@@ -114,6 +114,9 @@ export type ChatRowCallbacks = {
 /// One active session card. Line 1 is "project @ device" with the status
 /// corner, line 2 the harness mark and title, line 3 the optional branch and
 /// pull-request badge. Line 3 is structural: compact rows omit it entirely.
+/// shell.rs:5172 blends the row's text and wash through motion::hover_blend,
+/// so the unselected branch fades. The selected branch's rest and hover fills
+/// are the same colour in Rust, so it has nothing to fade and snaps.
 export function renderChatRow(row: ChatRow, selected: boolean, hovered: boolean,
   showBranch: boolean, showPullRequest: boolean, showHarness: boolean,
   jumpLabel: string | null, onHover: (id: string | null) => void, cb: ChatRowCallbacks) {
@@ -127,7 +130,7 @@ export function renderChatRow(row: ChatRow, selected: boolean, hovered: boolean,
       onMouseEnter={() => onHover(row.id)} onMouseLeave={() => onHover(null)}
       className={selected
         ? 'flex flex-col gap-0.5 rounded-lg px-2 py-1.5 text-text bg-wash/10 cursor-pointer focus:bg-wash/14'
-        : 'flex flex-col gap-0.5 rounded-lg px-2 py-1.5 text-text/88 cursor-pointer hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
+        : 'flex flex-col gap-0.5 rounded-lg px-2 py-1.5 text-text/88 cursor-pointer motion-hover-fade hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
       <div className="w-full flex flex-row items-center gap-2">
         <div className="flex-1 min-w-0 truncate whitespace-nowrap text-ui-11 text-text-muted/50">{row.folder}</div>
         <div className="flex-none flex items-center h-3.5 text-text-muted/50">
