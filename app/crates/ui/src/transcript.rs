@@ -41,6 +41,9 @@ use gpui::{
 
 use surya_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus};
 
+pub mod chips;
+pub mod demo_mail;
+pub mod mail_row;
 pub mod stopped;
 pub mod retry;
 use surya_proto::ToolCall;
@@ -928,6 +931,9 @@ pub enum RowKind {
         /// Optimistic echo not yet confirmed by a doc frame.
         pending: bool,
     },
+    /// A message another agent mailed in (surya#198). One per envelope the
+    /// turn carried; the sender is named on the row.
+    Mail(mail_row::MailRow),
     /// One top-level markdown block of a completed message.
     Markdown {
         tree: Arc<BlockTree>,
@@ -1162,6 +1168,31 @@ pub fn rows_for_entry(
     let mut rows: Vec<Row> = Vec::new();
     let streaming = entry.status == Some(MessageStatus::Streaming);
     let entry_id: SharedString = entry.id.clone().into();
+
+    // Mail before the user branch: a delivered row IS a user row as far as
+    // the harness is concerned, and only the `source` field tells them apart.
+    if let Some(mail) = mail_row::rows(entry) {
+        let last = mail.len().saturating_sub(1);
+        return mail
+            .into_iter()
+            .enumerate()
+            .map(|(mix, row)| Row {
+                id: format!("{}#mail{mix}", entry.id).into(),
+                version: (row.text.len() as u64) << 1,
+                turn_start: mix == 0,
+                // The hover strip belongs to the turn, so only the last
+                // envelope carries the timestamp and the copy action - and
+                // what it copies is the body, not the transport.
+                timestamp: (mix == last).then_some(entry.created_at),
+                copy_text: (mix == last && !row.text.trim().is_empty())
+                    .then(|| row.text.clone()),
+                kind: RowKind::Mail(row),
+                entry_id: entry_id.clone(),
+                stopped: false,
+                retry_prompt: None,
+            })
+            .collect();
+    }
 
     if entry.role == MessageRole::User {
         let raw: String = entry
@@ -4454,6 +4485,7 @@ impl Transcript {
                 }
                 column.into_any_element()
             }
+            RowKind::Mail(mail) => mail_row::render(&row.id, mail, &theme),
             RowKind::Markdown { tree, block_ix } => {
                 let Some(top) = tree.blocks.get(*block_ix) else {
                     return gpui::Empty.into_any_element();
@@ -4546,7 +4578,7 @@ impl Transcript {
                 self.render_tool_group(&row.id, tools, *auto_open, &theme, cx)
             }
             RowKind::InputChip { header, resolved } => {
-                input_chip(header.clone(), *resolved, &theme)
+                chips::input_chip(header.clone(), *resolved, &theme)
             }
             RowKind::PermissionChip {
                 tool_name,
@@ -4554,7 +4586,7 @@ impl Transcript {
                 resolved,
                 allowed,
                 always,
-            } => permission_chip(
+            } => chips::permission_chip(
                 tool_name.clone(),
                 command.clone(),
                 *resolved,
@@ -4562,7 +4594,7 @@ impl Transcript {
                 *always,
                 &theme,
             ),
-            RowKind::ErrorChip { message } => error_chip(message.clone(), &theme),
+            RowKind::ErrorChip { message } => chips::error_chip(message.clone(), &theme),
             RowKind::Card { card, .. } => {
                 let card = card.clone();
                 self.render_card_row(ix, &row.id, row.version, &card, &theme, window, cx)
@@ -5545,7 +5577,7 @@ impl Transcript {
 /// run when there are none), with the same selection machinery as rendered
 /// markdown — the element registers into the frame's document-ordered
 /// registry, so drags select, span into adjacent rows, and Cmd+C copies.
-fn user_bubble_text(
+pub(crate) fn user_bubble_text(
     row_id: &SharedString,
     text: SharedString,
     mentions: Arc<Vec<crate::composer::SentMentionSpan>>,
@@ -5615,207 +5647,6 @@ fn user_bubble_text(
         .relative()
         .child(underlay)
         .child(styled)
-        .into_any_element()
-}
-
-/// The transcript ErrorChip — a port of surya chat-view.tsx `ErrorChip`
-/// (34px-minimum row, `rounded-[10px] border border-red-400/[0.16]
-/// bg-red-400/[0.05] px-2 text-[12px]`) with a 20px red-washed tile holding a
-/// 12px DangerTriangle (`bg-red-400/[0.12] text-red-300/80`), a medium
-/// "Error" label, then the human message at `text-foreground/80` — a subtle
-/// red-tinted wash, never a bare red-stroke box. Unlike the web port, the
-/// message WRAPS instead of truncating: startup-crash errors carry the
-/// agent's exit status and stderr, and a one-line ellipsis was exactly what
-/// made zeronsh/comet#95 undiagnosable from the screenshot.
-fn error_chip(message: SharedString, theme: &Theme) -> AnyElement {
-    let red_300 = theme.danger_muted; // tailwind red-300
-    let danger = theme.danger; // red-400
-    div()
-        .py(px(4.0))
-        .w_full()
-        .child(
-            div()
-                .min_h(px(34.0))
-                .w_full()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .overflow_hidden()
-                .rounded(px(10.0))
-                .border_1()
-                .border_color(danger.opacity(0.16))
-                .bg(danger.opacity(0.05))
-                .px(px(8.0))
-                .py(px(7.0))
-                .text_size(px(12.0))
-                .child(
-                    div()
-                        .flex_none()
-                        .size(px(20.0))
-                        .rounded(px(6.0))
-                        .bg(danger.opacity(0.12))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            crate::icons::icon(crate::icons::DANGER_TRIANGLE)
-                                .size(px(12.0))
-                                .text_color(red_300.opacity(0.8)),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(red_300.opacity(0.8))
-                        .child(SharedString::from("Error")),
-                )
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .text_color(theme.text.opacity(0.8))
-                        .child(message),
-                ),
-        )
-        .into_any_element()
-}
-
-/// A passive one-line chip marking a question the agent asked — the
-/// interactive controls live in the composer (chat-view.tsx `InputChip`):
-/// 34px row, `rounded-[10px] border-white/[0.08] bg-white/[0.045] px-2
-/// text-[12px]`, a 20px `bg-white/[0.09]` icon tile with a 12px
-/// ChatRoundLine, the medium "Question" label, then the truncating value —
-/// the first question's header once resolved, "Awaiting your answer…" while
-/// pending. Neutral tones throughout; resolution never recolors the chip.
-fn input_chip(header: SharedString, resolved: bool, theme: &Theme) -> AnyElement {
-    let value: SharedString = if resolved {
-        header
-    } else {
-        "Awaiting your answer…".into()
-    };
-    div()
-        .py(px(4.0))
-        .w_full()
-        .child(
-            div()
-                .h(px(34.0))
-                .w_full()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .overflow_hidden()
-                .rounded(px(10.0))
-                .border_1()
-                .border_color(crate::theme::hairline(0.08))
-                .bg(crate::theme::ink(0.045))
-                .px(px(8.0))
-                .text_size(px(12.0))
-                .child(
-                    div()
-                        .flex_none()
-                        .size(px(20.0))
-                        .rounded(px(6.0))
-                        .bg(crate::theme::ink(0.09))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            crate::icons::icon(crate::icons::CHAT_ROUND_LINE)
-                                .size(px(12.0))
-                                .text_color(theme.text_muted),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(theme.text_muted)
-                        .child(SharedString::from("Question")),
-                )
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .truncate()
-                        .text_color(theme.text.opacity(0.9))
-                        .child(value),
-                ),
-        )
-        .into_any_element()
-}
-
-/// The permission twin of [`input_chip`].
-///
-/// Unresolved it says what a question says - something is waiting on you -
-/// and the panel in the composer's place is where it is answered. Resolved
-/// it states the answer, because a tool that did not run leaves no other
-/// trace, and "nothing happened" is not something the user should have to
-/// infer.
-fn permission_chip(
-    tool_name: SharedString,
-    command: SharedString,
-    resolved: bool,
-    allowed: bool,
-    always: bool,
-    theme: &Theme,
-) -> AnyElement {
-    // The answer is said in a word, not implied by the command being there:
-    // "the tool ran" and "the tool was refused" look identical otherwise.
-    let value: SharedString = match (resolved, allowed, always) {
-        (false, _, _) => "Awaiting your answer…".into(),
-        (true, true, true) => format!("Always allowed - {command}").into(),
-        (true, true, false) => format!("Allowed - {command}").into(),
-        (true, false, _) => format!("Denied - {command}").into(),
-    };
-    div()
-        .py(px(4.0))
-        .w_full()
-        .child(
-            div()
-                .h(px(34.0))
-                .w_full()
-                .flex()
-                .items_center()
-                .gap(px(8.0))
-                .overflow_hidden()
-                .rounded(px(10.0))
-                .border_1()
-                .border_color(crate::theme::hairline(0.08))
-                .bg(crate::theme::ink(0.045))
-                .px(px(8.0))
-                .text_size(px(12.0))
-                .child(
-                    div()
-                        .flex_none()
-                        .size(px(20.0))
-                        .rounded(px(6.0))
-                        .bg(crate::theme::ink(0.09))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .child(
-                            crate::icons::icon(crate::icons::KEY_MINIMALISTIC)
-                                .size(px(12.0))
-                                .text_color(theme.text_muted),
-                        ),
-                )
-                .child(
-                    div()
-                        .flex_none()
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(theme.text_muted)
-                        .child(tool_name),
-                )
-                .child(
-                    div()
-                        .min_w_0()
-                        .flex_1()
-                        .truncate()
-                        .text_color(theme.text.opacity(0.9))
-                        .child(value),
-                ),
-        )
         .into_any_element()
 }
 
@@ -6353,6 +6184,14 @@ fn entry_fingerprint(entry: &SessionMessageEntry, pending: bool) -> u64 {
         Some(MessageStatus::Aborted) => 3,
     });
     acc.push(pending as u8);
+    // The source picks the row KIND, so a row cached before it arrived (a
+    // doc frame that carried the text first) has to be re-split when it does.
+    if let Some(source) = &entry.source {
+        for sender in source.mail_senders() {
+            acc.extend_from_slice(sender.as_bytes());
+        }
+        acc.push(0x4d);
+    }
     for part in &entry.parts {
         acc.extend_from_slice(part.id().as_bytes());
         acc.extend_from_slice(&(part.byte_len() as u64).to_le_bytes());
@@ -7067,6 +6906,7 @@ mod tests {
             device_id: "dev".into(),
             status: Some(status),
             continuation_of: None,
+            source: None,
         }
     }
 
@@ -8095,6 +7935,7 @@ mod tests {
             device_id: "dev".into(),
             status: None,
             continuation_of: None,
+            source: None,
         };
         let rows = rows_for_entry(&user, true, &mut parse);
         assert_eq!(rows.len(), 1);

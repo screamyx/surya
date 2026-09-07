@@ -187,6 +187,7 @@ async fn a_shown_card_reaches_the_transcript_row_and_parses_unchanged() {
         device_id: "test".into(),
         status: Some(MessageStatus::Complete),
         continuation_of: None,
+        source: None,
     })
     .expect("push");
     let entries = doc.read_entries().expect("read");

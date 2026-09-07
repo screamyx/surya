@@ -5258,6 +5258,7 @@ impl Composer {
             device_id: "local".into(),
             status: None,
             continuation_of: None,
+            source: None,
         };
         self.state.update(cx, |s, cx| {
             if is_new {
@@ -5401,6 +5402,7 @@ impl Composer {
                         device_id: "local".into(),
                         status: None,
                         continuation_of: None,
+                        source: None,
                     };
                     let echo_chat_id = chat_id.clone();
                     this.update(cx, |composer, cx| {
@@ -7708,6 +7710,7 @@ mod tests {
             device_id: "d".into(),
             status,
             continuation_of: None,
+            source: None,
         };
         // Streaming entry with unresolved input → panel.
         let t = vec![entry(
@@ -7744,6 +7747,7 @@ mod tests {
                 device_id: "d".into(),
                 status: Some(MessageStatus::Complete),
                 continuation_of: None,
+                source: None,
             },
         ];
         assert!(pending_input_request(&t).is_none());
@@ -7776,6 +7780,7 @@ mod tests {
             device_id: "d".into(),
             status: Some(MessageStatus::Complete),
             continuation_of: None,
+            source: None,
         };
         let t = vec![
             entry(Some(MessageStatus::Streaming), vec![input_part.clone()]),

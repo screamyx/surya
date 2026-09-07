@@ -589,6 +589,7 @@ mod tests {
             device_id: "d".into(),
             status: Some(MessageStatus::Complete),
             continuation_of: None,
+            source: None,
         }
     }
 

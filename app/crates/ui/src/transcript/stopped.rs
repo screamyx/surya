@@ -73,6 +73,7 @@ mod tests {
             device_id: "dev".into(),
             status: Some(status),
             continuation_of: None,
+            source: None,
         }
     }
 

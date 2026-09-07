@@ -98,6 +98,22 @@ async fn mail_rides_the_recipients_next_turn_and_acks_when_it_ends() {
     assert_eq!(row.from_device, core.device_id);
     assert_eq!(row.to_device, core.device_id);
 
+    // The transcript row says who sent it. Without this the app has only the
+    // text to go on, and the owner sees his own bubble (surya#198). The
+    // sender here is A's registry title, the same name the header carries.
+    let entry = mail_support::user_entry(&core, CHAT_B, &expected).expect("the delivered row");
+    assert_eq!(
+        entry.source,
+        Some(surya_proto::mail::MessageSource::Mail {
+            from: vec!["Sender-A".to_string()]
+        }),
+        "the delivered row must name its sender in `source`"
+    );
+    // And the row the owner typed does not, so the two cannot be confused.
+    let typed = mail_support::user_entry(&core, CHAT_B, "first turn").expect("the typed row");
+    assert_eq!(typed.source, None, "a typed row carries no source");
+    println!("proof 1: source=mail from=Sender-A typed_source=none");
+
     // ---- Proof 2: one #workspace send, two live agents.
     wait_for(|| settled(&core, CHAT_B), "B idle again").await;
     let fanout = core

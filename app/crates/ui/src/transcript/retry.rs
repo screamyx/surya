@@ -130,6 +130,7 @@ mod tests {
             device_id: "dev".into(),
             status,
             continuation_of: None,
+            source: None,
         }
     }
 

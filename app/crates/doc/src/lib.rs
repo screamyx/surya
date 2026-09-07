@@ -13,6 +13,7 @@ pub mod constants;
 pub mod parts;
 pub mod rebuild;
 pub mod registry;
+pub mod salvage;
 pub mod schema;
 pub mod transcript_delta;
 pub mod workspace;

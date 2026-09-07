@@ -709,6 +709,7 @@ async fn recover_stale_journal_stamps_aborted_on_boot() {
             device_id: device_id.into(),
             status: Some(MessageStatus::Complete),
             continuation_of: None,
+            source: None,
         })
         .unwrap();
         let mut writer = SegmentWriter::begin(&doc, "m-assist", device_id, 2).unwrap();

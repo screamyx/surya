@@ -14,6 +14,7 @@
 mod delivery;
 mod envelope;
 mod ingress;
+pub mod origin;
 mod rpc;
 mod store;
 
@@ -24,6 +25,7 @@ use tokio::sync::watch;
 
 pub use envelope::{MailAddress, MailMessage, MailState};
 pub use ingress::{MailIngress, MailIngressPaths};
+pub use origin::MessageOrigin;
 pub(crate) use ingress::surya_home_dir;
 pub use rpc::MailRpc;
 pub use store::{MAX_DELIVERY_ATTEMPTS, MailStore, MailStoreError};

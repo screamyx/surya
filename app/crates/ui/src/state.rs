@@ -3006,6 +3006,7 @@ mod tests {
             device_id: "dev".into(),
             status: None,
             continuation_of: None,
+            source: None,
         }
     }
 
@@ -3040,6 +3041,7 @@ mod tests {
             device_id: "d".into(),
             status: Some(MessageStatus::Streaming),
             continuation_of: None,
+            source: None,
         };
 
         let mut state = AppState::new();
@@ -3605,6 +3607,7 @@ mod tests {
             device_id: "local".into(),
             status: None,
             continuation_of: None,
+            source: None,
         };
         state.push_echo("c1", echo.clone());
         // Duplicate pushes dedupe.

@@ -118,6 +118,13 @@ impl Mail {
         request.attachments = Vec::new();
         let harness = self.inner.doc_host.harness_for_request(agent, &request);
         let message_id = format!("mailmsg-{}", queued[0].id);
+        // What makes the row read as mail. The id prefix above only keys the
+        // entry; this names the senders, and it is the only thing the UI
+        // consults to decide the row is not the owner's own typing.
+        let origin = super::origin::MessageOrigin::mail(
+            message_id,
+            queued.iter().map(|m| m.from.clone()).collect(),
+        );
 
         // Claim first: from here no other pass sees these rows, and no ack
         // pass can touch them either — their run id is still unset.
@@ -140,7 +147,7 @@ impl Mail {
                 agent,
                 harness,
                 request,
-                Some(message_id),
+                Some(origin),
             )
             .await;
         let run_id = match dispatched {

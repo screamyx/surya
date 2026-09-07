@@ -144,6 +144,23 @@ macro_rules! wait_until {
     }};
 }
 
+/// The user entry whose text is exactly `text`. For assertions about the
+/// row itself rather than its words - `source`, above all.
+pub fn user_entry(core: &EngineCore, chat: &str, text: &str) -> Option<SessionMessageEntry> {
+    let entries: Vec<SessionMessageEntry> = core
+        .doc_host
+        .open(chat)
+        .ok()
+        .and_then(|h| h.doc().read_entries().ok())
+        .unwrap_or_default();
+    entries.into_iter().find(|e| {
+        e.role == MessageRole::User
+            && e.parts.iter().any(|p| {
+                matches!(p, surya_doc::MessagePart::Text { text: t, .. } if t == text)
+            })
+    })
+}
+
 pub fn user_texts(core: &EngineCore, chat: &str) -> Vec<String> {
     let entries: Vec<SessionMessageEntry> = core
         .doc_host

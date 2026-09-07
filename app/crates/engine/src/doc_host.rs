@@ -32,9 +32,11 @@ use surya_doc::{
     SessionCommandStatus, SessionDoc, SessionMessageEntry, evaluate_command,
     join_continuation_entries,
 };
+use surya_proto::mail::MessageSource;
 use surya_proto::{ConversationSourceContext, HarnessId, UserInputAnswer, UserInputQuestion};
 use surya_sync::DocsStore;
 
+use crate::mail::MessageOrigin;
 use crate::sessions::{SessionsEngine, SteerOutcome};
 use crate::workspace_host::WorkspaceHost;
 use crate::{EngineError, new_id, now_ms};
@@ -465,6 +467,23 @@ impl ChatDocHandle {
         text: &str,
         created_at: i64,
     ) -> Result<(), DocError> {
+        self.write_user_message_from(message_id, text, created_at, None)
+    }
+
+    /// [`Self::write_user_message`], plus who the row came from when that was
+    /// not the person at the keyboard.
+    ///
+    /// Same idempotence, and that is what keeps the source: a mail row is
+    /// written once, and every later path that re-dispatches the same id
+    /// (crash recovery, a steer orphaned by a dying run) finds the entry
+    /// already there and leaves it alone.
+    pub fn write_user_message_from(
+        &self,
+        message_id: &str,
+        text: &str,
+        created_at: i64,
+        source: Option<MessageSource>,
+    ) -> Result<(), DocError> {
         if self.doc.read_entries()?.iter().any(|e| e.id == message_id) {
             return Ok(());
         }
@@ -479,6 +498,7 @@ impl ChatDocHandle {
             device_id: self.device_id.clone(),
             status: Some(MessageStatus::Complete),
             continuation_of: None,
+            source,
         })
     }
 
@@ -3184,7 +3204,7 @@ impl DocHost {
                     chat_id,
                     harness,
                     request,
-                    Some(message_id.clone()),
+                    Some(message_id.clone().into()),
                 )
                 .await?;
                 Ok((SessionCommandStatus::Applied, None))
@@ -3230,7 +3250,7 @@ impl DocHost {
                             chat_id,
                             harness,
                             request,
-                            message_id.clone(),
+                            message_id.clone().map(MessageOrigin::typed),
                         )
                         .await?;
                         Ok((
@@ -3341,7 +3361,7 @@ impl DocHost {
         chat_id: &str,
         harness: HarnessId,
         request: surya_proto::RunRequest,
-        message_id: Option<String>,
+        origin: Option<MessageOrigin>,
     ) -> Result<String, EngineError> {
         if let Some(workspace) = self.workspace()
             && let Some(context) = self.capture_source_context(&request.cwd).await
@@ -3349,9 +3369,7 @@ impl DocHost {
         {
             tracing::warn!(chat = %chat_id, error = %err, "conversation source stamp failed");
         }
-        sessions
-            .dispatch(chat_id, harness, request, message_id)
-            .await
+        sessions.dispatch(chat_id, harness, request, origin).await
     }
 
     /// Create (or reuse) the isolated worktree a Run's [`surya_proto::WorktreeSpec`]
