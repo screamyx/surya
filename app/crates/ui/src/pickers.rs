@@ -153,12 +153,6 @@ impl ResolvedRunConfig {
 // Pure: default resolution (no "Default" placeholders — a concrete pick always)
 // ---------------------------------------------------------------------------
 
-/// The harness's default model: the first catalog row (both curated catalogs
-/// lead with the flagship — surya's `pickDefaultModel` Opus preference maps to
-/// the same row here).
-pub fn default_model(models: &[Model]) -> Option<&Model> {
-    models.first()
-}
 
 /// A model's default reasoning: X-High when the ladder offers it (surya
 /// `DEFAULT_REASONING = "xhigh"`), else High, else the ladder's first entry.
@@ -758,8 +752,8 @@ impl Pickers {
             Some(id) => models
                 .iter()
                 .find(|m| m.id == id)
-                .or_else(|| default_model(models)),
-            None => default_model(models),
+                .or_else(|| crate::model_default::default_model(models)),
+            None => crate::model_default::default_model(models),
         }
     }
 
@@ -4613,27 +4607,6 @@ mod tests {
         assert_eq!(config.sandbox, SandboxLevel::WorkspaceWrite);
     }
 
-    #[test]
-    fn default_model_is_first_catalog_row() {
-        let models = vec![
-            Model {
-                id: "flagship".into(),
-                label: "Flagship".into(),
-                description: None,
-                reasoning_levels: vec![],
-                options: vec![],
-            },
-            Model {
-                id: "fast".into(),
-                label: "Fast".into(),
-                description: None,
-                reasoning_levels: vec![],
-                options: vec![],
-            },
-        ];
-        assert_eq!(default_model(&models).map(|m| &*m.id), Some("flagship"));
-        assert!(default_model(&[]).is_none());
-    }
 
     #[test]
     fn default_reasoning_prefers_high_then_medium() {
