@@ -717,9 +717,11 @@ impl WorkspaceHost {
     ///
     /// Spaces invariant: every chat belongs to a space, so the claim resolves an
     /// own-device space matching `cwd` — or auto-creates one (gitDetected false;
-    /// SpacesSync corrects on its next pass). A cwd-less claim (e.g. note_message
-    /// racing ahead of the run command) leaves `spaceId` unset; the row is
-    /// invisible to the UI until a spaced claim/create lands.
+    /// SpacesSync corrects on its next pass). A cwd-less claim leaves `spaceId`
+    /// unset, and such a row is NOT invisible: the sidebar draws a project-less
+    /// chat as a first-class row (`AppState::overview_chats`), titleless, under
+    /// All projects. That is what a stray claim looked like on screen, so the
+    /// callers that cannot name a cwd no longer claim at all.
     pub fn claim_chat(&self, chat_id: &str, cwd: Option<&str>) -> Result<(), EngineError> {
         if self.read(|doc| doc.chat(chat_id))?.is_some() {
             return Ok(());
@@ -783,15 +785,24 @@ impl WorkspaceHost {
 
     // ── host-side row writes ────────────────────────────────────────────────
 
-    /// Sidebar freshness on message persist: preview = first 120 chars of the last
-    /// message's text. Claims the row first so a pre-workspace chat gains one.
+    /// Sidebar freshness on message persist: preview = first 120 chars of the
+    /// last message's text. A no-op when the chat has no row.
+    ///
+    /// It used to claim the row first, and that is how a removed project grew
+    /// a chat back: the `deleteSpace` cascade tombstones the chat, the run it
+    /// interrupted persists one last message on its way out, and the claim
+    /// re-created the row. A cwd-less claim writes only identity, so what came
+    /// back had no title, no cwd and no project - it drew as "New session" at
+    /// `~` under All projects, opened onto nothing, and survived restarts.
+    ///
+    /// A freshness write has no business creating a chat. The run's own claim
+    /// on the first command ([`Self::claim_chat`], from `DocHost::execute` and
+    /// `SessionsEngine::dispatch_with`) is what gives a pre-workspace chat its
+    /// row, and it runs before any message is persisted.
     pub fn note_message(&self, chat_id: &str, text: &str) {
         let preview: String = text.chars().take(120).collect();
-        let result = self.claim_chat(chat_id, None).and_then(|_| {
-            self.mutate(|doc| doc.set_chat_last_message(chat_id, &preview, Utc::now()))
-                .map_err(EngineError::from)
-        });
-        if let Err(err) = result {
+        if let Err(err) = self.mutate(|doc| doc.set_chat_last_message(chat_id, &preview, Utc::now()))
+        {
             tracing::warn!(chat = %chat_id, error = %err, "registry last-message write failed");
         }
     }

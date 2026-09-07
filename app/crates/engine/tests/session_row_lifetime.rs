@@ -223,11 +223,12 @@ async fn a_run_with_no_createchat_records_its_opening_working() {
     // has claimed the chat. A deadline would make it pass for the wrong
     // reason twice over.
     //
-    // Any status, not `Working` specifically. The run's own task is already
-    // spawned by now and its parked permission can turn the row
-    // `AwaitingInput` first. Either way the mirror reached the doc, which is
-    // the whole claim: without the claim there is no row here at all, since
-    // `note_message` claims only after `set_status` and writes no session row.
+    // Any status, not `Working` specifically. What this pins is that the
+    // claim put a row there at all; which status it carries is the run's
+    // business and not the point. (An earlier comment here blamed a parked
+    // permission for turning the row `AwaitingInput` - wrong: `AwaitingInput`
+    // has one setter, `AgentEvent::InputRequested`, and a parked permission
+    // leaves the status `Working`.)
     let rows = core.workspace.read_sessions().unwrap_or_default();
     assert!(
         rows.iter().any(|s| s.chat_id == "chat-claimed"),
@@ -315,5 +316,89 @@ async fn mail_for_a_cascaded_chat_mints_no_project_and_no_chat() {
     assert!(
         chats.is_empty(),
         "a removed project grew a chat back: {chats:?}"
+    );
+}
+
+/// A message persisted after the cascade must not bring the chat back.
+///
+/// The run interrupted by `deleteSpace` writes one last message on its way
+/// out. `note_message` used to claim the row before writing the preview, so
+/// that write re-created the chat - cwd-less and project-less, drawn as
+/// "New session" at `~` under All projects, opening onto a transcript
+/// `purge_chat` had already taken.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_message_after_the_cascade_brings_nothing_back() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let core = assemble(dir.path(), vec![started(), done(DoneStatus::Completed)]);
+    let client = surya_rpc::memory_client(core.rpc_service());
+
+    client
+        .call(
+            methods::MUTATE,
+            serde_json::json!({
+                "op": "createSpace", "spaceId": "space-1",
+                "deviceId": core.device_id, "path": CWD
+            }),
+        )
+        .await
+        .expect("create space");
+    client
+        .call(
+            methods::MUTATE,
+            serde_json::json!({ "op": "createChat", "chatId": "chat-1", "spaceId": "space-1" }),
+        )
+        .await
+        .expect("create chat");
+    client
+        .call(
+            methods::MUTATE,
+            serde_json::json!({ "op": "deleteSpace", "spaceId": "space-1" }),
+        )
+        .await
+        .expect("delete space");
+    wait_for(
+        || core.workspace.chat("chat-1").ok().flatten().is_none(),
+        "the chat row to go",
+    )
+    .await;
+
+    core.workspace
+        .note_message("chat-1", "the run said something on its way out");
+
+    let chats = core.workspace.read_chats().unwrap_or_default();
+    assert!(
+        chats.is_empty(),
+        "a message brought the chat back: {chats:?}"
+    );
+}
+
+/// And the preview still lands for a chat that never went through
+/// `createChat`: the run's own claim on the first command gives it a row, and
+/// that runs before any message is persisted.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_pre_workspace_chat_still_gets_its_preview() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let core = assemble(dir.path(), vec![started(), done(DoneStatus::Completed)]);
+    // No createChat anywhere: dispatch is the only thing that can give this
+    // chat a row, and `dispatch_with` calls `note_message` right after.
+    core.sessions
+        .dispatch(
+            "chat-claimed",
+            HarnessId::Mock,
+            run_request("migrate the database"),
+            None,
+        )
+        .await
+        .expect("dispatch");
+
+    let chat = core
+        .workspace
+        .chat("chat-claimed")
+        .expect("read")
+        .expect("the first command claimed the row");
+    assert_eq!(
+        chat.last_message_preview.as_deref(),
+        Some("migrate the database"),
+        "the preview never landed: {chat:?}"
     );
 }
