@@ -68,6 +68,24 @@ impl FileEditor {
         }
     }
 
+    /// Keep the open document pointed at a renamed file, or clear a deleted one.
+    pub(super) fn file_action_completed(&mut self, action: &surya_proto::files::FileMutation, cx: &mut Context<Self>) {
+        use surya_proto::files::FileMutation;
+        match action {
+            FileMutation::Create { path } => self.open(path.clone(), cx),
+            FileMutation::Rename { path, new_path } if self.doc.path.as_ref() == Some(path) => {
+                self.load(new_path.clone(), cx);
+            }
+            FileMutation::Delete { path } if self.doc.path.as_ref() == Some(path) => {
+                self.task = None;
+                self.doc = EditorDoc::default();
+                self.input.update(cx, |input, cx| input.set_text("", cx));
+                cx.notify();
+            }
+            _ => {}
+        }
+    }
+
     /// A click in the tree. A dirty buffer is never replaced without asking:
     /// the prompt goes up and the path waits behind it (`prompt`). The same
     /// dirty file clicked again keeps its buffer and takes any prompt down:

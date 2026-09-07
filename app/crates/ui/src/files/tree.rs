@@ -8,6 +8,8 @@
 //! box switches the list to `FilesSearch` results; enter there opens the
 //! highlighted match.
 
+mod actions;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -28,6 +30,8 @@ use crate::theme::Theme;
 pub enum TreeEvent {
     /// A file row was activated.
     Open(String),
+    /// An action chosen for the selected file or folder.
+    Action(super::FileAction),
 }
 
 pub struct FileTreeView {
@@ -322,6 +326,7 @@ impl FileTreeView {
             _ => " ",
         };
         let path = row.path.clone();
+        let context_path = path.clone();
         div()
             .id(ix)
             .flex()
@@ -343,6 +348,11 @@ impl FileTreeView {
                 gpui::MouseButton::Left,
                 cx.listener(move |this, _, _, cx| this.activate(&path, cx)),
             )
+            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |this, _, window, cx| {
+                this.model.selected = Some(context_path.clone());
+                window.focus(&this.focus, cx);
+                cx.notify();
+            }))
             .child(
                 div()
                     .w(px(10.0))
@@ -422,6 +432,7 @@ impl Render for FileTreeView {
                             .child(self.filter.clone()),
                     ),
             )
+            .child(self.action_bar(&theme, cx))
             .children(empty)
             .child(div().flex_1().min_h_0().child(list))
     }
