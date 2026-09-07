@@ -59,7 +59,9 @@ cd crates/browser && cargo test               # the browser crate is its own wor
 
 - One PR per change. Do not stack PRs.
 - A PR merges only with all three: the author's own green run, an independent review verdict of MERGE, and green CI including smoke.
-- Check `git merge-tree` against main before asking for the verdict.
+- Check for conflicts against main before asking for the verdict, with the modern form: `git merge-tree --write-tree --name-only HEAD origin/main`.
+  It exits 1 and prints `CONFLICT` lines when the branch conflicts.
+  The legacy three-argument form prints nothing for a real conflict, so it gives a false clean.
 - Squash-merge, then delete the branch.
 - A UI change ships with a Windows dtry screenshot in the PR or the gallery (decision 28). A Linux shot is smoke, not proof.
 
