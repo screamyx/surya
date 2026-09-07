@@ -119,6 +119,7 @@ devices, and auth.
 | `app/crates/engine/src/mail/delivery.rs` | 306 | the pump and the ack |
 | `app/crates/engine/src/mail/envelope.rs` | 268 | the row, the address, the state |
 | `app/crates/engine/src/mail/origin.rs` | 75 | who a dispatched turn writes its row as |
+| `app/crates/engine/src/mail/preview.rs` | 102 | what the sidebar shows for a mail turn |
 | `app/crates/proto/src/mail.rs` | 214 | the envelope grammar, and the row's `source` field |
 | `app/crates/ui/src/transcript/mail_row.rs` | 268 | the row the owner sees |
 | `app/crates/ui/src/transcript/demo_mail.rs` | 139 | `SURYA_DEMO_MAIL`, for the shot |

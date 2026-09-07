@@ -183,3 +183,75 @@ async fn mail_to_an_unknown_agent_queues_instead_of_failing() {
 
     core.shutdown().await;
 }
+
+/// The chat list's preview of a delivered turn reads the message, not the
+/// envelope (surya#214).
+///
+/// Asserted here rather than only on the helper because this is the seam the
+/// fix runs through: `dispatch_inner` has to carry the row's `source` as far
+/// as `note_message`, and the borrow that takes is what broke first.
+///
+/// `QuietHarness` and not `EchoHarness`: a reply calls `note_message` again
+/// with its own text, so on an echoed turn this value is overwritten before a
+/// test can read it. That is also why #214 is latent rather than visible.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_chat_row_previews_a_mail_turn_as_the_message() {
+    let tmp = tempfile::tempdir().unwrap();
+    let registry = HarnessRegistry::new();
+    registry.register(Arc::new(mail_support::QuietHarness));
+    let core = EngineCore::assemble(
+        &tmp.path().join("data"),
+        Arc::new(registry),
+        HarnessId::Mock,
+        None,
+    )
+    .expect("engine core assembles");
+
+    core.workspace
+        .create_space(SPACE, &core.device_id, "/repo", None, false)
+        .expect("space");
+    for (chat, title) in [(CHAT_A, "Sender-A"), (CHAT_B, "Reader-B")] {
+        core.workspace
+            .create_chat(chat, Some(SPACE), Some(&core.device_id), None, None)
+            .expect("chat");
+        core.workspace.rename_chat(chat, title).expect("title");
+    }
+    // B has to be a live agent before it can be mailed, and its first turn
+    // parks, so the preview below is the one the mail dispatch wrote.
+    core.sessions
+        .dispatch(CHAT_B, HarnessId::Mock, request("first turn"), None)
+        .await
+        .expect("B's first turn");
+
+    let receipt = core
+        .mail
+        .send_from_chat(CHAT_A, CHAT_B, "please check the diff", None)
+        .await
+        .expect("send");
+    let id = receipt.ids[0].clone();
+    let expected = format!("[MAIL {id} from Sender-A]\n  please check the diff\n[/MAIL {id}]");
+    wait_for(
+        || user_texts(&core, CHAT_B).iter().any(|t| t == &expected),
+        "B's turn to carry the envelope",
+    )
+    .await;
+
+    let preview = core
+        .workspace
+        .chat(CHAT_B)
+        .ok()
+        .flatten()
+        .and_then(|c| c.last_message_preview)
+        .expect("B's chat row has a preview");
+    assert_eq!(
+        preview, "Sender-A: please check the diff",
+        "the preview names the sender and carries the message"
+    );
+    assert!(
+        !preview.contains("[MAIL"),
+        "no envelope survives into the preview: {preview}"
+    );
+    println!("preview: {preview:?}");
+
+    core.shutdown().await;
+}

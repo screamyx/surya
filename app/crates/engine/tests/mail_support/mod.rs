@@ -73,6 +73,56 @@ impl Harness for EchoHarness {
     }
 }
 
+/// Starts a turn and then says nothing, for as long as the test holds it.
+///
+/// `EchoHarness` answers immediately, and an answer overwrites the chat's
+/// last-message preview (`sessions.rs` calls `note_message` again with the
+/// reply). Anything the DISPATCH wrote about a row is therefore unobservable
+/// by the time an echoed turn has ended. This harness leaves that window
+/// open instead of racing it.
+pub struct QuietHarness;
+
+#[async_trait]
+impl Harness for QuietHarness {
+    fn id(&self) -> HarnessId {
+        HarnessId::Mock
+    }
+    fn display_name(&self) -> &str {
+        "Quiet"
+    }
+    fn supports_steering(&self) -> bool {
+        false
+    }
+    fn steering_mode(&self) -> SteeringMode {
+        SteeringMode::TurnBoundary
+    }
+    fn reasoning_levels(&self) -> &[ReasoningLevel] {
+        &[ReasoningLevel::Medium]
+    }
+    async fn models(&self) -> Result<Vec<Model>, HarnessError> {
+        Ok(vec![])
+    }
+    async fn run(
+        &self,
+        request: RunRequest,
+        _controls: RunControls,
+    ) -> Result<BoxStream<'static, Result<AgentEvent, HarnessError>>, HarnessError> {
+        let started: Vec<Result<AgentEvent, HarnessError>> = vec![Ok(AgentEvent::SessionStarted {
+            harness: HarnessId::Mock,
+            model: "mock-1".into(),
+            tools: vec![],
+            cwd: request.cwd.clone(),
+            session_id: "sess-quiet".into(),
+            assistant_message_id: "a-quiet".into(),
+        })];
+        // No Done, and the stream never ends: the turn stays live and nothing
+        // the dispatch wrote is overwritten while the test reads it.
+        Ok(futures::stream::iter(started)
+            .chain(futures::stream::pending())
+            .boxed())
+    }
+}
+
 /// Fails every turn: the run reaches Errored, never Idle.
 pub struct FailingHarness;
 
