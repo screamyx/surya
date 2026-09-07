@@ -729,6 +729,21 @@ impl WorkspaceHost {
         if self.read(|doc| doc.chat(chat_id))?.is_some() {
             return Ok(());
         }
+        // A DELETED chat is not claimable. Absence alone is: a claim is how a
+        // brand-new chat gets its row, and a crash can predate the debounced
+        // registry write. But re-claiming a tombstone is how a removed
+        // project grew back - the claim mints the row, and at the old cwd
+        // `space_for_path` mints the project to hold it.
+        //
+        // An error, not a quiet skip. Every caller is starting a run, and a
+        // run for a chat nobody has must not start at all: a silent no-op
+        // would leave it going with no row, which is the state every guard
+        // added since #147 is there to prevent.
+        if self.chat_tombstoned(chat_id) {
+            return Err(EngineError::Other(format!(
+                "chat {chat_id} was deleted; refusing to claim it"
+            )));
+        }
         let space_id = self.space_for_path(cwd)?;
         self.mutate(|doc| doc.claim_chat(chat_id, Some(cwd), Some(&space_id), Utc::now()));
         Ok(())
