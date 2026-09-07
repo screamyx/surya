@@ -65,6 +65,11 @@ static LAST: Mutex<Option<(u64, Arc<RenderImage>)>> = Mutex::new(None);
 /// in Chrome does; `focus` is the pane's handle for that.
 pub fn panel(focus: &gpui::FocusHandle) -> gpui::AnyElement {
     use gpui::{InteractiveElement as _, MouseButton};
+    // Nothing to carry a mouse or a keyboard into, so this hands back the
+    // empty surface rather than a listening one. It is empty on purpose: the
+    // words for this case come from `crate::off_note` and the caller paints
+    // them. A caller that reaches here while the browser is off, and does not
+    // draw that note itself, gets a blank pane and no explanation.
     if crate::disabled() {
         return surface();
     }
