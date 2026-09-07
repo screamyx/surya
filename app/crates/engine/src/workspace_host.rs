@@ -721,7 +721,10 @@ impl WorkspaceHost {
     /// reason: a claim that could not name one wrote a row with no `spaceId`,
     /// and the sidebar draws a project-less chat as a first-class row
     /// (`AppState::overview_chats`) - titleless, at `~`, under All projects.
-    /// Both callers are run commands and both know their cwd.
+    /// Both callers carry a `RunRequest`, and every `RunRequest` names a cwd.
+    /// Not "both are run commands": `SessionsEngine::dispatch_with` is also
+    /// reached by mail delivery and the crash auto-resume. What they share is
+    /// the request, not where they came from.
     pub fn claim_chat(&self, chat_id: &str, cwd: &str) -> Result<(), EngineError> {
         if self.read(|doc| doc.chat(chat_id))?.is_some() {
             return Ok(());
