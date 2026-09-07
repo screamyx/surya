@@ -717,20 +717,17 @@ impl WorkspaceHost {
     ///
     /// Spaces invariant: every chat belongs to a space, so the claim resolves an
     /// own-device space matching `cwd` — or auto-creates one (gitDetected false;
-    /// SpacesSync corrects on its next pass). A cwd-less claim leaves `spaceId`
-    /// unset, and such a row is NOT invisible: the sidebar draws a project-less
-    /// chat as a first-class row (`AppState::overview_chats`), titleless, under
-    /// All projects. That is what a stray claim looked like on screen, so the
-    /// callers that cannot name a cwd no longer claim at all.
-    pub fn claim_chat(&self, chat_id: &str, cwd: Option<&str>) -> Result<(), EngineError> {
+    /// SpacesSync corrects on its next pass). The `cwd` is required for that
+    /// reason: a claim that could not name one wrote a row with no `spaceId`,
+    /// and the sidebar draws a project-less chat as a first-class row
+    /// (`AppState::overview_chats`) - titleless, at `~`, under All projects.
+    /// Both callers are run commands and both know their cwd.
+    pub fn claim_chat(&self, chat_id: &str, cwd: &str) -> Result<(), EngineError> {
         if self.read(|doc| doc.chat(chat_id))?.is_some() {
             return Ok(());
         }
-        let space_id = match cwd {
-            Some(cwd) => Some(self.space_for_path(cwd)?),
-            None => None,
-        };
-        self.mutate(|doc| doc.claim_chat(chat_id, cwd, space_id.as_deref(), Utc::now()));
+        let space_id = self.space_for_path(cwd)?;
+        self.mutate(|doc| doc.claim_chat(chat_id, Some(cwd), Some(&space_id), Utc::now()));
         Ok(())
     }
 
@@ -801,9 +798,17 @@ impl WorkspaceHost {
     /// row, and it runs before any message is persisted.
     pub fn note_message(&self, chat_id: &str, text: &str) {
         let preview: String = text.chars().take(120).collect();
-        if let Err(err) = self.mutate(|doc| doc.set_chat_last_message(chat_id, &preview, Utc::now()))
-        {
-            tracing::warn!(chat = %chat_id, error = %err, "registry last-message write failed");
+        match self.mutate(|doc| doc.set_chat_last_message(chat_id, &preview, Utc::now())) {
+            // Same line `record_session` writes when it refuses a status, so
+            // a dropped write on this seam is not the quiet one.
+            Ok(false) => tracing::debug!(
+                chat = %chat_id,
+                "last-message preview skipped: the chat has no row"
+            ),
+            Ok(true) => {}
+            Err(err) => {
+                tracing::warn!(chat = %chat_id, error = %err, "registry last-message write failed")
+            }
         }
     }
 

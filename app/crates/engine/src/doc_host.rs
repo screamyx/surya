@@ -3120,7 +3120,7 @@ impl DocHost {
                 // Claim-on-first-command: a run for a chat with no workspace row
                 // creates the row under our device id (we are about to host it).
                 if let Some(ws) = self.workspace() {
-                    ws.claim_chat(chat_id, Some(&request.cwd))?;
+                    ws.claim_chat(chat_id, &request.cwd)?;
                     // A pre-existing row (the client's createChat raced ahead)
                     // still carries the repo folder — repoint it at the fresh
                     // worktree, and stamp the actual `surya/<name>` branch so
