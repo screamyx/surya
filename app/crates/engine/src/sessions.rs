@@ -357,6 +357,19 @@ impl SessionsEngine {
         // is `request_from_chat_row`, which needs a row the cascade removed,
         // so mail holds instead.
         lock(&self.inner.last_requests).remove(chat_id);
+        // And the status entry, republishing the list so watchers see it go.
+        // `session_status`, `any_active` and the `WatchSessions` feed all read
+        // this map: leaving the entry keeps a removed chat in a client's
+        // session list, and keeps the updater's "do not restart from under a
+        // run" gate counting a run that cannot exist.
+        {
+            let mut statuses = lock(&self.inner.statuses);
+            if statuses.remove(chat_id).is_some() {
+                let mut list: Vec<Session> = statuses.values().cloned().collect();
+                list.sort_by(|a, b| a.chat_id.cmp(&b.chat_id));
+                self.inner.sessions_tx.send_replace(list);
+            }
+        }
         for request_id in self.inner.states.drop_chat(chat_id) {
             let Some(engine_tx) = engine_tx.as_ref() else {
                 continue;
@@ -1070,8 +1083,40 @@ impl Inner {
 
     fn set_status(&self, chat_id: &str, status: SessionStatus, fresh_start: bool) {
         let now = Utc::now();
+        // Read before the statuses lock: `workspace()` takes the doc-host
+        // lock, and nothing here needs the two held together.
+        let workspace = self.workspace();
         let session = {
             let mut statuses = lock(&self.statuses);
+            // CREATING an entry is refused for a chat whose row is a
+            // TOMBSTONE. Updating one that is already there is not - a live
+            // run keeps publishing whatever the registry is doing.
+            //
+            // Without this the removal in `drop_chat` is not durable: the
+            // next transition re-creates the entry and it stays for good, in
+            // the map, the `WatchSessions` list and `any_active`.
+            // `DeleteChat` makes that certain rather than likely, because it
+            // does not interrupt the run - the terminal `set_status` in
+            // `finish_run` always lands after the drop.
+            //
+            // A tombstone, not a missing row. `recover_stale` stamps a
+            // crashed chat Idle on boot, and that chat may never have had a
+            // row: the debounced registry write can lose the race with the
+            // crash. Refusing on absence turned that stamp into nothing
+            // (`e2e::recover_stale_journal_stamps_aborted_on_boot`). Deleted
+            // and never-written are different facts, and #150 made them
+            // separable.
+            if !statuses.contains_key(chat_id)
+                && workspace
+                    .as_ref()
+                    .is_some_and(|ws| ws.chat_tombstoned(chat_id))
+            {
+                tracing::debug!(
+                    chat = %chat_id,
+                    "session status dropped: the chat row is a tombstone"
+                );
+                return;
+            }
             let entry = statuses
                 .entry(chat_id.to_string())
                 .or_insert_with(|| Session {
@@ -1113,7 +1158,7 @@ impl Inner {
         self.states.note_session(chat_id, status);
         // Mirror the transition into the workspace doc's session-status row so
         // remote devices' sidebars show this run (staleness-checked client-side).
-        if let Some(ws) = self.workspace() {
+        if let Some(ws) = workspace {
             ws.record_session(&session);
         }
     }
