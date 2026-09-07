@@ -4,7 +4,7 @@ A card is an answer drawn as a small native panel instead of typed out as text.
 The agent sends a short JSON description, surya draws it in the transcript, and a tap on one of its buttons goes back to the agent as the user's next message.
 This page follows one card from the agent's prompt to that tap, in plain words, with the file and line behind every claim.
 
-Owner ruling behind all of it (`docs/decisions.md:151`, decision 14): "surya knows no business, workspaces bring their own cards."
+Owner ruling behind all of it (`docs/decisions.md:153`, decision 14): "surya knows no business, workspaces bring their own cards."
 The six built-in shapes are generic, and a repo can add its own under `.surya/cards`.
 
 ## The path, end to end
@@ -67,8 +67,9 @@ It carries one worked JSON example per shape, the raw A2UI escape hatch, and the
 
 ## 2. The show_card tool
 
-The sidecar `surya-mcp` offers three tools to the agent.
-Claude Code shows them to the model as `mcp__surya__show_card`, `mcp__surya__list_cards` and `mcp__surya__send_message` (`app/crates/mcp/src/protocol.rs:30-32`).
+The sidecar `surya-mcp` offers twelve tools: `show_card`, `send_message` and `list_cards`, then three for the task board and six for the browser pane (`protocol::tool_definitions`, `app/crates/mcp/src/protocol.rs:33-98`, pinned by the test `tools_list_advertises_the_v1_tools` at `protocol.rs:231`).
+This page follows the card ones.
+Claude Code shows every tool to the model as `mcp__surya__<name>`, so they reach it as `mcp__surya__show_card`, `mcp__surya__list_cards` and `mcp__surya__send_message` (`app/crates/mcp/src/protocol.rs:30-32`).
 
 The tool's own description (`protocol.rs:37-42`): "Show the user a card instead of writing the answer as prose. Use it for a choice, a status, a record, a comparison, or a form."
 
@@ -103,7 +104,7 @@ The six shapes, in the sidecar's words (`app/crates/mcp/src/shapes.rs:18-47`):
 
 Every shape takes `title` and an optional `actions` list of `{"label", "event", "context"}`.
 The first action becomes the primary button.
-A card with no `shape` and no A2UI is refused with the message in `shapes.rs:166`: "card is missing \"shape\"; use one of: record, table, form, approval, diff-summary, metric - or pass A2UI messages instead".
+A card with no `shape` and no A2UI is refused with the message in `shapes.rs:181`: "card is missing \"shape\"; use one of: record, table, form, approval, diff-summary, metric - or pass A2UI messages instead".
 
 `list_cards` (`protocol.rs:81-85`) returns "surya's six built-in shapes plus any cards this workspace brings in .surya/cards".
 The append tells the agent to call it once per workspace.
@@ -124,14 +125,14 @@ On every accepted call the sidecar expands the short form into A2UI messages and
 }
 ```
 
-The store is `~/.surya/cards.jsonl` unless the run sets another path (`harness/src/claude/surya.rs:280`).
+The store is `~/.surya/cards.jsonl` unless the run sets another path (`harness/src/claude/surya.rs:391`).
 When the file passes 8 MB it is renamed to `cards.jsonl.1` and a fresh one starts (`mcp/src/config.rs:116-130`).
 The tool answers the agent with the `card_id`, and the card is already on screen.
 
 ### How the app matches the record to the call
 
 The harness never parses the tool's text reply.
-When the tool result for a `show_card` call arrives, it reads the store backwards and picks the line whose `tool_use_id` matches (`surya.rs:237`).
+When the tool result for a `show_card` call arrives, it reads the store backwards and picks the line whose `tool_use_id` matches (`surya.rs:348`).
 That line becomes one `AgentEvent::Card`, and the tool chip for that call is dropped, because the card is the chip.
 A call that failed keeps its chip, so the user can see the agent tried (`harness/tests/claude.rs`, test `a_resolved_show_card_call_emits_one_card_event_in_transcript_order`).
 When there is no store to read, for example a run without surya options, the harness lifts the card out of the call's own input instead (`harness/src/claude/normalize.rs:70-78`).
@@ -208,7 +209,7 @@ A value can be a literal, a binding into the data model as `{"path": "/key"}`, o
 | Tabs | Titled panes, one shown at a time. | `{"id":"tabs","component":"Tabs","tabs":[{"title":"By day","child":"by_day"},{"title":"By salesperson","child":"by_person"}]}` |
 | BarChart (surya) | A row of bars from an array. `values` points at the array, `valueKey` and `labelKey` name the fields, `max` fixes the scale. | `{"id":"by_day","component":"BarChart","values":{"path":"/series"},"valueKey":"value","labelKey":"label"}` |
 
-The functions a value may call (`app/crates/a2ui/src/data.rs`): `formatString`, `formatNumber`, `formatCurrency`, `required`, `not`, `and`, `or`, `length`, `numeric`, `email`.
+The functions a value may call (`app/crates/a2ui/src/data.rs:269-326`): `formatString`, `formatNumber`, `formatCurrency`, `required`, `not`, `and`, `or`, `length`, `numeric`, `email`.
 
 The full spec is A2UI v0.9.1 in the `a2ui-project/a2ui` repository, Apache-2.0.
 Nothing was copied from it.
@@ -218,7 +219,7 @@ Nothing was copied from it.
 A card comes from an agent, and an agent can be wrong or hostile.
 The renderer treats every card as untrusted input.
 When a rule trips, the card degrades to a diagnostics panel with the reason, and the rest of the transcript is untouched.
-The four cards under `app/crates/a2ui/fixtures/hostile/` prove it, in the test `hostile_fixtures_degrade_to_diagnostics` (`app/crates/ui/src/cards.rs:325`).
+The four cards under `app/crates/a2ui/fixtures/hostile/` prove it, in the test `hostile_fixtures_degrade_to_diagnostics` (`app/crates/ui/src/cards.rs:326`).
 
 | Rule | Limit | Source |
 | --- | --- | --- |
@@ -238,7 +239,7 @@ The four cards under `app/crates/a2ui/fixtures/hostile/` prove it, in the test `
 | Decoded images kept per card | 64 | `a2ui/src/state.rs:14` |
 
 Three things a card can never do at all: run code, fetch from the network, or inject HTML.
-Decision 4 (`docs/decisions.md:32`) states the last one as a rule of the format: "The agent never emits raw HTML."
+Decision 4 (`docs/decisions.md:43`) states the last one as a rule of the format: "The agent never emits raw HTML."
 
 ## 7. Testing without an agent
 
@@ -246,7 +247,7 @@ Three knobs let a person, or a script, put cards on screen with no Claude Code r
 
 | Knob | What it does | Source |
 | --- | --- | --- |
-| `SURYA_DEMO_CARDS=<dir>` | Seeds a chat named "A2UI cards demo" with one turn per `*.json` in the folder. Seeds once; clicking another chat keeps that chat (PR #34). | `app/crates/ui/src/shell.rs:1342` |
+| `SURYA_DEMO_CARDS=<dir>` | Seeds a chat named "A2UI cards demo" with one turn per `*.json` in the folder. Seeds once; clicking another chat keeps that chat (PR #34). | `app/crates/ui/src/shell.rs:1757-1796` |
 | `SURYA_MOCK_CARDS=<dir>` with `SURYA_HARNESS=mock` | The mock agent streams the folder's cards through the real engine path after any typed prompt. | `app/crates/harness/src/mock.rs:184` |
 | `SURYA_CARD_STATS=1` | Prints one log line per card row: `card rows synced asked= built=`, `card rendered`, `card measured width= height=`. | `app/crates/ui/src/cards.rs:32` |
 
