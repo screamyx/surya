@@ -56,6 +56,7 @@ use crate::terminal::panel::{TerminalPanel, ToggleTerminal, clamp_terminal_heigh
 use crate::theme::Theme;
 use crate::transcript::{self, Transcript, TranscriptEvent};
 
+mod agents_entry;
 mod confirm_target;
 mod focus;
 mod spaces;
@@ -1237,6 +1238,10 @@ pub struct Shell {
     /// the same frame, not wait to be asked.
     keyboard_home: Option<focus::KeyboardHome>,
     agents_rail: Option<Entity<crate::inbox::AgentsRail>>,
+    /// Has the user collapsed the agent tree? The rail's Agents entry is what
+    /// toggles this, and `agents_entry::agents_tree_shown` turns it into the
+    /// one answer both the section and the entry's plate read.
+    agents_collapsed: bool,
     /// User's override for the needs-you list. `None` follows the queue:
     /// visible while something waits, gone when nothing does (decision 20's
     /// quiet state). `Some` means they said otherwise with mod-shift-i.
@@ -1563,6 +1568,7 @@ impl Shell {
             inbox_pane: None,
             keyboard_home: None,
             agents_rail: None,
+            agents_collapsed: false,
             inbox_shown: None,
             debug_open_pane: std::env::var("SURYA_OPEN_PANE").ok(),
             right_tab_drag: None,
@@ -4477,7 +4483,10 @@ impl Shell {
                 let entries = self.render_rail_entries(&theme, cx);
                 // Decision 15: the agent tree sits above the chat list, so a
                 // spawned agent is visible where its spawner is.
-                let agents = self.agents_rail(cx);
+                // The rail entry collapses this section (E2E-NAV-01), so
+                // ask for the tree only while it is meant to be showing.
+                let collapsed = self.agents_collapsed;
+                let agents = self.agents_rail(cx).filter(|_| !collapsed);
                 let chats = self.render_chat_sidebar(&theme, cx);
                 div()
                     .size_full()
@@ -4519,6 +4528,8 @@ impl Shell {
     fn render_rail_entries(&mut self, theme: &Theme, cx: &mut Context<Self>) -> AnyElement {
         let inbox_on = self.inbox_visible(cx);
         let waiting = self.inbox_count(cx);
+        let agents_built = self.agents_rail(cx).is_some();
+        let agents_shown = agents_entry::agents_tree_shown(agents_built, self.agents_collapsed);
         let active = if self.right_pane_open(cx) {
             Some(self.resolved_right_active(cx))
         } else {
@@ -4614,13 +4625,21 @@ impl Shell {
                 })
                 .on_click(cx.listener(|this, _, _, cx| this.toggle_inbox(cx))),
             )
-            // The agent tree is always mounted right below in this same
-            // sidebar, so there is no second surface to open. The click only
-            // makes sure the rail exists and redraws.
+            // The agent tree sits right below in this same sidebar
+            // (decision 15), so there is no second surface to open. What the
+            // entry owns is that section: it collapses and expands it, and
+            // it lights while the tree is showing. See `shell::agents_entry`
+            // for why "showing" is not the same as "not collapsed".
             .child(
-                entry("rail-agents", icons::BOT, "Agents", false, true, theme).on_click(
+                entry("rail-agents", icons::BOT, "Agents", agents_shown, true, theme).on_click(
                     cx.listener(|this, _, _, cx| {
-                        this.agents_rail(cx);
+                        // Build it first: on the very first click there is no
+                        // rail yet, and collapsing one that does not exist
+                        // would look like the same dead row all over again.
+                        let built = this.agents_rail(cx).is_some();
+                        if built {
+                            this.agents_collapsed = !this.agents_collapsed;
+                        }
                         cx.notify();
                     }),
                 ),
