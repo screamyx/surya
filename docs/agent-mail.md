@@ -114,17 +114,18 @@ devices, and auth.
 
 | File | Lines | Holds |
 | --- | --- | --- |
-| `app/crates/engine/src/mail/mod.rs` | 250 | the service: send, list, ack, address resolution |
-| `app/crates/engine/src/mail/store.rs` | 285 | the table |
-| `app/crates/engine/src/mail/delivery.rs` | 164 | the pump and the ack |
+| `app/crates/engine/src/mail/mod.rs` | 396 | the service: send, list, ack, address resolution |
+| `app/crates/engine/src/mail/store.rs` | 426 | the table |
+| `app/crates/engine/src/mail/delivery.rs` | 306 | the pump and the ack |
 | `app/crates/engine/src/mail/envelope.rs` | 268 | the row, the address, the state |
+| `app/crates/engine/src/mail/origin.rs` | 75 | who a dispatched turn writes its row as |
 | `app/crates/proto/src/mail.rs` | 214 | the envelope grammar, and the row's `source` field |
-| `app/crates/ui/src/transcript/mail_row.rs` | 252 | the row the owner sees |
+| `app/crates/ui/src/transcript/mail_row.rs` | 268 | the row the owner sees |
 | `app/crates/ui/src/transcript/demo_mail.rs` | 139 | `SURYA_DEMO_MAIL`, for the shot |
-| `app/crates/engine/src/mail/ingress.rs` | 215 | socket and jsonl ingress |
-| `app/crates/engine/src/mail/rpc.rs` | 99 | the four calls |
-| `app/apps/surya/src/mail_cli.rs` | 113 | the CLI shim |
-| `app/crates/engine/tests/agent_mail.rs` | 275 | the proof |
+| `app/crates/engine/src/mail/ingress.rs` | 361 | socket and jsonl ingress |
+| `app/crates/engine/src/mail/rpc.rs` | 120 | the four calls |
+| `app/apps/surya/src/mail_cli.rs` | 119 | the CLI shim |
+| `app/crates/engine/tests/agent_mail.rs` | 185 | the proof |
 
 ## Proof
 

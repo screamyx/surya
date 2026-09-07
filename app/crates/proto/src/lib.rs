@@ -20,7 +20,6 @@ pub mod workspace;
 pub use agent::*;
 pub use card::*;
 pub use entities::*;
-pub use mail::*;
 pub use state::*;
 pub use tasks::*;
 pub use workspace::*;

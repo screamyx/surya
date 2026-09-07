@@ -1780,6 +1780,7 @@ impl Shell {
             let step = {
                 let s = state.read(cx);
                 demo_seed_step(
+                    DEMO_CARDS_CHAT,
                     s.chats_synced,
                     self.demo_cards_seeded,
                     self.demo_cards_user_plus,
@@ -1811,6 +1812,7 @@ impl Shell {
             let step = {
                 let s = state.read(cx);
                 demo_seed_step(
+                    DEMO_MAIL_CHAT,
                     s.chats_synced,
                     self.demo_mail_seeded,
                     self.demo_cards_user_plus,

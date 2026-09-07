@@ -70,7 +70,12 @@ pub(super) enum DemoSeed {
 /// takes the window only on the first one, when the demo itself was
 /// selected, or when nothing is selected and the user never pressed `+`:
 /// a user who clicked another chat, or pressed `+`, keeps what they chose.
+///
+/// `chat_id` is the knob's own chat. It used to be the cards chat and only
+/// the cards chat, which meant a second knob could never recognise its own
+/// row as the selected one.
 pub(super) fn demo_seed_step(
+    chat_id: &str,
     synced: bool,
     seeded_before: bool,
     user_pressed_plus: bool,
@@ -81,7 +86,7 @@ pub(super) fn demo_seed_step(
         return DemoSeed::Skip;
     }
     let select = !seeded_before
-        || selected == Some(DEMO_CARDS_CHAT)
+        || selected == Some(chat_id)
         || (selected.is_none() && !user_pressed_plus);
     DemoSeed::Insert { select }
 }
@@ -93,7 +98,8 @@ mod tests {
     #[test]
     fn demo_seed_re_arms_only_when_the_row_vanished() {
         use DemoSeed::*;
-        // (synced, seeded_before, user_pressed_plus, row_present, selected) -> step
+        // (synced, seeded_before, user_pressed_plus, row_present, selected) -> step,
+        // all against DEMO_CARDS_CHAT as the knob's own chat.
         let cases = [
             ((false, false, false, false, None), Skip, "before the chat list lands"),
             ((true, false, false, false, Some("real")), Insert { select: true }, "first seed takes the window"),
@@ -107,10 +113,30 @@ mod tests {
         let asked = cases.len();
         let mut passed = 0;
         for ((synced, seeded, plus, present, selected), want, why) in cases {
-            assert_eq!(demo_seed_step(synced, seeded, plus, present, selected), want, "{why}");
+            assert_eq!(
+                demo_seed_step(DEMO_CARDS_CHAT, synced, seeded, plus, present, selected),
+                want,
+                "{why}"
+            );
             passed += 1;
         }
         eprintln!("demo seed cases asked={asked} passed={passed}");
         assert_eq!(passed, asked);
+    }
+
+    /// The nit that made the parameter: a second knob has to recognise its
+    /// OWN row as the selected one, not the cards chat's.
+    #[test]
+    fn each_knob_reads_its_own_chat_as_the_selection() {
+        assert_eq!(
+            demo_seed_step(DEMO_MAIL_CHAT, true, true, false, false, Some(DEMO_MAIL_CHAT)),
+            DemoSeed::Insert { select: true },
+            "the mail knob's own chat was selected: restore it"
+        );
+        assert_eq!(
+            demo_seed_step(DEMO_MAIL_CHAT, true, true, false, false, Some(DEMO_CARDS_CHAT)),
+            DemoSeed::Insert { select: false },
+            "another knob's chat is selected: put the row back, leave the window"
+        );
     }
 }
