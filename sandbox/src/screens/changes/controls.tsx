@@ -33,7 +33,7 @@ export function headerToggle(label: string, icon: 'split' | 'wrap' | 'fold', act
         onFocus={() => onHover(true)} onBlur={() => onHover(false)}
         className={active
           ? 'size-6 flex-none flex items-center justify-center rounded-md cursor-pointer bg-wash/14 text-text hover:bg-wash/14 active:bg-wash/14 focus:bg-wash/14'
-          : 'size-6 flex-none flex items-center justify-center rounded-md cursor-pointer text-text-muted/88 hover:bg-wash/14 active:bg-wash/14 focus:bg-wash/14'}>
+          : 'size-6 flex-none flex items-center justify-center rounded-md cursor-pointer motion-hover-fade text-text-muted/88 hover:bg-wash/14 active:bg-wash/14 focus:bg-wash/14'}>
         <div className="size-3.5">{toolbarIcon(icon)}</div>
       </button>
       {tooltip !== null && <div className="absolute top-7 right-0"><DiffHeaderTooltip label={tooltip} /></div>}
@@ -44,15 +44,20 @@ export function headerToggle(label: string, icon: 'split' | 'wrap' | 'fold', act
 /// Rust: `Changes::render_scope_menu`. The dropdown the scope trigger opens.
 function scopeMenu(scope: DiffScope, onSelectScope: (scope: DiffScope) => void) {
   return (
-    <div className="absolute top-8 left-0 w-48 flex flex-col gap-0.5 p-1 rounded-xl border border-border-strong bg-surface-overlay">
-      {SCOPE_MENU.map(entry => (
-        <button type="button" key={entry} data-scope={entry} onClick={() => onSelectScope(entry)}
-          className={entry === scope
-            ? 'flex flex-row items-center gap-2.5 whitespace-nowrap px-2 py-1.5 rounded-lg text-left text-ui-13 text-text bg-element-active cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'
-            : 'flex flex-row items-center gap-2.5 whitespace-nowrap px-2 py-1.5 rounded-lg text-left text-ui-13 text-text/88 cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
-          {scopeMenuLabel(entry)}
-        </button>
-      ))}
+    // The outer div anchors, the inner one is the div anchored_menu_below_gap
+    // animates. Keeping them apart matters: menu-in drives `top`, which would
+    // fight the `top-8` that places the card.
+    <div className="absolute top-8 left-0">
+      <div className="relative w-48 flex flex-col gap-0.5 p-1 rounded-xl border border-border-strong bg-surface-overlay motion-menu-in">
+        {SCOPE_MENU.map(entry => (
+          <button type="button" key={entry} data-scope={entry} onClick={() => onSelectScope(entry)}
+            className={entry === scope
+              ? 'flex flex-row items-center gap-2.5 whitespace-nowrap px-2 py-1.5 rounded-lg text-left text-ui-13 text-text bg-element-active cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'
+              : 'flex flex-row items-center gap-2.5 whitespace-nowrap px-2 py-1.5 rounded-lg text-left text-ui-13 text-text/88 cursor-pointer motion-hover-fade hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
+            {scopeMenuLabel(entry)}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -81,7 +86,7 @@ export function renderHeaderControls(props: HeaderControlsProps) {
       <div className="relative flex-none">
         <button type="button" data-control="scope" aria-expanded={props.scopeMenuOpen}
           onClick={props.onToggleScopeMenu}
-          className="h-6 px-2 flex-none flex flex-row items-center gap-1.5 rounded-md text-ui-12 text-text whitespace-nowrap cursor-pointer bg-wash/5 hover:bg-wash/14 active:bg-wash/14 focus:bg-wash/14">
+          className="h-6 px-2 flex-none flex flex-row items-center gap-1.5 rounded-md text-ui-12 text-text whitespace-nowrap cursor-pointer motion-hover-fade bg-wash/5 hover:bg-wash/14 active:bg-wash/14 focus:bg-wash/14">
           {scopeMenuLabel(props.scope)}
           <div className="size-3 text-text-muted/88">
             <svg viewBox="0 0 24 24" className="size-full" aria-hidden="true"><path fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="m19 9l-7 6l-7-6" /></svg>

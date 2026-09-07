@@ -21,6 +21,8 @@ export type RowProps = {
   mode: DiffMode;
   wrapped: boolean;
   collapsed: (path: string) => boolean;
+  /// Rust: `FileFold::epoch` for this path, 0 when the fold is not animating.
+  foldEpoch: (path: string) => number;
   hover: { path: string; side: CommentSide; line: number } | null;
   onToggleFold: (path: string) => void;
   onHoverLine: (path: string, anchor: { side: CommentSide; line: number } | null) => void;
@@ -35,7 +37,8 @@ export function renderRow(props: RowProps) {
   if (file === undefined) return null;
   if (row.row === 'fileHeader') {
     return renderFileHeader({
-      file, first: row.file === 0, collapsed: props.collapsed(file.path), onToggleFold: props.onToggleFold,
+      file, first: row.file === 0, collapsed: props.collapsed(file.path),
+      foldEpoch: props.foldEpoch(file.path), onToggleFold: props.onToggleFold,
     });
   }
   if (row.row === 'notice') {

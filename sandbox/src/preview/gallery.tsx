@@ -81,7 +81,7 @@ export type GalleryProps = {
 };
 
 function fill(child: ReactNode) {
-  return <div className="size-full min-h-0">{child}</div>;
+  return <div className="size-full min-h-0 bg-bg text-text">{child}</div>;
 }
 
 export function Gallery({ screen, fixture, onEvent }: GalleryProps) {

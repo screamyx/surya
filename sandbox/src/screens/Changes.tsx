@@ -21,6 +21,40 @@ export type ChangesProps = {
   onAddComment: (path: string, side: CommentSide, line: number) => void;
 };
 
+/// Rust: loaders.rs::gradient_spinner, called at changes.rs:4837 with cell_px
+/// 3.0 for DiffPhase::Preparing. GSPIN_ROW_TINTS are fixed sunrise hexes with no
+/// theme token, so the nearest admitted roles stand in, the same three History
+/// uses. A cell's phase is its distance from the wave origin,
+/// d = 2 - row + |col - 1|, giving [[3,2,3],[2,1,2],[1,0,1]]: the pulse enters
+/// at the bottom edge and converges on the top-centre cell.
+function spinnerCell(row: number, col: number) {
+  if (row === 0) {
+    return <div key={col} className={col === 1
+      ? 'size-0.75 rounded-full bg-busy motion-gradient-spin-2'
+      : 'size-0.75 rounded-full bg-busy motion-gradient-spin-3'} />;
+  }
+  if (row === 1) {
+    return <div key={col} className={col === 1
+      ? 'size-0.75 rounded-full bg-warning motion-gradient-spin-1'
+      : 'size-0.75 rounded-full bg-warning motion-gradient-spin-2'} />;
+  }
+  return <div key={col} className={col === 1
+    ? 'size-0.75 rounded-full bg-danger motion-gradient-spin-0'
+    : 'size-0.75 rounded-full bg-danger motion-gradient-spin-1'} />;
+}
+
+function renderGradientSpinner() {
+  return (
+    <div aria-hidden="true" className="flex flex-col gap-0.5">
+      {[0, 1, 2].map(row => (
+        <div key={row} className="flex flex-row gap-0.5">
+          {[0, 1, 2].map(col => spinnerCell(row, col))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /// The diff viewer. Fold, layout mode, wrap, the scope menu and line hover
 /// are local view state, exactly as they are on the native struct. Everything
 /// that reaches git stays a callback.
@@ -32,6 +66,10 @@ export function Changes(props: ChangesProps) {
   const [scopeMenuOpen, setScopeMenuOpen] = useState(false);
   const [tooltip, setTooltip] = useState<string | null>(null);
   const [hover, setHover] = useState<{ path: string; side: CommentSide; line: number } | null>(null);
+  // Rust: `FileFold::epoch`, which numbers the chevron's animation id. Only
+  // `toggle_fold`'s animating arm bumps it; `toggle_collapse_all` and the
+  // wrap-on arm clear `toggled_at`, and the chevron paints its rest state.
+  const [foldEpoch, setFoldEpoch] = useState<Readonly<Record<string, number>>>({});
 
   const files = parsed === null ? [] : parsed.files;
   const isCollapsed = (path: string) => collapsed.includes(path);
@@ -39,9 +77,11 @@ export function Changes(props: ChangesProps) {
 
   function toggleFold(path: string) {
     setCollapsed(isCollapsed(path) ? collapsed.filter(entry => entry !== path) : collapsed.concat(path));
+    setFoldEpoch({ ...foldEpoch, [path]: wrapLines ? 0 : (foldEpoch[path] ?? 0) + 1 });
   }
   function toggleCollapseAll() {
     setCollapsed(allCollapsed ? [] : files.map(file => file.path));
+    setFoldEpoch({});
   }
   function hoverLine(path: string, anchor: { side: CommentSide; line: number } | null) {
     setHover(anchor === null ? null : { path, side: anchor.side, line: anchor.line });
@@ -54,9 +94,12 @@ export function Changes(props: ChangesProps) {
       ? 'flex-1 flex items-center justify-center px-4 text-ui-12 text-warning/88'
       : 'flex-1 flex items-center justify-center px-4 text-ui-12 text-text-faint'}>{scopedNotice.message}</div>
   ) : parsed === null ? (
-    // Rust: DiffPhase::Preparing. Native spins a gradient loader above the
-    // label; no animation class is admitted yet, so the label stands alone.
-    <div className="flex-1 flex flex-col items-center justify-center gap-2 text-ui-12 text-text-faint">Preparing diff…</div>
+    // Rust: DiffPhase::Preparing, changes.rs:4830. The gradient loader sits
+    // above the label on a SPACE_SM gap.
+    <div className="flex-1 flex flex-col items-center justify-center gap-2 text-ui-12 text-text-faint">
+      {renderGradientSpinner()}
+      <div>Preparing diff…</div>
+    </div>
   ) : files.length === 0 ? (
     <div className="flex-1 flex items-center justify-center text-ui-12 text-text-faint">{cleanMessage(scope, baseRef)}</div>
   ) : (
@@ -66,6 +109,7 @@ export function Changes(props: ChangesProps) {
         {flattenRows(files, mode, isCollapsed).map(row => (
           <div key={row.key}>{renderRow({
             row, files, mode, wrapped: wrapLines, collapsed: isCollapsed, hover,
+            foldEpoch: path => foldEpoch[path] ?? 0,
             onToggleFold: toggleFold, onHoverLine: hoverLine, onAddComment: props.onAddComment,
           })}</div>
         ))}

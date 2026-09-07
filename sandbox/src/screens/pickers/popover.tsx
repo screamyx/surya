@@ -55,7 +55,7 @@ export function menuRowNav(
     <button key={key} type="button" data-row={key} onClick={onClick} onMouseEnter={onHover}
       className={selected || highlighted
         ? 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer bg-wash/10 text-text'
-        : 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text/88 hover:bg-wash/10 hover:text-text active:bg-element-active focus:bg-wash/10'}>
+        : 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer motion-hover-fade text-text/88 hover:bg-wash/10 hover:text-text active:bg-element-active focus:bg-wash/10'}>
       {children}
     </button>
   );
@@ -67,7 +67,7 @@ export function traitRow(key: string, active: boolean, onClick: () => void, chil
     <button key={key} type="button" data-row={key} onClick={onClick}
       className={active
         ? 'w-full flex flex-row items-center gap-2.5 px-2 py-1 rounded-md text-ui-13 text-left cursor-pointer bg-wash/10 text-text'
-        : 'w-full flex flex-row items-center gap-2.5 px-2 py-1 rounded-md text-ui-13 text-left cursor-pointer text-text/88 hover:bg-wash/10 hover:text-text active:bg-element-active focus:bg-wash/10'}>
+        : 'w-full flex flex-row items-center gap-2.5 px-2 py-1 rounded-md text-ui-13 text-left cursor-pointer motion-hover-fade text-text/88 hover:bg-wash/10 hover:text-text active:bg-element-active focus:bg-wash/10'}>
       {children}
     </button>
   );
@@ -127,8 +127,11 @@ export function errorRow(message: string, onRetry: () => void) {
   );
 }
 
-/// skeleton_rows: full-width ghost slabs. The native bars pulse on SURYA_PULSE;
-/// the whitelist admits no animation, so these rest at the wave's mid opacity.
+/// skeleton_rows: full-width ghost slabs. The native bars ride SURYA_PULSE's
+/// period but their own endpoints, `0.35 + 0.4 * pulse_wave`, staggered 0.08.
+/// The catalog's motion-surya-pulse-N is the loader cell: 0.08 to 1 opacity,
+/// 90% to 100% size, staggered PULSE_STAGGER (0.0625). Nothing in it fits, so
+/// these still rest at the wave's mid opacity. See the report's Gaps.
 export function skeletonRows(count: number) {
   return (
     <div className="flex flex-col gap-1.5 py-1">
@@ -141,7 +144,8 @@ export function skeletonRows(count: number) {
 
 /// skeleton_menu_rows: shorter ghost labels of cycling widths, the model
 /// picker's loading state. Native widths are fractions of the card (0.42, 0.58,
-/// 0.48, 0.66); the whitelist carries fixed steps only.
+/// 0.48, 0.66); the whitelist carries fixed steps only. The pulse is declined
+/// for the same reason as skeleton_rows above.
 export function skeletonMenuRows(count: number) {
   return (
     <div className="flex flex-col gap-2 py-1.5 px-1">

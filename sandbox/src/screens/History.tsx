@@ -60,18 +60,32 @@ function renderBanner(message: string): ReactNode {
   );
 }
 
-// loaders.rs::gradient_spinner at its static end state. Its GSPIN_ROW_TINTS are
-// fixed sunrise hexes with no theme token; the nearest admitted roles stand in.
+// loaders.rs::gradient_spinner (history.rs:1214, cell_px 3.0). Its GSPIN_ROW_TINTS
+// are fixed sunrise hexes with no theme token; the nearest admitted roles stand in.
+// Each cell's phase is its distance from the wave origin, d = 2 - row + |col - 1|,
+// so the grid is [[3,2,3],[2,1,2],[1,0,1]] and the pulse travels upward.
+function spinnerCell(row: number, col: number): ReactNode {
+  if (row === 0) {
+    return <div key={col} className={col === 1
+      ? 'size-0.75 rounded-full bg-busy motion-gradient-spin-2'
+      : 'size-0.75 rounded-full bg-busy motion-gradient-spin-3'} />;
+  }
+  if (row === 1) {
+    return <div key={col} className={col === 1
+      ? 'size-0.75 rounded-full bg-warning motion-gradient-spin-1'
+      : 'size-0.75 rounded-full bg-warning motion-gradient-spin-2'} />;
+  }
+  return <div key={col} className={col === 1
+    ? 'size-0.75 rounded-full bg-danger motion-gradient-spin-0'
+    : 'size-0.75 rounded-full bg-danger motion-gradient-spin-1'} />;
+}
+
 function renderGradientSpinner(): ReactNode {
   return (
     <div aria-hidden="true" className="flex flex-col gap-0.5">
       {[0, 1, 2].map(row => (
         <div key={row} className="flex flex-row gap-0.5">
-          {[0, 1, 2].map(col => (
-            <div key={col} className={row === 0 ? 'size-0.75 rounded-full bg-busy'
-              : row === 1 ? 'size-0.75 rounded-full bg-warning'
-                : 'size-0.75 rounded-full bg-danger'} />
-          ))}
+          {[0, 1, 2].map(col => spinnerCell(row, col))}
         </div>
       ))}
     </div>

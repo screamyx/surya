@@ -15,10 +15,10 @@ export function triggerChip(
   return (
     <button type="button" data-chip={id} onClick={onClick} aria-expanded={open}
       className={open
-        ? 'h-8 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-pointer bg-element-hover text-text'
+        ? 'h-8 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-pointer motion-hover-fade bg-element-hover text-text'
         : set
-          ? 'h-8 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-pointer text-text/88 hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'
-          : 'h-8 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
+          ? 'h-8 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-pointer motion-hover-fade text-text/88 hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'
+          : 'h-8 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-pointer motion-hover-fade text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
       {iconLoading && <span className="flex-none w-4 h-2.5 rounded-md bg-wash/10 opacity-55" />}
       {!iconLoading && chipIcon && (
         <span className={brand ? 'flex-none text-claude-brand' : 'flex-none text-text-muted'}>{icon(chipIcon, 16)}</span>
@@ -43,7 +43,7 @@ export function yoloChip(state: YoloState, onToggle: () => void) {
         ? 'h-8 flex-none flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-pointer bg-warning-wash text-warning hover:text-text'
         : state === 'always'
           ? 'h-8 flex-none flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-default text-text-faint'
-          : 'h-8 flex-none flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
+          : 'h-8 flex-none flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium cursor-pointer motion-hover-fade text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
       {icon('danger-triangle', 16)}
       <span>Yolo</span>
       {suffix && <span className="text-text-faint">{suffix}</span>}
@@ -59,10 +59,10 @@ export function footerChip(
   return (
     <button type="button" data-chip={id} onClick={onClick} aria-expanded={open}
       className={open
-        ? 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium cursor-pointer bg-element-hover text-text/88'
+        ? 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium cursor-pointer motion-hover-fade bg-element-hover text-text/88'
         : offline
-          ? 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium cursor-pointer text-warning hover:bg-element-hover active:bg-element-active focus:bg-element-hover'
-          : 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium cursor-pointer text-text-faint hover:bg-element-hover hover:text-text/88 active:bg-element-active focus:bg-element-hover'}>
+          ? 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium cursor-pointer motion-hover-fade text-warning hover:bg-element-hover active:bg-element-active focus:bg-element-hover'
+          : 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium cursor-pointer motion-hover-fade text-text-faint hover:bg-element-hover hover:text-text/88 active:bg-element-active focus:bg-element-hover'}>
       {icon(iconName, 12)}
       <span className="min-w-0 truncate">{label}</span>
       {icon('alt-arrow-down', 12)}
@@ -84,19 +84,24 @@ export function footerLabel(iconName: IconName, label: string) {
 /// The floating layer a trigger carries while its popover is open. Every picker
 /// mounts with anchored_menu_above (the composer sits at the bottom of the
 /// canvas), pt-1.5 of air between the card and the trigger.
+///
+/// The outer div is the pinned+anchored layer; the inner one is the div
+/// anchored_menu_above animates, `div().occlude().pb(px(6.0))`. They have to
+/// stay apart: menu-in drives `top`, and an element already placed by `bottom`
+/// would stretch between the two edges instead of sliding.
 export function overlayAbove(align: 'start' | 'end', children: ReactNode) {
   return (
-    <div className={align === 'start'
-      ? 'absolute bottom-8 left-0 pb-1.5'
-      : 'absolute bottom-8 right-0 pb-1.5'}>{children}</div>
+    <div className={align === 'start' ? 'absolute bottom-8 left-0' : 'absolute bottom-8 right-0'}>
+      <div className="relative pb-1.5 motion-menu-in">{children}</div>
+    </div>
   );
 }
 
 /// overlayAbove over the shorter h-5 footer chips.
 export function overlayAboveFooter(align: 'start' | 'end', children: ReactNode) {
   return (
-    <div className={align === 'start'
-      ? 'absolute bottom-5 left-0 pb-1.5'
-      : 'absolute bottom-5 right-0 pb-1.5'}>{children}</div>
+    <div className={align === 'start' ? 'absolute bottom-5 left-0' : 'absolute bottom-5 right-0'}>
+      <div className="relative pb-1.5 motion-menu-in">{children}</div>
+    </div>
   );
 }
