@@ -30,6 +30,7 @@ mod display;
 mod events;
 mod find;
 pub mod input;
+mod off;
 mod page;
 mod perf;
 mod pump;
@@ -50,23 +51,34 @@ pub use scheme::set_color_scheme;
 pub use surface::{panel, surface, surface_origin};
 pub use zero_copy::counters as zero_copy_counters;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use cef::args::Args;
 // The glob brings the `Impl*` traits that carry every method on `Browser`
 // and `BrowserHost`; `cef::App` is a CEF type here, gpui's is spelled out.
 use cef::*;
 
-/// Set by [`start`] when CEF refused to initialize (another instance owns the
-/// cache dir, or the runtime files are missing). The rest of the module then
-/// behaves as `SURYA_NO_BROWSER`.
-static DISABLED_AT_RUNTIME: AtomicBool = AtomicBool::new(false);
+/// Set by [`start`] when CEF refused to initialize, to [`off::Off`]'s code
+/// for the reason it refused. Zero means the browser is running. An atomic
+/// and not a lock because [`surface`] reads it on every frame.
+static OFF_AT_RUNTIME: AtomicU8 = AtomicU8::new(0);
 static STARTED: AtomicBool = AtomicBool::new(false);
+
+/// Why there is no browser in this process, or `None` while there is one.
+/// The pane draws the reason, so a person who never set `SURYA_NO_BROWSER`
+/// is not told about it (E2E CEF-LOCK).
+pub(crate) fn off_reason() -> Option<off::Off> {
+    if std::env::var_os("SURYA_NO_BROWSER").is_some() {
+        return Some(off::Off::ByRequest);
+    }
+    off::Off::from_code(OFF_AT_RUNTIME.load(Ordering::Acquire))
+}
 
 /// `SURYA_NO_BROWSER=1` leaves CEF out of the process entirely: no helper
 /// subprocesses, no Chromium start-up, and the pane shows a placeholder.
 pub fn disabled() -> bool {
-    std::env::var_os("SURYA_NO_BROWSER").is_some() || DISABLED_AT_RUNTIME.load(Ordering::Acquire)
+    off_reason().is_some()
 }
 
 /// What sits behind a page that paints no background of its own. Opaque
@@ -189,8 +201,15 @@ pub fn start(cx: &mut gpui::App, scheme: ColorScheme) {
     let mut app = cef_app::SuryaApp::new();
     let ok = initialize(Some(args.as_main_args()), Some(&settings), Some(&mut app), std::ptr::null_mut());
     if ok != 1 {
-        println!("browser: cef initialize failed (another instance on {cache}?); pane disabled");
-        DISABLED_AT_RUNTIME.store(true, Ordering::Release);
+        // Why it refused decides what the pane says. CEF holds a process
+        // singleton lock on the cache directory, so a lock still there after
+        // a refused start means another surya window owns the browser; a free
+        // cache means something else went wrong and blaming a second window
+        // would send the person after the wrong thing (off.rs).
+        let held = off::cache_is_held(Path::new(&cache));
+        let reason = if held { off::Off::CacheHeld } else { off::Off::StartFailed };
+        println!("browser: cef initialize failed (cache={cache} singleton-lock={held}); pane disabled");
+        OFF_AT_RUNTIME.store(reason.code(), Ordering::Release);
         return;
     }
     pump::install(cx);
