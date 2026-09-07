@@ -483,7 +483,7 @@ impl Render for GitHistoryCount {
                         .truncate()
                         .font_family(theme.font_mono.clone())
                         .text_size(px(11.5))
-                        .text_color(theme.text_dim)
+                        .text_color(theme.text_muted)
                         .child(SharedString::from(branch)),
                 )
             })

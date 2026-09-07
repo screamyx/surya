@@ -259,10 +259,10 @@ impl Render for BrowserPane {
 /// back, so every line of it clears AA.
 ///
 /// The hint takes the same tone as the sentence and is separated by the gap
-/// alone. There is no third text tier to reach for: `text_dim` resolved to
-/// `text_muted` for every theme the app actually ran, so a third tier here
-/// would have existed in the tests and not on screen. The owner ruled the
-/// token folded (issue #172).
+/// alone. The palette has two readable tiers under the label, not three: a
+/// `text_dim` token existed once and resolved to `text_muted` for every theme
+/// the app ran, so a third tier here would have lived in the tests and not on
+/// screen. It was folded (issue #172).
 fn note_colors(theme: &Theme) -> NoteColors {
     NoteColors {
         plane: theme.surface,
