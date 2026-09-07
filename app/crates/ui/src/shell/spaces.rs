@@ -151,7 +151,11 @@ fn promote_local_device_group<T>(
     }
 }
 
-fn sidebar_disclosure_header(theme: &Theme, label: SharedString, chevron: AnyElement) -> gpui::Div {
+pub(super) fn sidebar_disclosure_header(
+    theme: &Theme,
+    label: SharedString,
+    chevron: AnyElement,
+) -> gpui::Div {
     div()
         .flex()
         .flex_row()
@@ -318,7 +322,12 @@ impl Shell {
             .into_any_element()
     }
 
-    fn sidebar_disclosure_chevron(&self, key: &str, open: bool, theme: &Theme) -> AnyElement {
+    pub(super) fn sidebar_disclosure_chevron(
+        &self,
+        key: &str,
+        open: bool,
+        theme: &Theme,
+    ) -> AnyElement {
         let resting_reveal = if open { 1.0 } else { 0.0 };
         let chevron = icon(icons::ALT_ARROW_RIGHT)
             .size(px(12.0))

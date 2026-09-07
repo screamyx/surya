@@ -4482,27 +4482,17 @@ impl Shell {
                 self.expire_inbox_override(cx);
                 let entries = self.render_rail_entries(&theme, cx);
                 // Decision 15: the agent tree sits above the chat list, so a
-                // spawned agent is visible where its spawner is.
-                // The rail entry collapses this section (E2E-NAV-01), so
-                // ask for the tree only while it is meant to be showing.
-                let collapsed = self.agents_collapsed;
-                let agents = self.agents_rail(cx).filter(|_| !collapsed);
+                // spawned agent is visible where its spawner is. Its header
+                // is what collapses it; the rail entry only reveals it
+                // (E2E-NAV-01, and `shell::agents_entry` for why).
+                let agents = self.render_agents_section(&theme, cx);
                 let chats = self.render_chat_sidebar(&theme, cx);
                 div()
                     .size_full()
                     .flex()
                     .flex_col()
                     .child(entries)
-                    .when_some(agents, |el, rail| {
-                        el.child(
-                            div()
-                                .flex_none()
-                                .max_h(px(220.0))
-                                .border_b_1()
-                                .border_color(theme.border)
-                                .child(rail),
-                        )
-                    })
+                    .children(agents)
                     .child(div().flex_1().min_h_0().child(chats))
                     .into_any_element()
             }
@@ -4627,18 +4617,20 @@ impl Shell {
             )
             // The agent tree sits right below in this same sidebar
             // (decision 15), so there is no second surface to open. What the
-            // entry owns is that section: it collapses and expands it, and
-            // it lights while the tree is showing. See `shell::agents_entry`
-            // for why "showing" is not the same as "not collapsed".
+            // entry owns is that section: it REVEALS it, and lights while the
+            // tree is showing. It never hides it - the tree starts expanded,
+            // so a toggle here would make the first click on a row called
+            // Agents hide the agents. Collapsing lives on the section header.
+            // See `shell::agents_entry`.
             .child(
                 entry("rail-agents", icons::BOT, "Agents", agents_shown, true, theme).on_click(
                     cx.listener(|this, _, _, cx| {
                         // Build it first: on the very first click there is no
-                        // rail yet, and collapsing one that does not exist
+                        // rail yet, and revealing one that does not exist
                         // would look like the same dead row all over again.
-                        let built = this.agents_rail(cx).is_some();
-                        if built {
-                            this.agents_collapsed = !this.agents_collapsed;
+                        if this.agents_rail(cx).is_some() {
+                            this.agents_collapsed =
+                                agents_entry::collapsed_after_rail_click(this.agents_collapsed);
                         }
                         cx.notify();
                     }),
