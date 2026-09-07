@@ -55,9 +55,10 @@ import {
 
 export type ScreenId =
   | 'needs-you' | 'inbox' | 'rules' | 'spaces' | 'tasks' | 'files' | 'terminal'
-  | 'browser' | 'changes' | 'pickers' | 'history' | 'transcript' | 'composer' | 'settings';
+  | 'browser' | 'changes' | 'pickers' | 'history' | 'transcript' | 'composer' | 'chat' | 'settings';
 
 export const screenMenu: readonly { id: ScreenId; label: string }[] = [
+  { id: 'chat', label: 'Chat' },
   { id: 'needs-you', label: 'Needs you' },
   { id: 'inbox', label: 'Inbox' },
   { id: 'rules', label: 'Rules' },
@@ -89,7 +90,11 @@ export function Gallery({ screen, fixture, onEvent }: GalleryProps) {
   const [copiedSha, setCopiedSha] = useState('');
   const [section, setSection] = useState('notifications');
   if (screen === 'needs-you') {
-    return fill(<NeedsYouPane rows={seeded ? seededRows : []} onOpenChat={id => onEvent(`OpenChat(${id})`)} />);
+    // No background of its own: shell.rs paints the outlet, and the reference
+    // frame shows Needs you sitting on the shell surface, not on bg.
+    return <div className="size-full min-h-0">
+      <NeedsYouPane rows={seeded ? seededRows : []} onOpenChat={id => onEvent(`OpenChat(${id})`)} />
+    </div>;
   }
   if (screen === 'inbox') {
     return fill(<InboxPane sections={seeded ? seededSections : emptySections} rows={seeded ? seededRows : []}
@@ -171,6 +176,24 @@ export function Gallery({ screen, fixture, onEvent }: GalleryProps) {
           copiedSha={copiedSha} refAreaWidth={props.refAreaWidth}
           onOpenCommit={sha => onEvent(`OpenCommit(${sha})`)} onCopySha={sha => setCopiedSha(sha)}
           onLoadOlder={() => onEvent('LoadOlder()')} />
+      </div>
+    </div>;
+  }
+  if (screen === 'chat') {
+    // Rust: shell.rs Route::Chat, the transcript column with the composer under it.
+    return <div className="size-full min-h-0 flex flex-col bg-bg">
+      <div className="flex-1 min-h-0">
+        <Transcript rows={seeded ? seededTranscriptRows : sendingRows}
+          working={seeded ? workingNow : null} undelivered={!seeded}
+          permission={null}
+          onOpenSubagent={(docId, title) => onEvent(`OpenSubagent(${docId}, ${title})`)}
+          onCopyMessage={id => onEvent(`CopyMessage(${id})`)} onCopyCode={() => onEvent('CopyCode')}
+          onRetryTurn={prompt => onEvent(`RetryTurn(${prompt})`)} onRetrySend={() => onEvent('RetrySend')}
+          onAnswerPermission={(id, answer) => onEvent(`AnswerPermission(${id}, ${answer})`)} />
+      </div>
+      <div className="flex-none">
+        <Composer model={seeded ? composerVariants.seeded : composerVariants.empty}
+          onEvent={action => onEvent(action)} />
       </div>
     </div>;
   }

@@ -62,14 +62,27 @@ try {
   assert.equal(await page.locator('aside').count(), 0);
   await page.getByRole('button', { name: 'Toggle sidebar', exact: true }).click();
   assert.equal(await page.locator('aside').count(), 1);
-  // Every unported destination/caption action emits a visible fixture event.
-  for (const label of ['Home', 'Agents', 'Tasks', 'Files', 'Open browser', 'Back', 'Forward',
-    'New chat', 'Toggle right pane', 'Minimize preview', 'Maximize preview', 'Close preview',
-    'Wire the Tasks pane into the shell', 'All projects', 'Filter chats', 'Local only']) {
+  // Every action with no ported destination still emits a visible fixture event.
+  for (const label of ['Back', 'Forward', 'New chat', 'Minimize preview', 'Maximize preview',
+    'Close preview', 'Wire the Tasks pane into the shell', 'All projects', 'Filter chats']) {
     await page.getByRole('button', { name: label, exact: true }).click();
     assert.match(await page.getByRole('status').innerText(), /Preview event:/);
     await page.getByRole('button', { name: 'Dismiss preview event' }).click();
   }
+  // The rail routes, as shell.rs does: the frame stays and the outlet changes.
+  // A rail destination marks itself current; the three off-rail ones clear it.
+  for (const [label, current] of [['Home', 'Home'], ['Agents', 'Agents'], ['Tasks', 'Tasks'],
+    ['Files', 'Files'], ['Needs you', 'Needs you']]) {
+    await page.getByRole('button', { name: label, exact: true }).click();
+    assert.equal(await page.locator('aside').count(), 1, `${label} keeps the rail`);
+    assert.ok((await page.locator('[aria-current="page"]').innerText()).startsWith(current), label);
+  }
+  for (const label of ['Open browser', 'Toggle right pane', 'Local only']) {
+    await page.getByRole('button', { name: label, exact: true }).click();
+    assert.equal(await page.locator('aside').count(), 1, `${label} keeps the rail`);
+    assert.equal(await page.locator('[aria-current="page"]').count(), 0, label);
+  }
+  await page.getByRole('button', { name: 'Needs you', exact: true }).click();
   // Portable static render for the repository's file-based visual gates.
   for (const theme of ['light', 'dark']) {
     await page.goto(`${base}/?proof=1&theme=${theme}&state=seeded`);
@@ -97,5 +110,5 @@ try {
   assert.ok(measurements.every(m => !m.overflow));
   writeFileSync(resolve(out, 'measurements.json'), `${JSON.stringify(measurements, null, 2)}\n`);
   console.log(`Audit HTML written to ${audit}`);
-  console.log('Browser proof passed: four theme/state frames, count/badge/empty/no-composer, mouse/keyboard callbacks, fixture switches, sidebar toggle, 16 frame actions, no runtime errors or desktop overflow.');
+  console.log('Browser proof passed: four theme/state frames, count/badge/empty/no-composer, mouse/keyboard callbacks, fixture switches, sidebar toggle, 9 frame actions, 8 rail destinations, no runtime errors or desktop overflow.');
 } finally { await browser.close(); }

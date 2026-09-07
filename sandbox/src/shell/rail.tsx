@@ -1,24 +1,34 @@
 // Rust: shell.rs render_sidebar / render_rail_entries / render_chat_sidebar.
 // The transcript minimap in rail.rs is not present on the Needs you page.
+import type { Destination } from '../shell';
 import type { Fixture } from '../fixtures';
 import { emptyChats } from '../fixtures';
 import { badge } from '../screens/chrome';
 import { renderIcon } from './icons';
 import { iconButton } from './titlebar';
-export function renderSidebar(waiting: number, fixture: Fixture, onEvent: (value: string) => void) {
+const destinations = [
+  { label: 'Home', icon: 'home', to: 'chat' },
+  { label: 'Needs you', icon: 'bell', to: 'needs-you' },
+  { label: 'Agents', icon: 'bot', to: 'inbox' },
+  { label: 'Tasks', icon: 'checklist', to: 'tasks' },
+  { label: 'Files', icon: 'folder', to: 'files' },
+] as const;
+export function renderSidebar(waiting: number, fixture: Fixture, onEvent: (value: string) => void,
+  active: Destination, onNavigate: (to: Destination) => void) {
   const chats = fixture === 'seeded' ? [
     { title: 'Wire the Tasks pane into the shell', project: 'surya @ WINBOX', age: 'Input', branch: '' },
   ] : emptyChats;
   return <aside aria-label="Sidebar" className="w-64 flex-none h-full flex flex-col pt-9.5 bg-wash/5 border-r border-border">
     <nav aria-label="Main navigation" className="flex flex-col gap-0.5 px-2 pt-1.5 pb-2 border-b border-border">
-      {(['Home', 'Needs you', 'Agents', 'Tasks', 'Files'] as const).map((label, i) => (
-        <button key={label} type="button" onClick={() => onEvent(label)} aria-current={label === 'Needs you' ? 'page' : undefined}
-          className={label === 'Needs you'
+      {destinations.map(entry => (
+        <button key={entry.label} type="button" onClick={() => onNavigate(entry.to)}
+          aria-current={entry.to === active ? 'page' : undefined}
+          className={entry.to === active
             ? 'flex items-center gap-2.5 h-7.5 px-2.5 rounded-lg text-ui-13 text-text bg-element-active cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'
             : 'flex items-center gap-2.5 h-7.5 px-2.5 rounded-lg text-ui-13 text-text cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
-          <span className="size-3.75 flex-none text-text-muted">{renderIcon((['home', 'bell', 'bot', 'checklist', 'folder'] as const)[i])}</span>
-          {label}
-          {label === 'Needs you' && waiting > 0 && <><span className="flex-1" />{badge(String(waiting), 'accent')}</>}
+          <span className="size-3.75 flex-none text-text-muted">{renderIcon(entry.icon)}</span>
+          {entry.label}
+          {entry.to === 'needs-you' && waiting > 0 && <><span className="flex-1" />{badge(String(waiting), 'accent')}</>}
         </button>
       ))}
     </nav>
@@ -48,7 +58,7 @@ export function renderSidebar(waiting: number, fixture: Fixture, onEvent: (value
         </button>
       ))}
     </div>
-    <button type="button" aria-label="Local only" onClick={() => onEvent('Local account')} className="flex-none flex items-center gap-2.5 h-16 px-4 text-ui-13 font-medium cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover">
+    <button type="button" aria-label="Local only" onClick={() => onNavigate('settings')} className="flex-none flex items-center gap-2.5 h-16 px-4 text-ui-13 font-medium cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover">
       <span className="size-7 flex items-center justify-center rounded-full bg-solid text-on-solid">L</span>Local only
     </button>
   </aside>;
