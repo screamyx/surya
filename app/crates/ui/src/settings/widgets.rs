@@ -202,9 +202,10 @@ pub fn row_title(theme: &Theme, title: impl Into<SharedString>) -> gpui::Div {
         .child(title.into())
 }
 
-/// The quiet meta line under a row title: `text-[12px]
-/// text-muted-foreground/65` fragments joined by dots.
+/// Secondary text under a row title. Keep the readable muted token at full
+/// opacity for both the helper text and its separator dots.
 pub fn meta_line(theme: &Theme, fragments: Vec<AnyElement>) -> gpui::Div {
+    let ink = theme.text_muted;
     let mut line = div()
         .mt(px(Theme::TEXT_STACK_GAP))
         .flex()
@@ -214,15 +215,11 @@ pub fn meta_line(theme: &Theme, fragments: Vec<AnyElement>) -> gpui::Div {
         .gap_x(px(8.0))
         .gap_y(px(2.0))
         .text_size(crate::typography::ui_rems(ROW_DESCRIPTION_SIZE))
-        .text_color(theme.text_muted.opacity(0.65));
+        .text_color(ink);
     let mut first = true;
     for fragment in fragments {
         if !first {
-            line = line.child(
-                div()
-                    .text_color(theme.text_muted.opacity(0.3))
-                    .child(SharedString::from("·")),
-            );
+            line = line.child(div().text_color(ink).child(SharedString::from("·")));
         }
         line = line.child(fragment);
         first = false;
@@ -364,4 +361,30 @@ pub fn warning_strip(theme: &Theme, message: impl Into<SharedString>) -> gpui::D
             ),
         )
         .child(div().min_w_0().child(message.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::theme::{Appearance, contrast_ratio, flatten};
+    use surya_theme::{AccentSelection, SurfacePreference};
+
+    #[test]
+    fn appearance_helper_ink_meets_normal_text_contrast_in_both_themes() {
+        for (appearance, id) in [
+            (Appearance::Dark, "zeron-dark"),
+            (Appearance::Light, "zeron-light"),
+        ] {
+            let theme = Theme::for_selection(
+                appearance,
+                id,
+                AccentSelection::ThemeDefault,
+                SurfacePreference::Opaque,
+            );
+            let mut line = meta_line(&theme, Vec::new());
+            let ink = line.style().text.color.expect("helper ink");
+            let ratio = contrast_ratio(flatten(ink, theme.bg), theme.bg);
+            assert!(ratio >= 4.5, "{id} helper contrast is {ratio:.2}:1");
+        }
+    }
 }
