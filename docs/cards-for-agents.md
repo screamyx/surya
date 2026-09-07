@@ -44,8 +44,8 @@ The skill is loaded only when the agent draws a card: the JSON per shape and the
 
 | What | Where | How it reaches the agent |
 | --- | --- | --- |
-| The prompt append | `app/assets/surya-system-append.md` | The harness embeds it (`harness/src/claude/surya.rs:26`) and writes it to the run folder as `system-append.md` before every run (`surya.rs:206-212`). |
-| The cards skill | `app/assets/skills/surya-cards/SKILL.md` | The harness embeds it (`surya.rs:33`, PR #47), lays it out in the run folder as a one-skill plugin (`write_cards_plugin`, `surya.rs:315-321`) and starts Claude Code with `--plugin-dir` (`claude/mod.rs:254-255`). The agent then sees it as the skill `surya:surya-cards` and can also invoke it as `/surya:surya-cards` (surya-mcp, measured against Claude Code 2.1.261, `surya.rs:53`). |
+| The prompt append | `app/assets/surya-system-append.md` | The harness embeds it (`harness/src/claude/surya.rs:31`) and writes it to the run folder as `system-append.md` before every run (`surya.rs:308`). |
+| The cards skill | `app/assets/skills/surya-cards/SKILL.md` | The harness embeds it (`surya.rs:38`, PR #47), lays it out in the run folder as a one-skill plugin (`write_cards_plugin`, `surya.rs:404`) and starts Claude Code with `--plugin-dir` (`surya::apply_files`, `surya.rs:473-475`). The agent then sees it as the skill `surya:surya-cards` and can also invoke it as `/surya:surya-cards` (surya-mcp, measured against Claude Code 2.1.261, `surya.rs:51`). |
 
 The append opens with the situation the agent is in: "surya is a desktop app, not a terminal. The person reading you sees a native window".
 Then it gives the rule for when to draw instead of write.
@@ -162,7 +162,7 @@ If the agent breaks that rule and repeats the card in prose, the prose is the ag
 
 A button carries an `action` with an event name and a context.
 When the user taps it, the app builds one line of text and sends it as the user's own turn.
-The composer's comment (`app/crates/ui/src/composer.rs:4747-4749`): "Send `text` as the user's turn without touching the input: a card button's answer (`[card:<id>] <action> <payload>`), typed by a tap. A live run is steered, an idle chat resumed, exactly like Enter."
+The composer's comment (`app/crates/ui/src/composer.rs:5046-5048`): "Send `text` as the user's turn without touching the input: a card button's answer (`[card:<id>] <action> <payload>`), typed by a tap. A live run is steered, an idle chat resumed, exactly like Enter."
 
 The wire form is fixed in `app/crates/proto/src/card.rs:25-36`:
 
