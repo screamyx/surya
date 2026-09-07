@@ -914,7 +914,34 @@ impl SessionsEngine {
                     .or_else(|| host.request_from_chat_row(&chat_id, &prompt_text))
                     // Last resort: the journal's own cwd (surya's draft config)
                     // — a crash can predate the debounced workspace-row write.
+                    //
+                    // Not for a chat that is gone. The journal outlives the
+                    // chat: `deleteSpace` tombstones the row and purges the
+                    // transcript, and nothing clears the journal, so a
+                    // restart still finds this entry. Resuming from it
+                    // dispatches for a chat nobody has, and dispatch claims
+                    // - at this cwd, the removed project's, which mints the
+                    // project back. The purge normally stops us before here
+                    // (no transcript, so no prompt and no fresh streaming
+                    // entry, so `will_resume` is false); this covers a crash
+                    // landing between the cascade's commit and its purge.
+                    //
+                    // The two fallbacks above are already row-dependent:
+                    // `request_from_chat_row` needs the row, and
+                    // `last_request` is in-memory, so it is always empty on
+                    // the boot path this runs on.
                     .or_else(|| {
+                        if sessions
+                            .inner
+                            .workspace()
+                            .is_some_and(|ws| ws.chat_tombstoned(&chat_id))
+                        {
+                            tracing::debug!(
+                                chat = %chat_id,
+                                "auto-resume skipped: the chat row is a tombstone"
+                            );
+                            return None;
+                        }
                         let (_, cwd) = sessions.inner.journal_harness_session(&chat_id)?;
                         Some(RunRequest {
                             surya: None,

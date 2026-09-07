@@ -649,6 +649,13 @@ impl RegistryDoc {
 
     /// The row as this device should display it: authoritative + pending ops.
     fn overlay_row(&self, kind: &str, id: &str) -> Option<RegistryRow> {
+        self.overlay_row_with_tombstones(kind, id)
+            .filter(|r| !r.deleted)
+    }
+
+    /// The same, keeping a tombstone. A deleted row is not the same fact as a
+    /// row that was never written, and one caller needs to tell them apart.
+    fn overlay_row_with_tombstones(&self, kind: &str, id: &str) -> Option<RegistryRow> {
         let mut row = self
             .authoritative
             .get(kind)
@@ -664,7 +671,7 @@ impl RegistryDoc {
                 }
             }
         }
-        row.filter(|r| !r.deleted)
+        row
     }
 
     /// All live rows of `kind`, overlay applied.
@@ -951,6 +958,16 @@ impl RegistryDoc {
             fields([("lastSeenAt", json!(at.timestamp_millis()))]),
         );
         Ok(true)
+    }
+
+    /// Has this chat's row been DELETED, as opposed to never written?
+    ///
+    /// The registry tombstones rather than erases, so the two are separable -
+    /// and they mean opposite things to a caller deciding whether to revive a
+    /// run. A chat with no row at all may simply predate a debounced write.
+    pub fn chat_tombstoned(&self, chat_id: &str) -> bool {
+        self.overlay_row_with_tombstones(KIND_CHATS, chat_id)
+            .is_some_and(|row| row.deleted)
     }
 
     /// Does the chat have a row? Presence only.
