@@ -42,6 +42,7 @@ pub mod key_chips;
 pub mod links;
 pub mod loaders;
 pub mod markdown;
+pub mod model_default;
 pub mod motion;
 pub mod nav_rail;
 pub mod notify;
