@@ -38,6 +38,7 @@ pub mod frost;
 pub mod history;
 pub mod icons;
 pub mod inbox;
+pub mod key_chips;
 pub mod links;
 pub mod loaders;
 pub mod markdown;

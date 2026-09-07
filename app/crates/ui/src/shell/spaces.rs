@@ -2207,9 +2207,15 @@ impl Shell {
                 .text_color(theme.text_muted.opacity(0.7))
         };
 
-        // ── search bar (the ⌘K bar): summon chip · input · "⌘ Enter" add ·
-        //    esc. The primary chip leads with the ⌘ glyph, then says "Enter"
-        //    in words (user request — the bare return arrow read as noise).
+        // ── search bar: summon chip · input · add chip · esc. Both chips
+        //    name their keys through `badge_combo`, which is the ONE place
+        //    the primary modifier is chosen - the Command glyph on macOS,
+        //    the word "Ctrl" everywhere else. They used to draw the glyph
+        //    unconditionally, so Windows read "⌘K" and "⌘ Enter" while the
+        //    Shortcuts settings page correctly said Ctrl (E2E-UI-04). The
+        //    key still says "Enter" in words rather than the bare return
+        //    arrow (user request - the arrow read as noise); `badge_combo`
+        //    spells it that way too.
         let submit_chip = popover::btn_primary(&theme, "")
             .id("add-space-submit")
             .h(px(22.0))
@@ -2227,12 +2233,9 @@ impl Shell {
             .when(submit_busy || listing.is_none(), |el| el.opacity(0.6))
             .on_click(cx.listener(|this, _, _, cx| this.submit_add_space(cx)))
             .when(!submit_busy, |el| {
-                el.child(
-                    icon(icons::COMMAND)
-                        .size(px(11.0))
-                        .text_color(theme.on_solid.opacity(0.8)),
-                )
-                .child(SharedString::from("Enter"))
+                el.child(SharedString::from(crate::key_chips::submit_label(
+                    cfg!(target_os = "macos"),
+                )))
             })
             .when(submit_busy, |el| el.child(SharedString::from("Adding…")));
         // Header and footer sit a shade DEEPER than the body (the shared
@@ -2254,13 +2257,9 @@ impl Shell {
             .border_b_1()
             .border_color(hairline)
             .child(
-                key_chip(&theme)
-                    .child(
-                        icon(icons::COMMAND)
-                            .size(px(11.0))
-                            .text_color(theme.text_muted.opacity(0.7)),
-                    )
-                    .child(SharedString::from("K")),
+                key_chip(&theme).child(SharedString::from(crate::key_chips::summon_label(
+                    cfg!(target_os = "macos"),
+                ))),
             )
             .child(
                 div()
