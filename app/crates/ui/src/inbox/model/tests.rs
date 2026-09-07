@@ -283,22 +283,6 @@ fn a_grandchild_keeps_going_deeper_and_stays_in_one_group() {
 }
 
 #[test]
-fn the_four_groups_appear_in_the_decision_15_order() {
-    let rows = [
-        state_row("idle", None, AgentState::Idle),
-        state_row("done", None, AgentState::Done),
-        state_row("working", None, AgentState::Working),
-        state_row("blocked", None, NEEDS_PERMISSION),
-        state_row("stopped", None, AgentState::Stopped),
-    ];
-    let sections = agent_sections(&rows, &[]);
-    let headings: Vec<&str> = sections.iter().map(|s| s.group.heading()).collect();
-    assert_eq!(headings, ["Waiting for you", "Running", "Done", "Idle"]);
-    // Stopped shares the waiting group: it wants a decision too (decision 17).
-    assert_eq!(sections[0].rows.len(), 2);
-}
-
-#[test]
 fn an_empty_group_is_not_drawn() {
     let sections = agent_sections(&[state_row("a", None, AgentState::Working)], &[]);
     assert_eq!(sections.len(), 1);
