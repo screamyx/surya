@@ -1942,9 +1942,13 @@ impl Shell {
         flow.browser_path = path.clone();
         if kind.clears_the_list() {
             flow.browser = Loadable::Loading;
-            flow.list_scroll.set_offset(gpui::Point::default());
         }
+        // The highlight goes back to the first row, so the viewport has to go
+        // with it. These are one decision, not two: a refilter that shrinks
+        // the list used to move the highlight to the top and leave the scroll
+        // where it was, looking at rows that are no longer there.
         flow.active = 0;
+        flow.list_scroll.set_offset(gpui::Point::default());
         // Replacing the task cancels the one in flight, which is what makes
         // the debounce a debounce.
         flow.load_task = Some(cx.spawn(async move |this, cx| {
