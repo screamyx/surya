@@ -4603,6 +4603,7 @@ impl Shell {
         let waiting = self.inbox_count(cx);
         let agents_built = self.agents_rail(cx).is_some();
         let agents_shown = agents_entry::agents_tree_shown(agents_built, self.agents_collapsed);
+        let agents_indicator = agents_entry::entry_indicator(agents_shown);
         let active = if self.right_pane_open(cx) {
             Some(self.resolved_right_active(cx))
         } else {
@@ -4706,7 +4707,10 @@ impl Shell {
             // Agents hide the agents. Collapsing lives on the section header.
             // See `shell::agents_entry`.
             .child(
-                entry("rail-agents", icons::BOT, "Agents", agents_shown, true, theme).on_click(
+                entry("rail-agents", icons::BOT, "Agents", agents_indicator.selected, true, theme)
+                    .when_some(agents_indicator.status, |el, status| el.child(div().flex_1()).child(
+                        div().text_size(crate::typography::ui_rems(11.0)).text_color(theme.text_muted).child(status),
+                    )).on_click(
                     cx.listener(|this, _, _, cx| {
                         // Build it first: on the very first click there is no
                         // rail yet, and revealing one that does not exist

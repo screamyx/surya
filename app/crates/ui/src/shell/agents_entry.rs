@@ -46,6 +46,19 @@ pub(super) fn collapsed_after_rail_click(_was_collapsed: bool) -> bool {
     false
 }
 
+/// Auxiliary visibility has its own cue; it is not the current destination.
+pub(super) struct EntryIndicator {
+    pub selected: bool,
+    pub status: Option<&'static str>,
+}
+
+pub(super) fn entry_indicator(shown: bool) -> EntryIndicator {
+    EntryIndicator {
+        selected: false,
+        status: shown.then_some("Shown"),
+    }
+}
+
 impl Shell {
     /// The Agents section: a collapsible header, and the tree under it while
     /// it is expanded. `None` when there is no rail to show at all.
@@ -60,17 +73,14 @@ impl Shell {
         let rail = self.agents_rail(cx)?;
         let collapsed = self.agents_collapsed;
         let chevron = self.sidebar_disclosure_chevron(KEY, !collapsed, theme);
-        let header = super::spaces::sidebar_disclosure_header(
-            theme,
-            SharedString::from("Agents"),
-            chevron,
-        )
-        .id("sidebar-agents-header")
-        .on_click(cx.listener(|this, _, _, cx| {
-            // The header is where collapsing lives, so this one toggles.
-            this.agents_collapsed = !this.agents_collapsed;
-            cx.notify();
-        }));
+        let header =
+            super::spaces::sidebar_disclosure_header(theme, SharedString::from("Agents"), chevron)
+                .id("sidebar-agents-header")
+                .on_click(cx.listener(|this, _, _, cx| {
+                    // The header is where collapsing lives, so this one toggles.
+                    this.agents_collapsed = !this.agents_collapsed;
+                    cx.notify();
+                }));
         Some(
             div()
                 .flex_none()
@@ -122,5 +132,17 @@ mod tests {
                 "a rail click must reveal, not hide (was_collapsed={was_collapsed})"
             );
         }
+    }
+    #[test]
+    fn visible_agents_remain_distinct_from_home_or_files_selection() {
+        for primary_selected in [true, false] {
+            let indicator = entry_indicator(true);
+            assert_eq!(indicator.status, Some("Shown"));
+            assert!(!indicator.selected);
+            assert!((primary_selected as usize + indicator.selected as usize) <= 1);
+        }
+        let hidden = entry_indicator(false);
+        assert!(!hidden.selected);
+        assert_eq!(hidden.status, None);
     }
 }
