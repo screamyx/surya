@@ -38,6 +38,9 @@ pub fn section(
                             theme,
                             vec![
                                 div()
+                                    .w_full()
+                                    .min_w_0()
+                                    .whitespace_normal()
                                     .child(SharedString::from(
                                         "New sessions run tools without asking. Sessions you \
                                          already have keep their own setting; switch those in \
