@@ -6981,15 +6981,20 @@ impl Shell {
                 .child(
                     div()
                         .id("engine-skew-banner")
+                        // `occlude` is input only; the opaque fill is what
+                        // stops the transcript reading through. `min_w_0` lets
+                        // the box shrink to a docked-narrow column instead of
+                        // overflowing it. Both explained in `skew_banner`.
                         .occlude()
                         .max_w(px(720.0))
+                        .min_w_0()
                         .flex()
                         .items_start()
                         .gap(px(10.0))
                         .px(px(12.0))
                         .py(px(6.0))
                         .rounded(px(8.0))
-                        .bg(theme.warning_wash)
+                        .bg(crate::skew_banner::fill(theme))
                         .border_1()
                         .border_color(gpui::Hsla { a: 0.5, ..theme.warning })
                         .text_size(crate::typography::ui_rems(13.0))
