@@ -55,6 +55,8 @@ function toolChip(tool: ToolItem, rail: boolean) {
 
 /// Rust: `subagent_chip` - the same card as `tool_chip`, but the WHOLE card is
 /// the "open the subagent tab" click, with the open-arrow tile trailing.
+/// Its wash is a plain gpui `.hover()`, not a motion::hover_blend, so it snaps
+/// natively and must keep snapping here: no motion-hover-fade.
 function subagentChip(tool: ToolItem, rail: boolean, state: ToolGroupState) {
   const docId = tool.subagentRef ?? '';
   return (
@@ -144,6 +146,12 @@ export function renderToolGroup(
           <div className="min-w-0 h-4 flex items-center truncate whitespace-nowrap">{summary}</div>
         </button>
       )}
+      {/* Rust tweens both this fold body and the chip card above over
+          motion::RESIZE (200ms ease-out), armed only inside FOLD_TWEEN_WINDOW
+          of a user toggle. motion-resize is a CSS height transition, which
+          needs a NUMBER at both ends; the open height is chips_height(n) plus
+          whatever details are open, the sandbox cannot measure, and no h- step
+          spells it. So the fold commits its height instead of tweening. */}
       {open ? chips : <div className="overflow-hidden h-0" />}
     </div>
   );

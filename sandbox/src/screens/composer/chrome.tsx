@@ -13,7 +13,7 @@ export function trackedUpper(label: string) {
 // Native adds shadow_lg; CSS shadows have no admitted pair here.
 export function popoverCard(children: ReactNode) {
   return (
-    <div className="flex flex-col border border-wash/10 rounded-xl p-1 overflow-hidden text-ui-13 text-text bg-surface-overlay">
+    <div className="relative flex flex-col border border-wash/10 rounded-xl p-1 overflow-hidden text-ui-13 text-text bg-surface-overlay motion-menu-in">
       {children}
     </div>
   );
@@ -26,7 +26,7 @@ export function menuRow(active: boolean, key: string, onPick: () => void, childr
     <button key={key} type="button" data-row={key} onClick={onPick}
       className={active
         ? 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left text-text bg-wash/10 cursor-pointer'
-        : 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left text-text/88 cursor-pointer hover:bg-wash/10 active:bg-wash/14 focus:bg-wash/10'}>
+        : 'w-full flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left text-text/88 cursor-pointer motion-hover-fade hover:bg-wash/10 active:bg-wash/14 focus:bg-wash/10'}>
       {children}
     </button>
   );
@@ -40,7 +40,7 @@ export function kbdHint(label: string) {
 // popover.rs::btn_ghost.
 export function btnGhost(label: string, onPress: () => void) {
   return <button type="button" onClick={onPress}
-    className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover">{label}</button>;
+    className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer motion-hover-fade hover:bg-element-hover active:bg-element-active focus:bg-element-hover">{label}</button>;
 }
 
 // popover.rs::btn_primary: white fill, near-black text.

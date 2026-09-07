@@ -41,7 +41,7 @@ function renderFailure(message: string, offline: boolean, onDismiss: () => void)
 // Not a warning box, because the amber Notice read as an error.
 function renderQueueNotice(text: string, offline: boolean) {
   return (
-    <div data-notice="composer-queue-notice" className="mx-2 mt-1.5 flex flex-row items-center gap-1.5 text-ui-11 text-text-faint">
+    <div data-notice="composer-queue-notice" className="relative mx-2 mt-1.5 flex flex-row items-center gap-1.5 text-ui-11 text-text-faint motion-fade-in">
       <span className={offline ? 'size-1.5 flex-none rounded-full bg-warning' : 'size-1.5 flex-none rounded-full bg-text-faint'} />
       <span className="min-w-0 truncate">{text}</span>
     </div>
@@ -146,13 +146,13 @@ export function Composer({ model, onEvent }: ComposerProps) {
   // Expanded: the text box on top, the actions row pinned at the pill's
   // stationary bottom. Compact: input and the cluster on one line.
   const pill = isExpanded ? (
-    <div data-pill="expanded" className="w-full flex flex-col rounded-xl border border-border bg-input-bg overflow-hidden">
+    <div data-pill="expanded" className="w-full flex flex-col rounded-xl border border-border bg-input-bg overflow-hidden motion-fade-quick">
       {strip}
       <div className="min-h-20 px-4 pt-4 pb-1 flex flex-col">{input}</div>
       <div className="h-12 flex flex-row items-center gap-2 pl-3 pr-3 pt-1 pb-2.5">{cluster}</div>
     </div>
   ) : (
-    <div data-pill="compact" className="w-full flex flex-col justify-end rounded-full border border-border bg-input-bg overflow-hidden">
+    <div data-pill="compact" className="w-full flex flex-col justify-end rounded-full border border-border bg-input-bg overflow-hidden motion-fade-quick">
       {strip}
       <div className="h-12 flex flex-row items-center">
         <div className="flex-1 min-w-0 pl-4 pr-2">{input}</div>
@@ -175,13 +175,19 @@ export function Composer({ model, onEvent }: ComposerProps) {
           completionActive, setCompletionActive, name => onEvent(`AcceptSlash(${name})`))}
         {pill}
         {picker === 'model' && (
-          <div data-popover="model" className="absolute bottom-12 right-20 w-80 flex flex-col rounded-xl border border-wash/10 overflow-hidden bg-surface-overlay">
+          <div data-popover="model" className="absolute bottom-12 right-20 w-80 flex flex-col">
+            {/* motion-menu-in animates top with fill-mode both, so it must not
+                sit on the box that resolves its own position from bottom-12:
+                the forced top:0 clipped 116px off the model list. The card
+                inside carries the entrance instead. */}
+            <div className="relative w-full flex flex-col rounded-xl border border-wash/10 overflow-hidden bg-surface-overlay motion-menu-in">
             {renderHarnessModelPopover(model.harnessTabs, model.models, model.noAgents,
               { rail, active, selectedModelId, favorites },
               next => { setRail(next); setActive(0); },
               setActive,
               id => { setSelectedModelId(id); setPicker(null); onEvent(`PickModel(${id})`); },
               toggleFavorite)}
+            </div>
           </div>
         )}
       </div>

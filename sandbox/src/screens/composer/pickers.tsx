@@ -35,7 +35,7 @@ export function renderYoloChip(state: YoloState, onToggle: (on: boolean) => void
       onClick={() => onToggle(state !== 'on')}
       className={state === 'on'
         ? 'h-8 flex-none flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium text-warning bg-warning-wash cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'
-        : 'h-8 flex-none flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium text-text-muted cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
+        : 'h-8 flex-none flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium text-text-muted cursor-pointer motion-hover-fade hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
       {body}
     </button>
   );
@@ -52,7 +52,7 @@ export function renderModelChip(
     <button type="button" data-chip="picker-model" aria-expanded={open} onClick={onToggle}
       className={open
         ? 'h-8 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium text-text bg-element-hover cursor-pointer'
-        : 'h-8 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium text-text/88 cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
+        : 'h-8 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2.5 rounded-lg text-ui-12 font-medium text-text/88 cursor-pointer motion-hover-fade hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
       <span className={model.noAgents ? 'size-4 flex-none text-text-muted' : 'size-4 flex-none text-claude-brand'}>
         {model.noAgents ? renderIcon('terminal') : renderIcon('claude-mark')}
       </span>
@@ -78,8 +78,8 @@ export function renderFooterChip(
   return (
     <button type="button" data-chip={`picker-${kind}`} onClick={() => onOpen(kind)}
       className={warn
-        ? 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium text-warning cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'
-        : 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium text-text-muted/88 cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
+        ? 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium text-warning cursor-pointer motion-hover-fade hover:bg-element-hover active:bg-element-active focus:bg-element-hover'
+        : 'h-5 max-w-64 min-w-0 flex flex-row items-center gap-1.5 px-2 rounded-md text-ui-12 font-medium text-text-muted/88 cursor-pointer motion-hover-fade hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
       <span className="size-3 flex-none text-text-muted/88">{renderIcon(icon)}</span>
       <span className="min-w-0 truncate">{label}</span>
       <span className="size-3 flex-none text-text-muted/50">{renderIcon('alt-arrow-down')}</span>

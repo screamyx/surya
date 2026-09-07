@@ -77,8 +77,8 @@ export function PermissionCard(props: {
             aria-pressed={picked === answer}
             onClick={() => onAnswerPermission(ask.requestId, answer)}
             className={picked === answer
-              ? 'flex flex-row items-center gap-3 px-3.5 py-2.5 rounded-xl border border-wash/14 text-left cursor-pointer bg-wash/10 hover:bg-wash/14 active:bg-element-active focus:bg-wash/14'
-              : 'flex flex-row items-center gap-3 px-3.5 py-2.5 rounded-xl border border-wash/5 text-left cursor-pointer bg-wash/5 hover:bg-wash/10 active:bg-element-active focus:bg-wash/10'}>
+              ? 'flex flex-row items-center gap-3 px-3.5 py-2.5 rounded-xl border border-wash/14 text-left cursor-pointer bg-wash/10 motion-hover-fade hover:bg-wash/14 active:bg-element-active focus:bg-wash/14'
+              : 'flex flex-row items-center gap-3 px-3.5 py-2.5 rounded-xl border border-wash/5 text-left cursor-pointer bg-wash/5 motion-hover-fade hover:bg-wash/10 active:bg-element-active focus:bg-wash/10'}>
             <div className="flex-1 min-w-0 text-ui-13 font-medium text-text/88">{answerLabel(answer)}</div>
             <div className="flex-none size-5 flex items-center justify-center rounded-md bg-wash/5 text-ui-11 text-text-muted">
               {ix + 1}

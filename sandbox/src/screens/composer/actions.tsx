@@ -36,7 +36,7 @@ export function renderSendButton(mode: SendMode, blocked: boolean, onSend: () =>
 export function renderAttachButton(onAttach: () => void) {
   return (
     <button type="button" data-action="composer-attach" aria-label="Attach" onClick={onAttach}
-      className="size-7 flex-none flex items-center justify-center rounded-full cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover">
+      className="size-7 flex-none flex items-center justify-center rounded-full cursor-pointer motion-hover-fade hover:bg-element-hover active:bg-element-active focus:bg-element-hover">
       <span className="size-4 text-text-muted">{renderIcon('paperclip')}</span>
     </button>
   );

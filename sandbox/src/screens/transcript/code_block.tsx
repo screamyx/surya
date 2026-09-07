@@ -57,14 +57,14 @@ function header(
             onMouseEnter={() => state.onHoverCode(`${key}-fit`, true)}
             onMouseLeave={() => state.onHoverCode(`${key}-fit`, false)}
             className={fit
-              ? 'size-5 rounded-md flex items-center justify-center cursor-pointer text-text-muted bg-wash/10 hover:bg-wash/14 active:bg-element-active focus:bg-wash/14'
-              : 'size-5 rounded-md flex items-center justify-center cursor-pointer text-text-muted hover:bg-wash/10 active:bg-element-active focus:bg-wash/10'}>
+              ? 'size-5 rounded-md flex items-center justify-center cursor-pointer text-text-muted bg-wash/10 motion-hover-fade hover:bg-wash/14 active:bg-element-active focus:bg-wash/14'
+              : 'size-5 rounded-md flex items-center justify-center cursor-pointer text-text-muted motion-hover-fade hover:bg-wash/10 active:bg-element-active focus:bg-wash/10'}>
             <span className="size-3 flex items-center justify-center">{icon('wrap-text')}</span>
           </button>
           {state.hovered(`${key}-fit`) && tooltip(label)}
         </div>
         <button type="button" aria-label="Copy code" onClick={() => state.onCopyCode(key, code)}
-          className="h-5 px-1.5 rounded-sm flex flex-row items-center gap-1 cursor-pointer text-ui-10 text-text-muted hover:bg-wash/10 active:bg-element-active focus:bg-wash/10">
+          className="h-5 px-1.5 rounded-sm flex flex-row items-center gap-1 cursor-pointer text-ui-10 text-text-muted motion-hover-fade hover:bg-wash/10 active:bg-element-active focus:bg-wash/10">
           <span className="size-3 flex items-center justify-center">{state.copied(key) ? icon('check') : icon('copy')}</span>
           {state.copied(key) && <span>Copied</span>}
         </button>

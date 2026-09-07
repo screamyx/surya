@@ -40,8 +40,10 @@ function rowInner(row: TranscriptRow, ui: TranscriptUi) {
     case 'markdown':
       return renderBlock(kind.block, row.id, ui.code);
     case 'liveMarkdown':
-      // Rust wraps this in the per-chunk fade veil; the veil is opacity only,
-      // so layout is identical and the next seat applies the motion.
+      // Rust wraps this in the per-chunk fade veil (markdown/veil.rs), which
+      // fades each appended BYTE RANGE at a duration the stream's cadence
+      // picks (120 to 400ms) over a (1-p)^1.6 curve. That is not a catalog
+      // entry and has no fixed timing, so the row commits without a fade.
       return <div data-live="1">{renderBlock(kind.block, row.id, ui.code)}</div>;
     case 'toolGroup':
       return renderToolGroup(row.id, kind.tools, kind.autoOpen, kind.summary, ui.toolGroup);
@@ -71,12 +73,12 @@ function metadataStrip(row: TranscriptRow, ui: TranscriptUi) {
       {row.stopped && stoppedMark()}
       {row.retryPrompt !== undefined && retryControl(row.id, row.retryPrompt, ui.onRetryTurn)}
       {hovered && (
-        <div data-meta={row.id} className="flex flex-row items-center gap-2">
+        <div data-meta={row.id} className="flex flex-row items-center gap-2 motion-fade-quick">
           <div className="text-ui-12 text-text-muted/50">{row.timestamp}</div>
           {row.copyText !== undefined && (
             <button type="button" data-copy-message={row.entryId} aria-label="Copy message"
               onClick={() => ui.onCopyMessage(row.entryId, row.copyText ?? '')}
-              className="size-6 flex items-center justify-center rounded-md cursor-pointer text-text-muted hover:bg-wash/10 active:bg-element-active focus:bg-wash/10">
+              className="size-6 flex items-center justify-center rounded-md cursor-pointer text-text-muted motion-hover-fade hover:bg-wash/10 active:bg-element-active focus:bg-wash/10">
               <span className="size-3.5 flex items-center justify-center">{copied ? icon('check') : icon('copy')}</span>
             </button>
           )}

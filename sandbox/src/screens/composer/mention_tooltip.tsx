@@ -5,7 +5,7 @@
 export function MentionPathTooltip({ path }: { path: string }) {
   return (
     <div role="tooltip" data-tooltip="file-mention-path"
-      className="mr-auto h-6 max-w-96 flex items-center px-2 rounded-sm border border-border-strong bg-surface-raised text-ui-11 text-text-muted whitespace-nowrap overflow-hidden">
+      className="mr-auto h-6 max-w-96 flex items-center px-2 rounded-sm border border-border-strong bg-surface-raised text-ui-11 text-text-muted whitespace-nowrap overflow-hidden motion-fade-quick">
       {path}
     </div>
   );

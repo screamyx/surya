@@ -9,7 +9,7 @@ import { trackedUpper, btnGhost, btnPrimary } from './chrome';
 function panel(label: string, children: ReactNode) {
   return (
     <div aria-label={label}
-      className="flex flex-col rounded-xl border border-border bg-input-bg">
+      className="flex flex-col rounded-xl border border-border bg-input-bg motion-fade-quick">
       {children}
     </div>
   );
@@ -36,7 +36,7 @@ function optionRow(
     <button key={key} type="button" data-option={key} onClick={onPick}
       className={picked
         ? 'flex flex-row items-center gap-3 px-3.5 py-2.5 rounded-xl border border-wash/14 bg-wash/10 text-left cursor-pointer'
-        : 'flex flex-row items-center gap-3 px-3.5 py-2.5 rounded-xl border border-wash/5 bg-wash/5 text-left cursor-pointer hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
+        : 'flex flex-row items-center gap-3 px-3.5 py-2.5 rounded-xl border border-wash/5 bg-wash/5 text-left cursor-pointer motion-hover-fade hover:bg-element-hover active:bg-element-active focus:bg-element-hover'}>
       <span className={picked
         ? 'flex-1 min-w-0 text-ui-13 font-medium text-text'
         : 'flex-1 min-w-0 text-ui-13 font-medium text-text/88'}>{label}</span>
