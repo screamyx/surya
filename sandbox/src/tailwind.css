@@ -19,7 +19,6 @@
   --color-text: var(--surya-text);
   --color-text-muted: var(--surya-text-muted);
   --color-text-faint: var(--surya-text-faint);
-  --color-text-dim: var(--surya-text-dim);
   --color-solid: var(--surya-solid);
   --color-on-solid: var(--surya-on-solid);
   --color-accent: var(--surya-accent);
@@ -79,7 +78,6 @@
   --surya-text: rgb(232 232 234 / 1);
   --surya-text-muted: rgb(169 169 174 / 1);
   --surya-text-faint: rgb(133 133 138 / 1);
-  --surya-text-dim: rgb(169 169 174 / 1);
   --surya-solid: rgb(235 235 239 / 1);
   --surya-on-solid: rgb(0 0 0 / 1);
   --surya-accent: rgb(139 124 246 / 1);
@@ -123,7 +121,6 @@
   --surya-text: rgb(48 48 53 / 1);
   --surya-text-muted: rgb(98 98 106 / 1);
   --surya-text-faint: rgb(121 121 129 / 1);
-  --surya-text-dim: rgb(98 98 106 / 1);
   --surya-solid: rgb(35 35 40 / 1);
   --surya-on-solid: rgb(255 255 255 / 1);
   --surya-accent: rgb(91 67 232 / 1);

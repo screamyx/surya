@@ -2,19 +2,19 @@
 export const provenance = [
   {
     "path": "app/crates/ui/src/theme.rs",
-    "sha256": "8b6b50105c97b81b28e8bf1f195c2047a7915e54a2c24da088689adaf64407b3"
+    "sha256": "70a7736ea0bd9e551f451ecb778205660d354968fdc2a79bedada8858c2130c0"
   },
   {
     "path": "app/crates/theme/src/builtins.rs",
-    "sha256": "bcd9cfa6a4d59f3aaf2458f48f3d20d01f2464d540e96bbf493ecb2691a7381c"
+    "sha256": "423667388a69881aca91e49ede4e65afff007541ddbc0ad0b88768b93ea0daba"
   },
   {
     "path": "app/crates/theme/src/lib.rs",
-    "sha256": "657c3d79d9a18e7e51c502b6f4ea1037ccac1acab974e9750a3768c22d554366"
+    "sha256": "8416522b8932704ee028926c748b0a23ecee440efad1430024d58c4544869710"
   },
   {
     "path": "app/crates/ui/src/icons.rs",
-    "sha256": "963a4909f0915f43e72791ad0b38f27fefbbb4b2da5827d3c641f41ceb89c9b7"
+    "sha256": "3ae068d136f5eedb48c825f52bd5f4d9a1b733671c101568a1e5b7e8fbf0d28e"
   }
 ] as const;
 export const themes = {
@@ -32,7 +32,6 @@ export const themes = {
     "text": "rgb(48 48 53 / 1)",
     "text_muted": "rgb(98 98 106 / 1)",
     "text_faint": "rgb(121 121 129 / 1)",
-    "text_dim": "rgb(98 98 106 / 1)",
     "solid": "rgb(35 35 40 / 1)",
     "on_solid": "rgb(255 255 255 / 1)",
     "accent": "rgb(91 67 232 / 1)",
@@ -76,7 +75,6 @@ export const themes = {
     "text": "rgb(232 232 234 / 1)",
     "text_muted": "rgb(169 169 174 / 1)",
     "text_faint": "rgb(133 133 138 / 1)",
-    "text_dim": "rgb(169 169 174 / 1)",
     "solid": "rgb(235 235 239 / 1)",
     "on_solid": "rgb(0 0 0 / 1)",
     "accent": "rgb(139 124 246 / 1)",
