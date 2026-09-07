@@ -282,3 +282,63 @@ test('the terminal palette is admitted on the verbs that paint it', async () => 
   for (const cls of ['bg-terminal-ansi-16', 'bg-terminal-ansi-255', 'bg-terminal-ansi-1.0',
     'bg-terminal-ansi', 'bg-terminal', 'bg-ansi-1', 'bg-terminal-cursor']) assert.ok(!allowedClass(cls), cls);
 });
+
+test('the glyph palette is admitted, and the accent-role skip is gone', async () => {
+  const { glyphPalette } = await import('./native-palettes.mjs');
+  const { block, fields, accentRoles, color } = await import('./rust-colors.mjs');
+  const root = resolve(import.meta.dirname, '..');
+  const read = path => readFileSync(resolve(root, '..', path), 'utf8').replace(/\/\/[^\n]*/g, '');
+  const theme = read('app/crates/ui/src/theme.rs');
+  const builtins = read('app/crates/theme/src/builtins.rs');
+  const lib = read('app/crates/theme/src/lib.rs');
+  const themes = JSON.parse(readFileSync(resolve(root, 'src/theme.ts'), 'utf8')
+    .match(/export const themes = ([\s\S]*?) as const;/)[1]);
+  const css = readFileSync(resolve(root, 'src/tailwind.css'), 'utf8');
+
+  for (const mode of ['dark', 'light']) {
+    const seed = fields(block(block(builtins, `fn comet_${mode}()`), 'variant(Seeds'));
+    const background = color(JSON.parse(seed.background));
+    const accent = accentRoles(lib, color(JSON.parse(seed.accent)), mode === 'dark', background);
+    // The skip that hid this field: accentRoles() must now return the array.
+    assert.ok(Array.isArray(accent.glyph) && accent.glyph.length === 3, 'accentRoles drops glyph');
+    const palette = glyphPalette(theme, accent);
+    assert.deepEqual(Object.keys(palette), ['light', 'mid', 'deep']);
+    for (const [field, value] of Object.entries(palette)) {
+      const token = `glyph-${field}`;
+      assert.equal(themes[mode][`glyph_${field}`],
+        `rgb(${value.slice(0, 3).join(' ')} / ${Number((value[3] / 255).toFixed(6))})`, `${mode}.${field}`);
+      assert.match(css, new RegExp(`--color-${token}: var\\(--surya-${token}\\);`), token);
+      // Every call site fills with it; none draws text or a border.
+      assert.ok(allowedClass(`bg-${token}`), `bg-${token}`);
+      assert.ok(!allowedClass(`text-${token}`), `text-${token}`);
+      assert.ok(!allowedClass(`border-${token}`), `border-${token}`);
+    }
+    // `glyph: [light, primary, deep]` in AccentRoles::derive: mid is the accent.
+    assert.equal(themes[mode].glyph_mid, themes[mode].accent, `${mode} glyph mid is the accent`);
+  }
+  for (const cls of ['bg-glyph', 'bg-glyph-dark', 'bg-glyph-rows', 'bg-glyph-0']) {
+    assert.ok(!allowedClass(cls), cls);
+  }
+});
+
+test('every colour-carrying Theme field reaches a token', () => {
+  const root = resolve(import.meta.dirname, '..');
+  const theme = readFileSync(resolve(root, '../app/crates/ui/src/theme.rs'), 'utf8')
+    .replace(/\/\/[^\n]*/g, '');
+  const themes = JSON.parse(readFileSync(resolve(root, 'src/theme.ts'), 'utf8')
+    .match(/export const themes = ([\s\S]*?) as const;/)[1]);
+  const struct = theme.split('pub struct Theme {')[1].split('\n}')[0];
+  // The audit, executable: anything that is not an Hsla and is not on this list
+  // is a new field, and a reviewer has to decide whether it carries colour.
+  const carried = { syntax: 'syntax_', terminal: 'terminal_', glyph: 'glyph_' };
+  const colourless = ['appearance', 'variant_id', 'family_id', 'accent_selection',
+    'surface_preference', 'surface_treatment', 'accent_color'];
+  const fonts = ['font_sans', 'font_sans_fixed', 'font_mono', 'font_sans_fallback', 'font_mono_fallback'];
+  for (const [, field, type] of struct.matchAll(/^\s*pub (\w+): ([^,]+),/gm)) {
+    if (type.trim() === 'Hsla') { assert.ok(themes.dark[field], field); continue; }
+    if (colourless.includes(field) || fonts.includes(field)) continue;
+    const prefix = carried[field];
+    assert.ok(prefix, `${field}: ${type.trim()} is a new non-Hsla Theme field, and nothing decides whether it paints`);
+    assert.ok(Object.keys(themes.dark).some(key => key.startsWith(prefix)), `${field} carries no token`);
+  }
+});

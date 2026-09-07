@@ -103,6 +103,9 @@
   --color-terminal-ansi-13: var(--surya-terminal-ansi-13);
   --color-terminal-ansi-14: var(--surya-terminal-ansi-14);
   --color-terminal-ansi-15: var(--surya-terminal-ansi-15);
+  --color-glyph-light: var(--surya-glyph-light);
+  --color-glyph-mid: var(--surya-glyph-mid);
+  --color-glyph-deep: var(--surya-glyph-deep);
   --font-sans: "Geist", sans-serif;
   --font-mono: "Geist Mono", monospace;
   --text-ui-10: 0.625rem;
@@ -206,6 +209,9 @@
   --surya-terminal-ansi-13: rgb(216 180 254 / 1);
   --surya-terminal-ansi-14: rgb(103 232 249 / 1);
   --surya-terminal-ansi-15: rgb(250 250 250 / 1);
+  --surya-glyph-light: rgb(171 161 249 / 1);
+  --surya-glyph-mid: rgb(139 124 246 / 1);
+  --surya-glyph-deep: rgb(114 102 202 / 1);
 }
 [data-theme="light"] {
   --surya-bg: rgb(255 255 255 / 1);
@@ -292,6 +298,9 @@
   --surya-terminal-ansi-13: rgb(126 34 206 / 1);
   --surya-terminal-ansi-14: rgb(21 94 117 / 1);
   --surya-terminal-ansi-15: rgb(24 24 27 / 1);
+  --surya-glyph-light: rgb(121 101 236 / 1);
+  --surya-glyph-mid: rgb(91 67 232 / 1);
+  --surya-glyph-deep: rgb(67 50 172 / 1);
 }
 html, body, #root { height: 100%; }
 /* Motion catalog, generated from app/crates/{ui,proto}/src/motion.rs. */

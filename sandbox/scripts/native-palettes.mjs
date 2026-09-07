@@ -1,4 +1,4 @@
-// The two font families, the syntax palette and the terminal palette,
+// The two font families and the syntax, terminal and glyph palettes,
 // read out of the Rust.
 //
 // Fonts: `ui/src/typography.rs` is the list of faces the app actually registers
@@ -94,6 +94,20 @@ export function terminalPalette(theme, builtins, seedFields, env) {
     const slots = split(list[1], ',').map(v => color(JSON.parse(v)));
     if (slots.length !== Number(arity)) throw new Error(`${constant} has the wrong slot count`);
     slots.forEach((value, index) => { out[`${field}_${index}`] = value; });
+  }
+  return out;
+}
+
+/** `GlyphPalette`, the three authored rows of the animated 2x3 pixel glyph. */
+export function glyphPalette(theme, accent) {
+  const source = fields(block(theme, 'theme.glyph = GlyphPalette'));
+  const out = {};
+  for (const [field, expression] of Object.entries(source)) {
+    const slot = expression.match(/^model_color\(accent\.glyph\[(\d)\]\)$/);
+    if (!slot) throw new Error(`from_variant no longer takes glyph.${field} from an accent slot`);
+    const value = accent.glyph?.[Number(slot[1])];
+    if (!value) throw new Error(`AccentRoles::derive no longer yields glyph slot ${slot[1]}`);
+    out[field] = value;
   }
   return out;
 }

@@ -97,6 +97,10 @@ export function accentRoles(lib, seed, dark, background) {
   }
   env.strong = ensure(env.strong, env.on, 4.5);
   const roles = fields(block(body, 'Self'));
-  return Object.fromEntries(Object.entries(roles).filter(([key]) => key !== 'glyph')
-    .map(([key, value]) => [key, evaluate(value, env)]));
+  // A role can be an array of colors (`glyph: [light, primary, deep]`); its
+  // elements are the same expressions every other role is built from.
+  return Object.fromEntries(Object.entries(roles).map(([key, value]) => {
+    const array = value.match(/^\[([\s\S]*)\]$/);
+    return [key, array ? split(array[1]).map(item => evaluate(item, env)) : evaluate(value, env)];
+  }));
 }

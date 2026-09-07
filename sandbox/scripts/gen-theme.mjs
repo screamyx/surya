@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { block, fields, split, color, evaluate, accentRoles } from './rust-colors.mjs';
 import { motionCss, motionSourcePaths } from './motion.mjs';
-import { faces, families, syntaxPalette, terminalPalette } from './native-palettes.mjs';
+import { faces, families, syntaxPalette, terminalPalette, glyphPalette } from './native-palettes.mjs';
 const root = resolve(import.meta.dirname, '..');
 const files = ['app/crates/ui/src/theme.rs', 'app/crates/theme/src/builtins.rs', 'app/crates/theme/src/lib.rs', 'app/crates/ui/src/icons.rs', 'app/crates/ui/src/typography.rs'];
 // The motion catalog is read by scripts/motion.mjs and stamped into the same
@@ -34,6 +34,7 @@ for (const mode of ['light', 'dark']) {
   }
   const accent = accentRoles(lib, seed['seed.accent'], dark, env.background);
   Object.entries(accent).forEach(([key, value]) => { env[`accent.${key}`] = value; });
+  const glyph = glyphPalette(theme, accent);
   const colors = Object.fromEntries(Object.entries(colorFields).map(([key, value]) => [key, evaluate(value, env)]));
   const resolved = {};
   for (const field of scalar) {
@@ -71,6 +72,10 @@ for (const mode of ['light', 'dark']) {
   for (const [field, value] of Object.entries(terminalPalette(theme, builtins, seedFields, env))) {
     resolved[`terminal_${field}`] = value;
   }
+  // Theme.glyph is a GlyphPalette, the last colour-carrying field the scalar
+  // sweep could not see. accentRoles() used to skip it because its Rust value
+  // is an array literal; that skip is gone rather than worked around.
+  for (const [field, value] of Object.entries(glyph)) resolved[`glyph_${field}`] = value;
   themes[mode] = Object.fromEntries(Object.entries(resolved).map(([k, c]) => [k,
     `rgb(${c.slice(0, 3).join(' ')} / ${Number((c[3] / 255).toFixed(6))})`]));
 }
@@ -101,4 +106,4 @@ if (!process.argv.includes('--check')) {
   for (const notice of ['Geist-OFL.txt', 'THIRD_PARTY_NOTICES.md']) copyFileSync(
     resolve(root, `../app/crates/ui/assets/fonts/licenses/${notice}`), resolve(root, `public/fonts/${notice}`));
 }
-console.log(`${process.argv.includes('--check') ? 'Verified' : 'Generated'} ${scalar.length} Theme color fields, ${Object.keys(themes.dark).length - scalar.length - 2} syntax and terminal colors, ${fontFiles.flat(2).length - 2} font faces, light/dark and Tailwind entry`);
+console.log(`${process.argv.includes('--check') ? 'Verified' : 'Generated'} ${scalar.length} Theme color fields, ${Object.keys(themes.dark).length - scalar.length - 2} syntax, terminal and glyph colors, ${fontFiles.flat(2).length - 2} font faces, light/dark and Tailwind entry`);

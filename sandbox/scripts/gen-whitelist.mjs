@@ -117,11 +117,17 @@ const terminalFields = [...theme.split('pub struct TerminalColors {')[1].split('
     arity ? Array.from({ length: Number(arity) }, (_, i) => `terminal-${field}-${i}`)
       : [`terminal-${field.replaceAll('_', '-')}`]);
 const terminalPaint = terminalFields.filter(name => name !== 'terminal-selection');
+// Theme.glyph is a GlyphPalette, the third non-Hsla field the sweep misses.
+// Every call site fills with it: loaders.rs::mini_spinner_tinted paints each
+// glyph cell .bg(tint) from GlyphPalette::rows(), and settings/appearance.rs
+// swatches it the same way. Nothing draws with it as text or as a border.
+const glyphFields = [...theme.split('pub struct GlyphPalette {')[1].split('\n}')[0]
+  .matchAll(/pub (\w+): Hsla/g)].map(m => `glyph-${m[1].replaceAll('_', '-')}`);
 const alphaSuffixes = Object.keys(resolved.dark)
   .filter(key => ['dark', 'light'].every(mode => /\/ 1\)$/.test(resolved[mode][key])))
   .map(key => key.replaceAll('_', '-'));
 for (const suffix of alphaSuffixes) {
-  if (![...colors, ...syntaxFields, ...terminalFields].includes(suffix)) {
+  if (![...colors, ...syntaxFields, ...terminalFields, ...glyphFields].includes(suffix)) {
     throw new Error(`Opaque token ${suffix} has no Rust field`);
   }
 }
@@ -129,14 +135,15 @@ for (const [prefix, method] of [['bg-', 'bg'], ['text-', 'text_color'], ['border
   if (!methods.has(method)) throw new Error(`Missing ${method}`);
   const suffixes = [...colors,
     ...(prefix === 'text-' ? syntaxFields : []),
-    ...(prefix === 'bg-' ? terminalFields : prefix === 'text-' ? terminalPaint : [])];
+    ...(prefix === 'bg-' ? [...terminalFields, ...glyphFields] : prefix === 'text-' ? terminalPaint : [])];
   families.push({ prefix, suffixes, alpha: [5, 10, 14, 50, 88],
     alphaSuffixes: suffixes.filter(suffix => alphaSuffixes.includes(suffix)),
     gpui: `.${method}(theme.<suffix_underscored>)`,
     alphaGpui: `.${method}(theme.<suffix_underscored>.opacity(alpha / 100))`,
     note: 'wash maps to crate::theme::wash(alpha); claude-brand maps to crate::icons::claude_brand(); '
       + 'a syntax- suffix maps to theme.syntax.<field>, the color SyntaxPalette::color() returns for that HighlightKind; '
-      + 'a terminal-ansi-N suffix maps to theme.terminal.ansi[N], what terminal::view::resolve_color returns for CellColor::Indexed(N)'  });
+      + 'a terminal-ansi-N suffix maps to theme.terminal.ansi[N], what terminal::view::resolve_color returns for CellColor::Indexed(N); '
+      + 'a glyph- suffix maps to theme.glyph.<field>, one row of GlyphPalette::rows()'  });
 }
 const variants = {};
 // Each variant is one interaction style method read in div.rs. `focus-within:`

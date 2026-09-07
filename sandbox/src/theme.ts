@@ -114,7 +114,10 @@ export const themes = {
     "terminal_ansi_12": "rgb(29 78 216 / 1)",
     "terminal_ansi_13": "rgb(126 34 206 / 1)",
     "terminal_ansi_14": "rgb(21 94 117 / 1)",
-    "terminal_ansi_15": "rgb(24 24 27 / 1)"
+    "terminal_ansi_15": "rgb(24 24 27 / 1)",
+    "glyph_light": "rgb(121 101 236 / 1)",
+    "glyph_mid": "rgb(91 67 232 / 1)",
+    "glyph_deep": "rgb(67 50 172 / 1)"
   },
   "dark": {
     "bg": "rgb(6 6 6 / 1)",
@@ -200,7 +203,10 @@ export const themes = {
     "terminal_ansi_12": "rgb(147 197 253 / 1)",
     "terminal_ansi_13": "rgb(216 180 254 / 1)",
     "terminal_ansi_14": "rgb(103 232 249 / 1)",
-    "terminal_ansi_15": "rgb(250 250 250 / 1)"
+    "terminal_ansi_15": "rgb(250 250 250 / 1)",
+    "glyph_light": "rgb(171 161 249 / 1)",
+    "glyph_mid": "rgb(139 124 246 / 1)",
+    "glyph_deep": "rgb(114 102 202 / 1)"
   }
 } as const;
 export type Appearance = keyof typeof themes;

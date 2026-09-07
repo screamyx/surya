@@ -30,6 +30,7 @@ identical defaults. The following pairs are exact within this sandbox:
 | `font-sans`, `font-mono` | `.font_family(theme.font_sans.clone())`, `.font_family(theme.font_mono.clone())` |
 | `text-syntax-keyword` | `.text_color(theme.syntax.keyword)` |
 | `bg-terminal-ansi-1` | `theme.terminal.ansi[1]` |
+| `bg-glyph-mid` | `theme.glyph.mid` |
 | `leading-normal` | `.line_height(relative(1.5))` |
 | `truncate` | `.truncate()` |
 | `overflow-y-scroll` | `.id("stable-id").overflow_y_scroll()` |
@@ -102,18 +103,9 @@ All 24 fields are now tokens, admitted on `text-` only, because
 `SyntaxPalette` is paint-only and every Rust call site reads it through
 `.text_color()`.
 
-| Tailwind | GPUI |
-|---|---|
-| `text-syntax-comment` | `.text_color(theme.syntax.comment)` |
-| `text-syntax-keyword` | `.text_color(theme.syntax.keyword)` |
-| `bg-terminal-ansi-1` | `theme.terminal.ansi[1]` |
-| `text-syntax-string`, `-string-special`, `-escape` | `theme.syntax.string`, `.string_special`, `.escape` |
-| `text-syntax-number`, `-boolean`, `-constant` | `theme.syntax.number`, `.boolean`, `.constant` |
-| `text-syntax-type-name`, `-type-builtin`, `-constructor` | `theme.syntax.type_name`, `.type_builtin`, `.constructor` |
-| `text-syntax-function`, `-function-builtin`, `-macro-name` | `theme.syntax.function`, `.function_builtin`, `.macro_name` |
-| `text-syntax-property`, `-variable`, `-variable-special`, `-parameter` | the same fields |
-| `text-syntax-operator`, `-punctuation`, `-tag`, `-attribute`, `-label` | the same fields |
-| `text-syntax-invalid` | `.text_color(theme.syntax.invalid)` |
+`text-syntax-<field>` is `.text_color(theme.syntax.<field>)` for each of the 24
+`SyntaxPalette` fields, named after the Rust field: `text-syntax-type-name`, not
+`text-syntax-type`. `whitelist.json` carries the list.
 
 Each token is the colour `SyntaxPalette::color()` returns for the matching
 `surya_syntax::HighlightKind`. There is no `text-syntax-embedded`: `Embedded`
@@ -146,34 +138,66 @@ are the accent-family inline-code pair, not a terminal.
 
 Three decisions worth stating, because each could have gone another way.
 
-**Sixteen indexed names, not colour names.** The Rust is `pub ansi: [Hsla; 16]`
-and `terminal::view.rs` reads it as `theme.terminal.ansi[ix as usize]`. Nothing
-in the Rust calls slot 1 red or slot 5 magenta, and a theme is free to seed them
-however it likes, so a name would be a claim the source does not make. The index
-is the ANSI slot number and nothing more.
+**Indexed slots, not colour names.** The Rust is `pub ansi: [Hsla; 16]`, read as
+`theme.terminal.ansi[ix as usize]`. Nothing in the source calls slot 1 red, and
+a theme seeds them freely, so a name would claim a mapping the source does not
+make.
 
-**Both `bg-` and `text-`, except the selection.** `resolve_color` takes a
-`CellColor` and returns a colour, and a cell uses that same function for its
-foreground and its background, so every one of these values is legitimately
-either. The selection is different: `view.rs:503` only ever pushes it as a
-`fill` quad behind the text, so it is a background alone. Nothing paints a
-terminal border, so `border-terminal-*` is rejected.
+**Both `bg-` and `text-`, except the selection.** `resolve_color` turns a
+`CellColor` into a colour and a cell takes its foreground and its background
+from that one function. The selection is only ever a `fill` quad
+(`view.rs:503`), so it is a background alone, and nothing paints a border.
 
-**`terminal-` on the front of all of them.** `background`, `foreground` and
-`selection` would otherwise shadow the `bg`, `text` and `selection` theme roles,
-which are different colours for different surfaces. One prefix per Rust struct,
-the same as `syntax-`.
+**The `terminal-` prefix.** `background`, `foreground` and `selection` would
+otherwise shadow the `bg`, `text` and `selection` theme roles, which are
+different colours for different surfaces.
 
-The values resolve the same way every other token does, from the comet variants:
-`variant()` builds the palette from the seed's `terminal_background`, the seed
-text hardened to 4.5 against it, a border-tone selection wash, and one of the
-`ANSI_*` constants. `Theme::from_variant` hardens the terminal foreground a
-second time only when the variant is not a curated builtin, which these two are,
-so that branch never runs. The generator throws if that guard disappears.
+The values come from the comet variants like every other token: `variant()`
+builds the palette from the seed's `terminal_background`, the seed text hardened
+to 4.5 against it, a border-tone selection wash, and an `ANSI_*` constant.
+`Theme::from_variant` hardens the foreground again only when the variant is not
+a curated builtin, which these two are, and the generator throws if that guard
+disappears.
 
-Slots 16 to 255 are not tokens. `terminal::view::extended_indexed_rgb` computes
-them from the index, appearance-dependent, so they are not theme colours and
-`bg-terminal-ansi-16` is rejected.
+Slots 16 to 255 are computed from the index by `extended_indexed_rgb`, not held
+by the theme, so `bg-terminal-ansi-16` is rejected.
+
+### Glyph
+
+`Theme::glyph` is a `GlyphPalette { light, mid, deep }`, the three authored rows
+of the animated 2x3 pixel glyph. `loaders.rs::mini_spinner_tinted` paints each
+cell `.bg(tint)` from `GlyphPalette::rows()`, and the appearance settings
+swatches the three the same way, so they are admitted on `bg-` alone. Nothing
+draws with them as text or as a border.
+
+| Tailwind | GPUI |
+|---|---|
+| `bg-glyph-light` | `theme.glyph.light` |
+| `bg-glyph-mid` | `theme.glyph.mid` |
+| `bg-glyph-deep` | `theme.glyph.deep` |
+
+`AccentRoles::derive` sets `glyph: [light, primary, deep]`, so `glyph-mid` is
+always the accent itself, with the light and deep rows mixed off it. That is why
+`scripts/rust-colors.mjs` could not read it: the role is a Rust array literal
+and `accentRoles()` skipped the key rather than parse one. The skip is gone; an
+array-valued role now evaluates element by element like every other role.
+
+### What the token sweep covers
+
+`pub struct Theme` has 39 `Hsla` fields, which the sweep reads directly, and 15
+that are something else. That second list is the one that hid three palettes, so
+here it is in full. `npm test` asserts it, and a new non-`Hsla` field fails the
+run until someone decides whether it paints.
+
+| Field | Type | Status |
+|---|---|---|
+| `syntax` | `SyntaxPalette` | 24 tokens, `text-` only |
+| `terminal` | `TerminalColors` | 19 tokens, `bg-` and `text-` |
+| `glyph` | `GlyphPalette` | 3 tokens, `bg-` only |
+| `font_sans`, `font_sans_fixed`, `font_mono` | `SharedString` | `font-sans` and `font-mono`; `font_sans_fixed` names the same family as `font_sans` |
+| `font_sans_fallback`, `font_mono_fallback` | `SharedString` | System font names. Not a sandbox concern. |
+| `appearance`, `variant_id`, `family_id` | identity | No colour. |
+| `accent_selection`, `accent_color`, `surface_preference`, `surface_treatment` | settings | No colour. |
 
 ## Motion
 
@@ -186,14 +210,12 @@ whitelist entries and the `@keyframes`, `@utility` and reduced-motion rules in
 change in Rust turns `npm run lint` red.
 
 There is no free duration, delay or easing utility. `duration-500`,
-`ease-[cubic-bezier(0.16,1,0.3,1)]`, `transition-colors` and `animate-spin` are
-all rejected. A designer picks a catalog entry or does not animate: a 320ms
+`ease-[cubic-bezier(0.16,1,0.3,1)]` and `animate-spin` are rejected: a 320ms
 tween that reads well in the browser is a value the native app cannot produce.
 
 ### Entrances and exits
 
-Each of these is one `motion.rs` helper, wrapped in Rust as
-`with_animation(id, SPEC.animation(), ...)`.
+Each is one `motion.rs` helper, run as `with_animation(id, SPEC.animation(), ...)`.
 
 | Tailwind | GPUI | Spec |
 |---|---|---|
@@ -229,10 +251,9 @@ A hover that is meant to snap simply omits it.
 
 ### Loaders
 
-Both loaders paint one repeating cell per grid position, offset by a phase the
-pure math in `proto/src/motion.rs` computes. A negative CSS `animation-delay`
-is that same offset, so each position gets its own class and there is no
-arbitrary per-cell value to write.
+Both loaders paint one repeating cell per grid position, offset by a phase
+`proto/src/motion.rs` computes. A negative CSS `animation-delay` is that same
+offset, so each position gets its own class.
 
 | Tailwind | GPUI |
 |---|---|
@@ -256,11 +277,9 @@ caller does.
 
 ### What is not admitted
 
-- **Scale and rotate.** GPUI divs have no scale or rotate transform at the
-  pinned revision, only `svg` transformations. `motion.rs` says so itself, and
-  `menu_in`/`dialog_in` approximate their CSS scale component with fade plus
-  translate. `scale-95` and `rotate-90` are rejected, and the browser gets the
-  same approximation the native app paints.
+- **Scale and rotate.** GPUI divs have neither at the pinned revision, only
+  `svg` transformations. `menu_in` and `dialog_in` already approximate their CSS
+  scale with fade plus translate, and the browser gets that same approximation.
 - **`disabled:`.** GPUI has `hover`, `active`, `focus`, `focus_visible`,
   `in_focus`, `group_hover` and `group_active` and no disabled style at all.
   A disabled control is a different literal class list, not a variant.
@@ -382,37 +401,28 @@ The toolkit's independent JSON palette is not the app palette.
   the native theme first, not in sandbox-only overrides.
 - This desktop frame keeps the native fixed sidebar and gutters. Narrow mobile
   screens are not a new design target; no responsive rules are added.
-- `whitelist.json` still records GPUI revision `a07e9577ec788feb73c06fe7e307a3df8adaa895`
-  while `app/Cargo.toml` now pins `3640743b70a6e4647d90249fc6ccc5398322648a`. The
-  motion work did not rebase the whitelist onto the newer revision; nothing here
-  was read from it. Regenerating against the new pin is its own change.
+- `whitelist.json` records GPUI `a07e9577ec788feb73c06fe7e307a3df8adaa895` while
+  `app/Cargo.toml` pins `3640743b70a6e4647d90249fc6ccc5398322648a`. Nothing here
+  was read from the newer one; rebasing onto it is its own change.
 - The gradient spinner's per-row tints are raw hex in
-  `proto::motion::GSPIN_ROW_TINTS`, not theme tokens, so the sandbox has no
-  admitted color for them. `motion-gradient-spin-*` carries the timing only and
-  a screen picks an admitted token for the cell fill.
+  `proto::motion::GSPIN_ROW_TINTS`, not theme tokens. `motion-gradient-spin-*`
+  carries the timing only; a screen picks an admitted token for the cell fill.
 - Reduced motion is generated into the stylesheet, so a screen cannot opt out of
   it or preview it by writing a class. Preview it with the browser preference.
 - `motion-collapse` and `motion-tab-slide` are CSS transitions between two class
-  lists, while Rust drives them as `with_animation` elements from measured
-  pixel values. The timing matches; the trigger does not, and a port back has to
-  restore the tween and its epoch key.
-- The syntax tokens resolve the two comet variants, the same as every other
-  token. A user-supplied theme that seeds fewer than the twelve syntax colours
-  would fall back to `SyntaxPalette::dark()`, whose `oklch()` and
-  `git_graph_tone()` expressions `scripts/rust-colors.mjs` cannot evaluate. The
-  generator throws in that case rather than emitting a guessed colour.
+  lists, while Rust drives them as `with_animation` elements off measured pixels.
+  The timing matches, the trigger does not, and a port back restores the tween.
+- A user-supplied theme seeding fewer than the twelve syntax colours would fall
+  back to `SyntaxPalette::dark()`, whose `oklch()` and `git_graph_tone()`
+  expressions `scripts/rust-colors.mjs` cannot evaluate. The generator throws
+  there rather than emitting a guessed colour.
 - Highlighting itself is not ported. A screen spells the token per span; the
   parser, the capture precedence and `HighlightKind` stay in Rust.
-- `theme.glyph` (`GlyphPalette`: light, mid, deep) is the last colour-carrying
-  `Theme` field the token sweep still misses. It is what `mini_glyph_spinner`
-  tints its rows with, and `scripts/rust-colors.mjs` already skips it explicitly
-  in `accentRoles()`. Three colours, same shape as the two fixed here.
-- Terminal slots 16 to 255 are computed from the index by
-  `extended_indexed_rgb`, not held by the theme, so a ported terminal can spell
-  the sixteen theme slots and nothing above them.
-- The terminal is painted with `canvas` fill quads in Rust, not with divs, so a
-  browser terminal built from `bg-terminal-*` elements matches the colours but
-  not the run-merging the native renderer does per row.
+- Every colour-carrying `Theme` field is now a token. The table above is the
+  audit; a new non-`Hsla` field fails `npm test` rather than going unnoticed.
+- A ported terminal can spell the sixteen theme slots and nothing above them,
+  and it is built from divs where Rust paints `canvas` fill quads, so it matches
+  the colours but not the per-row run merging.
 
 ## Documentation
 
