@@ -243,7 +243,13 @@ fn clean_title(raw: &str) -> String {
         Some((upto, _)) if !upto.trim().is_empty() => upto,
         _ => head.as_str(),
     };
-    format!("{}…", trimmed.trim_end_matches([' ', ',', ';', ':', '-']))
+    // Sentence enders go too. A multi-sentence answer is exactly the shape
+    // that caused this bug, and backing up to a word boundary inside one
+    // would otherwise leave "I did it.…".
+    format!(
+        "{}…",
+        trimmed.trim_end_matches([' ', ',', ';', ':', '-', '.', '!', '?'])
+    )
 }
 
 /// Drive one titling run through the harness: no steering, questions resolved
@@ -334,6 +340,23 @@ mod tests {
             "the old cut stopped mid-word: {cut:?}"
         );
         assert!(cut.chars().count() <= TITLE_MAX);
+    }
+
+    /// A title made of several sentences is the shape that caused the bug.
+    /// Backing up to a word boundary can land just past a full stop, and
+    /// "I did it.…" reads as a typo rather than a cut.
+    #[test]
+    fn a_sentence_end_is_not_left_stranded_before_the_ellipsis() {
+        // The backup lands exactly on the full stop that ends the first
+        // sentence, because the next word runs past the cap.
+        let cut = clean_title("Fix the login flow and rewrite the session store. Reconciliation comes next.");
+        assert_eq!(cut, "Fix the login flow and rewrite the session store…");
+        for stranded in [".…", "!…", "?…", ",…", " …"] {
+            assert!(
+                !cut.ends_with(stranded),
+                "{stranded:?} left dangling before the ellipsis: {cut:?}"
+            );
+        }
     }
 
     #[test]
