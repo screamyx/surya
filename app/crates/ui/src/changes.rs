@@ -3289,7 +3289,7 @@ impl Changes {
                     .truncate()
                     .font_family(theme.font_mono.clone())
                     .text_size(px(12.0))
-                    .text_color(theme.text_dim)
+                    .text_color(theme.text_muted)
                     .child(SharedString::from(file.path.clone())),
             )
             .when(file.binary, |el| {
@@ -3772,7 +3772,7 @@ impl Changes {
                         .truncate()
                         .font_family(theme.font_mono.clone())
                         .text_size(px(11.5))
-                        .text_color(theme.text_dim)
+                        .text_color(theme.text_muted)
                         .child(SharedString::from(branch)),
                 )
                 .child(
@@ -4477,7 +4477,7 @@ fn render_comment_card(comment: &DiffComment, theme: &Theme, cx: &Context<Change
                         .overflow_hidden()
                         .text_size(px(12.0))
                         .line_height(px(comments::CARD_LINE_HEIGHT))
-                        .text_color(theme.text_dim)
+                        .text_color(theme.text_muted)
                         .child(SharedString::from(comment.body.clone())),
                 ),
         )

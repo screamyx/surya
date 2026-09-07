@@ -621,11 +621,6 @@ pub struct Theme {
     pub text_muted: Hsla,
     /// Faint text: placeholders, disabled. ~4.5:1 — AA for body copy.
     pub text_faint: Hsla,
-    /// One notch below `text_muted` — the diff file-path tone. It exists as its
-    /// own token rather than being folded into `text_muted` because the dark
-    /// value was sampled (#989898) and folding it would shift that label, which
-    /// is a palette change dressed up as a refactor.
-    pub text_dim: Hsla,
 
     // ---- paint: high-contrast solid (primary buttons) ----
     /// The maximum-contrast solid fill: near-white on dark, near-black on light.
@@ -986,7 +981,6 @@ impl Theme {
             text: neutral(0.922),       // ~neutral-200
             text_muted: neutral(0.708), // ~neutral-400
             text_faint: neutral(0.556), // ~neutral-500
-            text_dim: grey(0x98),
             solid: neutral(0.922), // near-white plate
             on_solid: grey(0x0e),  // near-black label
             accent: accent.primary,
@@ -1079,7 +1073,6 @@ impl Theme {
             // sidebar is a real grey, and faint text has to clear its floor there
             // too, not just on the white content plane.
             text_faint: neutral(0.535),
-            text_dim: neutral(0.50),
             solid: neutral(0.205),    // near-black plate, deeper than body text
             on_solid: neutral(0.985), // near-white label
             accent: accent.primary,
@@ -1218,7 +1211,6 @@ impl Theme {
         theme.text = model_color(safe_text);
         theme.text_muted = model_color(safe_text_muted);
         theme.text_faint = model_color(colors.text_faint);
-        theme.text_dim = model_color(safe_text_muted);
         theme.solid = model_color(colors.solid);
         theme.on_solid = model_color(if is_curated_builtin {
             colors.on_solid
@@ -2096,7 +2088,6 @@ mod tests {
             for (name, fg, floor) in [
                 ("text", t.text, 4.5),
                 ("text_muted", t.text_muted, 4.5),
-                ("text_dim", t.text_dim, 4.5),
                 ("text_faint", t.text_faint, 4.1),
             ] {
                 let on_bg = contrast_ratio(fg, t.bg);
