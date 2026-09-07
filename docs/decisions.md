@@ -288,7 +288,7 @@ What this replaces:
 
 What stays: every product rule in decisions 4 to 9, 11, 13 to 20 (A2UI cards, MCP tools, shared preview, persistence, workspaces, the seven 1.0 features, thin files, no business in surya, rail and agent tree, headless controls, stopped state, public repo and servers, thin mail, the research flows).
 
-Layout, from the sketches: floating rounded panels on a soft canvas. Rail card, main feed, composer pill, right pane for browser or editor with a URL bar, file browser as a floating card over it. Three states: chat alone, chat plus right pane, chat plus right pane plus files. Light first like Craft, dark as good as Raycast, following the system.
+Layout: superseded by decisions 26 and 34. The look is comet's own.
 
 Sources: `app/` is zeronsh/comet v0.2.34 (fe35546), MIT, added as a git subtree so upstream can be pulled. Browser, editor and file tree come from `~/git/haktui` (`crates/haktui/src/browser/`, `haktui_files`, the editor column), which already build on this box and on the owner's Mac.
 Comet pins wingleeio's gpui fork for glass effects; haktui pins Zed's. Making haktui's modules build on comet's fork is the first engineering risk and the first task.
@@ -333,12 +333,12 @@ Context: raven told the owner the Windows zip does not carry the browser (build.
 
 Owner ruling, 2026-09-05 19:25, verbatim: "just revert back the gui to how surya's comet look. can you do that?" and "i mean only the theme, not functionality, features".
 
-Context: the owner saw the RC2 preview screens and did not like the surya look (decision 22's "floating rounded panels on a soft canvas", PR #2's light-first themes, PR #36). This supersedes the layout paragraph of decision 22 and the theme parts of PR #2.
+Context: the owner saw the RC2 preview screens and did not like the alternative look that decision 22 had proposed. This supersedes the layout paragraph of decision 22 and the theme parts of PR #2.
 
 - Default theme is comet's own dark ("Zeron Dark", id comet_dark) with comet's light as the light option; system-follow stays.
 - The surya chrome (canvas inset, floating panels, composer pill restyle, title typography, sidebar cards) is removed from the shell; the new panes (tasks, files, browser, inbox) take comet's tokens.
 - Every feature stays. The motion switch stays (it is a function, not a look).
-- The surya themes and `surya.rs` stay in the tree, selectable but not default, so a reversal is cheap.
+- The alternative themes and their token module were kept in the tree at the time. Decision 34 deletes them.
 - Owner: surya-theme, branch fix/comet-look, before the 2026-09-06 11:45 freeze; proof = side-by-side with upstream comet at the import commit.
 - Amended 19:32, owner verbatim: "the new gui should look like surya's comet, but with our feature built in". So comet's own elements keep comet's exact shape, including its rounded glass question panel that replaces the composer (states had found it is comet's, not ours); permissions mirror that panel. What goes is only what surya added on top: the needs-you cards over the transcript, the surya chrome and tokens. The 19:26 "box/modal, remove them" refers to those additions.
 
@@ -417,6 +417,18 @@ Supersedes decision 24, which put CI on two self-hosted Linux runners on devbox 
 - Only `actions/*` actions may be used. The repository's Actions policy rejects anything else before a job starts, which is why the Linux cache is a hand-written `actions/cache` and not `Swatinem/rust-cache`.
 - devbox's two runners retire by hand after this workflow has one green run, not before. `browser-nightly.yml` still needs `[self-hosted, surya-ci]` and the CEF distribution at `/store/surya-ci-cef`, so where the nightly runs is a separate decision.
 - Windows is still the product and Linux still the test bench (decision 28). Nothing here makes a green Linux run RC proof.
+
+## 34. The rejected look is deleted, and it is not to be proposed again
+
+Owner ruling, 2026-09-08 02:25, verbatim: "delete any the old design and any reference to it. i dont want the next agent to yap about it".
+
+Decision 26 kept the rejected look in the tree so a reversal would be cheap. Two days of agents reading that clause and offering the reversal is the cost of keeping it, and it outweighs the option. The option is closed.
+
+- `app/crates/ui/src/surya.rs`, its two theme variants, their ANSI tables and the tests that pinned them are deleted. `docs/design/surya-look.md` is deleted.
+- The look is comet's own (decision 26) and that is settled. Do not propose the deleted look, do not reconstruct it from git history, and do not raise it as an option in a design discussion.
+- This closes the "so a reversal is cheap" clause of decision 26. There is no cheap reversal and that is deliberate.
+- A future look change starts from a new direction the owner asks for, not from this one. The design sandbox exists to try one.
+- `surya` remains the product's name. The `surya-theme` crate, `surya_run`, the harness module and every other use of the word are product code and are untouched.
 
 ## Open
 

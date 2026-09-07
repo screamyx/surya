@@ -12,7 +12,6 @@ pub fn builtin_registry() -> &'static ThemeRegistry {
     static REGISTRY: OnceLock<ThemeRegistry> = OnceLock::new();
     REGISTRY.get_or_init(|| ThemeRegistry {
         families: vec![
-            family("surya", "Surya", vec![surya_light(), surya_dark()]),
             family("zeron", "Zeron", vec![comet_light(), comet_dark()]),
             family(
                 "vscode-default",
@@ -251,111 +250,9 @@ const ANSI_LIGHT: [&str; 16] = [
 // One accent, terracotta, carried from the pre-fork design brief. Neutrals are
 // warm (hue held near 30-40 deg) so nothing reads as the default cool grey.
 
-/// ANSI for the light terminal: warm-shifted, still AA on the parchment.
-const ANSI_SURYA_LIGHT: [&str; 16] = [
-    "#2a2622", "#b4342a", "#3a6b45", "#8a5a12", "#2f5f8f", "#7a4b8c", "#2b6b73", "#5c554c",
-    "#8a8177", "#8f2a22", "#2e5637", "#6e480f", "#26506f", "#5f3a6d", "#22555c", "#1c1917",
-];
 
-/// ANSI for the dark terminal: same hues, lifted for a near-black ground.
-const ANSI_SURYA_DARK: [&str; 16] = [
-    "#26221f", "#e8836b", "#7fb98d", "#e0b062", "#7fb0e0", "#c095d8", "#6fc4c9", "#d6cec3",
-    "#4d4740", "#f0a894", "#a3d0ad", "#eec98c", "#a5c9ee", "#d5b3e6", "#98d9dd", "#f5f1ea",
-];
 
-fn surya_light() -> ThemeVariant {
-    variant(Seeds {
-        id: "surya-light",
-        family_id: "surya",
-        name: "Surya Light",
-        appearance: Appearance::Light,
-        // Opaque by default: the fork must look right without a compositor
-        // blur, because the window may not be transparent (the browser pane
-        // may pin Zed's gpui, which has no backdrop filter). Glass is a
-        // preference the user can still turn on.
-        treatment: SurfaceTreatment::Opaque,
-        // Panels: warm off-white, never #ffffff.
-        background: "#fdfcfa",
-        // Canvas behind the floating panels: parchment.
-        shell: "#eae5dc",
-        // Chips and pills proud of a panel.
-        raised: "#f4f0e9",
-        card: "#fdfcfa",
-        // Warm off-black, never #000000.
-        text: "#26221e",
-        muted: "#6a6157",
-        faint: "#756b5e",
-        accent: "#b4552d",
-        danger: "#b4342a",
-        warning: "#8a5a12",
-        success: "#3a6b45",
-        terminal_background: "#f7f4ee",
-        ansi: ANSI_SURYA_LIGHT,
-        syntax: [
-            "#8b8176", "#b4552d", "#3a6b45", "#8a5a12", "#7a4b8c", "#2f5f8f", "#9c4a6b", "#26221e",
-            "#6a6157", "#9c4a6b", "#2b6b73", "#8f2a22",
-        ],
-        source: source(
-            "surya-light",
-            "native",
-            "https://github.com/screamyx/surya",
-            "decision-22",
-            "MIT",
-        ),
-    })
-}
 
-fn surya_dark() -> ThemeVariant {
-    variant(Seeds {
-        id: "surya-dark",
-        family_id: "surya",
-        name: "Surya Dark",
-        appearance: Appearance::Dark,
-        treatment: SurfaceTreatment::Opaque,
-        // Panels climb out of the canvas, and the step is wide on purpose:
-        // a floating card has nothing but this tone difference, a hairline
-        // and a shadow to lift it, and a shadow does almost no work on a
-        // near-black ground.
-        //
-        // This started at #232019, a 1.22 ratio against the canvas. It
-        // measured fine and looked wrong. A ratio that low is dominated by
-        // the +0.05 flare term in the WCAG formula, so near black it says
-        // almost nothing about what the eye sees. The design critic's round-2
-        // frame settled it: two panels of #232019 with 5px of #0b0a08 between
-        // them read as one brown field with a line in it. 1.47 is a 9.2x step
-        // in raw luminance and reads as two cards. The whole text ramp moves
-        // with it - text that held 13:1 on the old panel would sit at 10.9 on
-        // the new card.
-        background: "#332e26",
-        // Canvas: the darkest plane, warm.
-        shell: "#0b0a08",
-        raised: "#423c31",
-        // A step ABOVE the panel, unlike the light pair where card == panel.
-        // Dark separates layers by climbing; light separates them with the
-        // hairline and the shadow.
-        card: "#3a342b",
-        text: "#faf7f1",
-        muted: "#c0b6a6",
-        faint: "#b6ab9b",
-        accent: "#e08a5a",
-        danger: "#e8836b",
-        warning: "#e0b062",
-        success: "#7fb98d",
-        terminal_background: "#100e0b",
-        ansi: ANSI_SURYA_DARK,
-        syntax: [
-            "#867d70", "#e08a5a", "#7fb98d", "#e0b062", "#c095d8", "#7fb0e0", "#e2809f", "#ece6dc",
-            "#a49a8c", "#e2809f", "#6fc4c9", "#f0a894",
-        ],
-        source: source(
-            "surya-dark",
-            "native",
-            "https://github.com/screamyx/surya",
-            "decision-22",
-            "MIT",
-        ),
-    })
-}
 
 fn comet_dark() -> ThemeVariant {
     variant(Seeds {

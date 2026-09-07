@@ -56,7 +56,6 @@ pub mod shell;
 mod skew_banner;
 pub mod sound;
 pub mod state;
-pub mod surya;
 pub mod syntax_cache;
 pub mod tasks;
 pub mod terminal;

@@ -168,13 +168,13 @@ main area of `(13,9,24)`.
 Ours reads `(24,24,24)` against `(13,13,13)`.
 Lighter sidebar, darker main, hairline between.
 
-## What was kept on purpose
+## What happened to it afterwards
 
-`crates/ui/src/surya.rs` still exists and still holds the geometry and the type
-scale.
-`surya-light` and `surya-dark` are still built in and still pickable in
-Appearance.
-Nothing was deleted, so bringing the look back is a decision, not a rebuild.
+Nothing here was kept.
+Decision 34, 2026-09-08, deleted `crates/ui/src/surya.rs`, both theme variants
+and the design brief and critique rounds that judged them.
+The look is comet's own and it is not to be proposed again.
+This document stays only as the record of how the revert was done.
 
 The reduced-motion switch stays.
 `SURYA_WINDOW_SIZE`, which the shot rig needs, stays.

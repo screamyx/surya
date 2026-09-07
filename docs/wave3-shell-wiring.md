@@ -68,9 +68,8 @@ Every open and close animates (owner, 05:1x: "everything should have one").
 | tab switch inside the pane | `motion::TAB_SLIDE` (150 ms) | tab strip already uses it |
 | inbox appears / disappears in the feed | `motion::COLLAPSE` (180 ms) height tween | new use, same helper as sidebar disclosures |
 | agents rail rows | `motion::FADE_QUICK` (150 ms) | per row on state change |
-| floating panel chrome | `surya::panel(theme, ELEVATION_PANEL)`, `PANEL_GAP`, `CANVAS_INSET` | from feat/surya-look; the right pane and main card already use them after that merge |
 
-`motion::MotionMode` (feat/surya-look) gates all of it; reduced motion collapses every tween to its end state.
+`motion::MotionMode` gates all of it; reduced motion collapses every tween to its end state.
 
 ## Keys
 

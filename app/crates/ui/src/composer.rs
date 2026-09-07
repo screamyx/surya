@@ -5971,7 +5971,7 @@ impl Composer {
             // Comet's literals, because that is what the question panel two
             // functions down uses since #82 put comet's look back. Kept
             // line-for-line identical to it on purpose: this panel mirrors
-            // that one, and `crate::surya` is unreferenced now by design.
+            // that one.
             .rounded(px(26.0))
             .border_1()
             .border_color(theme.border)
