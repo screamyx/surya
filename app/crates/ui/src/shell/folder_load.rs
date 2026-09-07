@@ -1,15 +1,26 @@
 //! Why the folder picker is asking the device for a listing.
 //!
 //! Two callers with different needs. Moving to another folder should say so:
-//! clear the list, show it loading, jump the scroll to the top. Re-asking for
-//! the SAME folder because the filter changed should not - the rows on screen
-//! are still the right rows for a moment longer, and flashing a spinner on
-//! every character typed is worse than one stale frame.
+//! clear the list and show it loading. Re-asking for the SAME folder because
+//! the filter changed should not, because a spinner on every character typed
+//! is worse than one stale frame.
 //!
 //! The filter has to reach the device at all because the listing is capped:
 //! the engine sends at most 500 entries, so on a large directory the client
 //! was filtering a page it had already lost the answer from, and a folder
 //! that existed came back as "No folders match" (E2E-PROJ-01).
+//!
+//! Be precise about what "one stale frame" means, because it is not always a
+//! harmless one. While a refilter is in flight the pane keeps filtering the
+//! PREVIOUS listing, and for the case this exists to fix - a folder past the
+//! cap - that page holds no match. So the pane can read "No folders match"
+//! for one debounce before the engine's answer lands and the row appears.
+//! That is briefly the same wrong answer the bug gave permanently.
+//!
+//! It is still the right trade: 150 ms of a stale answer beats a list that
+//! blinks empty on every keystroke, and the alternative - blanking on each
+//! character - shows nothing at all for just as long. Worth knowing before
+//! anyone reads that flash as a regression.
 
 use std::time::Duration;
 
@@ -41,6 +52,10 @@ impl FolderLoad {
     }
 
     /// Does this load blank the list while it waits?
+    ///
+    /// Only about whether there is a list to look at. Where the list is
+    /// LOOKING is a separate question, and both kinds answer it the same way:
+    /// see the scroll reset in `load_space_folders_for`.
     pub(super) fn clears_the_list(self) -> bool {
         matches!(self, Self::Browse)
     }
@@ -65,6 +80,15 @@ mod tests {
     fn moving_answers_at_once_and_says_it_is_loading() {
         assert_eq!(FolderLoad::Browse.debounce(), None);
         assert!(FolderLoad::Browse.clears_the_list());
+    }
+
+    #[test]
+    fn only_a_browse_blanks_the_list() {
+        // Blanking is the ONLY thing this decides. The scroll used to ride
+        // along with it, which left a refilter's highlight at the top of the
+        // list and the viewport somewhere else.
+        assert!(FolderLoad::Browse.clears_the_list());
+        assert!(!FolderLoad::Refilter.clears_the_list());
     }
 
     #[test]
