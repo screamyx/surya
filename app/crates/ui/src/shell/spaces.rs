@@ -1864,6 +1864,21 @@ impl Shell {
         };
         let device_id = flow.device.as_ref().map(|d| d.id.clone());
         let went_home = path.is_none();
+        // Every rebrowse asks for the search input back (E2E-PROJ-03).
+        //
+        // The palette's rails, breadcrumbs and folder rows are all clickable
+        // elements OUTSIDE the input, so a click on any of them moves focus
+        // to the card that tracks it. The card keeps the arrows, backspace
+        // and escape working, which is why the bug does not look like one:
+        // the listing moves where you asked, nothing appears broken, and
+        // every character you type next is dropped. Clicking a Location and
+        // typing a folder name is the plain case, and it silently did
+        // nothing.
+        //
+        // This is the one funnel all nine rebrowse paths run through, so it
+        // is the one place the rule can be stated once. Keyboard descents
+        // already hold the input and re-asking for it is a no-op there.
+        flow.focus_pending = true;
         flow.browser_path = path.clone();
         flow.browser = Loadable::Loading;
         flow.active = 0;
