@@ -31,7 +31,8 @@ export function renderFontPicker(
     <div className="relative flex flex-col">
       {dropdownTrigger('interface-font-dropdown', 'wide', current, open, onToggle)}
       {open && (
-        <div className="absolute top-10 left-0 w-55 max-h-80 overflow-y-scroll p-1 rounded-lg border border-border bg-surface-overlay flex flex-col gap-0.5">
+        <div className="absolute top-10 left-0">
+        <div className="relative motion-menu-in w-55 max-h-80 overflow-y-scroll p-1 rounded-lg border border-border bg-surface-overlay flex flex-col gap-0.5">
           {choices.map(choice => {
             const selected = choice.label === current;
             if (!choice.available) {
@@ -47,7 +48,7 @@ export function renderFontPicker(
               <button key={choice.label} type="button" data-font={choice.label} onClick={() => onPick(choice.label)}
                 className={selected
                   ? 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer bg-element-active text-text'
-                  : 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
+                  : 'motion-hover-fade flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
                 <span className="flex-1 min-w-0 truncate">{choice.label}</span>
                 <span className="w-5 flex-none flex">
                   {selected && <span className="size-3.5 flex text-accent">{settingsIcon('check')}</span>}
@@ -55,6 +56,7 @@ export function renderFontPicker(
               </button>
             );
           })}
+        </div>
         </div>
       )}
     </div>
@@ -69,14 +71,15 @@ export function renderSizePicker(
     <div className="relative flex flex-col">
       {dropdownTrigger('interface-font-size-dropdown', 'narrow', current, open, onToggle)}
       {open && (
-        <div className="absolute top-10 right-0 w-32 p-1 rounded-lg border border-border bg-surface-overlay flex flex-col gap-0.5">
+        <div className="absolute top-10 right-0">
+        <div className="relative motion-menu-in w-32 p-1 rounded-lg border border-border bg-surface-overlay flex flex-col gap-0.5">
           {sizes.map(size => {
             const selected = size === current;
             return (
               <button key={size} type="button" data-size={size} onClick={() => onPick(size)}
                 className={selected
                   ? 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer bg-element-active text-text'
-                  : 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
+                  : 'motion-hover-fade flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
                 <span className="flex-1">{size}</span>
                 <span className="w-5 flex-none flex">
                   {selected && <span className="size-3.5 flex text-accent">{settingsIcon('check')}</span>}
@@ -84,6 +87,7 @@ export function renderSizePicker(
               </button>
             );
           })}
+        </div>
         </div>
       )}
     </div>

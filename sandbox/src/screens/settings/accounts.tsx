@@ -162,9 +162,40 @@ function renderAccountRow(
   );
 }
 
+// Rust: loaders::gradient_spinner("login-poll", theme, 3.0, ..). A 3x3 grid of
+// round cells. Each cell's phase is its distance from the bottom-centre origin,
+// d = 2 - row + |col - 1|, so the pulse travels upward; motion-gradient-spin-<d>
+// is that same offset as a negative animation delay. The native per-row tints
+// are raw hex in proto::motion::GSPIN_ROW_TINTS, which the sandbox has no token
+// for, so every cell paints the accent instead.
+function gradientSpinner() {
+  return (
+    <div className="flex-none flex flex-col gap-0.5">
+      <div className="flex flex-row gap-0.5">
+        <div className="size-0.75 rounded-full bg-accent motion-gradient-spin-3" />
+        <div className="size-0.75 rounded-full bg-accent motion-gradient-spin-2" />
+        <div className="size-0.75 rounded-full bg-accent motion-gradient-spin-3" />
+      </div>
+      <div className="flex flex-row gap-0.5">
+        <div className="size-0.75 rounded-full bg-accent motion-gradient-spin-2" />
+        <div className="size-0.75 rounded-full bg-accent motion-gradient-spin-1" />
+        <div className="size-0.75 rounded-full bg-accent motion-gradient-spin-2" />
+      </div>
+      <div className="flex flex-row gap-0.5">
+        <div className="size-0.75 rounded-full bg-accent motion-gradient-spin-1" />
+        <div className="size-0.75 rounded-full bg-accent motion-gradient-spin-0" />
+        <div className="size-0.75 rounded-full bg-accent motion-gradient-spin-1" />
+      </div>
+    </div>
+  );
+}
+
 // Rust: render_skeleton_row. The same geometry as a real row so loaded data
-// lands without a layout jump; row two is dimmed. The native pulse is a motion
-// spec (SURYA_PULSE), not a class, so this renders at its resting opacity.
+// lands without a layout jump; row two is dimmed. accounts.rs:1196 pulses the
+// inner box at opacity 0.55 + 0.35 * wave on SURYA_PULSE, with no stagger and
+// no size change. motion-surya-pulse-* is the loaders.rs cell, 0.08 to 1 plus
+// 90% to 100% size, so it would paint a different animation. This renders at
+// its resting opacity.
 function renderSkeletonRow(key: string, dim: boolean, first: boolean) {
   const ghost = <div className="flex-1 min-w-14 max-w-55 h-1 rounded-full bg-wash/5" />;
   return (
@@ -233,7 +264,7 @@ function renderLoginDialog(props: AccountsProps, login: LoginFlow) {
         {login.error !== undefined && <div className="mt-2 text-ui-12 text-danger-muted/88">{login.error}</div>}
         <div className="mt-4 flex flex-row justify-end gap-2">
           <button type="button" onClick={() => props.onCancelLogin?.()} data-action="login-cancel"
-            className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5">
+            className="motion-hover-fade px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5">
             Cancel
           </button>
           <button type="button" onClick={() => props.onSubmitCode?.()} data-action="login-submit-code"
@@ -256,14 +287,14 @@ function renderLoginDialog(props: AccountsProps, login: LoginFlow) {
         {urlLink('Reopen the sign-in page', login.url)}
         {login.error === undefined && (
           <div className="mt-4 flex flex-row items-center gap-2">
-            <div className="flex-none size-3.5 rounded-full border border-accent" />
+            {gradientSpinner()}
             <div className="text-ui-12 text-text-faint">{login.message ?? 'Waiting for the browser…'}</div>
           </div>
         )}
         {login.error !== undefined && <div className="mt-3 text-ui-12 text-danger-muted/88">{login.error}</div>}
         <div className="mt-4 flex flex-row justify-end">
           <button type="button" onClick={() => props.onCancelLogin?.()} data-action="login-cancel"
-            className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5">
+            className="motion-hover-fade px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5">
             {login.error === undefined ? 'Cancel' : 'Close'}
           </button>
         </div>
@@ -273,7 +304,7 @@ function renderLoginDialog(props: AccountsProps, login: LoginFlow) {
   return (
     <div className="absolute top-0 left-0 size-full bg-bg/50 flex items-center justify-center">
       <div role="dialog" aria-label={loginTitle(login.harness)}
-        className="w-96 p-5 rounded-xl bg-surface-dialog border border-border flex flex-col text-text">
+        className="relative motion-dialog-in w-96 p-5 rounded-xl bg-surface-dialog border border-border flex flex-col text-text">
         <div className="text-ui-16 font-semibold text-text">{loginTitle(login.harness)}</div>
         {body}
       </div>
@@ -308,7 +339,8 @@ export function AccountsPage(props: AccountsProps) {
           : 'size-3.5 flex-none flex text-text-faint/50'}>{pageIcon('sort-vertical')}</span>
       </button>
       {deviceMenuOpen && (
-        <div className="absolute top-7 right-0 w-55 p-1 rounded-lg border border-border bg-surface-overlay flex flex-col gap-0.5 text-ui-13 text-text">
+        <div className="absolute top-7 right-0">
+        <div className="relative motion-menu-in w-55 p-1 rounded-lg border border-border bg-surface-overlay flex flex-col gap-0.5 text-ui-13 text-text">
           <div className="px-2 pb-1 pt-1.5 text-ui-10 font-medium text-text-faint">{trackedUpper('Devices')}</div>
           {props.devices.map(device => {
             const isActive = device.id === effective;
@@ -322,7 +354,7 @@ export function AccountsPage(props: AccountsProps) {
                 }}
                 className={isActive
                   ? 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer bg-element-active text-text'
-                  : 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
+                  : 'motion-hover-fade flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
                 <span className="size-4 flex-none flex text-text-muted">{settingsIcon(platformGlyph(device.platform))}</span>
                 <span className="flex-1 min-w-0 truncate">{device.name}</span>
                 {isLocal && <span className="flex-none text-ui-10 text-text-faint/50">You</span>}
@@ -330,6 +362,7 @@ export function AccountsPage(props: AccountsProps) {
               </button>
             );
           })}
+        </div>
         </div>
       )}
     </div>

@@ -83,14 +83,14 @@ function renameDialog(name: string, onName: (value: string) => void,
   return (
     <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center bg-bg/50">
       <div role="dialog" aria-label="Rename device"
-        className="w-96 p-5 rounded-xl border border-border bg-surface-dialog flex flex-col text-text">
+        className="relative motion-dialog-in w-96 p-5 rounded-xl border border-border bg-surface-dialog flex flex-col text-text">
         <div className="text-ui-14 font-semibold text-text">Rename device</div>
         <input value={name} onChange={event => onName(event.target.value)}
           aria-label="Device name" placeholder="Device name"
           className="mt-3 w-full min-w-0 px-3 py-2 rounded-lg border border-border bg-wash/5 text-ui-14 text-text" />
         <div className="mt-4 flex flex-row justify-end gap-2">
           <button type="button" onClick={onCancel}
-            className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text">Cancel</button>
+            className="motion-hover-fade px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text">Cancel</button>
           <button type="button" onClick={onSave}
             className="px-3 py-1.5 rounded-lg bg-text text-ui-13 font-medium text-on-solid cursor-pointer hover:bg-text/88 active:bg-text/50 focus:bg-text/88">Rename</button>
         </div>

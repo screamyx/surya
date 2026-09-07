@@ -100,8 +100,8 @@ export function compactAction(id: string, label: string, onClick?: () => void, d
   return (
     <button key={id} type="button" data-action={id} onClick={onClick}
       className={danger
-        ? 'h-7 px-2.25 rounded-md border border-border bg-surface-raised/50 text-ui-11 text-danger flex items-center cursor-pointer hover:bg-danger/10 active:bg-danger/14 focus:bg-danger/10'
-        : 'h-7 px-2.25 rounded-md border border-border bg-surface-raised/50 text-ui-11 text-text-muted flex items-center cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text'}>
+        ? 'motion-hover-fade h-7 px-2.25 rounded-md border border-border bg-surface-raised/50 text-ui-11 text-danger flex items-center cursor-pointer hover:bg-danger/10 active:bg-danger/14 focus:bg-danger/10'
+        : 'motion-hover-fade h-7 px-2.25 rounded-md border border-border bg-surface-raised/50 text-ui-11 text-text-muted flex items-center cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text'}>
       {label}
     </button>
   );

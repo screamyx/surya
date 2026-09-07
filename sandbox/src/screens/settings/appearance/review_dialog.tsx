@@ -10,7 +10,7 @@ export function renderReviewDialog(entry: CustomThemeEntry, onClose?: () => void
   return (
     <div className="absolute top-0 left-0 size-full bg-bg/50 flex items-center justify-center">
       <div role="dialog" aria-label="Theme mapping" data-dialog="theme-review"
-        className="w-184 max-h-full overflow-y-scroll p-5 rounded-xl bg-surface-dialog border border-border flex flex-col text-text">
+        className="relative motion-dialog-in w-184 max-h-full overflow-y-scroll p-5 rounded-xl bg-surface-dialog border border-border flex flex-col text-text">
         <div className="text-ui-16 font-semibold text-text">Theme mapping</div>
         <p className="mt-1.5 text-ui-13 leading-normal text-text-muted">
           {entry.name} · {entry.linked ? 'Linked source' : 'Imported copy'}

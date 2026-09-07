@@ -137,7 +137,7 @@ export function renderImportDialog(state: ImportDialogState, callbacks: ImportDi
   return (
     <div className="absolute top-0 left-0 size-full bg-bg/50 flex items-center justify-center">
       <div role="dialog" aria-label="Add a theme" data-dialog="theme-import"
-        className="w-184 max-h-full rounded-xl bg-surface-dialog border border-border overflow-hidden flex flex-col text-text">
+        className="relative motion-dialog-in w-184 max-h-full rounded-xl bg-surface-dialog border border-border overflow-hidden flex flex-col text-text">
         <div className="px-5 pt-4 pb-4 flex flex-row items-start gap-4">
           <div className="flex-1 min-w-0">
             <div className="text-ui-16 font-semibold text-text">Add a theme</div>

@@ -30,7 +30,8 @@ export function renderThemeSelector(
         </span>
       </button>
       {open && (
-        <div className="absolute top-9 right-0 w-64 p-1 rounded-lg border border-border bg-surface-overlay flex flex-col gap-0.5 text-ui-13 text-text">
+        <div className="absolute top-9 right-0">
+        <div className="relative motion-menu-in w-64 p-1 rounded-lg border border-border bg-surface-overlay flex flex-col gap-0.5 text-ui-13 text-text">
           <div className="px-2 pb-1 pt-1.5 text-ui-10 font-medium text-text-faint">
             {kind === 'light' ? trackedUpper('Light themes') : trackedUpper('Dark themes')}
           </div>
@@ -40,13 +41,14 @@ export function renderThemeSelector(
               <button key={variant.id} type="button" data-variant={variant.id} onClick={() => onPick(variant.id)}
                 className={active
                   ? 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer bg-element-active text-text'
-                  : 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
+                  : 'motion-hover-fade flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-left cursor-pointer text-text-muted hover:bg-element-hover hover:text-text active:bg-element-active focus:bg-element-hover'}>
                 {palettePreview()}
                 <span className="flex-1 min-w-0 truncate">{variant.name}</span>
                 {active && <span className="size-3.5 flex-none flex text-accent">{settingsIcon('check')}</span>}
               </button>
             );
           })}
+        </div>
         </div>
       )}
     </div>

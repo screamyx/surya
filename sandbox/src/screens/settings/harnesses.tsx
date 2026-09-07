@@ -119,8 +119,9 @@ function deviceMenu(devices: readonly DeviceRow[], localDeviceId: string | null,
   target: string | null, onPick: (deviceId: string | null) => void) {
   const effective = target ?? localDeviceId;
   return (
+    <div className="absolute top-8 right-0">
     <div role="menu" aria-label="Devices"
-      className="absolute top-8 right-0 w-55 p-1 rounded-xl border border-border bg-surface-overlay text-ui-13 text-text flex flex-col gap-0.5">
+      className="relative motion-menu-in w-55 p-1 rounded-xl border border-border bg-surface-overlay text-ui-13 text-text flex flex-col gap-0.5">
       <div className="px-2 pt-1.5 pb-1 text-ui-10 font-medium text-text-faint">{HEADING}</div>
       {devices.map(device => (
         <button key={device.id} type="button" role="menuitem"
@@ -128,7 +129,7 @@ function deviceMenu(devices: readonly DeviceRow[], localDeviceId: string | null,
           data-device={device.name}
           className={device.id === effective
             ? 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-text cursor-pointer bg-wash/10 text-left'
-            : 'flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-text cursor-pointer hover:bg-wash/10 active:bg-wash/14 focus:bg-wash/10 text-left'}>
+            : 'motion-hover-fade flex flex-row items-center gap-2.5 px-2 py-1.5 rounded-lg text-ui-13 text-text cursor-pointer hover:bg-wash/10 active:bg-wash/14 focus:bg-wash/10 text-left'}>
           <span className="flex-none size-4 flex text-text-muted">
             {settingsIcon(platformGlyph(device.platform))}
           </span>
@@ -140,11 +141,15 @@ function deviceMenu(devices: readonly DeviceRow[], localDeviceId: string | null,
         </button>
       ))}
     </div>
+    </div>
   );
 }
 
-/// Rust: popover::skeleton_rows. The native bars pulse on SURYA_PULSE; the
-/// sandbox has no admitted animation, so they rest at one opacity.
+/// Rust: popover::skeleton_rows. The native bars pulse on SURYA_PULSE at
+/// opacity 0.35 + 0.4 * wave, staggered 0.08 per bar and with no size change.
+/// motion-surya-pulse-* is the loaders.rs cell, which runs 0.08 to 1 and 90% to
+/// 100% at a 0.0625 stagger, so it would paint a different animation. The bars
+/// rest at one opacity until the catalog carries this pulse.
 function skeletonRows(count: number) {
   return (
     <div className="p-4 flex flex-col">

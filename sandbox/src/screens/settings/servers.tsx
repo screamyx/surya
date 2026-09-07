@@ -100,7 +100,7 @@ export function ServersPage({ servers, active, status, addError, onConnect, onRe
       {addOpen && (
         <div className="absolute top-0 left-0 size-full flex items-center justify-center bg-bg/50">
           <div role="dialog" aria-label="Add server"
-            className="w-96 p-5 rounded-xl border border-border bg-surface-dialog flex flex-col text-text">
+            className="relative motion-dialog-in w-96 p-5 rounded-xl border border-border bg-surface-dialog flex flex-col text-text">
             <div className="text-ui-14 font-semibold text-text">Add server</div>
             <div className="mt-1.5 text-ui-13 text-text-muted leading-normal">The other machine runs `surya headless --bind &lt;its address&gt;`. `surya status` there prints the token.</div>
             {dialogField('Name', name, 'Name (optional)', setName)}
@@ -110,7 +110,7 @@ export function ServersPage({ servers, active, status, addError, onConnect, onRe
             {addError !== null && errorStrip(addError)}
             <div className="mt-4 flex flex-row justify-end gap-2">
               <button type="button" onClick={() => setAddOpen(false)}
-                className="px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text">Cancel</button>
+                className="motion-hover-fade px-3 py-1.5 rounded-lg text-ui-13 text-text-muted cursor-pointer hover:bg-wash/5 hover:text-text active:bg-wash/10 focus:bg-wash/5 focus:text-text">Cancel</button>
               <button type="button" onClick={() => onAddServer(name, host, port, token)}
                 className="px-3 py-1.5 rounded-lg bg-text text-ui-13 font-medium text-on-solid cursor-pointer hover:bg-text/88 active:bg-text/50 focus:bg-text/88">Add</button>
             </div>
