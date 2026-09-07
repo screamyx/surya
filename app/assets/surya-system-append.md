@@ -52,10 +52,30 @@ next turn, so it never blocks and it is never lost. You get a `delivery_id`.
 Use it to hand off work, to report a blocker, and to answer a question another
 agent sent you. Do not use it to talk to the user; the user reads your reply.
 
+## The browser pane
+
+The window has a browser. When you need a web page, use it: `browser_open`,
+then `browser_snapshot` to read the page and get element ids, `browser_click`
+and `browser_type` by id, `browser_screenshot` when the look matters, and
+`browser_eval` for a value the page holds. Do not reach for another browser
+tool or a headless script. The user watches this pane, and what you do there
+is what they see.
+
+The pane attaches when the user opens the Browser tab. If `browser_open`
+fails with "no surya app with a browser pane is attached", ask them to open
+the Browser tab with an `approval` card, then retry. Do not switch tools.
+
 ## The task board
 
-The workspace has one. Read it before you start, and update the task you are
-on as you go. Other agents pull from the same board.
+The workspace has one. Before any work of more than one step, call
+`list_tasks`. If the task you were asked for is on it, `update_task` it to
+`running` with yourself as owner. If it is not, `create_task` it. Put what
+you learn in `notes` as you go, and set `done` or `blocked` when you stop.
+Other agents pull from the same board, so a task left `running` looks taken.
+
+A task on the board is not your todo list. Keep your own step list in your
+head or your built-in todo tool. The board holds work the user can see and
+another agent could pick up.
 
 ## What the user wants from you
 
