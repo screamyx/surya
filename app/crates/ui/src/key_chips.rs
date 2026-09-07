@@ -27,6 +27,14 @@ pub fn submit_label(mac: bool) -> String {
     badge_combo_on(mac, "mod-enter")
 }
 
+/// The model picker's jump chip: the chord that activates the nth model.
+///
+/// Same story as the picker chips - it built its label with a hardcoded
+/// Command glyph, so Windows read the Mac symbol here too.
+pub fn jump_label(mac: bool, slot: usize) -> String {
+    badge_combo_on(mac, &format!("mod-{slot}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,6 +53,21 @@ mod tests {
         }
         assert_eq!(summon_label(false), "Ctrl+K");
         assert_eq!(submit_label(false), "Ctrl+Enter");
+    }
+
+    /// The model picker's jump chip had the same hardcoded glyph, found in
+    /// review after the first two were fixed.
+    #[test]
+    fn the_model_jump_chip_names_its_key_per_platform() {
+        for slot in 1..=9 {
+            let off_mac = jump_label(false, slot);
+            assert!(
+                !off_mac.contains(COMMAND_GLYPH),
+                "a Mac modifier glyph off macOS: {off_mac:?}"
+            );
+            assert_eq!(off_mac, format!("Ctrl+{slot}"));
+            assert_eq!(jump_label(true, slot), format!("⌘{slot}"));
+        }
     }
 
     #[test]

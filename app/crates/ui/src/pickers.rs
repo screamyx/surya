@@ -3478,7 +3478,12 @@ impl Pickers {
             }))
             .child(body);
         if ix < 9 {
-            el = el.child(popover::kbd_hint(&theme, &format!("⌘{}", ix + 1)));
+            // Through `badge_combo`, not a hardcoded glyph: this chip read
+            // the Mac Command symbol on Windows too (E2E-UI-04).
+            el = el.child(popover::kbd_hint(
+                &theme,
+                &crate::key_chips::jump_label(cfg!(target_os = "macos"), ix + 1),
+            ));
         }
         el = el.child(
             div()
