@@ -134,6 +134,43 @@ pub fn tab_title(title: &str, url: &str) -> String {
     }
 }
 
+/// The two lines a tab's tooltip shows, when it has anything to show.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TabTooltip {
+    pub title: String,
+    /// Left out when the tab has no address, or when the address is already
+    /// the title (a page that never named itself shows its host).
+    pub url: Option<String>,
+}
+
+/// What a tab's tooltip should say, or `None` for no tooltip at all.
+///
+/// gpui puts a tooltip under the pointer and gives the app no say in it
+/// (window.rs:3026-3027 anchors it at `mouse_position + (1, 1)`, flipping only
+/// at the window edge). In this pane the strip sits above the address bar, so
+/// every tab tooltip lands on the address bar and hides the url. That is only
+/// worth paying when the tooltip has something to add.
+///
+/// The active tab has nothing to add: its title is in the strip and its url is
+/// in the bar, both fully visible. Resting the pointer on the tab you just
+/// clicked is the ordinary case, not a contrived one, so that is the case that
+/// must say nothing (E2E-BROWSER-02). An inactive tab's url is nowhere on
+/// screen, so hovering it is worth a tooltip.
+pub fn tab_tooltip(is_active: bool, title: &str, url: &str) -> Option<TabTooltip> {
+    if is_active {
+        return None;
+    }
+    let title = title.trim();
+    let url = url.trim();
+    if title.is_empty() {
+        return (!url.is_empty()).then(|| TabTooltip { title: url.to_string(), url: None });
+    }
+    Some(TabTooltip {
+        title: title.to_string(),
+        url: (!url.is_empty() && url != title).then(|| url.to_string()),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,5 +272,69 @@ mod tests {
         assert_eq!(tab_title("Example Domain", "https://example.com"), "Example Domain");
         assert_eq!(tab_title("  ", "https://example.com/x"), "example.com");
         assert_eq!(tab_title("", ""), "New tab");
+    }
+
+    /// The finding itself. The pointer resting on the tab just clicked is the
+    /// normal case, and it used to put "Example Domain" over the address bar
+    /// showing https://example.com/ (frames final-zc-04-switch-to-1 and
+    /// final-zc-05-switch-to-2).
+    #[test]
+    fn the_active_tab_says_nothing() {
+        assert_eq!(tab_tooltip(true, "Example Domain", "https://example.com/"), None);
+        // Not even when the title is long: the strip has it, and the bar has
+        // the url. E2E-BROWSER-02 note in the PR body covers this trade.
+        assert_eq!(tab_tooltip(true, &"a".repeat(200), "https://example.com/"), None);
+    }
+
+    /// An inactive tab's url is nowhere on screen, so the tooltip earns the
+    /// space it takes.
+    #[test]
+    fn an_inactive_tab_adds_its_url() {
+        assert_eq!(
+            tab_tooltip(false, "Example Domain", "https://example.net/"),
+            Some(TabTooltip {
+                title: "Example Domain".to_string(),
+                url: Some("https://example.net/".to_string()),
+            })
+        );
+    }
+
+    /// A page that never named itself already shows its host as the title, so
+    /// repeating the address under it would be the same noise in a new place.
+    #[test]
+    fn a_tab_named_after_its_own_address_does_not_repeat_it() {
+        let same = tab_tooltip(false, "https://example.net/", "https://example.net/");
+        assert_eq!(same.and_then(|t| t.url), None);
+    }
+
+    /// A fresh tab has no address and no title.
+    #[test]
+    fn a_tab_with_nothing_to_say_says_nothing() {
+        assert_eq!(tab_tooltip(false, "", ""), None);
+        assert_eq!(tab_tooltip(false, "   ", "  "), None);
+    }
+
+    /// Whitespace is trimmed before the comparisons, so a title that differs
+    /// from its url only by padding is still treated as the same words.
+    #[test]
+    fn padding_does_not_make_two_lines_out_of_one() {
+        let padded = tab_tooltip(false, "  https://example.net/  ", "https://example.net/");
+        assert_eq!(
+            padded,
+            Some(TabTooltip { title: "https://example.net/".to_string(), url: None })
+        );
+    }
+
+    /// An address with no title of its own still gets a tooltip: the strip
+    /// shows the host, the tooltip shows the whole address.
+    #[test]
+    fn an_untitled_tab_shows_its_address() {
+        assert_eq!(
+            tab_tooltip(false, "", "https://example.net/a/long/path"),
+            Some(TabTooltip {
+                title: "https://example.net/a/long/path".to_string(),
+                url: None,
+            })
+        );
     }
 }
