@@ -6,6 +6,7 @@ pub mod board;
 mod card;
 mod chips;
 pub mod demo;
+mod header;
 mod edit;
 pub mod model;
 mod quick_add;
