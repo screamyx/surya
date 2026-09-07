@@ -19,8 +19,10 @@ use crate::typography::ui_rems;
 /// The least space allowed between the count and the hint.
 ///
 /// `justify_between` gives no minimum of its own, so this gap is the only
-/// thing standing between the two strings when the row is full.
-pub const HEADER_GAP: f32 = 16.0;
+/// thing standing between the two strings when the row is full. Named from
+/// the shared token rather than re-declaring its value, so the header keeps
+/// step with the rest of the spacing scale.
+pub const HEADER_GAP: f32 = Theme::SPACE_LG;
 
 /// The header row: `<project name> <n tasks>` on the left, the hint right.
 pub fn render(space_name: &SharedString, count: usize, theme: &Theme) -> gpui::Div {
