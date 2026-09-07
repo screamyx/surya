@@ -845,6 +845,19 @@ impl WorkspaceHost {
         }
     }
 
+    /// Was this chat's row deleted, as opposed to never written? The
+    /// registry tombstones rather than erases, so the two are separable.
+    pub fn chat_tombstoned(&self, chat_id: &str) -> bool {
+        self.read(|doc| doc.chat_tombstoned(chat_id))
+    }
+
+    /// Does the chat have a row? Presence only, like
+    /// [`RegistryDoc::chat_exists`]: a present-but-malformed row still counts
+    /// as there, because "cannot parse it" is not "it is gone".
+    pub fn chat_exists(&self, chat_id: &str) -> bool {
+        self.read(|doc| doc.chat_exists(chat_id))
+    }
+
     /// Session-status row upsert (sessions engine transitions land here too, in
     /// addition to the local watch channel).
     ///
