@@ -270,4 +270,25 @@ mod tests {
             "workspace is the engine's word for this scope, never the user's"
         );
     }
+
+    /// The fix is real and unphotographable at the same time unless a demo
+    /// row reaches it. `--inbox-demo` is the only thing that builds this
+    /// page (`demo_run.rs` calls `RulesPane::demo(demo::rules())`, and
+    /// nothing else constructs one), so the fixture is the whole rig.
+    ///
+    /// The two original rows yield "in orchard" and "everywhere". Drop the
+    /// third and this fails, which is the point: the screenshot the PR ships
+    /// would show two rows that were never broken.
+    #[test]
+    fn the_demo_fixture_renders_the_pathless_fallback() {
+        let lines: Vec<String> = crate::inbox::demo::rules()
+            .iter()
+            .map(RulesPane::scope_line)
+            .collect();
+        let wanted = format!("in {}", AlwaysAllowScope::ThisWorkspace.label());
+        assert!(
+            lines.iter().any(|line| line.ends_with(&wanted)),
+            "no --inbox-demo row reaches the pathless fallback; the rules page shows {lines:?}"
+        );
+    }
 }
