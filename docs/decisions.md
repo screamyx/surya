@@ -406,3 +406,5 @@ Owner, 04:01 on 2026-09-06: "the mockup was a typescript backend with react fron
 ## Open
 
 None at day zero.
+
+Operational logs (the handoff log and the acceptance records) live in the private repository screamyx/surya-private, under logs/.
