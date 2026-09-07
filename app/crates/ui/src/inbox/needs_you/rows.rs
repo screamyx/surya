@@ -176,9 +176,12 @@ impl NeedsYouPane {
                                 }))
                             }),
                     )
-                    // Decision 20: the second, quieter action.
+                    // Decision 20: the second, quieter action. It says
+                    // "exactly this" because that is all the rule covers -
+                    // the engine pins it with `exact` and the next command,
+                    // or the next file, asks again (E2E-PERM-02).
                     .child(
-                        button(theme, ButtonTone::Quiet, "Always allow")
+                        button(theme, ButtonTone::Quiet, "Always allow exactly this")
                             .id(SharedString::from(format!("always-{}", row.id)))
                             .when(!busy, |el| {
                                 el.on_click(cx.listener(move |pane, _, _, cx| {

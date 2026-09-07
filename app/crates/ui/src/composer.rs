@@ -3612,9 +3612,9 @@ impl Composer {
         engine
     }
 
-    /// Answer the blocked tool. An `answer` that remembers writes an
-    /// always-allow rule for this workspace, which is what "Always allow"
-    /// means everywhere else in the app.
+    /// Answer the blocked tool. An `answer` that remembers writes a
+    /// workspace-scoped rule pinned to THIS exact command (the empty pattern
+    /// is what pins it), which is what the card's label now says.
     fn answer_permission(
         &mut self,
         request_id: String,
