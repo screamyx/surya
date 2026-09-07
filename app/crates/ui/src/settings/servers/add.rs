@@ -198,7 +198,7 @@ mod tests {
     /// address the app dialed (asked=2 same=2).
     #[test]
     fn a_dialed_url_saves_back_to_the_same_address() {
-        for dialed in ["ws://pc-ajim:27700", "ws://100.83.77.3:27700/"] {
+        for dialed in ["ws://devbox:27700", "ws://192.0.2.10:27700/"] {
             let entry = parse_server("", dialed, "", "tok").unwrap();
             assert_eq!(
                 crate::settings::servers::canonical_url(&entry.url()),
@@ -244,13 +244,13 @@ mod tests {
             token: Some("tok".into()),
             name: None,
         };
-        let entry = entry_for_target(&target("ws://PC-Ajim:27700/")).unwrap();
+        let entry = entry_for_target(&target("ws://DevBox:27700/")).unwrap();
         assert_eq!(
             (entry.host.as_str(), entry.port, entry.name.as_str()),
-            ("PC-Ajim", 27700, "PC-Ajim")
+            ("DevBox", 27700, "DevBox")
         );
         assert_eq!(entry.token.as_deref(), Some("tok"));
-        let portless = entry_for_target(&target("ws://pc-ajim")).unwrap();
+        let portless = entry_for_target(&target("ws://devbox")).unwrap();
         assert_eq!(portless.port, DEFAULT_PORT);
         assert!(entry_for_target(&target("ws://h:1/rpc")).is_err());
         assert!(entry_for_target(&target("wss://h:1")).is_err());

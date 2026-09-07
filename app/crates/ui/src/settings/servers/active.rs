@@ -126,17 +126,17 @@ mod tests {
 
     #[test]
     fn canonical_url_folds_case_default_port_and_trailing_slash() {
-        assert_eq!(canonical_url("ws://PC-Ajim:27700/"), "ws://pc-ajim:27700");
-        assert_eq!(canonical_url("WS://pc-ajim:27700"), "ws://pc-ajim:27700");
+        assert_eq!(canonical_url("ws://DevBox:27700/"), "ws://devbox:27700");
+        assert_eq!(canonical_url("WS://devbox:27700"), "ws://devbox:27700");
         assert_eq!(
-            canonical_url("ws://pc-ajim"),
-            format!("ws://pc-ajim:{DEFAULT_PORT}")
+            canonical_url("ws://devbox"),
+            format!("ws://devbox:{DEFAULT_PORT}")
         );
         assert_eq!(
-            canonical_url("wss://pc-ajim"),
-            format!("wss://pc-ajim:{DEFAULT_PORT}")
+            canonical_url("wss://devbox"),
+            format!("wss://devbox:{DEFAULT_PORT}")
         );
-        assert_eq!(canonical_url("pc-ajim:27700"), "ws://pc-ajim:27700");
+        assert_eq!(canonical_url("devbox:27700"), "ws://devbox:27700");
         assert_eq!(canonical_url("ws://[::1]:27700"), "ws://[::1]:27700");
         assert_eq!(
             canonical_url("ws://[::1]"),
@@ -158,24 +158,24 @@ mod tests {
     #[test]
     fn the_chosen_entry_wins_over_an_address_match() {
         let servers = vec![
-            entry("first", "pc-ajim", 27700),
-            entry("second", "pc-ajim", 27700),
+            entry("first", "devbox", 27700),
+            entry("second", "devbox", 27700),
         ];
         assert_eq!(
-            active_row(Some("ws://pc-ajim:27700"), Some("second"), &servers),
+            active_row(Some("ws://devbox:27700"), Some("second"), &servers),
             ActiveRow::Saved("second".into())
         );
         assert_eq!(
-            active_row(Some("ws://pc-ajim:27700"), None, &servers),
+            active_row(Some("ws://devbox:27700"), None, &servers),
             ActiveRow::Saved("first".into())
         );
         // A chosen entry at another address is stale: fall back to the address.
         let servers = vec![
-            entry("first", "pc-ajim", 27700),
+            entry("first", "devbox", 27700),
             entry("other", "build-box", 1),
         ];
         assert_eq!(
-            active_row(Some("ws://pc-ajim:27700"), Some("other"), &servers),
+            active_row(Some("ws://devbox:27700"), Some("other"), &servers),
             ActiveRow::Saved("first".into())
         );
     }
@@ -183,13 +183,13 @@ mod tests {
     #[test]
     fn addresses_compare_after_normalising() {
         let servers = vec![
-            entry("s1", "PC-Ajim", 27700),
+            entry("s1", "DevBox", 27700),
             entry("s2", "build-box", DEFAULT_PORT),
         ];
         for dialed in [
-            "ws://pc-ajim:27700",
-            "ws://pc-ajim:27700/",
-            "WS://PC-AJIM:27700",
+            "ws://devbox:27700",
+            "ws://devbox:27700/",
+            "WS://DEVBOX:27700",
         ] {
             assert_eq!(
                 active_row(Some(dialed), None, &servers),
@@ -202,17 +202,17 @@ mod tests {
             ActiveRow::Saved("s2".into())
         );
         assert_eq!(
-            active_row(Some("wss://pc-ajim:27700"), None, &servers),
-            ActiveRow::CommandLine("wss://pc-ajim:27700".into())
+            active_row(Some("wss://devbox:27700"), None, &servers),
+            ActiveRow::CommandLine("wss://devbox:27700".into())
         );
     }
 
     #[test]
     fn an_unknown_address_is_the_command_line() {
-        let servers = vec![entry("s1", "pc-ajim", 27700)];
+        let servers = vec![entry("s1", "devbox", 27700)];
         assert_eq!(
-            active_row(Some("ws://100.83.77.3:27700"), Some("s1"), &servers),
-            ActiveRow::CommandLine("ws://100.83.77.3:27700".into())
+            active_row(Some("ws://192.0.2.10:27700"), Some("s1"), &servers),
+            ActiveRow::CommandLine("ws://192.0.2.10:27700".into())
         );
         assert_eq!(
             active_row(Some("ws://x:1"), None, &[]),
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn status_text_names_the_engine_in_use() {
-        let servers = vec![entry("s1", "pc-ajim", 27700)];
+        let servers = vec![entry("s1", "devbox", 27700)];
         let ready = ConnectionStatus::Ready;
         assert_eq!(
             status_text(&ConnectionStatus::Connecting, &ActiveRow::Local, &servers),
@@ -243,7 +243,7 @@ mod tests {
         assert_eq!(
             status_text(&ready, &ActiveRow::Saved("s1".into()), &servers),
             (
-                "Connected to name-s1 (ws://pc-ajim:27700)".to_string(),
+                "Connected to name-s1 (ws://devbox:27700)".to_string(),
                 false
             )
         );

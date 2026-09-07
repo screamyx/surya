@@ -1058,14 +1058,14 @@ mod tests {
     }
 
     /// The Failed gate's escape buttons only help when the dialed engine is
-    /// the saved active server (owner lock-out, dtry, 2026-09-05):
+    /// the saved active server (owner lock-out, 2026-09-05):
     /// asked=4 right=4.
     #[test]
     fn failed_dial_escape_only_forgets_the_saved_server() {
         let saved = ServerEntry {
             id: "s1".into(),
-            name: "pc-ajim".into(),
-            host: "pc-ajim".into(),
+            name: "devbox".into(),
+            host: "devbox".into(),
             port: 22,
             token: None,
         };
