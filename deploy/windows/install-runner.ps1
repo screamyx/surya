@@ -1,19 +1,19 @@
 <#
-Install the GitHub Actions runner on dtry as a Windows service, labelled
+Install the GitHub Actions runner on winbox as a Windows service, labelled
 `surya-win`, running at idle CPU priority.
 
 This is the runner .github/workflows/ci.yml's `windows` job targets. It
-replaces the two Linux runners on pc-ajim for the build the owner actually
+replaces the two Linux runners on devbox for the build the owner actually
 uses (decision 28: Windows is the product, Linux is a test bench).
 
   # 1. get a registration token. It is valid for one hour. It is never
   #    written to a file in this repository.
   gh api -X POST /repos/screamyx/surya/actions/runners/registration-token --jq .token
 
-  # 2. run this, from an ADMINISTRATOR PowerShell on dtry:
+  # 2. run this, from an ADMINISTRATOR PowerShell on winbox:
   pwsh -ExecutionPolicy Bypass -File deploy\windows\install-runner.ps1 -Token <token from step 1>
 
-  # unattended, as a built-in account, which is how dtry runs it:
+  # unattended, as a built-in account, which is how winbox runs it:
   pwsh -ExecutionPolicy Bypass -File deploy\windows\install-runner.ps1 `
     -Token <token> -LogonAccount "NT AUTHORITY\SYSTEM"
 
@@ -28,7 +28,7 @@ encrypts.
                                       E:, not C:, so neither the runner nor
                                       its _work directory eats the system
                                       drive.
-  ... -LogonAccount dtry\ajim         the account the service runs as.
+  ... -LogonAccount <machine>\<user>  the account the service runs as.
   ... -Priority Idle                  or BelowNormal. See the note below.
   ... -Version 2.337.0                pin the runner version.
   ... -ExpectedSha256 <hash>          fail unless the download matches.
@@ -89,7 +89,7 @@ if (-not $admin) { throw "run this from an administrator PowerShell: it installs
 # Every step of the CI job declares `shell: pwsh`. If PowerShell 7 is not on
 # PATH the runner registers, takes the job, and then fails every single step
 # with "pwsh: command not found" after the checkout has already run. That is
-# what happened on the first live install on dtry, so the check is here
+# what happened on the first live install on winbox, so the check is here
 # rather than in a comment.
 # No ?. or any other PowerShell 7 syntax in this check, and none above it.
 # The whole point is that this script may be started from Windows PowerShell
@@ -122,7 +122,7 @@ Write-Host "== pwsh at $($pwshCmd.Source)"
 #     Runner.Worker.exe\PerfOptions     CpuPriorityClass = 1
 #
 # THAT KEY IS PER IMAGE NAME, NOT PER SERVICE. Every GitHub Actions runner on
-# the machine ships executables with these exact names. dtry already runs
+# the machine ships executables with these exact names. winbox already runs
 # haktui's runner out of C:\gha-runner, and writing this key would drop that
 # one to Idle too, on its next restart, silently. Nobody asked for that. So
 # -Ifeo is opt-in, and the primary mechanism is the line inside surya's own
@@ -140,7 +140,7 @@ Write-Host "== pwsh at $($pwshCmd.Source)"
 # read back from an API. So it does not trust them: with -Ifeo the script
 # restarts the service, finds THIS runner's listener by its path, reads the
 # live priority and throws if it is not what was asked for. Finding it by
-# path matters: `Get-Process -Name Runner.Listener` on dtry returns haktui's
+# path matters: `Get-Process -Name Runner.Listener` on winbox returns haktui's
 # listener first, at Normal, and the check would fail on the wrong process.
 # ---------------------------------------------------------------------------
 $priorityValue = @{ "Idle" = 1; "BelowNormal" = 5 }[$Priority]
@@ -272,7 +272,7 @@ Remove-Item $zip -Force
 # A built-in service account has no password and config.cmd must not be given
 # one: --windowslogonpassword with an empty value fails, and prompting for a
 # password that does not exist is what stopped the first unattended install on
-# dtry. Anything else is a real account and does need one.
+# winbox. Anything else is a real account and does need one.
 # These accounts are spelled a dozen ways: with or without the "NT
 # AUTHORITY\" domain, with or without the space in "Network Service", and
 # "SYSTEM" on its own. Listing every spelling is how one gets missed, so
@@ -342,7 +342,7 @@ if ($Ifeo) {
     Start-Sleep -Seconds 5
 
     $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
-    # By path, not by name. dtry runs haktui's runner out of C:\gha-runner
+    # By path, not by name. winbox runs haktui's runner out of C:\gha-runner
     # with an executable of exactly this name, and -Name returns whichever
     # started first. Get-Process needs elevation to read Path for a process
     # owned by another account, which this script has.

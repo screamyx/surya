@@ -332,7 +332,7 @@ const SHOT_NUDGE_JS: &str = "(() => { const d = document.createElement('div'); \
 /// `Page.captureScreenshot` answers only once the renderer's forced redraw
 /// has been *presented*, and under offscreen rendering a frame with no
 /// damage is never painted: on a page that sits still the call waits
-/// forever (dtry 2026-09-06 02:03: asked, never answered, the pane's frame
+/// forever (winbox 2026-09-06 02:03: asked, never answered, the pane's frame
 /// count unchanged for the whole 25 s; :7 proof6 the same with the view
 /// still unsized). So the page is given damage first: CEF repaints the view,
 /// and the page blinks one faint pixel for half a second, so a painted frame

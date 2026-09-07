@@ -7,7 +7,7 @@ import { renderIcon } from './icons';
 import { iconButton } from './titlebar';
 export function renderSidebar(waiting: number, fixture: Fixture, onEvent: (value: string) => void) {
   const chats = fixture === 'seeded' ? [
-    { title: 'Wire the Tasks pane into the shell', project: 'surya @ DTRY', age: 'Input', branch: '' },
+    { title: 'Wire the Tasks pane into the shell', project: 'surya @ WINBOX', age: 'Input', branch: '' },
   ] : emptyChats;
   return <aside aria-label="Sidebar" className="w-64 flex-none h-full flex flex-col pt-9.5 bg-wash/5 border-r border-border">
     <nav aria-label="Main navigation" className="flex flex-col gap-0.5 px-2 pt-1.5 pb-2 border-b border-border">

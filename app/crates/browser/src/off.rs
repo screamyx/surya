@@ -12,7 +12,7 @@
 //! corruption. A process singleton lock based on the root_cache_path value is
 //! therefore used to protect against this."), and surya's cache path is one
 //! fixed folder per user, so a second window collides by default. cef3 saw it
-//! on dtry on 2026-09-06 at 21:05: the owner's own running app held the
+//! on winbox on 2026-09-06 at 21:05: the owner's own running app held the
 //! default cache and the second window said only "Browser off".
 
 use std::path::Path;
@@ -53,7 +53,7 @@ impl Off {
 }
 
 /// Chromium's process singleton markers inside `root_cache_path`. `lockfile`
-/// is the Windows one, which is the name cef3 read on dtry; `SingletonLock`
+/// is the Windows one, which is the name cef3 read on winbox; `SingletonLock`
 /// is the POSIX one. Both strings are in libcef 151.3.24.
 const LOCK_NAMES: [&str; 2] = ["lockfile", "SingletonLock"];
 

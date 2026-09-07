@@ -306,13 +306,13 @@ The plan and the counts are in `docs/rename-surya-to-surya.md` (PR #16): "surya 
 - Amended 10:33 from the rename dry run (PR #41): the data dir is COPIED, not renamed (this decision wins over row 5 of the plan). Comet's two built-in themes become `comet_light` / `comet_dark` and keep their display names ("Surya Light/Dark" stays as the provenance label); `surya_light` / `surya_dark` already exist from PR #2, so a literal rename would collide (E0428).
 - Amended 20:20 by the comet-look revert (PR #82). Those are the Rust *function* names; the variant ids in the registry are the strings `surya-light` and `surya-dark`, and they are what the code and the settings file carry. Two things follow for whoever does the rename. Comet's pair is the shipped default again, so `ThemeSelection::default()`, the `ThemeRegistry::resolve` fallback and `Theme::for_appearance`'s fallback all name those strings and must move with them. And every `ui-settings.json` on disk stores the selection as a string, so renaming the ids without a settings migration silently drops users onto the fallback. `UiSettings::migrated` now has a schema version and one rule; the rename adds the second.
 
-## 24. CI runs on a self-hosted runner on pc-ajim; the owner's spawn order narrows to user2
+## 24. CI runs on a self-hosted runner on devbox; the owner's spawn order narrows to user2
 
 Coordinator ruling, 2026-09-05 12:49, owner asleep (autonomy order 06:17).
 
 GitHub-hosted jobs stopped starting at 12:35 local. Every run since, main pushes and PR runs alike, fails in 3-5 s with 0 steps. The check-run annotation, read raw off the API by raven, says verbatim: "The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings". Fixing billing is spend and stays the owner's call.
 
-- CI moves to a self-hosted runner on this box: `pc-ajim-surya`, label `surya-ci`, service `actions.runner.screamyx-surya.pc-ajim-surya`, dir `/store/gha-runner-surya`, running as `user` like the project-jag, haktui and code-search runners (PR #70).
+- CI moves to a self-hosted runner on this box: `devbox-surya`, label `surya-ci`, service `actions.runner.screamyx-surya.devbox-surya`, dir `/store/gha-runner-surya`, running as `user` like the project-jag, haktui and code-search runners (PR #70).
 - The service is throttled (systemd drop-in: CPUWeight=20, MemoryHigh=24G) so the owner's interactive session wins under load, and it builds into a persistent `CARGO_TARGET_DIR=/store/surya-ci-target` set in the runner's `.env`. That directory is the cache; rust-cache is gone.
 - The hosted-only steps are gone with it: `sudo rm -rf` of SDK directories, `apt-get`, rust-cache. CI never runs `sudo` on a shared machine.
 - This supersedes the ci.yml header's "GitHub-hosted on purpose" (PR #37 era). If the owner restores billing, moving back is one `runs-on` edit plus restoring those steps.
@@ -324,9 +324,9 @@ Owner ruling, 2026-09-05 13:10, verbatim: "wait no. windows version with cef mus
 
 Context: raven told the owner the Windows zip does not carry the browser (build.ps1 never enables the `browser` feature, the CEF runtime is not packaged) and proposed post-RC. Overruled.
 
-- The RC2 zip for FINAL MAIN (2026-09-06 12:15) is built with `--features browser` and ships the CEF runtime next to `surya.exe`; a real page must paint in the pane on dtry before the zip is called final.
+- The RC2 zip for FINAL MAIN (2026-09-06 12:15) is built with `--features browser` and ships the CEF runtime next to `surya.exe`; a real page must paint in the pane on winbox before the zip is called final.
 - Path: the OSR CPU-upload path (the one proven on Linux) first; D3D11 zero-copy only if it comes free.
-- Owners: surya-cef2 (crate, CEF packaging step in build.ps1, dtry proof), surya-remote (rest of build.ps1, boot-dial timeout, cmd quoting, final zip). One builder on dtry at a time, agreed over agb.
+- Owners: surya-cef2 (crate, CEF packaging step in build.ps1, winbox proof), surya-remote (rest of build.ps1, boot-dial timeout, cmd quoting, final zip). One builder on winbox at a time, agreed over agb.
 - The cut order in the 12:44 handoff is amended: the browser pane on Windows is no longer cuttable. If it is not painting by 2026-09-06 09:00, raven escalates to the owner instead of cutting.
 
 ## 26. The look goes back to comet's; the features stay
@@ -365,8 +365,8 @@ The cost of the new path is the wait for the GPU to finish the copy. CEF's contr
 
 Owner ruling, 2026-09-05 22:23, verbatim: "btw i mainly gonna use surya on windows, and in the future mac, but never on linux. linux can stay as testing ground, but its not proof for RC".
 
-- An RC gate is proven on the owner's Windows machine (dtry) or it is not proven. A :7 Linux run is smoke, useful to catch a crash early, never the evidence a PR ships on.
-- Every RC-scoped feature gets a dtry proof before the freeze: comet look (#82) shots at both sizes, one browser per tab (#83), agent CDP (#87), zero-copy on/off pair (#85), frame-rate baseline and levers (#86, perf PR 2, astra), permission chip (states). One seat on the dtry GUI slot at a time, announced over agb, cef2 arbitrates.
+- An RC gate is proven on the owner's Windows machine (winbox) or it is not proven. A :7 Linux run is smoke, useful to catch a crash early, never the evidence a PR ships on.
+- Every RC-scoped feature gets a winbox proof before the freeze: comet look (#82) shots at both sizes, one browser per tab (#83), agent CDP (#87), zero-copy on/off pair (#85), frame-rate baseline and levers (#86, perf PR 2, astra), permission chip (states). One seat on the winbox GUI slot at a time, announced over agb, cef2 arbitrates.
 - Linux packaging and sandbox (#80) are not RC gates. They merge when green as test-bench infrastructure, and no further seat time goes to Linux-only polish before the RC.
 - Mac is the next platform after the RC; nothing tonight targets it.
 - Amends decision 25's proof clause and every "proof on :7" line in briefs written today.
@@ -375,7 +375,7 @@ Owner ruling, 2026-09-05 22:23, verbatim: "btw i mainly gonna use surya on windo
 
 Owner order, 2026-09-05 22:43, verbatim: "once all done, do one end-to-end test, testing every button, surface, features etc. to make sure everything works exactly as planned. do the test when im asleep".
 
-- Runs on dtry (decision 28) on the newest main build after the browser-wave merges, engine reinstalled to the same sha, once the owner is off dtry (he says so, or no owner input on dtry after 01:00).
+- Runs on winbox (decision 28) on the newest main build after the browser-wave merges, engine reinstalled to the same sha, once the owner is off winbox (he says so, or no owner input on winbox after 01:00).
 - One Codex gpt-6-astra (high) tester seat (owner 22:45: "model for e2e tester is astra, make sure he has the right tool for it windows-dtry mcp, maybe /zoom") drives the app over the windows-dtry MCP, zoom CLI for fine detail, through every rail entry, page, button and feature (list in /tmp/surya-e2e-acceptance.md), a screenshot per step into the gallery, a PASS/FAIL row per step in docs/acceptance/e2e-2026-09-06.md, FAILs filed to raven as they appear; the owning seats fix, raven re-runs the failed steps.
 - Supersedes the 22:07 note that deferred the acceptance round to 04:00-08:00: the trigger is "merges done and owner asleep", not the clock.
 
@@ -384,7 +384,7 @@ Owner order, 2026-09-05 22:43, verbatim: "once all done, do one end-to-end test,
 Owner ruling, 2026-09-06 00:52, verbatim: "scrape the deadline. take as many time as you want to build RC. list all the things not included in RC".
 
 - No clock gate any more: the 11:45 freeze, the 12:15 FINAL MAIN and the 13:00 ship are gone (the freeze cron was deleted at 00:53).
-- The RC ships when every RC-scoped PR is merged with a dtry proof (decision 28), the end-to-end acceptance run (decision 29) is green, and the rename (decision 23) has landed. The sequence is unchanged (freeze -> rename PR -> FINAL MAIN -> final round -> RC note -> Taildrop -> retire seats); only its trigger changed from the clock to "done".
+- The RC ships when every RC-scoped PR is merged with a winbox proof (decision 28), the end-to-end acceptance run (decision 29) is green, and the rename (decision 23) has landed. The sequence is unchanged (freeze -> rename PR -> FINAL MAIN -> final round -> RC note -> Taildrop -> retire seats); only its trigger changed from the clock to "done".
 - "Ship un-renamed if the rename is late" is withdrawn: the rename lands before the RC.
 - The not-in-RC list below is the owner's to pull from; anything he names moves into RC scope.
 
@@ -393,7 +393,7 @@ Owner ruling, 2026-09-06 00:52, verbatim: "scrape the deadline. take as many tim
 Owner, 03:23 on 2026-09-06, verbatim: "use windows mcp however you want".
 
 - The earlier standing rule (stop and ask the owner before every windows-dtry call; prefer local scripts) is withdrawn.
-- Any seat may drive dtry through the windows-dtry MCP for proofs, shots and input, subject only to the GUI arbiter (decision 28: one GUI session at a time, surya-cef3 grants the slot).
+- Any seat may drive winbox through the windows-dtry MCP for proofs, shots and input, subject only to the GUI arbiter (decision 28: one GUI session at a time, surya-cef3 grants the slot).
 - The schtasks /it + conhost --headless route for shots still works and stays valid; seats pick whichever is faster. Input via the MCP injection remains the reliable path (SendKeys never reaches the gpui window).
 
 ## 32. The mockup is deleted
@@ -403,19 +403,19 @@ Owner, 04:01 on 2026-09-06: "the mockup was a typescript backend with react fron
 - `mockup/` (134 files) is removed from main. It was the pre-fork web prototype, not a design reference for the GPUI app (decision 26 already made comet's look the reference).
 - Any future design sandbox is a new decision, not a revival of this tree.
 
-## 33. CI leaves pc-ajim: Linux on GitHub-hosted runners, Windows on dtry
+## 33. CI leaves devbox: Linux on GitHub-hosted runners, Windows on winbox
 
 Owner ruling, 2026-09-07 02:05, "follow your recommendation", on his two conditions, verbatim: "the low priority run dont effect my non-gaming day to day use" and "it wont eat too much space".
 
-Supersedes decision 24, which put CI on two self-hosted Linux runners on pc-ajim because GitHub-hosted jobs were blocked on billing. Decision 24 stays on the record for why that happened and is no longer the arrangement.
+Supersedes decision 24, which put CI on two self-hosted Linux runners on devbox because GitHub-hosted jobs were blocked on billing. Decision 24 stays on the record for why that happened and is no longer the arrangement.
 
 - The Linux checks go back to `ubuntu-latest`, free once the repository is public. The job carries `if: github.event.repository.visibility == 'public'`, so the workflow can merge before the repository is flipped without ever asking for a billed minute. An absent field is not "public" either, so the failure direction is "does not run", never "runs and bills".
-- The hosted-era steps come back with it: freeing disk and `apt-get` for gpui's system libraries. Decision 24 banned both, and that ban still holds for anything running on pc-ajim. A GitHub-hosted runner is a throwaway VM, not the owner's machine.
-- The Windows build moves to dtry, label `surya-win`, installed by `deploy/windows/install-runner.ps1`. It runs `deploy/windows/build.ps1` at Idle priority on 8 of 16 threads, reuses `E:\surya-remote-target`, deletes each run's `dist` folder, keeps the zip as a 14-day artifact, and runs `cargo clean` only when the target passes 25 GB and only once a week. Those five rules are the owner's two conditions written down.
-- The runner service on dtry logs on as `NT AUTHORITY\SYSTEM`, which makes every CI job on that box local administrator. haktui's runner on the same machine already runs that way. It is what makes the fork guard above load-bearing rather than tidy.
+- The hosted-era steps come back with it: freeing disk and `apt-get` for gpui's system libraries. Decision 24 banned both, and that ban still holds for anything running on devbox. A GitHub-hosted runner is a throwaway VM, not the owner's machine.
+- The Windows build moves to winbox, label `surya-win`, installed by `deploy/windows/install-runner.ps1`. It runs `deploy/windows/build.ps1` at Idle priority on 8 of 16 threads, reuses `E:\surya-remote-target`, deletes each run's `dist` folder, keeps the zip as a 14-day artifact, and runs `cargo clean` only when the target passes 25 GB and only once a week. Those five rules are the owner's two conditions written down.
+- The runner service on winbox logs on as `NT AUTHORITY\SYSTEM`, which makes every CI job on that box local administrator. haktui's runner on the same machine already runs that way. It is what makes the fork guard above load-bearing rather than tidy.
 - The `windows` job never runs for a pull request from a fork. A self-hosted runner executes the PR author's code on the owner's PC; once the repository is public, anyone could open one.
 - Only `actions/*` actions may be used. The repository's Actions policy rejects anything else before a job starts, which is why the Linux cache is a hand-written `actions/cache` and not `Swatinem/rust-cache`.
-- pc-ajim's two runners retire by hand after this workflow has one green run, not before. `browser-nightly.yml` still needs `[self-hosted, surya-ci]` and the CEF distribution at `/store/surya-ci-cef`, so where the nightly runs is a separate decision.
+- devbox's two runners retire by hand after this workflow has one green run, not before. `browser-nightly.yml` still needs `[self-hosted, surya-ci]` and the CEF distribution at `/store/surya-ci-cef`, so where the nightly runs is a separate decision.
 - Windows is still the product and Linux still the test bench (decision 28). Nothing here makes a green Linux run RC proof.
 
 ## Open

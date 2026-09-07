@@ -1,4 +1,4 @@
-# dtry measurements, 2026-09-06
+# winbox measurements, 2026-09-06
 
 Threaded CEF moved the measured browser preparation work off the GPUI main
 thread in this single pass. Animation paint-to-surface p95 increased. Neither

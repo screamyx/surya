@@ -85,7 +85,7 @@ fn an_empty_cache_directory_is_not_held() {
     assert!(!cache_is_held(dir.path()));
 }
 
-/// The Windows marker, which is the one cef3 read on dtry.
+/// The Windows marker, which is the one cef3 read on winbox.
 #[test]
 fn a_lockfile_means_the_cache_is_held() {
     let dir = TempDir::new("lockfile");

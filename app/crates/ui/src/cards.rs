@@ -111,7 +111,7 @@ pub fn load_fixture_dir(dir: &Path) -> Vec<(String, serde_json::Value)> {
 
 /// The `file://` prefix a fixture's `fixture://` becomes, escaped for a
 /// JSON string: a Windows dir has backslashes, and pasting them raw made
-/// every fixture with an image unparseable (dtry 07:52: card 01 never
+/// every fixture with an image unparseable (winbox 07:52: card 01 never
 /// seeded). Forward slashes work on Windows too.
 pub fn fixture_base(dir: &Path) -> String {
     let dir = dir.display().to_string();

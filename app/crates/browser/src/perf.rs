@@ -3,7 +3,7 @@
 //! [`on_paint`] runs in CEF's `on_paint` for the active browser and stamps
 //! the time. [`on_render`] runs from the root view's render; when a new
 //! frame has landed since the last render, the gap between the two stamps is
-//! one sample. haktui's spike measured this at 4.5 ms median on dtry: half
+//! one sample. haktui's spike measured this at 4.5 ms median on winbox: half
 //! the 8 ms pump plus the wait for a frame slot. The queue after the draw is
 //! DXGI's and not visible from here.
 //!

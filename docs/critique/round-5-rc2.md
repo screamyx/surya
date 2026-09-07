@@ -24,7 +24,7 @@ Browser log (dark): "browser: switches [..., \"force-dark-mode\"] scheme=Dark", 
 | I3 | "Question" badge plus bold "Question" label | **Accepted** | Cards carry the badge and the question text only. |
 | I4 | Sheet drawn over the page title at 1100x700 | **Accepted** | `round-5-inbox-{light,dark}-1100x700.png`: no title under the sheet; the feed shows "Before I wire the reconciliation path..." and the "Question  Awaiting your answer..." row, then the sheet, no overlap. |
 | R1 | Browser pane ignores the app's appearance | **Accepted** | Same `data:` page: light frame black-on-white, dark frame cream `#f5f0e8` on `#161412` as its dark rule says. Log `scheme=Dark`. |
-| N2 | Chat title shown three or four times | **Improved** | The titlebar now shows only "surya @ pc-ajim" (all six frames); the title remains in the page-title tier, the agents-tree row and the session row. |
+| N2 | Chat title shown three or four times | **Improved** | The titlebar now shows only "surya @ devbox" (all six frames); the title remains in the page-title tier, the agents-tree row and the session row. |
 
 ## Still open (carried)
 
