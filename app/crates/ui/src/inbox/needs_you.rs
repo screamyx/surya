@@ -8,9 +8,12 @@
 
 mod rows;
 
+#[cfg(test)]
+mod focus_chain;
+
 use std::collections::HashSet;
 
-use gpui::{Context, Entity, Render, SharedString, Task, Window, div, prelude::*, px};
+use gpui::{Context, Entity, FocusHandle, Render, SharedString, Task, Window, div, prelude::*, px};
 use surya_proto::{Chat, NeedsYouItem, PermissionDecision, UserInputAnswer};
 use surya_rpc::methods;
 
@@ -32,6 +35,16 @@ pub struct OpenChat(pub String);
 impl gpui::EventEmitter<OpenChat> for NeedsYouPane {}
 
 pub struct NeedsYouPane {
+    /// The page's own place in the focus chain.
+    ///
+    /// The page takes the main column and unmounts the composer, which used
+    /// to be the only thing the Chat route ever focused. Focus then sat on an
+    /// element with no ancestors, and gpui walks the focus chain to find a
+    /// matched binding's handler, so every shortcut went dead until a click
+    /// on Home remounted the composer (E2E-KEY-01). Holding focus here keeps
+    /// the chain intact: it runs from this page up to the shell root, where
+    /// every `on_action` lives.
+    pub focus_handle: FocusHandle,
     /// `None` in the demo and in tests: the pane draws fixtures and every
     /// send becomes a visible failure instead of a silent no-op.
     state: Option<Entity<AppState>>,
@@ -57,6 +70,7 @@ pub struct NeedsYouPane {
 impl NeedsYouPane {
     pub fn new(state: Entity<AppState>, cx: &mut Context<Self>) -> Self {
         let mut pane = Self {
+            focus_handle: cx.focus_handle(),
             state: Some(state),
             items: Vec::new(),
             chats: Vec::new(),
@@ -72,8 +86,9 @@ impl NeedsYouPane {
     }
 
     /// Fixtures instead of an engine — the demo entry and the tests.
-    pub fn demo(items: Vec<NeedsYouItem>, chats: Vec<Chat>) -> Self {
+    pub fn demo(items: Vec<NeedsYouItem>, chats: Vec<Chat>, cx: &mut Context<Self>) -> Self {
         Self {
+            focus_handle: cx.focus_handle(),
             state: None,
             items,
             chats,
@@ -274,6 +289,8 @@ impl Render for NeedsYouPane {
         // to the side of it.
         div()
             .id("needs-you-pane")
+            // The page's focus chain to the shell root - see `focus_handle`.
+            .track_focus(&self.focus_handle)
             .size_full()
             .overflow_y_scroll()
             .flex()

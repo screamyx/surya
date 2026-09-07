@@ -94,7 +94,7 @@ pub fn run_demo(data_dir: PathBuf) {
                 window.set_rem_size(px(typography::font_size(cx).pixels()));
                 cx.new(|cx| DemoInbox {
                     agents: cx.new(|_| AgentsRail::demo(demo::agent_states(), demo::chats())),
-                    needs_you: cx.new(|_| NeedsYouPane::demo(demo::needs_you(), demo::chats())),
+                    needs_you: cx.new(|cx| NeedsYouPane::demo(demo::needs_you(), demo::chats(), cx)),
                     rules: cx.new(|_| RulesPane::demo(demo::rules())),
                 })
             },
