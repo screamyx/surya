@@ -155,8 +155,12 @@ pub fn inbox_rows(items: &[NeedsYouItem], chats: &[Chat]) -> Vec<InboxRow> {
 
 /// How far an "Always allow" click reaches. The toggle has exactly these two
 /// positions because decision 20's example — "Always allow migrations in
-/// project-jag" — is the workspace one, and anything wider has to be said out
+/// project-jag" - is the project one, and anything wider has to be said out
 /// loud.
+///
+/// The variant is still called `ThisWorkspace` because that is the engine's
+/// word for the scope (`RuleScope::Workspace`); only what the USER reads
+/// changed (PERM-03).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AlwaysAllowScope {
     #[default]
@@ -166,9 +170,13 @@ pub enum AlwaysAllowScope {
 
 impl AlwaysAllowScope {
     /// Lower case: it is rendered after "scope: ", not as a title.
+    ///
+    /// "project", not "workspace". The permission card has always said
+    /// project for the same reach, and one thing with two names in two
+    /// places is a thing the reader has to translate (PERM-03).
     pub fn label(self) -> &'static str {
         match self {
-            Self::ThisWorkspace => "this workspace",
+            Self::ThisWorkspace => "this project",
             Self::Everywhere => "everywhere",
         }
     }

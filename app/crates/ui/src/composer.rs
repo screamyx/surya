@@ -3649,9 +3649,9 @@ impl Composer {
         let Some(decision) = answer.decision() else {
             return;
         };
-        let remember = answer.remembers();
-        let rule = remember.then(|| surya_proto::RememberRule {
-            scope: surya_proto::RuleScope::Workspace,
+        // Scope from the picked row, never a constant (PERM-03).
+        let rule = answer.rule_scope().map(|scope| surya_proto::RememberRule {
+            scope,
             pattern: String::new(),
             name: None,
         });
