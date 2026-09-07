@@ -49,6 +49,26 @@ pub struct TasksPane {
     _quick_add_events: Subscription,
 }
 
+/// The error banner's painted pair: the ink, and the plane it sits on.
+///
+/// One named place on purpose. The banner used to put `danger` text on
+/// `danger_muted`, which reads like the obvious pairing and is not:
+/// `danger_muted` is opaque and close enough to `danger` in luminance that
+/// the pair measures 1.51 dark and 1.35 light, against the 4.5 text minimum.
+/// On the board's own plane it measures 7.01 and 4.76.
+///
+/// A danger tint was measured too, at 0.08, 0.12 and 0.16 alpha. Every
+/// strength failed in light, because light only has 4.76 to spend before any
+/// tint eats into it. So the banner keeps its shape with a danger hairline
+/// instead of a fill; a border is not text and carries no contrast floor.
+///
+/// Returning the pair rather than building the element keeps it measurable:
+/// `theme.rs`'s palette suite asserts THIS function, so a future change to
+/// the pair fails there rather than only in a screenshot.
+pub(crate) fn error_banner_colors(theme: &Theme) -> (gpui::Hsla, gpui::Hsla) {
+    (theme.danger, theme.bg)
+}
+
 impl TasksPane {
     /// `space` is the board (a space id); `space_name` is what the header shows.
     pub fn new(
@@ -319,6 +339,9 @@ impl Render for TasksPane {
             .enumerate()
             .map(|(ix, status)| self.render_column(ix, *status, &theme, cx))
             .collect();
+        // The pair comes from one named place so the contrast test can
+        // measure what actually paints (E2E-192).
+        let (banner_ink, banner_plane) = error_banner_colors(&theme);
         let error = self.error.clone().map(|message| {
             div()
                 .mx(px(16.0))
@@ -326,9 +349,11 @@ impl Render for TasksPane {
                 .px(px(10.0))
                 .py(px(6.0))
                 .rounded(px(8.0))
-                .bg(theme.danger_muted)
+                .bg(banner_plane)
+                .border_1()
+                .border_color(theme.danger)
                 .text_size(ui_rems(12.5))
-                .text_color(theme.danger)
+                .text_color(banner_ink)
                 .child(message)
         });
         let sheet = self.render_sheet(window.viewport_size(), window, cx);
@@ -415,4 +440,36 @@ fn spawn_watch(client: Arc<RpcClient>, space_id: String, cx: &mut Context<TasksP
             cx.background_executor().timer(RETRY).await;
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Tasks board's error banner, measured as it actually paints.
+    ///
+    /// It used to be danger text on `danger_muted`, which reads like an
+    /// obvious pairing and is not: `danger_muted` is opaque and close enough
+    /// to `danger` in luminance that the pair measured 1.51 dark and 1.35
+    /// light. The banner now puts danger text on the board's own plane and
+    /// carries a danger hairline instead.
+    ///
+    /// This measures the SHIPPED pair rather than asserting the tokens
+    /// separately, because separate tokens both look fine and the defect was
+    /// only ever in their combination.
+    #[test]
+    fn the_task_board_error_banner_is_readable_in_both_appearances() {
+        for (name, t) in [("dark", crate::theme::Theme::dark()), ("light", crate::theme::Theme::light())] {
+            // The pair the banner ACTUALLY paints, from the one place that
+            // owns it. Asserting `danger` on `bg` here instead would pass no
+            // matter what the banner did, which is how a 1.40:1 pair lived
+            // in the board for as long as it did.
+            let (ink, plane) = error_banner_colors(&t);
+            let painted = crate::theme::contrast_ratio(crate::theme::flatten(ink, plane), plane);
+            assert!(
+                painted >= 4.5,
+                "{name} task-board error banner is {painted:.2}:1, below the 4.5 text minimum"
+            );
+        }
+    }
 }
