@@ -289,18 +289,31 @@ fn open_main_window(state: gpui::Entity<state::AppState>, boot: EngineBootConfig
     // layout fails at the SMALL end, where the margins and seams eat the
     // content, and there is no other way to photograph that. Ignored unless it
     // parses; never read outside boot.
-    let (w, h) = std::env::var("SURYA_WINDOW_SIZE")
+    let forced = std::env::var("SURYA_WINDOW_SIZE")
         .ok()
         .and_then(|value| {
             let (w, h) = value.split_once(['x', 'X'])?;
             Some((w.trim().parse::<f32>().ok()?, h.trim().parse::<f32>().ok()?))
         })
-        .filter(|(w, h)| w.is_finite() && h.is_finite() && *w >= 400.0 && *h >= 300.0)
-        .unwrap_or((1320.0, 880.0));
-    let bounds = Bounds::centered(None, size(px(w), px(h)), cx);
-    cx.open_window(
+        .filter(|(w, h)| w.is_finite() && h.is_finite() && *w >= 400.0 && *h >= 300.0);
+    // Where the window was last left wins over the centred default, but not
+    // over `SURYA_WINDOW_SIZE`: that knob exists to photograph a set size, and
+    // a gallery frame must not come out at whatever rect the last session
+    // happened to end on. A saved rect that no display can still show is
+    // refused inside `settings::window::restore`, which falls back here
+    // (E2E-WIN-02).
+    let displays: Vec<_> = cx.displays().iter().map(|display| display.bounds()).collect();
+    let saved = forced
+        .is_none()
+        .then(|| settings::window::restore(settings::current(cx).window_placement, &displays))
+        .flatten();
+    let window_bounds = saved.unwrap_or_else(|| {
+        let (w, h) = forced.unwrap_or((1320.0, 880.0));
+        WindowBounds::Windowed(Bounds::centered(None, size(px(w), px(h)), cx))
+    });
+    let handle = cx.open_window(
         WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            window_bounds: Some(window_bounds),
             window_min_size: Some(size(px(900.), px(600.))),
             // `kind` is deliberately left at its default `WindowKind::Normal`
             // (gpui platform.rs WindowOptions::default), which on macOS maps
@@ -360,6 +373,24 @@ fn open_main_window(state: gpui::Entity<state::AppState>, boot: EngineBootConfig
         },
     )
     .expect("failed to open window");
+    // Remember where the window is put, so the next launch opens there.
+    // Debounced, because a mouse resize fires this on every frame of the drag
+    // and the settings file is not somewhere to write at the frame rate; the
+    // `on_app_quit` handler above calls `settings::flush`, so the last rect
+    // still reaches disk on a clean close. Nothing reads the window while it
+    // is being destroyed, which is the part that is awkward to get right on
+    // Windows.
+    handle
+        .update(cx, |_, window, cx| {
+            cx.observe_window_bounds(window, |_, window, cx| {
+                let placement = settings::window::WindowPlacement::of(window.window_bounds());
+                settings::update(settings::SavePolicy::Debounced, cx, |settings| {
+                    settings.window_placement = Some(placement);
+                });
+            })
+            .detach();
+        })
+        .expect("failed to watch window bounds");
     // Belt and braces: assert the blur once the window actually exists. The
     // `WindowOptions` value is applied during creation, before the view is
     // attached; re-pushing it here means a window is never left opaque.

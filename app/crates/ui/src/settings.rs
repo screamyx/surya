@@ -25,6 +25,7 @@ pub mod notifications;
 pub mod servers;
 pub mod shortcuts;
 pub mod widgets;
+pub mod window;
 pub mod yolo_default;
 
 /// Sidebar drag-resize bounds (px).
@@ -260,6 +261,11 @@ pub struct UiSettings {
     /// Suppress the banner while a Surya window is focused (the chime covers
     /// the foreground case).
     pub notifications_background_only: bool,
+    /// Where the window was last left, so it comes back that way
+    /// (E2E-WIN-02). `None` on a first run and whenever the saved rect is no
+    /// longer somewhere the window can be reached; see [`window::restore`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_placement: Option<window::WindowPlacement>,
     pub right_pane_width: f32,
     /// Legacy: panel *open* flags are session-scoped in-memory state now
     /// (`shell::SessionPanels`, surya `sessionPanels` parity). Kept for file
@@ -407,6 +413,7 @@ impl Default for UiSettings {
             sound_enabled: true,
             notifications_enabled: true,
             notifications_background_only: true,
+            window_placement: None,
             right_pane_width: RIGHT_PANE_DEFAULT,
             right_pane_open: false,
             terminal_height: TERMINAL_DEFAULT_HEIGHT,
@@ -949,6 +956,7 @@ mod tests {
     fn round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let settings = UiSettings {
+            window_placement: None,
             yolo_default: true,
             sidebar_width: 300.0,
             sidebar_collapsed: true,
