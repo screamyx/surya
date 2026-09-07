@@ -63,8 +63,8 @@ pub struct TasksPane {
 /// instead of a fill; a border is not text and carries no contrast floor.
 ///
 /// Returning the pair rather than building the element keeps it measurable:
-/// `theme.rs`'s palette suite asserts THIS function, so a future change to
-/// the pair fails there rather than only in a screenshot.
+/// the test at the bottom of this file asserts THIS function, so a future
+/// change to the pair fails there rather than only in a screenshot.
 pub(crate) fn error_banner_colors(theme: &Theme) -> (gpui::Hsla, gpui::Hsla) {
     (theme.danger, theme.bg)
 }
