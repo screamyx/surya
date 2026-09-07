@@ -2028,6 +2028,8 @@ impl Shell {
             (&listing.path, flow.browser_repo),
             rows.get(flow.active),
         );
+        let path = crate::pickers::normalize_project_path(&path, &device.platform);
+        let name = crate::pickers::project_name(&path, &device.platform);
         // Same (device, folder) already has a space → just switch to it. The
         // engine dedupes this case too (a createSpace for a duplicate pair
         // no-ops), so creating would leave the minted id dangling.
@@ -2036,7 +2038,7 @@ impl Shell {
             .read(cx)
             .spaces
             .iter()
-            .find(|s| s.device_id == device.id && s.path == path)
+            .find(|s| s.device_id == device.id && crate::pickers::normalize_project_path(&s.path, &device.platform) == path)
             .map(|s| s.id.clone())
         {
             self.add_space = None;
@@ -2055,7 +2057,7 @@ impl Shell {
             id: space_id.clone(),
             device_id: device.id.clone(),
             path: path.clone(),
-            name: None,
+            name: Some(name.clone()),
             git_detected,
             git_checked_at: None,
             checkout_id: None,
@@ -2072,6 +2074,7 @@ impl Shell {
             "spaceId": space_id,
             "deviceId": device.id,
             "path": path,
+            "name": name,
             "gitDetected": git_detected,
         });
         let submit_id = space_id.clone();

@@ -276,14 +276,8 @@ pub fn parent_path(path: &str) -> Option<String> {
     }
 }
 
-/// Join a listing path and an entry name.
-pub fn child_path(base: &str, name: &str) -> String {
-    if base.ends_with('/') {
-        format!("{base}{name}")
-    } else {
-        format!("{base}/{name}")
-    }
-}
+mod folder_paths;
+pub use folder_paths::{child_path, normalize_project_path, project_name};
 
 /// Byte length of `name`'s prefix matching `query`, compared char-for-char
 /// case-insensitively; `None` when `query` isn't a prefix of `name`. The
