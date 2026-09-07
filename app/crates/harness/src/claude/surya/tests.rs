@@ -310,46 +310,102 @@ mod missing_sidecar_tests {
 mod auto_allow_tests {
     use super::super::*;
 
-    #[test]
-    fn the_drawing_tools_are_allowed_and_the_rest_are_not() {
-        let cases = [
-            ("mcp__surya__show_card", true),
-            ("mcp__surya__list_cards", true),
-            // One agent reaching another never skips the prompt (decision 19).
-            ("mcp__surya__send_message", false),
-            ("Bash", false),
-            ("AskUserQuestion", false),
-            // Exact match: a lookalike is a different tool.
-            ("mcp__surya__show_card_evil", false),
-            ("mcp__surya__show_car", false),
-            ("show_card", false),
-            ("", false),
-        ];
-        let mut asked = 0;
-        let mut agreed = 0;
-        for (tool, want) in cases {
-            asked += 1;
-            if is_auto_allowed(tool) == want {
-                agreed += 1;
-            } else {
-                eprintln!("is_auto_allowed({tool:?}) != {want}");
-            }
-        }
-        assert_eq!((asked, agreed), (9, 9), "asked={asked} agreed={agreed}");
+    /// Every tool id the CLI will show the model, taken from the sidecar
+    /// itself rather than typed out again here.
+    ///
+    /// `surya-mcp` is a dev-dependency for exactly this. The old version of
+    /// this test asserted `AUTO_ALLOWED.len() == 2` under a comment promising
+    /// it would fail "if a fourth arrives". Nine more arrived, three task
+    /// tools and six browser ones, and it stayed green the whole time,
+    /// because it was counting its own list and had never looked at the
+    /// sidecar.
+    fn sidecar_tool_ids() -> Vec<String> {
+        surya_mcp::protocol::tool_definitions()
+            .as_array()
+            .expect("tool_definitions is an array")
+            .iter()
+            .map(|tool| {
+                let name = tool["name"].as_str().expect("every tool has a name");
+                format!("{TOOL_PREFIX}{name}")
+            })
+            .collect()
     }
 
-    /// The sidecar serves three tools. If a fourth arrives, this fails until
-    /// someone decides whether it is safe to draw without asking.
+    /// The whole sidecar runs without a prompt, and nothing else does.
+    ///
+    /// Stated as set equality in both directions on purpose. "Every sidecar
+    /// tool is allowed" alone would pass with a typo sitting in the list, and
+    /// "everything listed is real" alone would pass with the list empty.
     #[test]
-    fn the_allowlist_names_two_of_the_sidecars_three_tools() {
-        assert_eq!(AUTO_ALLOWED.len(), 2, "allowed={:?}", AUTO_ALLOWED);
-        assert!(
-            AUTO_ALLOWED.contains(&SHOW_CARD_TOOL),
-            "the tool the normalizer watches is one of them"
+    fn the_allowlist_is_exactly_what_the_sidecar_serves() {
+        let mut served = sidecar_tool_ids();
+        let mut allowed: Vec<String> = AUTO_ALLOWED.iter().map(|t| t.to_string()).collect();
+        served.sort();
+        allowed.sort();
+        assert_eq!(
+            served, allowed,
+            "the auto-allow list and the sidecar have drifted apart"
         );
+    }
+
+    /// The same claim from the caller's side: the harness answers yes for
+    /// every id the CLI will actually hand it.
+    #[test]
+    fn every_tool_the_sidecar_serves_runs_without_asking() {
+        let served = sidecar_tool_ids();
         assert!(
-            AUTO_ALLOWED.iter().all(|t| t.starts_with("mcp__surya__")),
-            "every allowed name is a sidecar tool: {AUTO_ALLOWED:?}"
+            served.len() >= 12,
+            "the sidecar served {}, which is fewer than the tools this list was written for: {served:?}",
+            served.len()
         );
+        let gated: Vec<&String> = served.iter().filter(|id| !is_auto_allowed(id)).collect();
+        assert!(
+            gated.is_empty(),
+            "these sidecar tools would still park the run in needs-you: {gated:?}"
+        );
+    }
+
+    /// Exact match, so a lookalike is a different tool. This is what the
+    /// list buys over a `mcp__surya__` prefix test, and it is why widening
+    /// the list did not widen the rule.
+    #[test]
+    fn a_lookalike_or_an_outsider_still_asks() {
+        let cases = [
+            // A real name with something appended, prepended, or clipped.
+            "mcp__surya__show_card_evil",
+            "mcp__surya__browser_eval_evil",
+            "mcp__surya__show_car",
+            "mcp__surya__browser_ope",
+            "evil_mcp__surya__show_card",
+            // Right name, wrong server.
+            "mcp__evil__show_card",
+            "mcp__surya_evil__show_card",
+            // The bare tool name, without the CLI's prefix.
+            "show_card",
+            "list_tasks",
+            // Whitespace is not a name.
+            "mcp__surya__show_card ",
+            " mcp__surya__show_card",
+            "",
+            // Claude Code's own tools are not surya's to allow.
+            "Bash",
+            "AskUserQuestion",
+        ];
+        let leaked: Vec<&str> = cases
+            .into_iter()
+            .filter(|tool| is_auto_allowed(tool))
+            .collect();
+        assert!(
+            leaked.is_empty(),
+            "these ran without asking and should not have: {leaked:?}"
+        );
+    }
+
+    /// The tool the app's transcript detection depends on is still in the
+    /// list, under the exact string the normalizer watches for.
+    #[test]
+    fn the_card_tool_the_normalizer_watches_is_allowed() {
+        assert!(AUTO_ALLOWED.contains(&SHOW_CARD_TOOL));
+        assert!(is_auto_allowed(SHOW_CARD_TOOL));
     }
 }

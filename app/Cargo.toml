@@ -32,6 +32,7 @@ surya-proto = { path = "crates/proto" }
 surya-doc = { path = "crates/doc" }
 surya-sync = { path = "crates/sync" }
 surya-harness = { path = "crates/harness" }
+surya-mcp = { path = "crates/mcp" }
 surya-engine = { path = "crates/engine" }
 surya-rpc = { path = "crates/rpc" }
 surya-update = { path = "crates/update" }

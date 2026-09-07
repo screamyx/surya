@@ -26,3 +26,7 @@ libc.workspace = true
 [dev-dependencies]
 tempfile.workspace = true
 surya-test-deadlines.workspace = true
+# The auto-allow list is checked against the tools the sidecar actually
+# advertises, so the two cannot drift apart. Test-only: nothing in the
+# harness links the sidecar at runtime, it launches the binary.
+surya-mcp.workspace = true

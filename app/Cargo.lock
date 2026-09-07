@@ -6959,6 +6959,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "surya-mcp",
  "surya-proto",
  "surya-test-deadlines",
  "tempfile",

@@ -49,6 +49,8 @@ CopilotKit is the candidate chat shell, not a commitment.
 Preview and tasks become MCP servers surya hands to Claude Code through its normal config.
 No fork of Claude Code, so version independence holds.
 
+- Amended 2026-09-08 01:41, owner verbatim: "yes, one pr for auto allow ALL". Every tool the surya sidecar serves runs without a permission prompt: cards, the task board, agent mail, and the browser pane. The browser tools drive the owner's own browser profile and the owner accepted that. Surya's own abilities are not the machine's; a run that stopped to ask before each `list_tasks` put a permission row where the user expected a board. This is the sidecar only, by exact tool name (`harness/src/claude/surya.rs`, `AUTO_ALLOWED`), never a `mcp__surya__` prefix, so a lookalike and any future tool still ask. Same shape as decision 31.
+
 ## 6. Preview is one shared view
 
 The app sits behind a proxy that injects a bridge script.
@@ -238,6 +240,8 @@ Cross-server mail is day one: an agent on one server messages an agent on anothe
 
 Size: one table, one `send_message` MCP tool, one delivery rule in the run loop, one CLI shim, one forwarding call, one screen.
 agb's own repo may go public; surya does not depend on it.
+
+- Amended 2026-09-08 01:41: `send_message` runs without a permission prompt, under the sidecar-wide ruling noted on decision 5. Claude Code's own `SendMessage` and `ListAgents` stay denied, so this tool is still the only way an agent reaches another.
 
 ## 20. The flows change with the research, and the look stays warm
 
