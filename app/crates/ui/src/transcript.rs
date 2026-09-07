@@ -26,6 +26,7 @@
 //! whole turn is already visible, so there is nothing to scroll to.
 
 mod attachment_strip;
+mod card_actions;
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -3646,6 +3647,7 @@ impl Transcript {
         for echo in &echoes {
             new_rows.extend(self.rows_for(echo, true));
         }
+        card_actions::project(&mut new_rows);
         // Proof counter for A2UI cards (surya): how many card parts the
         // selected chat carries against how many Card rows the row model
         // built from them. Logged only when a card is present and the
