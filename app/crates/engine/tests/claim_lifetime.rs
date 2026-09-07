@@ -118,11 +118,26 @@ async fn a_dispatch_after_the_cascade_mints_nothing_and_fails() {
         "a run started for a chat the cascade removed"
     );
 
-    // Nothing left behind either: the refusal happens before the run handle
-    // is registered, so there is no half-started run to trip over.
+    // Nothing left behind either. The refusal runs before every side effect
+    // in the dispatch, so none of them can undo the cascade's teardown on the
+    // way out.
     assert!(
         core.sessions.session_status("chat-1").is_none(),
         "a refused dispatch left a session status"
+    );
+    assert!(
+        core.sessions.last_request("chat-1").is_none(),
+        "a refused dispatch re-armed the mail fallback that drop_chat clears"
+    );
+    let transcript = core
+        .doc_host
+        .open("chat-1")
+        .ok()
+        .and_then(|h| h.doc().read_entries().ok())
+        .unwrap_or_default();
+    assert!(
+        transcript.is_empty(),
+        "a refused dispatch wrote into the purged transcript: {transcript:?}"
     );
     for _ in 0..20 {
         tokio::time::sleep(Duration::from_millis(50)).await;

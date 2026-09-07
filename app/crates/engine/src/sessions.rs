@@ -554,6 +554,22 @@ impl SessionsEngine {
             self.interrupt(chat_id).await?;
         }
 
+        // Claim BEFORE anything is written, and before the first status
+        // mirror. The command path claims in `DocHost::execute`, but mail
+        // delivery and the crash auto-resume reach here without going through
+        // it. Idempotent on an existing row; an error means the chat is
+        // deleted and this run must not start.
+        //
+        // Above `doc_handle` for a reason: that reopens the transcript
+        // `purge_chat` took, `write_user_message` below would persist into
+        // the orphaned doc, and `last_requests.insert` re-arms the mail
+        // fallback #147 clears - so a refusal landing after any of them would
+        // undo the cascade's teardown on the way out. It would also leave the
+        // next mail pump dispatching, refusing and requeuing, which aborts
+        // that pass for every agent behind this one.
+        if let Some(ws) = self.inner.workspace() {
+            ws.claim_chat(chat_id, &request.cwd)?;
+        }
         let harness = self.inner.registry.resolve(harness_id)?;
         let handle = self.doc_handle(chat_id)?;
         let user_id = message_id.unwrap_or_else(new_id);
@@ -645,14 +661,6 @@ impl SessionsEngine {
             permission,
         };
 
-        // Claim BEFORE anything is registered, so a refusal leaves nothing
-        // behind, and before the first status mirror. The command path claims
-        // in `DocHost::execute`, but mail delivery and the crash auto-resume
-        // reach here without going through it. Idempotent on an existing row;
-        // an error means the chat is gone and this run must not start.
-        if let Some(ws) = self.inner.workspace() {
-            ws.claim_chat(chat_id, &request.cwd)?;
-        }
         lock(&self.inner.runs).insert(
             chat_id.to_string(),
             RunHandle {
