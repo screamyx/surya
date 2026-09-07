@@ -9,6 +9,7 @@
 //! Child module of `shell` so it renders straight off `Shell`'s private state.
 
 use super::*;
+use super::confirm_target::confirm_path;
 use crate::pickers::{breadcrumbs, browser_rows, completion_prefix_len, parent_path};
 use gpui::FocusHandle;
 use surya_proto::{ChatIndicator, Device, DriveEntry, DriveListing, FolderListing, Space};
@@ -1925,11 +1926,17 @@ impl Shell {
         }));
     }
 
-    /// Create the space for the browser's current folder.
+    /// Create the space for the folder the confirm chord names.
+    ///
+    /// Which folder that is depends on the query - see
+    /// [`super::confirm_target`]. With a filter typed the highlighted row is
+    /// a choice and wins; with an empty query the highlight is only resting
+    /// and the browsed folder wins.
     fn submit_add_space(&mut self, cx: &mut Context<Self>) {
         let Some(engine) = self.state.read(cx).engine().cloned() else {
             return;
         };
+        let rows = self.add_space_filtered(cx);
         let Some(flow) = self.add_space.as_ref() else {
             return;
         };
@@ -1942,8 +1949,12 @@ impl Shell {
         let Some(listing) = flow.browser.ready() else {
             return;
         };
-        let path = listing.path.clone();
-        let git_detected = flow.browser_repo;
+        let query = flow.search.read(cx).text().to_string();
+        let (path, git_detected) = confirm_path(
+            &query,
+            (&listing.path, flow.browser_repo),
+            rows.get(flow.active),
+        );
         // Same (device, folder) already has a space → just switch to it. The
         // engine dedupes this case too (a createSpace for a duplicate pair
         // no-ops), so creating would leave the minted id dangling.
@@ -2085,11 +2096,12 @@ impl Shell {
                 }
             }
             // ⏎ opens the highlighted folder (an alias for →); the space is
-            // added with ⌘⏎ — and the chord acts on the folder OPEN in the
-            // breadcrumbs, not the highlight. The highlight auto-rests on the
-            // first row, so a chord that took it would add arbitrary
-            // subfolders; the usual target (a repo root full of subfolders)
-            // is only ever "the folder you're standing in".
+            // added with the confirm chord. What the chord adds depends on
+            // the query: with a filter typed it adds the HIGHLIGHTED row,
+            // which the user narrowed the list down to, and with an empty
+            // query it adds the folder OPEN in the breadcrumbs, because a
+            // resting highlight is not a choice and taking it would add an
+            // arbitrary subfolder. `super::confirm_target` holds the rule.
             popover::MenuKey::Enter => self.add_space_open_active(cx),
             popover::MenuKey::ModEnter => self.submit_add_space(cx),
             popover::MenuKey::Backspace => {
