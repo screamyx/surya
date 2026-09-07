@@ -18,6 +18,7 @@ use std::time::Duration;
 use surya_engine::{EngineCore, HarnessRegistry};
 use surya_harness::Harness;
 use surya_harness::mock::MockHarness;
+use surya_doc::MessageStatus;
 use surya_proto::{AgentEvent, DoneStatus, HarnessId, RunRequest, SandboxLevel};
 use surya_rpc::methods;
 
@@ -74,9 +75,10 @@ fn run_request(prompt: &str) -> RunRequest {
 
 /// A real restart, because that is the only place `recover_stale` runs.
 ///
-/// The cascade is driven through the workspace directly, NOT through the
-/// `deleteSpace` mutate: that path also purges the transcript and drops the
-/// run configuration, and those are what make the ordinary cascade safe.
+/// The cascade is driven through `WorkspaceHost::delete_space` directly (it
+/// commits `RegistryDoc::delete_space`), NOT through the `deleteSpace`
+/// mutate: that path also purges the transcript and drops the run
+/// configuration, and those are what make the ordinary cascade safe.
 /// Committing the row deletions while the transcript and the journal stay is
 /// precisely the state a crash between the commit and the purge leaves on
 /// disk.
@@ -109,10 +111,10 @@ async fn a_boot_resume_refuses_a_chat_with_no_row() {
             .expect("dispatch");
         tokio::time::sleep(Duration::from_millis(400)).await;
 
-        // The cascade's COMMIT, and nothing after it: `WorkspaceDoc::
-        // delete_space` tombstones the space row, the chat rows and the
-        // session rows in one go, while `purge_chat` and `drop_chat` live in
-        // the teardown task the crash is standing in for.
+        // The cascade's COMMIT, and nothing after it:
+        // `RegistryDoc::delete_space` tombstones the space row, the chat rows
+        // and the session rows in one go, while `purge_chat` and `drop_chat`
+        // live in the teardown task the crash is standing in for.
         core.workspace.delete_space("space-1").expect("delete space");
         // Both the space row and the chat tombstone have to reach disk, or
         // the restart reads a doc where none of this happened and the test
@@ -127,18 +129,48 @@ async fn a_boot_resume_refuses_a_chat_with_no_row() {
 
     // Boot again. `recover_stale` runs inside `assemble`.
     let core = assemble(dir.path());
-    tokio::time::sleep(Duration::from_secs(2)).await;
 
-    let chats = core.workspace.read_chats().unwrap_or_default();
-    let spaces = core.workspace.read_spaces().unwrap_or_default();
-    assert!(
-        chats.is_empty(),
-        "the boot resume brought a chat back: {chats:?}"
-    );
-    assert!(
-        spaces.is_empty(),
-        "the boot resume minted a project back: {spaces:?}"
-    );
+    // Wait on a positive signal from THIS boot, not on a fixed span: the same
+    // `recover_stale` pass that would have resumed also stamps the crashed
+    // streaming entry aborted, so once that stamp is visible the pass has run
+    // and the assertions below are reading a settled state. A sleep here
+    // would pass by simply not waiting long enough.
+    wait_for(
+        || {
+            core.doc_host
+                .open("chat-1")
+                .ok()
+                .and_then(|h| h.doc().read_entries().ok())
+                .is_some_and(|entries| {
+                    entries
+                        .iter()
+                        .any(|e| e.status == Some(MessageStatus::Aborted))
+                })
+        },
+        "recover_stale to stamp the crashed entry",
+    )
+    .await;
+
+    // The stamp says the pass RAN; it does not say the resume it spawns has
+    // finished, and the resurrection lands in that task. So hold a quiet
+    // window after it and fail the moment anything appears. This one is a
+    // fixed span on purpose - it asserts that nothing arrives, which is the
+    // one shape `surya_test_deadlines::WAIT` must not be used for.
+    //
+    // Sized against the unguarded run: the chat comes back well inside it.
+    for _ in 0..40 {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let chats = core.workspace.read_chats().unwrap_or_default();
+        assert!(
+            chats.is_empty(),
+            "the boot resume brought a chat back: {chats:?}"
+        );
+        let spaces = core.workspace.read_spaces().unwrap_or_default();
+        assert!(
+            spaces.is_empty(),
+            "the boot resume minted a project back: {spaces:?}"
+        );
+    }
 }
 
 /// The other side of the same coin, and the reason the guard reads the
@@ -174,4 +206,15 @@ async fn a_chat_that_never_had_a_row_is_not_a_tombstone() {
         core.workspace.chat_tombstoned("chat-1"),
         "a deleted chat must read as a tombstone"
     );
+}
+
+async fn wait_for<F: FnMut() -> bool>(mut predicate: F, what: &str) {
+    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
+    while !predicate() {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "timed out waiting for {what}"
+        );
+        tokio::time::sleep(Duration::from_millis(15)).await;
+    }
 }

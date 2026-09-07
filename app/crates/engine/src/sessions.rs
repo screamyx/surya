@@ -909,39 +909,41 @@ impl SessionsEngine {
                 let Some(host) = sessions.inner.doc_host() else {
                     return;
                 };
+                // A tombstoned chat is not revived, whichever fallback
+                // would have supplied the configuration.
+                //
+                // The journal outlives the chat: `deleteSpace` tombstones the
+                // row and purges the transcript, and nothing clears the
+                // journal, so a restart still finds this entry. Resuming it
+                // dispatches for a chat nobody has, and dispatch claims - at
+                // the journal's cwd, the removed project's, which mints the
+                // project back. The purge normally stops us earlier (no
+                // transcript, so no prompt and no fresh streaming entry, so
+                // `will_resume` is false); this covers a crash landing
+                // between the cascade's commit and its purge.
+                //
+                // A TOMBSTONE, not a missing row. The last fallback below
+                // exists because a crash can predate the debounced
+                // workspace-row write, so "no row" is also how a perfectly
+                // good revival starts. The registry tombstones rather than
+                // erases, which is what makes the two separable.
+                if sessions
+                    .inner
+                    .workspace()
+                    .is_some_and(|ws| ws.chat_tombstoned(&chat_id))
+                {
+                    tracing::debug!(
+                        chat = %chat_id,
+                        "auto-resume skipped: the chat row is a tombstone"
+                    );
+                    return;
+                }
                 let request = sessions
                     .last_request(&chat_id)
                     .or_else(|| host.request_from_chat_row(&chat_id, &prompt_text))
                     // Last resort: the journal's own cwd (surya's draft config)
                     // — a crash can predate the debounced workspace-row write.
-                    //
-                    // Not for a chat that is gone. The journal outlives the
-                    // chat: `deleteSpace` tombstones the row and purges the
-                    // transcript, and nothing clears the journal, so a
-                    // restart still finds this entry. Resuming from it
-                    // dispatches for a chat nobody has, and dispatch claims
-                    // - at this cwd, the removed project's, which mints the
-                    // project back. The purge normally stops us before here
-                    // (no transcript, so no prompt and no fresh streaming
-                    // entry, so `will_resume` is false); this covers a crash
-                    // landing between the cascade's commit and its purge.
-                    //
-                    // The two fallbacks above are already row-dependent:
-                    // `request_from_chat_row` needs the row, and
-                    // `last_request` is in-memory, so it is always empty on
-                    // the boot path this runs on.
                     .or_else(|| {
-                        if sessions
-                            .inner
-                            .workspace()
-                            .is_some_and(|ws| ws.chat_tombstoned(&chat_id))
-                        {
-                            tracing::debug!(
-                                chat = %chat_id,
-                                "auto-resume skipped: the chat row is a tombstone"
-                            );
-                            return None;
-                        }
                         let (_, cwd) = sessions.inner.journal_harness_session(&chat_id)?;
                         Some(RunRequest {
                             surya: None,
