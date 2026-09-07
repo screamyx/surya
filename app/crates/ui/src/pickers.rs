@@ -32,6 +32,7 @@ use surya_rpc::methods;
 const MAX_REF_ROWS: usize = 300;
 
 use crate::composer::{ComposerInput, ComposerInputEvent};
+use crate::model_prefetch::{ModelPrefetch, prefetch_targets};
 use crate::motion;
 use crate::popover::{self, Loadable, MenuKey};
 use crate::settings::composer::ComposerDefaults;
@@ -1017,7 +1018,7 @@ impl Pickers {
                 // Model discovery can recover after a slow/plugin-heavy ACP
                 // cold start. Revalidate on every open instead of pinning a
                 // timeout/fallback result until the application restarts.
-                self.prefetch_models(true, cx);
+                self.prefetch_models(ModelPrefetch::AllOffered, true, cx);
             }
             // Projects and devices are already synced state — nothing to load.
             PickerKind::Space | PickerKind::Device => {}
@@ -1076,31 +1077,30 @@ impl Pickers {
                     },
                     Err(err) => Loadable::Error(err.to_string()),
                 };
-                pickers.prefetch_models(false, cx);
+                pickers.prefetch_models(ModelPrefetch::Effective, false, cx);
                 cx.notify();
             })
             .ok();
         }));
     }
 
-    /// Kick a model load for the effective harness AND every offered one, in
-    /// parallel — by the time the user opens the picker (or switches rail
-    /// tabs) the lists are already there, instead of a per-selection
-    /// "Loading models…" round-trip. Each `ensure_models` call is guarded by
-    /// its slot state, so re-running this every catalog load/render is free.
-    fn prefetch_models(&mut self, force: bool, cx: &mut Context<Self>) {
-        let mut targets: Vec<HarnessId> = match self.harnesses.ready() {
+    /// Kick a model load, for the scope `scope` names.
+    ///
+    /// Asking for a harness's models resolves it on the device, and resolving
+    /// an ACP harness spawns its CLI. So the scope decides which command line
+    /// tools run and when, not just how warm a cache is. `crate::model_prefetch`
+    /// holds the rule and says why a load and a render ask for one harness
+    /// while opening the picker asks for all of them.
+    ///
+    /// Each `ensure_models` call is guarded by its slot state, so re-running
+    /// this on every catalog load and render is free.
+    fn prefetch_models(&mut self, scope: ModelPrefetch, force: bool, cx: &mut Context<Self>) {
+        let offered: Vec<HarnessId> = match self.harnesses.ready() {
             Some(list) => offered_harnesses(list).iter().map(|d| d.id).collect(),
             None => Vec::new(),
         };
-        // The committed chat's harness may be outside the offered set (e.g.
-        // disabled after the chat was created) — its models still matter.
-        if let Some(effective) = self.effective_harness(cx)
-            && !targets.contains(&effective)
-        {
-            targets.push(effective);
-        }
-        for harness in targets {
+        let effective = self.effective_harness(cx);
+        for harness in prefetch_targets(scope, &offered, effective) {
             self.ensure_models(harness, force, cx);
         }
     }
@@ -3987,11 +3987,13 @@ impl Render for Pickers {
             }
         }
 
-        // Eager-load the harness catalog + every offered harness's models so
-        // the chip reads "Fable 5" (a concrete pick) before any popover
-        // opens, and rail switches inside the picker are instant.
+        // Eager-load the harness catalog and the EFFECTIVE harness's models,
+        // so the chip reads a concrete pick before any popover opens. The
+        // other harnesses wait for the picker to open: prefetching them here
+        // spawned every installed agent CLI merely because a window existed
+        // (see `crate::model_prefetch`).
         self.ensure_harnesses(false, cx);
-        self.prefetch_models(false, cx);
+        self.prefetch_models(ModelPrefetch::Effective, false, cx);
         // A popover opened data-side (SURYA_OPEN_PICKER) never went through
         // `toggle`, so kick its loads here (all ensure_* are idempotent).
         if matches!(

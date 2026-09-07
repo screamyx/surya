@@ -37,6 +37,7 @@ pub mod files;
 pub mod frost;
 pub mod history;
 pub mod icons;
+pub mod model_prefetch;
 pub mod inbox;
 pub mod key_chips;
 pub mod links;
