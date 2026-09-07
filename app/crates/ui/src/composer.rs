@@ -7,6 +7,8 @@
 //! pending-input detection) lives in free functions/structs with unit tests;
 //! the gpui element only feeds them measurements.
 
+mod surfaces;
+
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
@@ -6392,7 +6394,7 @@ impl Render for Composer {
                         .rounded(px(12.0))
                         .border_1()
                         .border_color(border_c)
-                        .bg(wash)
+                        .bg(surfaces::notice_background(&theme, wash))
                         .px(px(12.0))
                         .py(px(8.0))
                         .text_size(crate::typography::ui_rems(12.0))
@@ -6555,7 +6557,7 @@ impl Render for Composer {
         // border-white/[0.08] bg-white/[0.03] shadow-xl` — a floating pill with
         // a hairline over a faint wash, never a solid grey box. Picker chips,
         // attach, and the send circle all live INSIDE the pill.
-        let pill_bg = theme.input_glass_bg();
+        let pill_bg = surfaces::pill_background(&theme);
         // No drop shadow on glass: it paints BEHIND the translucent fill and
         // shows through as an inner glow (theme.rs's card_selected_shadows
         // lesson; user report).
