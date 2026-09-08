@@ -119,7 +119,7 @@ pub fn stage_file(path: &Path) -> Result<StagedAttachment, String> {
     let (name, data) = if let Some(format) = format_by_extension(path) {
         (
             ensure_extension(&name, format),
-            StagedData::Image(Arc::new(Image::from_bytes(format, bytes))),
+            StagedData::Image(super::image_bytes::image_from_bytes(format, bytes)),
         )
     } else {
         if bytes.contains(&0) || std::str::from_utf8(&bytes).is_err() {

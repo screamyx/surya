@@ -11,6 +11,9 @@
 //! `(deviceId, path)`, seeded locally after a send so own bubbles never
 //! round-trip).
 
+mod image_bytes;
+use image_bytes::image_from_bytes;
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -292,7 +295,7 @@ pub async fn read_attachment_image(
         } else {
             name
         },
-        image: Arc::new(Image::from_bytes(format, bytes)),
+        image: image_from_bytes(format, bytes),
     })
 }
 
