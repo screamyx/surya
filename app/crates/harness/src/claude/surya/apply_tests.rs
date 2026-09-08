@@ -2,6 +2,10 @@
 //!
 //! Its own file because `tests.rs` would cross the 500-line rule with it.
 use super::*;
+// Not through `use super::*`: this is tokio's Command, the one `apply_files`
+// takes, and it used to arrive here only because `surya.rs` happened to
+// import it for its own use.
+use tokio::process::Command;
 
 fn options(binary: &Path) -> SuryaOptions {
     SuryaOptions {

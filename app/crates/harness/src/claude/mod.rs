@@ -242,7 +242,7 @@ impl ClaudeHarness {
         // prompt append, the identity marker and the single mail channel.
         // Only when the caller asked for them, so every other harness and
         // every test spawns exactly the command it did before. The flags
-        // themselves live in `surya.rs`, next to the files they name.
+        // themselves live in `surya/apply.rs`.
         if let Some(options) = &request.surya {
             surya::apply(&mut cmd, options, &request.cwd);
         }
