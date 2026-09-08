@@ -3529,8 +3529,6 @@ impl EventEmitter<ComposerEvent> for Composer {}
 /// What the failure notice should do after an `add_paths` batch.
 #[derive(Debug, PartialEq, Eq)]
 enum BatchNotice {
-    /// Say why files were left out.
-    Show(String),
     /// The batch was wholly good: take down whatever the last one left up.
     Clear,
     /// Say nothing and change nothing. A read failure has already written its
@@ -3542,27 +3540,21 @@ enum BatchNotice {
 ///
 /// `add_staged` deliberately does not touch `self.failure` - it is also the
 /// paste and drop path - so if this returned only a message, a good pick after
-/// a bad one would stage the image underneath a stale red chip about the last
+/// a bad one would stage the file underneath a stale red chip about the last
 /// one. That is why `Clear` exists and why the decision is here rather than
 /// split between the loop and the staging.
 ///
 /// `Clear` is not narrow: `self.failure` is one field and the engine notices
 /// write it too ("Not connected to an engine.", and the global "Engine not
-/// connected" that `send` leaves with a null `failure_key`). So a good image
+/// connected" that `send` leaves with a null `failure_key`). So a good file
 /// pick also takes one of those down. That is deliberate and it follows the
 /// precedent a successful send already sets, which clears the field outright:
 /// a notice about a past failure should not outlive an action that plainly
 /// worked. It costs nothing either, since the next send re-raises it.
-fn batch_notice(staged: usize, skipped: usize, failed: bool) -> BatchNotice {
+fn batch_notice(staged: usize, failed: bool) -> BatchNotice {
     if failed {
         // `add_paths` already wrote the read failure's own message.
         return BatchNotice::Leave;
-    }
-    if skipped > 0 {
-        return BatchNotice::Show(format!(
-            "Attach images ({}) or UTF-8 text files",
-            attachments::supported_extensions()
-        ));
     }
     if staged > 0 {
         return BatchNotice::Clear;
@@ -6765,59 +6757,14 @@ impl Render for Composer {
 mod tests {
     use super::*;
 
-    /// A non-image used to vanish without a word: the picker closed, nothing
-    /// staged, no notice, which reads exactly like a click that never landed
-    /// (e2e E2E-CHAT-01).
-    ///
-    /// This covers the pure decision, not `add_paths` itself: the workspace has
-    /// no gpui test context, so nothing here drives a real `Context<Composer>`.
-    /// What it does pin is every outcome that decision has. asked=6 passed=6.
+    /// A later successful batch clears stale errors; a rejected file keeps
+    /// its specific error visible even when other files in that batch stage.
     #[test]
-    fn a_batch_says_why_files_were_left_out_and_clears_up_after_the_last_one() {
-        // (staged, skipped, failed) -> what the notice does
-        assert_eq!(batch_notice(1, 0, false), BatchNotice::Clear, "all images");
-        // An empty batch. The picker cannot produce one - it returns None on
-        // cancel and never calls in - but the drop and paste paths can, and
-        // nothing having happened must change nothing on screen.
-        assert_eq!(batch_notice(0, 0, false), BatchNotice::Leave, "empty batch");
-        // The bug: one .txt, nothing staged, and the old code said nothing.
-        assert!(
-            matches!(batch_notice(0, 1, false), BatchNotice::Show(_)),
-            "a lone non-image must be refused out loud"
-        );
-        // The mixed pick. This is the case the helper could not see before it
-        // took a staged count: the png stages AND the notice still explains
-        // the .txt.
-        assert!(
-            matches!(batch_notice(1, 1, false), BatchNotice::Show(_)),
-            "a mixed pick stages its images and still explains the rest"
-        );
-        // A read failure wrote its own, more specific message. Leave it up.
-        assert_eq!(batch_notice(0, 1, true), BatchNotice::Leave, "read failure");
-        // And the wart this decision also fixes: a good pick after a bad one
-        // must take the stale chip down, which `add_staged` will not do.
-        assert_eq!(batch_notice(2, 0, false), BatchNotice::Clear, "recovery");
-    }
-
-    /// The message has to name the extensions the staging check actually takes,
-    /// and name them so the reader can tell `tif` from `tiff` - a bare
-    /// `contains("tif")` is satisfied by `tiff` and would pass on a table that
-    /// had lost the short spelling.
-    #[test]
-    fn the_notice_names_every_extension_the_table_accepts() {
-        let BatchNotice::Show(notice) = batch_notice(0, 1, false) else {
-            panic!("a skipped file must produce a notice");
-        };
-        let listed = notice
-            .rsplit_once('(')
-            .and_then(|(_, tail)| tail.split_once(')').map(|(list, _)| list))
-            .expect("the notice carries the list in parentheses");
-        let listed: Vec<&str> = listed.split(", ").collect();
-        assert_eq!(
-            listed,
-            ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "tif", "tiff"],
-            "notice list drifted from attachments::BY_EXTENSION"
-        );
+    fn attachment_batches_clear_stale_errors_but_keep_current_failures() {
+        assert_eq!(batch_notice(1, false), BatchNotice::Clear);
+        assert_eq!(batch_notice(0, false), BatchNotice::Leave);
+        assert_eq!(batch_notice(0, true), BatchNotice::Leave);
+        assert_eq!(batch_notice(1, true), BatchNotice::Leave);
     }
 
     /// The press intent is judged by eye everywhere except here: that a

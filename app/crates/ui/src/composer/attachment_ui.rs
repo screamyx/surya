@@ -16,12 +16,7 @@ impl Composer {
                 }
             }
         }
-        match batch_notice(staged.len(), 0, failed) {
-            BatchNotice::Show(notice) => {
-                self.failure = Some(notice.into());
-                self.failure_key = Some(self.current_key.clone());
-                cx.notify();
-            }
+        match batch_notice(staged.len(), failed) {
             BatchNotice::Clear => {
                 self.failure = None;
                 self.failure_key = None;
