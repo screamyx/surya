@@ -146,7 +146,7 @@ mod tests {
         assert!(!dir.path().join("renamed.txt").exists());
     }
 
-        #[test]
+    #[test]
     fn a_taken_name_is_refused_in_words_not_an_errno() {
         let dir = tempfile::tempdir().unwrap();
         let jail = Jail::new(dir.path()).unwrap();
@@ -162,7 +162,7 @@ mod tests {
         assert_eq!(err, "notes.txt already exists. Choose another name.");
     }
 
-#[test]
+    #[test]
     fn actions_refuse_outside_paths_roots_directories_and_git_metadata() {
         let dir = tempfile::tempdir().unwrap();
         let jail = Jail::new(dir.path()).unwrap();
