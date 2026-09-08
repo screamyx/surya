@@ -12,6 +12,7 @@
 
 mod derive;
 mod permissions;
+mod spawns;
 
 #[cfg(test)]
 mod tests;

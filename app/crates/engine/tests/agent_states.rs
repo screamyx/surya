@@ -421,6 +421,16 @@ async fn a_subagent_frame_makes_a_child_that_rolls_up() {
     let child_row = row(&rows, child);
     assert_eq!(child_row.parent_id.as_deref(), Some("chat-1"));
     assert_eq!(child_row.chat_id, "chat-1", "the tap opens the parent chat");
+    // The name the spawn gave itself reaches the row. This is the assertion
+    // that covers `sessions.rs`: without the `note_spawn` call there, nothing
+    // in production ever passes a label, the child's label is `None` and the
+    // tree shows "Untitled". The tests in `spawns.rs` call `note_spawn`
+    // directly, so they pass either way.
+    assert_eq!(
+        child_row.label.as_deref(),
+        Some("scan the repo"),
+        "the child carries the name its spawn gave it"
+    );
     assert_eq!(
         child_row.state,
         AgentState::NeedsYou {
