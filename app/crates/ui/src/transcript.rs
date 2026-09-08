@@ -1158,11 +1158,6 @@ fn assistant_copy_text(entry: &SessionMessageEntry) -> Option<SharedString> {
     (!text.is_empty()).then(|| text.into())
 }
 
-/// Build the block rows of one (already continuation-joined) entry.
-///
-/// `parse` maps `(part_key, text)` to a block tree — the entity supplies
-/// incremental parsers for live parts and a cache for complete ones; tests pass
-/// a plain `parse_full`.
 /// Assemble one chat's rows: every entry, then the optimistic echoes, then
 /// the cross-entry passes that no single entry can do on its own.
 ///
@@ -1197,6 +1192,11 @@ fn assemble_rows(
     rows
 }
 
+/// Build the block rows of one (already continuation-joined) entry.
+///
+/// `parse` maps `(part_key, text)` to a block tree — the entity supplies
+/// incremental parsers for live parts and a cache for complete ones; tests pass
+/// a plain `parse_full`.
 pub fn rows_for_entry(
     entry: &SessionMessageEntry,
     pending: bool,
