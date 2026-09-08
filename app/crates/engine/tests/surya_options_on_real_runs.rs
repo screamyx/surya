@@ -10,7 +10,8 @@
 //! This test holds the seam shut from the engine side. The harness records
 //! the request it was handed and the assertions read it back.
 
-use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -25,6 +26,26 @@ use surya_proto::{
 
 const CHAT: &str = "chat-surya-options";
 const CWD: &str = "/repo/checkout";
+
+/// A private `SURYA_DATA_DIR` for every test in this binary.
+///
+/// The card store defaults to `~/.surya` when this is unset, which is also
+/// where it resolved BEFORE surya#226. A test that leaves it unset therefore
+/// passes on the unfixed engine and proves nothing. Setting it is what makes
+/// the assertion below fail if `card_store` stops following the data
+/// directory.
+///
+/// Written exactly once and read by every test before it dispatches: libtest
+/// runs a binary's tests as threads in one process, so the write has to happen
+/// ahead of every read rather than inside one test.
+static DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+    let dir = std::env::temp_dir().join(format!("surya-options-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("private data dir");
+    // SAFETY: written once, before any test in this binary reads the
+    // environment, and this binary sets no other variable.
+    unsafe { std::env::set_var("SURYA_DATA_DIR", &dir) };
+    dir
+});
 
 /// Keeps every request it is asked to run.
 struct RecordingHarness {
@@ -123,6 +144,7 @@ async fn dispatched_request(prompt: &str) -> RunRequest {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_user_run_carries_the_surya_block() {
+    let data_dir = &*DATA_DIR;
     let request = dispatched_request("compare A and B in a table").await;
 
     let options: SuryaOptions = request
@@ -133,11 +155,19 @@ async fn a_user_run_carries_the_surya_block() {
     assert_eq!(options.agent_id, CHAT);
     // The workspace doubles as the sidecar's catalog root.
     assert_eq!(options.workspace, CWD);
-    // One card file per chat, under the data dir.
+    // One card file per chat, under the data dir. The prefix is the point
+    // (surya#226): revert `card_store` to `surya_home_dir()` and this fails,
+    // because the store then hangs off `$HOME` whatever the data directory
+    // says, and two engines under one OS user share it.
     let store = options.card_store.expect("card store");
     assert!(
         store.ends_with(&format!("cards/{CHAT}.jsonl")),
         "card_store={store}"
+    );
+    assert!(
+        std::path::Path::new(&store).starts_with(data_dir),
+        "the card store hangs off SURYA_DATA_DIR: card_store={store} data_dir={}",
+        data_dir.display()
     );
     // Left to the harness, which looks beside the executable then on PATH -
     // which is where the installer now puts it.
@@ -154,6 +184,7 @@ async fn a_user_run_carries_the_surya_block() {
 /// block, and it must be the user's.
 #[tokio::test(flavor = "multi_thread")]
 async fn only_the_user_run_carries_it() {
+    let _ = &*DATA_DIR;
     let tmp = tempfile::tempdir().expect("tempdir");
     let seen: Arc<Mutex<Vec<RunRequest>>> = Arc::default();
     let registry = HarnessRegistry::new();
@@ -203,6 +234,7 @@ async fn only_the_user_run_carries_it() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn live_a_real_claude_run_gets_the_card_tool_and_loses_send_message() {
+    let _ = &*DATA_DIR;
     let tmp = tempfile::tempdir().expect("tempdir");
     let cwd = tmp.path().join("workspace");
     std::fs::create_dir_all(&cwd).expect("workspace");

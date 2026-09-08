@@ -387,9 +387,16 @@ fn read_tail(path: &Path, bytes: u64) -> std::io::Result<String> {
 
 /// Where the sidecar was told to write cards for this run. Mirrors the
 /// sidecar's own defaulting so the harness reads the file the sidecar wrote.
+///
+/// The default hangs off `SURYA_DATA_DIR` (surya#226), as the sidecar's mail
+/// defaults already do. A default only one side moves means the harness reads
+/// a file nobody wrote, which is silence rather than an error.
 pub fn card_store(options: &SuryaOptions) -> PathBuf {
     if let Some(path) = options.card_store.as_ref().filter(|p| !p.is_empty()) {
         return PathBuf::from(path);
+    }
+    if let Some(dir) = std::env::var_os("SURYA_DATA_DIR").filter(|v| !v.is_empty()) {
+        return PathBuf::from(dir).join("cards.jsonl");
     }
     match std::env::var_os("HOME") {
         Some(home) => PathBuf::from(home).join(".surya").join("cards.jsonl"),

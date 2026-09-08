@@ -12,7 +12,7 @@
 //! The engine fills this in, not the app: these are all host paths, and the
 //! app may be on another machine entirely.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use surya_proto::SuryaOptions;
 
@@ -20,14 +20,25 @@ use crate::mail::MailIngressPaths;
 
 /// Where a run's shown cards are recorded for the app to read back.
 ///
-/// One file per chat under `~/.surya`. That used to be the root the mail
-/// ingress resolved, which is what decision 14 recorded; since #224 the mail
-/// paths default under `SURYA_DATA_DIR` and this one does not follow them.
-/// So the card store is now per-OS-user while mail is per-engine, and two
-/// engines under one user share it. Tracked separately; decision 14 carries
-/// the amendment.
+/// One file per chat under the engine's data directory, the same root the
+/// mail channel resolves: `SURYA_DATA_DIR`, else `~/.surya`. It used to be
+/// `~/.surya` whatever the data directory said, so two engines under one OS
+/// user appended to one file per shared chat id and each showed the other's
+/// cards (surya#226). Decision 14 records the move, and that files written
+/// at the old path are left there and not read.
 fn card_store(chat_id: &str) -> PathBuf {
-    crate::mail::surya_home_dir()
+    card_store_under(&crate::mail::data_dir(), chat_id)
+}
+
+/// [`card_store`] with the data directory named rather than resolved.
+///
+/// Split out so the layout and the move are testable without setting
+/// `SURYA_DATA_DIR`. libtest runs a binary's tests as threads in one process,
+/// so a test that writes the environment is read by its siblings. The one
+/// place in this crate that does it, `tests/mail_ingress_paths.rs`, is alone
+/// in its binary for that reason.
+fn card_store_under(data_dir: &Path, chat_id: &str) -> PathBuf {
+    data_dir
         .join("cards")
         .join(format!("{}.jsonl", safe_name(chat_id)))
 }
@@ -93,13 +104,38 @@ mod tests {
 
     #[test]
     fn the_card_store_is_one_file_per_chat_even_with_a_slash_in_the_id() {
-        let store = card_store("space/chat-7");
+        let store = card_store_under(Path::new("/data"), "space/chat-7");
         assert_eq!(
-            store.file_name().and_then(|n| n.to_str()),
-            Some("space-chat-7.jsonl"),
+            store,
+            Path::new("/data/cards/space-chat-7.jsonl"),
             "a slash must not turn the store into a directory"
         );
-        assert_eq!(store.parent().and_then(|p| p.file_name()), Some("cards".as_ref()));
+    }
+
+    /// surya#226. Two engines under one OS user each get their own data
+    /// directory; before this they appended to one file per shared chat id
+    /// and each showed the other's cards.
+    #[test]
+    fn two_data_directories_are_two_card_stores() {
+        let one = card_store_under(Path::new("/data/one"), "chat-7");
+        let two = card_store_under(Path::new("/data/two"), "chat-7");
+        assert_ne!(
+            one, two,
+            "the same chat id under two data directories must not share a file"
+        );
+        assert_eq!(one, Path::new("/data/one/cards/chat-7.jsonl"));
+        assert_eq!(two, Path::new("/data/two/cards/chat-7.jsonl"));
+    }
+
+    /// The wiring, not the layout: the resolved store hangs off the same root
+    /// the mail channel resolves, so `SURYA_DATA_DIR` moves both together.
+    /// Reads the environment, never writes it, so it cannot race a sibling.
+    #[test]
+    fn the_resolved_card_store_hangs_off_the_engine_data_dir() {
+        assert_eq!(
+            card_store("chat-7"),
+            crate::mail::data_dir().join("cards").join("chat-7.jsonl")
+        );
     }
 
     #[test]

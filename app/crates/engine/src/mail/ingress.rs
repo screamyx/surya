@@ -67,7 +67,7 @@ fn env_path(key: &str) -> Option<PathBuf> {
 }
 
 /// The engine's data directory, which is what makes one engine's mail channel
-/// its own.
+/// and its card store its own.
 ///
 /// Both defaults hang off this. They used to hang off the machine: the socket
 /// off `$XDG_RUNTIME_DIR` and the jsonl off `$HOME`, neither of which moves
@@ -79,7 +79,7 @@ fn env_path(key: &str) -> Option<PathBuf> {
 /// The sidecar resolves this identically. It has to: it writes what this
 /// reads, and a default only one side moves is silent mail loss, which is the
 /// failure `detect` above is written to avoid.
-fn data_dir() -> PathBuf {
+pub(crate) fn data_dir() -> PathBuf {
     env_path("SURYA_DATA_DIR").unwrap_or_else(surya_home_dir)
 }
 

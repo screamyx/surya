@@ -30,7 +30,7 @@ pub use envelope::{MailAddress, MailMessage, MailState};
 pub use ingress::{MailIngress, MailIngressPaths};
 pub use origin::MessageOrigin;
 pub use preview::text as preview;
-pub(crate) use ingress::surya_home_dir;
+pub(crate) use ingress::data_dir;
 pub use rpc::MailRpc;
 pub use store::{MAX_DELIVERY_ATTEMPTS, MailStore, MailStoreError};
 

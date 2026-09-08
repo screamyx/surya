@@ -15,7 +15,7 @@ The six built-in shapes are generic, and a repo can add its own under `.surya/ca
    |  1. reads the prompt append + the surya-cards skill
    |  2. calls mcp__surya__show_card({ card: {...} })
    v
- surya-mcp (sidecar)            writes one JSON line -->  ~/.surya/cards.jsonl
+ surya-mcp (sidecar)            writes one JSON line -->  <data dir>/cards.jsonl
    |  returns card_id                                      (the card store)
    v
  harness (engine)               on the tool result, reads that line by tool_use_id
@@ -125,7 +125,10 @@ On every accepted call the sidecar expands the short form into A2UI messages and
 }
 ```
 
-The store is `~/.surya/cards.jsonl` unless the run sets another path (`harness/src/claude/surya.rs:390`).
+The store is `<data dir>/cards.jsonl` unless the run sets another path
+(`harness/src/claude/surya.rs:394`). The data dir is `SURYA_DATA_DIR`, else `~/.surya`.
+A real run always sets the path: the engine hands it one file per chat,
+`<data dir>/cards/<chat id>.jsonl` (decision 14, surya#226).
 When the file passes 8 MB it is renamed to `cards.jsonl.1` and a fresh one starts (`mcp/src/config.rs:114-137`).
 The tool answers the agent with the `card_id`, and the card is already on screen.
 
