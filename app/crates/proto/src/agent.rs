@@ -152,6 +152,13 @@ pub struct SuryaOptions {
     /// The daemon's mail socket. Mail falls back to a log file without it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mail_socket: Option<String>,
+    /// The daemon's mail log, the fallback the socket falls back TO, and on
+    /// Windows the only route there is. Named explicitly for the same reason
+    /// the socket is: the sidecar writes what the engine reads, and the two
+    /// agreeing by accident is what broke when an engine moved its data
+    /// directory (surya#216).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mail_log: Option<String>,
     /// The A2UI catalog id cards declare. Defaults to the basic catalog.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalog_id: Option<String>,

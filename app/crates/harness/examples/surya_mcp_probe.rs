@@ -24,6 +24,7 @@ fn main() {
         mcp_binary: Some(binary),
         card_store: Some(card_store),
         mail_socket: Some("/nonexistent/surya-probe.sock".into()),
+        mail_log: Some("/nonexistent/surya-probe.jsonl".into()),
         catalog_id: None,
     };
     let cwd = std::env::current_dir().unwrap();

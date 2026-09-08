@@ -13,6 +13,7 @@ mod prepare_tests {
             mcp_binary: Some(binary.to_string_lossy().into()),
             card_store: Some("/var/surya/cards.jsonl".into()),
             mail_socket: None,
+            mail_log: None,
             catalog_id: None,
         }
     }
@@ -33,6 +34,27 @@ mod prepare_tests {
             server["env"].get("SURYA_MAIL_SOCKET").is_none(),
             "an unset option leaves the sidecar on its own default"
         );
+        assert!(
+            server["env"].get("SURYA_MAIL_LOG").is_none(),
+            "and the same for the log"
+        );
+    }
+
+    /// The engine names both halves of the mail channel, so the sidecar writes
+    /// where this engine reads without depending on inheriting SURYA_DATA_DIR
+    /// (surya#216).
+    #[test]
+    fn the_sidecar_is_told_both_mail_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let binary = dir.path().join("surya-mcp");
+        std::fs::write(&binary, "").unwrap();
+        let mut options = options(&binary);
+        options.mail_socket = Some("/var/surya/engine-a/mail.sock".into());
+        options.mail_log = Some("/var/surya/engine-a/mail.jsonl".into());
+        let config = mcp_config(&binary, &options, "/repo");
+        let env = &config["mcpServers"]["surya"]["env"];
+        assert_eq!(env["SURYA_MAIL_SOCKET"], "/var/surya/engine-a/mail.sock");
+        assert_eq!(env["SURYA_MAIL_LOG"], "/var/surya/engine-a/mail.jsonl");
     }
 
     #[test]
@@ -261,6 +283,7 @@ mod missing_sidecar_tests {
             mcp_binary: Some(binary.to_string()),
             card_store: None,
             mail_socket: None,
+            mail_log: None,
             catalog_id: None,
         }
     }

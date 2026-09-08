@@ -168,6 +168,7 @@ Because a workspace card is JSON, an agent working in that repo can add a new ca
 Escape hatch, not day one: a built and installed surya plugin for a visual the primitives cannot express.
 
 Shown cards are recorded one file per chat, at `~/.surya/cards/<chat id>.jsonl` - the same root the mail ingress resolves, not the headless engine's data dir - and the engine hands that path to the agent on every real run (2026-09-06). There was no prior convention - the app reads whichever path the run carries - so this is the choice, written down rather than left implicit.
+Amended 2026-09-08 (#224): the mail ingress no longer resolves that root. Both mail paths default under `SURYA_DATA_DIR`, so one engine's mail channel is its own. The card store still uses `~/.surya`, which now matches nothing else and means two engines under one OS user share it. That is a separate defect with its own issue, not a thing this sentence should keep describing as deliberate.
 
 ## 15. Rail and agent tree
 

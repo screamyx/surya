@@ -482,11 +482,13 @@ impl EngineCore {
     }
 
     /// Open the mail channel the surya-mcp seat writes to: a unix socket at
-    /// `$XDG_RUNTIME_DIR/surya/mail.sock` and an appended `~/.surya/mail.jsonl`.
+    /// `<data dir>/mail.sock` and an appended `<data dir>/mail.jsonl`.
     ///
-    /// Started by the runtime, never by [`EngineCore::assemble`]: the socket
-    /// path is per-user, not per-engine, so a test assembling its own core in a
-    /// temp dir must not race the real one for it.
+    /// Started by the runtime, never by [`EngineCore::assemble`]: both paths
+    /// default under the engine's data directory now, but a test assembling
+    /// its own core inherits whatever `SURYA_MAIL_SOCKET` or `SURYA_DATA_DIR`
+    /// the process was started with, and must not race the real engine for a
+    /// channel it did not mean to open.
     pub fn start_mail_ingress(&self, paths: MailIngressPaths) {
         let ingress = MailIngress::start(self.mail.clone(), paths);
         *self

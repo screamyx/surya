@@ -230,6 +230,7 @@ fn mcp_config(binary: &Path, options: &SuryaOptions, cwd: &str) -> Value {
     for (key, value) in [
         ("SURYA_CARD_STORE", &options.card_store),
         ("SURYA_MAIL_SOCKET", &options.mail_socket),
+        ("SURYA_MAIL_LOG", &options.mail_log),
         ("SURYA_CATALOG_ID", &options.catalog_id),
     ] {
         if let Some(value) = value.as_ref().filter(|v| !v.is_empty()) {

@@ -3,12 +3,12 @@
 //! The MCP server's `send_message` tool writes one JSON record per message.
 //! Two ways in, both live at once:
 //!
-//! - a unix socket, `$SURYA_MAIL_SOCKET` else `$XDG_RUNTIME_DIR/surya/mail.sock`
-//!   — one JSON object per line, the reply is
+//! - a unix socket, `$SURYA_MAIL_SOCKET` else `<data dir>/mail.sock` - one
+//!   JSON object per line, the reply is
 //!   `{"ids":[...],"recipients":[...]}`. Unix only;
-//! - an append-only file, `$SURYA_MAIL_LOG` else `~/.surya/mail.jsonl`, tailed
-//!   from its end so a restart does not redeliver history. Always on, and the
-//!   only way in on Windows.
+//! - an append-only file, `$SURYA_MAIL_LOG` else `<data dir>/mail.jsonl`,
+//!   tailed from its end so a restart does not redeliver history. Always on,
+//!   and the only way in on Windows.
 //!
 //! Both paths resolve exactly as the sidecar resolves them; see
 //! [`MailIngressPaths::detect`].
@@ -51,11 +51,10 @@ impl MailIngressPaths {
     /// arrives over the jsonl file, which is why the file half is not an
     /// optional fallback.
     pub fn detect() -> Self {
-        let socket = cfg!(unix).then(|| {
-            env_path("SURYA_MAIL_SOCKET").unwrap_or_else(|| runtime_dir().join("mail.sock"))
-        });
+        let socket = cfg!(unix)
+            .then(|| env_path("SURYA_MAIL_SOCKET").unwrap_or_else(|| data_dir().join("mail.sock")));
         let jsonl =
-            Some(env_path("SURYA_MAIL_LOG").unwrap_or_else(|| surya_home_dir().join("mail.jsonl")));
+            Some(env_path("SURYA_MAIL_LOG").unwrap_or_else(|| data_dir().join("mail.jsonl")));
         Self { socket, jsonl }
     }
 }
@@ -65,6 +64,23 @@ fn env_path(key: &str) -> Option<PathBuf> {
     std::env::var_os(key)
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
+}
+
+/// The engine's data directory, which is what makes one engine's mail channel
+/// its own.
+///
+/// Both defaults hang off this. They used to hang off the machine: the socket
+/// off `$XDG_RUNTIME_DIR` and the jsonl off `$HOME`, neither of which moves
+/// when you give an engine a private `SURYA_DATA_DIR`. Two engines under one
+/// OS user therefore shared both channels (surya#216), and on Windows, where
+/// there is no socket, the jsonl file was the only route and they shared all
+/// of it.
+///
+/// The sidecar resolves this identically. It has to: it writes what this
+/// reads, and a default only one side moves is silent mail loss, which is the
+/// failure `detect` above is written to avoid.
+fn data_dir() -> PathBuf {
+    env_path("SURYA_DATA_DIR").unwrap_or_else(surya_home_dir)
 }
 
 /// `$XDG_RUNTIME_DIR/surya`, else a temp dir suffixed with our uid.
@@ -190,14 +206,14 @@ fn start_socket(mail: Mail, path: PathBuf) -> std::io::Result<tokio::task::JoinH
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    // A stale socket file from a crashed engine would refuse the bind.
-    let _ = std::fs::remove_file(&path);
-    let listener = tokio::net::UnixListener::bind(&path)?;
+    let (listener, ownership) = super::socket::bind(&path)?;
+    let listener = tokio::net::UnixListener::from_std(listener)?;
     // Owner-only, set explicitly. `$XDG_RUNTIME_DIR` is 0700 on a normal
     // system, but the fallback paths are not, and mail is not public.
     restrict(&path);
     tracing::info!(path = %path.display(), "mail socket listening");
     Ok(tokio::spawn(async move {
+        let _ownership = ownership;
         loop {
             let Ok((stream, _)) = listener.accept().await else {
                 break;
