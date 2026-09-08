@@ -185,9 +185,15 @@ mod tests {
     #[test]
     fn the_agents_row_never_takes_the_selected_fill() {
         // The bug in #212 was the Agents row wearing the same selected fill
-        // as a destination. This is the guard, and it only guards anything
-        // because `rail_selected` owns every rail row's fill: put
-        // `agents_shown` back at the Agents call site and this fails.
+        // as a destination. This is the guard: change agents: false to
+        // agents: agents_shown in the body above and both this and
+        // tree_visibility_moves_no_rail_fill_at_all fail. What it does NOT
+        // cover is the call site - render_rail_entries still has
+        // agents_shown in scope for the Shown label, so passing it to
+        // entry("rail-agents", ..) instead of lit.agents compiles clean and
+        // stays green. Shell cannot be constructed in a test, so no unit
+        // test can read a call site; keeping every row on lit.* is the
+        // convention that closes that gap, not this assertion.
         for active in [None, Some(RightSurface::Tasks), Some(RightSurface::Files)] {
             for inbox_on in [true, false] {
                 for agents_shown in [true, false] {
