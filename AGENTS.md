@@ -69,6 +69,7 @@ cd crates/browser && cargo test               # the browser crate is its own wor
 - Squash leaves no trace in git that a branch merged, so `git branch --merged` and `git branch -r --contains` both call a landed branch unmerged.
   `app/scripts/stale-worktrees.sh` asks GitHub instead: it force-fetches `refs/pull/*/head`, reads each PR's state through gh-axi, and prints one verdict per worktree (REMOVE, EDITS, OPEN-PR, CLOSED-PR, PUSHED, UNPUSHED, OTHER-UID).
   It is a dry run by default. `--remove` deletes only the REMOVE and ON-MAIN rows this uid owns; a top folder under root-owned `/store/agent-worktrees` is left empty for `sudo rmdir`.
+- After a merge batch, run `app/scripts/stale-worktrees.sh` once and remove what it marks REMOVE. It is a manual step, not a hook: squash merges happen on GitHub, so no local git event fires, and the EDITS rows need a person to decide.
 - A UI change ships with a Windows winbox screenshot in the PR or the gallery (decision 28). A Linux shot is smoke, not proof.
 
 ## CI and git
