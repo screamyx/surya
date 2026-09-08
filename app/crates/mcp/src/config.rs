@@ -82,7 +82,7 @@ impl Config {
             workspace: env_string("SURYA_WORKSPACE"),
             workspace_root,
             card_store: env_path("SURYA_CARD_STORE")
-                .unwrap_or_else(|| home_dir().join("cards.jsonl")),
+                .unwrap_or_else(|| data_dir().join("cards.jsonl")),
             mail_socket: env_path("SURYA_MAIL_SOCKET")
                 .unwrap_or_else(|| data_dir().join("mail.sock")),
             mail_log: env_path("SURYA_MAIL_LOG").unwrap_or_else(|| data_dir().join("mail.jsonl")),
