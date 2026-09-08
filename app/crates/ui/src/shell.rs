@@ -30,6 +30,7 @@ use surya_rpc::methods;
 use crate::changes::{Changes, ChangesEvent};
 use crate::composer::{Composer, ComposerEvent, ComposerInput, ComposerInputEvent};
 use crate::icons::{self, icon};
+use crate::inbox::rules::RulesPane;
 use crate::loaders;
 use crate::motion::{self, AnimationExt as _, MotionSpec, RESIZE, SPLASH_OUT, TAB_SLIDE};
 use crate::popover::{self, Loadable};
@@ -65,6 +66,8 @@ mod demo_seed;
 mod focus;
 mod folder_load;
 mod spaces;
+mod settings_routes;
+pub use settings_routes::SettingsSection;
 mod tab_press;
 mod tabs;
 
@@ -484,50 +487,6 @@ pub fn apply_keymap(cx: &mut App, keymap: &KeymapConfig) {
     crate::files::bind_save_keys(cx);
     // After every bind, so the probe reads the map that shipped.
     log_keymap_proof(cx, &toggle_terminal, &toggle_files);
-}
-
-/// The settings sections (feature-inventory §1.5 routes).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SettingsSection {
-    Devices,
-    /// Remote engines this app can drive over the network.
-    Servers,
-    /// Which harnesses the composer offers (enable/disable toggles).
-    Harnesses,
-    /// Per-provider CLI accounts (login, usage) — labeled "Accounts".
-    Agents,
-    Appearance,
-    Notifications,
-    Shortcuts,
-    Archived,
-}
-
-impl SettingsSection {
-    pub const ALL: [SettingsSection; 8] = [
-        SettingsSection::Devices,
-        SettingsSection::Servers,
-        SettingsSection::Harnesses,
-        SettingsSection::Agents,
-        SettingsSection::Appearance,
-        SettingsSection::Notifications,
-        SettingsSection::Shortcuts,
-        SettingsSection::Archived,
-    ];
-
-    /// Sidebar + header label (surya settings-sidebar.tsx SECTIONS / __root.tsx
-    /// `settingsTitle` — the same strings in both places).
-    pub fn label(self) -> &'static str {
-        match self {
-            SettingsSection::Devices => "Devices",
-            SettingsSection::Servers => "Servers",
-            SettingsSection::Harnesses => "Agents",
-            SettingsSection::Agents => "Accounts",
-            SettingsSection::Appearance => "Appearance",
-            SettingsSection::Notifications => "Notifications",
-            SettingsSection::Shortcuts => "Shortcuts",
-            SettingsSection::Archived => "Archived sessions",
-        }
-    }
 }
 
 /// What the main outlet shows.
@@ -1280,6 +1239,7 @@ pub struct Shell {
     servers_page: Option<Entity<ServersPage>>,
     servers_sub: Option<Subscription>,
     archived_page: Option<Entity<ArchivedPage>>,
+    approval_rules_page: Option<Entity<RulesPane>>,
     appearance_page: Option<Entity<AppearancePage>>,
     notifications_page: Option<Entity<NotificationsPage>>,
     shortcuts_page: Option<Entity<ShortcutsPage>>,
@@ -1516,6 +1476,7 @@ impl Shell {
             Some("settings/appearance") => Route::Settings(SettingsSection::Appearance),
             Some("settings/notifications") => Route::Settings(SettingsSection::Notifications),
             Some("settings/shortcuts") => Route::Settings(SettingsSection::Shortcuts),
+            Some("settings/approval-rules") => Route::Settings(SettingsSection::ApprovalRules),
             Some("settings/archived") => Route::Settings(SettingsSection::Archived),
             // `new` pins the new-chat canvas (suppresses boot auto-select).
             Some("new") => {
@@ -1601,6 +1562,7 @@ impl Shell {
             servers_page: None,
             servers_sub: None,
             archived_page: None,
+            approval_rules_page: None,
             appearance_page: None,
             notifications_page: None,
             shortcuts_page: None,
@@ -3172,6 +3134,9 @@ impl Shell {
         if section == SettingsSection::Harnesses {
             self.harnesses_page = None;
         }
+        if section == SettingsSection::ApprovalRules {
+            self.approval_rules_page = None;
+        }
         self.route = Route::Settings(section);
         self.nav.push(NavEntry::Settings(section));
         self.close_user_menu(cx);
@@ -3212,150 +3177,15 @@ impl Shell {
                 }
             }
             NavEntry::Settings(section) => {
+                if section == SettingsSection::ApprovalRules {
+                    self.approval_rules_page = None;
+                }
                 self.route = Route::Settings(section);
             }
         }
         self.close_user_menu(cx);
         self.close_chat_menu(cx);
         cx.notify();
-    }
-
-    /// Lazily create the entity for a settings section and return it renderable.
-    fn settings_outlet(&mut self, section: SettingsSection, cx: &mut Context<Self>) -> AnyElement {
-        match section {
-            SettingsSection::Devices => {
-                if self.devices_page.is_none() {
-                    let state = self.state.clone();
-                    self.devices_page = Some(cx.new(|cx| DevicesPage::new(state, cx)));
-                }
-                match &self.devices_page {
-                    Some(page) => page.clone().into_any_element(),
-                    None => Empty.into_any_element(),
-                }
-            }
-            SettingsSection::Servers => {
-                if self.servers_page.is_none() {
-                    let state = self.state.clone();
-                    let servers = self.settings.servers.clone();
-                    let active = self.settings.active_server.clone();
-                    let page = cx.new(|cx| ServersPage::new(state, servers, active, cx));
-                    self.servers_sub = Some(cx.subscribe(
-                        &page,
-                        |this: &mut Shell, _, event: &ServersEvent, cx| match event {
-                            ServersEvent::Changed { servers, active } => {
-                                this.settings.servers = servers.clone();
-                                this.settings.active_server = active.clone();
-                                this.schedule_save(cx);
-                                cx.notify();
-                            }
-                            ServersEvent::Connect(target) => {
-                                this.switch_engine(target.clone(), cx);
-                            }
-                        },
-                    ));
-                    self.servers_page = Some(page);
-                }
-                match &self.servers_page {
-                    Some(page) => page.clone().into_any_element(),
-                    None => Empty.into_any_element(),
-                }
-            }
-            SettingsSection::Harnesses => {
-                if self.harnesses_page.is_none() {
-                    let state = self.state.clone();
-                    self.harnesses_page = Some(cx.new(|cx| HarnessesPage::new(state, cx)));
-                }
-                match &self.harnesses_page {
-                    Some(page) => page.clone().into_any_element(),
-                    None => Empty.into_any_element(),
-                }
-            }
-            SettingsSection::Agents => {
-                if self.accounts_page.is_none() {
-                    let state = self.state.clone();
-                    self.accounts_page = Some(cx.new(|cx| AccountsPage::new(state, cx)));
-                }
-                match &self.accounts_page {
-                    Some(page) => page.clone().into_any_element(),
-                    None => Empty.into_any_element(),
-                }
-            }
-            SettingsSection::Appearance => {
-                if self.appearance_page.is_none() {
-                    self.appearance_page = Some(cx.new(AppearancePage::new));
-                }
-                match &self.appearance_page {
-                    Some(page) => page.clone().into_any_element(),
-                    None => Empty.into_any_element(),
-                }
-            }
-            SettingsSection::Notifications => {
-                if self.notifications_page.is_none() {
-                    let page = cx.new(|cx| {
-                        NotificationsPage::new(
-                            self.settings.sound_enabled,
-                            self.settings.notifications_enabled,
-                            self.settings.notifications_background_only,
-                            cx,
-                        )
-                    });
-                    // Persist the flags whenever the page flips one.
-                    self.notifications_sub = Some(cx.subscribe(
-                        &page,
-                        |this: &mut Shell, _, event: &NotificationsEvent, cx| {
-                            let NotificationsEvent::Changed {
-                                sound,
-                                desktop,
-                                background_only,
-                            } = *event;
-                            this.settings.sound_enabled = sound;
-                            this.settings.notifications_enabled = desktop;
-                            this.settings.notifications_background_only = background_only;
-                            this.schedule_save(cx);
-                            cx.notify();
-                        },
-                    ));
-                    self.notifications_page = Some(page);
-                }
-                match &self.notifications_page {
-                    Some(page) => page.clone().into_any_element(),
-                    None => Empty.into_any_element(),
-                }
-            }
-            SettingsSection::Shortcuts => {
-                if self.shortcuts_page.is_none() {
-                    let state = self.state.clone();
-                    let keymap = self.settings.keymap.clone();
-                    let page = cx.new(|cx| ShortcutsPage::new(state, keymap, cx));
-                    // Persist + re-apply the keymap whenever the page changes it.
-                    self.shortcuts_sub = Some(cx.subscribe(
-                        &page,
-                        |this: &mut Shell, _, event: &ShortcutsEvent, cx| {
-                            let ShortcutsEvent::Changed(keymap) = event;
-                            this.settings.keymap = keymap.clone();
-                            apply_keymap(cx, keymap);
-                            this.schedule_save(cx);
-                            cx.notify();
-                        },
-                    ));
-                    self.shortcuts_page = Some(page);
-                }
-                match &self.shortcuts_page {
-                    Some(page) => page.clone().into_any_element(),
-                    None => Empty.into_any_element(),
-                }
-            }
-            SettingsSection::Archived => {
-                if self.archived_page.is_none() {
-                    let state = self.state.clone();
-                    self.archived_page = Some(cx.new(|cx| ArchivedPage::new(state, cx)));
-                }
-                match &self.archived_page {
-                    Some(page) => page.clone().into_any_element(),
-                    None => Empty.into_any_element(),
-                }
-            }
-        }
     }
 
     // ---- sidebar mutations ----
@@ -4845,6 +4675,7 @@ impl Shell {
             SettingsSection::Servers => icons::GLOBAL,
             SettingsSection::Harnesses => icons::WIDGET,
             SettingsSection::Agents => icons::KEY_MINIMALISTIC,
+            SettingsSection::ApprovalRules => icons::KEY_MINIMALISTIC,
             SettingsSection::Appearance => icons::TUNING,
             SettingsSection::Notifications => icons::BELL,
             SettingsSection::Shortcuts => icons::KEYBOARD,
