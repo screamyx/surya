@@ -186,6 +186,8 @@ pub mod methods {
     pub const FILES_READ: &str = "FilesRead";
     /// `{spaceId, path, content, expectedHash?}` -> `FileWrite`; refused on a stale hash.
     pub const FILES_WRITE: &str = "FilesWrite";
+    /// Create, rename or delete one regular file inside a project.
+    pub const FILES_MUTATE: &str = "FilesMutate";
     /// `{spaceId, query}` -> fuzzy relative-path matches (name match only).
     pub const FILES_SEARCH: &str = "FilesSearch";
     // Terminals (ControlRpc, relay-forwardable; SubscribeTerminal streams).

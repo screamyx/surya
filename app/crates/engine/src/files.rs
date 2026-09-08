@@ -12,6 +12,8 @@
 //!
 //! All functions are blocking; callers run them on the blocking pool.
 
+pub mod mutations;
+
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 

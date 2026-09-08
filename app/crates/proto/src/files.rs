@@ -193,3 +193,19 @@ pub struct FileNameSearchParams {
     pub space_id: String,
     pub query: String,
 }
+
+/// File-tree actions, each against a path relative to the project root.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum FileMutation {
+    Create { path: String },
+    Rename { path: String, #[serde(rename = "newPath")] new_path: String },
+    Delete { path: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileMutationParams {
+    pub space_id: String,
+    pub action: FileMutation,
+}

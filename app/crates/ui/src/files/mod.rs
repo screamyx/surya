@@ -7,6 +7,8 @@
 //! [`model`] + [`tree`]; `editor.rs` (tabs, conflict, take-theirs /
 //! keep-mine) is [`editor`] with one document instead of tabs.
 
+mod actions;
+pub use actions::FileAction;
 pub mod demo;
 pub mod editor;
 pub mod editor_doc;
@@ -135,6 +137,10 @@ pub struct FilesPane {
     pub tree: Entity<FileTreeView>,
     pub editor: Entity<FileEditor>,
     tree_width: f32,
+    engine: EngineHandle,
+    space_id: String,
+    action_form: Option<actions::ActionForm>,
+    action_focus: FocusHandle,
     _tree_events: Subscription,
 }
 
@@ -146,9 +152,10 @@ impl FilesPane {
 
     pub fn new(engine: EngineHandle, space_id: String, cx: &mut Context<Self>) -> Self {
         let tree = cx.new(|cx| FileTreeView::new(engine.clone(), space_id.clone(), cx));
-        let editor = cx.new(|cx| FileEditor::new(engine, space_id, cx));
+        let editor = cx.new(|cx| FileEditor::new(engine.clone(), space_id.clone(), cx));
         let editor_for_tree = editor.clone();
-        let tree_events = cx.subscribe(&tree, move |_this: &mut Self, _, event, cx| match event {
+        let tree_events = cx.subscribe(&tree, move |this: &mut Self, _, event, cx| match event {
+            TreeEvent::Action(action) => this.begin_action(action.clone(), cx),
             TreeEvent::Open(path) => {
                 let path = path.clone();
                 editor_for_tree.update(cx, |editor, cx| editor.open(path, cx));
@@ -159,6 +166,10 @@ impl FilesPane {
             tree,
             editor,
             tree_width: 240.0,
+            engine,
+            space_id,
+            action_form: None,
+            action_focus: cx.focus_handle(),
             _tree_events: tree_events,
         }
     }
@@ -171,7 +182,8 @@ impl Focusable for FilesPane {
 }
 
 impl Render for FilesPane {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(form) = self.render_action(window, cx) { return form; }
         let theme = Theme::of(cx);
         div()
             .flex()
@@ -186,6 +198,7 @@ impl Render for FilesPane {
                     .child(self.tree.clone()),
             )
             .child(div().flex_1().min_w_0().h_full().child(self.editor.clone()))
+            .into_any_element()
     }
 }
 
