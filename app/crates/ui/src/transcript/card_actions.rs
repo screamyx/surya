@@ -16,7 +16,7 @@ pub(super) fn project(rows: &mut [Row]) {
             RowKind::Card { card_id, card } => {
                 cards.insert(card_id.to_string(), card.clone());
             }
-            RowKind::User { text, .. } => {
+            RowKind::User { text, mentions, .. } => {
                 let Some(action) = CardAction::parse_wire(text) else {
                     continue;
                 };
@@ -28,6 +28,11 @@ pub(super) fn project(rows: &mut [Row]) {
                     .unwrap_or_else(|| "Card selection sent.".into());
                 row.version = fnv1a(acknowledgement.as_bytes()) << 1 | (row.version & 1);
                 *text = acknowledgement.into();
+                // The spans were measured against the wire string we just
+                // replaced. `user_bubble_text` turns each `span.range` into a
+                // `TextRun` over the new, shorter text, so a stale span can
+                // run off its end. Nothing in an acknowledgement is a mention.
+                *mentions = Arc::default();
                 row.copy_text = Some(text.clone());
             }
             _ => {}
@@ -226,5 +231,50 @@ mod tests {
             wire.contains("private-id"),
             "stored protocol was not mutated"
         );
+    }
+
+    #[test]
+    fn rewriting_the_text_drops_the_spans_measured_against_the_old_one() {
+        // `user_bubble_text` turns every `span.range` into a `TextRun` over
+        // the row's text. The wire string is longer than any acknowledgement,
+        // so a span kept across the rewrite can run past the end of the new
+        // string. Nothing in an acknowledgement is a mention anyway.
+        let wire = CardAction {
+            card_id: "private-id".into(),
+            action: "choose".into(),
+            payload: json!({"fruit":"apples"}),
+        }
+        .to_wire();
+        let stale = crate::composer::SentMentionSpan {
+            range: wire.len() - 4..wire.len(),
+            path: "notes.md".into(),
+            is_dir: false,
+        };
+        let mut rows = vec![
+            row(RowKind::Card {
+                card_id: "private-id".into(),
+                card: Arc::new(card()),
+            }),
+            row(RowKind::User {
+                text: wire.clone().into(),
+                mentions: Arc::new(vec![stale.clone()]),
+                attachments: Arc::default(),
+                badges: Arc::default(),
+                pending: false,
+            }),
+        ];
+        project(&mut rows);
+        let RowKind::User {
+            text, mentions, ..
+        } = &rows[1].kind
+        else {
+            panic!("user row")
+        };
+        assert_eq!(text.as_ref(), "Selected: Choose apples");
+        assert!(
+            stale.range.end > text.len(),
+            "the stale span has to outrun the new text for this test to mean anything"
+        );
+        assert!(mentions.is_empty(), "stale spans survived the rewrite");
     }
 }

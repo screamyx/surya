@@ -1163,6 +1163,40 @@ fn assistant_copy_text(entry: &SessionMessageEntry) -> Option<SharedString> {
 /// `parse` maps `(part_key, text)` to a block tree — the entity supplies
 /// incremental parsers for live parts and a cache for complete ones; tests pass
 /// a plain `parse_full`.
+/// Assemble one chat's rows: every entry, then the optimistic echoes, then
+/// the cross-entry passes that no single entry can do on its own.
+///
+/// `rows_for` is `Transcript::rows_for` in the app and a stub in the tests.
+/// The two cross-entry passes live here, not in `rows_for_entry`:
+///
+/// - the Retry prompt, because a stopped turn's prompt sits in the entry
+///   BEFORE it and `rows_for`'s cache is keyed on one entry alone, so a value
+///   derived from a neighbour has no business in it (E2E-CHAT-03);
+/// - the card-reply projection, because a reply's label lives on a card row
+///   contributed by an earlier entry.
+fn assemble_rows(
+    entries: &[SessionMessageEntry],
+    echoes: &[SessionMessageEntry],
+    mut rows_for: impl FnMut(&SessionMessageEntry, bool) -> Vec<Row>,
+) -> Vec<Row> {
+    let mut rows: Vec<Row> = Vec::new();
+    for entry in entries {
+        let before = rows.len();
+        rows.extend(rows_for(entry, false));
+        if retry::is_retryable(entry.status)
+            && let Some(prompt) = retry::prompt_before(entries, &entry.id)
+            && let Some(last) = rows[before..].last_mut()
+        {
+            last.retry_prompt = Some(prompt.into());
+        }
+    }
+    for echo in echoes {
+        rows.extend(rows_for(echo, true));
+    }
+    card_actions::project(&mut rows);
+    rows
+}
+
 pub fn rows_for_entry(
     entry: &SessionMessageEntry,
     pending: bool,
@@ -3628,26 +3662,9 @@ impl Transcript {
             self.stop_selection_scroll();
         }
 
-        let mut new_rows: Vec<Row> = Vec::new();
-        for entry in &entries {
-            let before = new_rows.len();
-            new_rows.extend(self.rows_for(entry, false));
-            // A stopped turn carries the prompt its Retry would re-send.
-            // Set HERE rather than inside `rows_for`, which is handed one
-            // entry and cannot look back for the prompt - and whose row
-            // cache is keyed on that entry alone, so a value derived from a
-            // neighbour has no business in it (E2E-CHAT-03).
-            if retry::is_retryable(entry.status)
-                && let Some(prompt) = retry::prompt_before(&entries, &entry.id)
-                && let Some(last) = new_rows[before..].last_mut()
-            {
-                last.retry_prompt = Some(prompt.into());
-            }
-        }
-        for echo in &echoes {
-            new_rows.extend(self.rows_for(echo, true));
-        }
-        card_actions::project(&mut new_rows);
+        let mut new_rows = assemble_rows(&entries, &echoes, |entry, pending| {
+            self.rows_for(entry, pending)
+        });
         // Proof counter for A2UI cards (surya): how many card parts the
         // selected chat carries against how many Card rows the row model
         // built from them. Logged only when a card is present and the
@@ -6760,6 +6777,62 @@ mod tests {
             continuation_of: None,
             source: None,
         }
+    }
+
+    #[test]
+    fn a_card_reply_is_projected_once_every_entry_has_contributed_its_rows() {
+        // The label lives on a Card row built from an EARLIER entry, so the
+        // projection can only run over the assembled list. Delete the
+        // `card_actions::project` call from `assemble_rows` and the raw wire
+        // string is back in the bubble: this is the test for that call site,
+        // not for `project` itself.
+        let action = surya_proto::CardAction {
+            card_id: "private-id".into(),
+            action: "choose".into(),
+            payload: serde_json::json!({"fruit": "apples"}),
+        };
+        let card = assistant(
+            "a1",
+            MessageStatus::Complete,
+            vec![MessagePart::Card {
+                id: "p1".into(),
+                card_id: "private-id".into(),
+                surface_id: "s1".into(),
+                a2ui: Some(vec![serde_json::json!({"updateComponents": {
+                    "surfaceId": "s1",
+                    "components": [
+                        {"id": "root", "component": "Column", "children": ["apples"]},
+                        {"id": "apples", "component": "Button", "child": "a",
+                         "action": {"event": {"name": "choose", "context": {"fruit": "apples"}}}},
+                        {"id": "a", "component": "Text", "text": "Choose apples"}
+                    ]
+                }})]),
+                a2ui_ref: None,
+                a2ui_bytes: None,
+            }],
+        );
+        let wire = action.to_wire();
+        let reply = SessionMessageEntry {
+            id: "u1".into(),
+            role: MessageRole::User,
+            parts: vec![text_part("p2", &wire)],
+            created_at: 0,
+            device_id: "dev".into(),
+            status: None,
+            continuation_of: None,
+            source: None,
+        };
+
+        let rows = assemble_rows(&[card, reply], &[], |entry, pending| {
+            rows_for_entry(entry, pending, &mut parse)
+        });
+        let last = rows.last().expect("the reply row");
+        let RowKind::User { text, .. } = &last.kind else {
+            panic!("the last row is the reply")
+        };
+        assert_eq!(text.as_ref(), "Selected: Choose apples");
+        assert_eq!(last.copy_text.as_deref(), Some("Selected: Choose apples"));
+        assert!(wire.contains("private-id"), "the stored wire is untouched");
     }
 
     fn text_part(id: &str, text: &str) -> MessagePart {
