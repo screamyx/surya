@@ -211,6 +211,12 @@ mod tests {
     fn saved_approval_rules_are_reachable_from_settings() {
         assert!(SettingsSection::ALL.contains(&SettingsSection::ApprovalRules));
         assert_eq!(SettingsSection::ApprovalRules.label(), "Approval rules");
+        // The page headline and the sidebar row are the same words: the page
+        // has no other title, so a drift here leaves the section unnamed.
+        assert_eq!(
+            SettingsSection::ApprovalRules.label(),
+            RulesPane::PAGE_TITLE
+        );
         let mut nav = NavHistory::new(NavEntry::Settings(SettingsSection::ApprovalRules));
         nav.push(NavEntry::Settings(SettingsSection::Devices));
         assert_eq!(

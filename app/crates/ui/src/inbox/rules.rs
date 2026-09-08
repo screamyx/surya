@@ -11,6 +11,7 @@ use surya_rpc::methods;
 
 use crate::inbox::chrome::{ButtonTone, body_text, button, command_text, empty_state, row_card};
 use crate::inbox::model::AlwaysAllowScope;
+use crate::settings::widgets;
 use crate::state::AppState;
 use crate::theme::Theme;
 use crate::typography::ui_rems;
@@ -24,6 +25,11 @@ pub struct RulesPane {
 }
 
 impl RulesPane {
+    /// The settings page this pane is. Kept next to the render so the sidebar
+    /// row and the page headline cannot drift apart (the test in
+    /// `shell::settings_routes` pins them together).
+    pub const PAGE_TITLE: &'static str = "Approval rules";
+
     pub fn new(state: Entity<AppState>, cx: &mut Context<Self>) -> Self {
         let mut pane = Self {
             state: Some(state),
@@ -182,33 +188,49 @@ impl RulesPane {
 impl Render for RulesPane {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let rules = self.rules.clone();
+        let count = rules.len();
         let cards: Vec<gpui::AnyElement> =
             rules.iter().map(|rule| self.render_rule(rule, cx)).collect();
         let empty = cards.is_empty();
-        let theme = Theme::of(cx);
+        let theme = Theme::of(cx).clone();
         div()
             .id("rules-pane")
             .size_full()
             .overflow_y_scroll()
-            .flex()
-            .flex_col()
-            .gap(px(8.0))
-            .p(px(12.0))
-            .when_some(self.failure.clone(), |el, failure| {
-                el.child(
-                    div()
-                        .text_size(ui_rems(12.0))
-                        .text_color(theme.danger)
-                        .child(failure),
-                )
-            })
-            .when(empty, |el| {
-                el.child(empty_state(
-                    theme,
-                    "No always-allow rules. Every tool asks first.",
-                ))
-            })
-            .children(cards)
+            .child(
+                widgets::page_column()
+                    .child(widgets::page_header(
+                        &theme,
+                        Self::PAGE_TITLE,
+                        (count > 0).then_some(count),
+                    ))
+                    .child(widgets::page_subtitle(
+                        &theme,
+                        "Tools this device runs without asking. Revoking one puts the card \
+                         back.",
+                    ))
+                    .when_some(self.failure.clone(), |el, failure| {
+                        el.child(widgets::error_strip(&theme, failure))
+                    })
+                    .when(empty, |el| {
+                        el.child(
+                            div().mt(px(24.0)).child(empty_state(
+                                &theme,
+                                "No always-allow rules. Every tool asks first.",
+                            )),
+                        )
+                    })
+                    .when(!empty, |el| {
+                        el.child(
+                            div()
+                                .mt(px(24.0))
+                                .flex()
+                                .flex_col()
+                                .gap(px(8.0))
+                                .children(cards),
+                        )
+                    }),
+            )
     }
 }
 
