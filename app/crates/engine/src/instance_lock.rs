@@ -16,9 +16,17 @@ use crate::EngineError;
 
 /// Held lock on the data dir. Dropping it (engine shutdown / process exit)
 /// releases the advisory lock; a crash releases it too (kernel-owned).
+///
+/// Release goes through an explicit `LOCK_UN`, not just the close in `Drop`.
+/// A flock belongs to the OPEN FILE DESCRIPTION, so any process that inherited
+/// this descriptor across a fork holds the lock alive until it closes it, and
+/// closing our own copy is not enough. `LOCK_UN` on any one of those
+/// descriptors drops the lock at once, which makes release deterministic.
 #[derive(Debug)]
 pub struct InstanceLock {
-    _file: File,
+    // Read only by the unix `Drop` below; elsewhere it just has to stay open.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    file: File,
 }
 
 impl InstanceLock {
@@ -77,7 +85,7 @@ impl InstanceLock {
         let _ = file.set_len(0);
         let _ = write!(file, "{}", std::process::id());
         let _ = file.flush();
-        Ok(Self { _file: file })
+        Ok(Self { file })
     }
 
     /// Best-effort liveness probe: the pid stamped by the engine currently holding
@@ -121,6 +129,26 @@ impl InstanceLock {
     }
 }
 
+impl Drop for InstanceLock {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::io::AsRawFd;
+            // Closing alone releases the lock only once EVERY descriptor for
+            // this open file description is closed, and a fork in any thread
+            // of this process duplicates it: `git` spawns, harness children,
+            // anything between fork and its CLOEXEC-at-exec. Those copies kept
+            // the lock alive for milliseconds after shutdown, so the next
+            // engine start burned its retry budget against a dead one, and the
+            // holder probe reported a pid that had already gone.
+            //
+            // `LOCK_UN` is not subject to that: it drops the lock from the
+            // description itself, whoever else still has a handle on it.
+            unsafe { libc::flock(self.file.as_raw_fd(), libc::LOCK_UN) };
+        }
+    }
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
@@ -138,6 +166,39 @@ mod tests {
         InstanceLock::acquire(dir.path()).expect_err("still held after probe");
         drop(lock);
         assert_eq!(InstanceLock::holder(dir.path()), None, "released");
+    }
+
+    /// The flake this file was fixed for (issue #180), made deterministic.
+    ///
+    /// `dup` hands back a second descriptor for the same open file
+    /// description, which is exactly what a fork leaves behind. With one of
+    /// those outstanding, closing our own descriptor does NOT release the
+    /// flock, so before the explicit `LOCK_UN` in `Drop` the probe below saw
+    /// the lock still held and reported the pid of a lock that was gone.
+    ///
+    /// Measured on Linux with a standalone program mirroring acquire, release
+    /// and probe. With a child forked between release and probe, close-only
+    /// misreported a holder on the first cycle of every run; `LOCK_UN` then
+    /// close ran 6000 cycles clean. Without the fork, close-only was clean
+    /// too, which is what pins the cause on the inherited descriptor rather
+    /// than on the close.
+    #[test]
+    fn dropping_the_lock_releases_it_even_with_a_forked_copy_of_the_fd() {
+        use std::os::unix::io::AsRawFd;
+        let dir = tempfile::tempdir().unwrap();
+        let lock = InstanceLock::acquire(dir.path()).expect("acquire");
+        // Stands in for the descriptor a concurrent fork inherited.
+        let inherited = unsafe { libc::dup(lock.file.as_raw_fd()) };
+        assert!(inherited >= 0, "dup failed");
+
+        drop(lock);
+        let holder = InstanceLock::holder(dir.path());
+        unsafe { libc::close(inherited) };
+
+        assert_eq!(
+            holder, None,
+            "a descriptor another process inherited must not keep the lock alive"
+        );
     }
 
     #[test]
