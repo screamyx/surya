@@ -13,17 +13,16 @@ use surya_proto::{
     UserInputAnswer,
 };
 
-fn fixture_path() -> PathBuf {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+/// The checked-in fixture tree. Every program these tests exec lives here,
+/// so no test ever writes one; see `tests/exec_race.rs` for why that matters.
+fn fixtures() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
-        .join("fake-acp.sh");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-    }
-    path
+}
+
+fn fixture_path() -> PathBuf {
+    fixtures().join("fake-acp.sh")
 }
 
 fn harness() -> AcpHarness {
@@ -560,14 +559,11 @@ async fn hung_handshake_errors_instead_of_spinning_forever() {
     // An agent that consumes stdin and never answers initialize — the
     // "thinking for minutes, then nothing" startup class (issue #93). The
     // run must end with a Done that names the timeout, not hang.
-    use std::os::unix::fs::PermissionsExt;
-    let dir = tempfile::tempdir().unwrap();
-    let script = dir.path().join("hung-agent.sh");
-    // sleep inherits the stdio pipes and holds them open without ever
-    // answering — a true wedge, not a crash.
-    std::fs::write(&script, "#!/bin/sh\nexec sleep 1000\n").unwrap();
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-
+    // The wedge is a checked-in fixture, not a file this test writes. A test
+    // that writes a program and execs it races every sibling test's fork for
+    // the write fd, and Linux answers the exec with ETXTBSY. See
+    // `tests/exec_race.rs`.
+    let script = fixtures().join("acp").join("hung-agent.sh");
     let harness = AcpHarness::grok()
         .with_executable(&script)
         .with_handshake_timeout(Duration::from_millis(300));
@@ -828,70 +824,16 @@ async fn grok_subagent_lifecycle_tails_the_disk_transcript_into_tagged_events() 
 
 #[cfg(unix)]
 fn devin_fixture() -> (tempfile::TempDir, AcpHarness) {
-    use std::os::unix::fs::PermissionsExt;
     let dir = tempfile::tempdir().unwrap();
+    // The script reads and writes its siblings (`state`, `probes`,
+    // `refreshed`, `prompted`) through `Path(__file__).parent`, so it has to
+    // sit in this temp dir. It is SYMLINKED in rather than written: python
+    // resolves `__file__` to the path it was invoked by, so the parent is
+    // still this directory, and nothing ever opens the program itself for
+    // writing. Writing a program and execing it is what made the harness
+    // suite flaky; see `tests/exec_race.rs`.
     let script = dir.path().join("devin.py");
-    std::fs::write(
-        &script,
-        r#"#!/usr/bin/env python3
-import json, pathlib, sys, threading, time
-root = pathlib.Path(__file__).parent
-
-def emit(frame):
-    print(json.dumps(dict(jsonrpc='2.0', **frame)), flush=True)
-
-def config(model):
-    return [{'id':'model', 'category':'model', 'type':'select',
-             'currentValue':'gpt-old', 'options':[{'value':model, 'name':model}]}]
-
-if sys.argv[1:] == ['models', 'list', '--format', 'json']:
-    with (root / 'probes').open('a') as f: f.write('probe\n')
-    state = (root / 'state').read_text()
-    if state == 'hang': time.sleep(60)
-    if state == 'error':
-        print('account unavailable', file=sys.stderr)
-        sys.exit(1)
-    time.sleep(0.1)
-    print(json.dumps({'families':[{'variants':[{'model_uid':state, 'label':state}]}]}))
-    sys.exit(0)
-assert sys.argv[1:] == ['acp'], sys.argv
-selected = None
-
-def refresh():
-    # An unrelated session must not satisfy the requested-model wait.
-    emit({'method':'session/update', 'params':{'sessionId':'other', 'update':{
-        'sessionUpdate':'config_option_update', 'configOptions':config('gpt-new')}}})
-    time.sleep(0.1)
-    (root / 'refreshed').touch()
-    emit({'method':'session/update', 'params':{'sessionId':'s-1', 'update':{
-        'sessionUpdate':'config_option_update', 'configOptions':config('gpt-new')}}})
-
-for line in sys.stdin:
-    req = json.loads(line)
-    method = req.get('method')
-    result = {}
-    if method == 'initialize': result = {'protocolVersion':1, 'agentCapabilities':{}}
-    elif method == 'session/new':
-        result = {'sessionId':'s-1', 'configOptions':config('gpt-old')}
-    elif method == 'session/set_config_option':
-        selected = req['params']['value']
-        assert (root / 'refreshed').exists(), 'selected before own session refreshed'
-        if (root / 'state').read_text() == 'reject':
-            emit({'id':req['id'], 'error':{'code':-32602, 'message':'model unavailable'}})
-            continue
-        assert selected == 'gpt-new', selected
-    elif method == 'session/prompt':
-        (root / 'prompted').write_text(selected or 'default')
-        result = {'stopReason':'end_turn'}
-    early = (root / 'state').read_text() == 'early'
-    if method == 'session/new' and early: refresh()
-    emit({'id':req['id'], 'result':result})
-    if method == 'session/new' and not early: threading.Thread(target=refresh, daemon=True).start()
-    if method == 'session/prompt': break
-"#,
-    )
-    .unwrap();
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::os::unix::fs::symlink(fixtures().join("acp").join("devin.py"), &script).unwrap();
     std::fs::write(dir.path().join("state"), "gpt-old").unwrap();
     let harness = AcpHarness::devin().with_executable(script);
     (dir, harness)

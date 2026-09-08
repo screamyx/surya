@@ -1,0 +1,4 @@
+# The harness tests exec these fixtures, so a CRLF shebang breaks them. Git
+# on Windows rewrites line endings by default and Windows is the product
+# (decision 28), so pin them.
+*.sh text eol=lf
