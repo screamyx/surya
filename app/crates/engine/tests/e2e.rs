@@ -22,6 +22,9 @@ use surya_proto::{
 };
 use surya_sync::DocsStore;
 
+mod e2e_support;
+use e2e_support::{wait_for, wait_for_outcome_row};
+
 const CHAT: &str = "chat-e2e";
 const VIEWER: &str = "viewer-device";
 
@@ -173,20 +176,6 @@ fn queue_as_viewer(doc: &SessionDoc, id: &str, payload: SessionCommandPayload) {
     .expect("queue command");
 }
 
-async fn wait_for<F>(mut predicate: F, what: &str)
-where
-    F: FnMut() -> bool,
-{
-    let deadline = tokio::time::Instant::now() + surya_test_deadlines::WAIT;
-    while !predicate() {
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "timed out waiting for {what}"
-        );
-        tokio::time::sleep(Duration::from_millis(15)).await;
-    }
-}
-
 fn entries(core: &EngineCore) -> Vec<SessionMessageEntry> {
     core.doc_host
         .open(CHAT)
@@ -297,6 +286,7 @@ async fn queued_run_command_executes_end_to_end() {
     }
 
     // Command outcome written by the host (sole outcome writer).
+    wait_for_outcome_row(&core, CHAT, "cmd-run-1").await;
     assert_eq!(
         command_status(&core, "cmd-run-1"),
         Some((SessionCommandStatus::Applied, None))
@@ -434,6 +424,7 @@ async fn interrupt_stamps_streaming_entry_aborted() {
         MessagePart::Text { text, .. } => assert_eq!(text, "partial output"),
         other => panic!("unexpected part {other:?}"),
     }
+    wait_for_outcome_row(&core, CHAT, "cmd-int-1").await;
     assert_eq!(
         command_status(&core, "cmd-int-1"),
         Some((SessionCommandStatus::Applied, None))
@@ -994,6 +985,7 @@ async fn respond_input_resolves_pending_question() {
         "answered turn to complete",
     )
     .await;
+    wait_for_outcome_row(&core, CHAT, "cmd-answer-1").await;
     assert_eq!(
         command_status(&core, "cmd-answer-1"),
         Some((SessionCommandStatus::Applied, None))
@@ -1512,6 +1504,7 @@ async fn harness_emitted_input_twin_is_dropped_and_answer_resumes() {
         "answered turn to complete",
     )
     .await;
+    wait_for_outcome_row(&core, CHAT, "cmd-answer-twin").await;
     assert_eq!(
         command_status(&core, "cmd-answer-twin"),
         Some((SessionCommandStatus::Applied, None))
