@@ -79,7 +79,10 @@ impl FileEditor {
             FileMutation::Delete { path } if self.doc.path.as_ref() == Some(path) => {
                 self.task = None;
                 self.doc = EditorDoc::default();
-                self.input.update(cx, |input, cx| input.set_text("", cx));
+                self.input.update(cx, |input, cx| {
+                    input.set_placeholder("Open a file from the tree", cx);
+                    input.set_text("", cx);
+                });
                 cx.notify();
             }
             _ => {}
@@ -143,7 +146,13 @@ impl FileEditor {
                 }) {
                     Ok(read) => {
                         if let Some(text) = this.doc.opened(&path, read) {
-                            this.input.update(cx, |input, cx| input.set_text(text, cx));
+                            this.input.update(cx, |input, cx| {
+                                // A file IS open, so "Open a file from the tree"
+                                // is a lie for any 0-byte file. The placeholder
+                                // only draws while the content is empty.
+                                input.set_placeholder("Empty file. Start typing.", cx);
+                                input.set_text(text, cx);
+                            });
                         }
                     }
                     Err(err) => this.doc.failed(err.to_string()),

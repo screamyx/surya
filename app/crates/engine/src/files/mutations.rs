@@ -29,16 +29,29 @@ fn target(jail: &Jail, path: &str) -> Result<PathBuf, EngineError> {
     Ok(resolved)
 }
 
+fn taken(rel: &str) -> EngineError {
+    other(format!("{rel} already exists. Choose another name."))
+}
+
 /// Create never overwrites; rename reserves its destination without replacing
 /// another file; delete only removes one regular file, never a directory tree.
 pub fn mutate(jail: &Jail, action: &FileMutation) -> Result<(), EngineError> {
     match action {
-        FileMutation::Create { path } => {
-            let path = target(jail, path)?;
-            std::fs::OpenOptions::new()
+        FileMutation::Create { path: rel } => {
+            let path = target(jail, rel)?;
+            if let Err(err) = std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .open(path)?;
+                .open(&path)
+            {
+                return Err(match err.kind() {
+                    std::io::ErrorKind::AlreadyExists => taken(rel),
+                    std::io::ErrorKind::NotFound => {
+                        other("That folder is not in the project any more.")
+                    }
+                    _ => err.into(),
+                });
+            }
         }
         FileMutation::Rename { path, new_path } => {
             let from = target(jail, path)?;
@@ -48,7 +61,12 @@ pub fn mutate(jail: &Jail, action: &FileMutation) -> Result<(), EngineError> {
             }
             // hard_link fails if the destination already exists on both
             // Windows and Unix. std::fs::rename may replace it on Unix.
-            std::fs::hard_link(&from, &to)?;
+            if let Err(err) = std::fs::hard_link(&from, &to) {
+                return Err(match err.kind() {
+                    std::io::ErrorKind::AlreadyExists => taken(new_path),
+                    _ => err.into(),
+                });
+            }
             if let Err(err) = std::fs::remove_file(&from) {
                 let _ = std::fs::remove_file(&to);
                 return Err(err.into());
@@ -128,10 +146,32 @@ mod tests {
         assert!(!dir.path().join("renamed.txt").exists());
     }
 
-    #[test]
+        #[test]
+    fn a_taken_name_is_refused_in_words_not_an_errno() {
+        let dir = tempfile::tempdir().unwrap();
+        let jail = Jail::new(dir.path()).unwrap();
+        std::fs::write(dir.path().join("notes.txt"), b"one").unwrap();
+        let err = mutate(
+            &jail,
+            &FileMutation::Create {
+                path: "notes.txt".into(),
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert_eq!(err, "notes.txt already exists. Choose another name.");
+    }
+
+#[test]
     fn actions_refuse_outside_paths_roots_directories_and_git_metadata() {
         let dir = tempfile::tempdir().unwrap();
         let jail = Jail::new(dir.path()).unwrap();
+        // A real checkout always has .git, and the guard is the only thing
+        // stopping a forwarded FilesMutate from writing into it. Without
+        // these two lines every .git assert below passes on ENOENT from the
+        // missing parent instead of on the guard.
+        std::fs::create_dir_all(dir.path().join(".git/hooks")).unwrap();
+        std::fs::write(dir.path().join(".git/config"), b"[core]").unwrap();
         for path in [
             "",
             ".",
@@ -139,12 +179,26 @@ mod tests {
             "/outside",
             "C:\\outside",
             ".git/config",
+            ".git/hooks/pre-commit",
         ] {
             assert!(
                 mutate(&jail, &FileMutation::Create { path: path.into() }).is_err(),
                 "{path}"
             );
         }
+        // Deleting inside .git is the clearest signal: with the guard gone the
+        // file exists and is regular, so remove_file succeeds and both of
+        // these fail.
+        assert!(
+            mutate(
+                &jail,
+                &FileMutation::Delete {
+                    path: ".git/config".into()
+                }
+            )
+            .is_err()
+        );
+        assert!(dir.path().join(".git/config").exists());
         std::fs::create_dir(dir.path().join("folder")).unwrap();
         assert!(
             mutate(
