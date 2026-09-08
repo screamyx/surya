@@ -54,6 +54,8 @@ cd crates/browser && cargo test               # the browser crate is its own wor
 - Windows is the product, Mac is next, Linux is a test bench (decision 28). A Linux run is smoke, never RC proof.
 - The look is comet's own and the features are ours (decision 26). New panes use comet's tokens.
 - No emoji anywhere: UI, code, docs, commit messages. `python3 scripts/check_no_emoji.py` checks this file, the skills, and the kit's specs.
+- After moving items out of a module, check every child test module for names it was inheriting through `use super::*`. A test module that reaches a trait or type through its parent's private imports compiles until the item moves, then fails. Four branches broke this way on 2026-09-08.
+- Quote a cargo run only from a log that shows the crate was built in your worktree: `Compiling <crate> vX (<your worktree>/app/crates/<dir>)` for build and test, `Checking <crate> ...` for check. A shared target dir can replay a green from cached artifacts in under a second with nothing compiled, and neither a pure move nor an added test will show it in the count. For positive proof, take the binary path from the `Running unittests` line and grep it for a symbol only your branch has.
 
 ## Pull requests
 
