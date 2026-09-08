@@ -11,6 +11,8 @@
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod stopped_tests;
 
 use std::collections::HashMap;
 
@@ -259,10 +261,11 @@ pub fn split_question_id(row_id: &str) -> Option<(&str, &str)> {
     row_id.split_once(':')
 }
 
-/// The four groups the agent list shows, in the order decision 15 gives.
+/// Attention comes first; stopped runs have their own heading (decision 17).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentGroup {
     WaitingForYou,
+    Stopped,
     Running,
     Done,
     Idle,
@@ -272,6 +275,7 @@ impl AgentGroup {
     pub fn heading(self) -> &'static str {
         match self {
             Self::WaitingForYou => "Waiting for you",
+            Self::Stopped => "Stopped",
             Self::Running => "Running",
             Self::Done => "Done",
             Self::Idle => "Idle",
@@ -283,15 +287,17 @@ impl AgentGroup {
     /// to open a folded branch to find out anything is wrong.
     pub fn of(state: AgentState) -> Self {
         match state {
-            AgentState::NeedsYou { .. } | AgentState::Stopped => Self::WaitingForYou,
+            AgentState::Stopped | AgentState::NeedsYou { kind: NeedsYouKind::Failed } => Self::Stopped,
+            AgentState::NeedsYou { .. } => Self::WaitingForYou,
             AgentState::Working => Self::Running,
             AgentState::Done => Self::Done,
             AgentState::Idle => Self::Idle,
         }
     }
 
-    pub const ORDER: [AgentGroup; 4] = [
+    pub const ORDER: [AgentGroup; 5] = [
         Self::WaitingForYou,
+        Self::Stopped,
         Self::Running,
         Self::Done,
         Self::Idle,
