@@ -1245,7 +1245,7 @@ pub struct Shell {
     agents_rail: Option<Entity<crate::inbox::AgentsRail>>,
     /// Has the user collapsed the agent tree? The rail's Agents entry is what
     /// toggles this, and `agents_entry::agents_tree_shown` turns it into the
-    /// one answer both the section and the entry's plate read.
+    /// one answer both the section and the entry's Shown label read.
     agents_collapsed: bool,
     /// User's override for the needs-you list. `None` follows the queue:
     /// visible while something waits, gone when nothing does (decision 20's
@@ -4609,6 +4609,7 @@ impl Shell {
         } else {
             None
         };
+        let lit = agents_entry::rail_selected(active, inbox_on, agents_shown);
         let entry = |id: &'static str,
                      icon_path: &'static str,
                      label: &'static str,
@@ -4659,7 +4660,7 @@ impl Shell {
                     "rail-home",
                     icons::HOME,
                     "Home",
-                    active.is_none() && !inbox_on,
+                    lit.home,
                     true,
                     theme,
                 )
@@ -4684,7 +4685,7 @@ impl Shell {
                     "rail-needs-you",
                     icons::BELL,
                     "Needs you",
-                    inbox_on,
+                    lit.needs_you,
                     true,
                     theme,
                 )
@@ -4701,13 +4702,14 @@ impl Shell {
             )
             // The agent tree sits right below in this same sidebar
             // (decision 15), so there is no second surface to open. What the
-            // entry owns is that section: it REVEALS it, and lights while the
-            // tree is showing. It never hides it - the tree starts expanded,
-            // so a toggle here would make the first click on a row called
-            // Agents hide the agents. Collapsing lives on the section header.
+            // entry owns is that section: it REVEALS it, and says so with a
+            // muted Shown label rather than the selected fill (issue #212).
+            // It never hides it - the tree starts expanded, so a toggle here
+            // would make the first click on a row called Agents hide the
+            // agents. Collapsing lives on the section header.
             // See `shell::agents_entry`.
             .child(
-                entry("rail-agents", icons::BOT, "Agents", agents_indicator.selected, true, theme)
+                entry("rail-agents", icons::BOT, "Agents", lit.agents, true, theme)
                     .when_some(agents_indicator.status, |el, status| el.child(div().flex_1()).child(
                         div().text_size(crate::typography::ui_rems(11.0)).text_color(theme.text_muted).child(status),
                     )).on_click(
@@ -4728,7 +4730,7 @@ impl Shell {
                     "rail-tasks",
                     icons::CHECKLIST,
                     "Tasks",
-                    active == Some(RightSurface::Tasks),
+                    lit.tasks,
                     true,
                     theme,
                 )
@@ -4741,7 +4743,7 @@ impl Shell {
                     "rail-files",
                     icons::FOLDER,
                     "Files",
-                    active == Some(RightSurface::Files),
+                    lit.files,
                     true,
                     theme,
                 )
