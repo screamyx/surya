@@ -8,10 +8,14 @@ name: browser nightly
 # can stop compiling and main stays green.
 #
 # This workflow is the answer: once a night, on the same self-hosted runner,
-# build the app with the pane in it, run the crate's own tests, and drive the
-# real thing on the headless display. Nightly rather than per-PR because of
-# the runner, which is shared with every open pull request and throttled to
-# CPUWeight=20 so the owner's session wins.
+# build the app with the pane in it, run the crate's own tests AND the ui
+# crate's browser-gated tests, and drive the real thing on the headless
+# display. Nightly rather than per-PR because of the runner, which is shared
+# with every open pull request and throttled to CPUWeight=20 so the owner's
+# session wins.
+#
+# Those tests are here for the same reason the crate is: they only exist
+# when `--features browser` is on, and that feature pulls in CEF.
 #
 # 03:00 +08 is 19:00 UTC the day before; GitHub cron is UTC only.
 #
@@ -86,6 +90,20 @@ jobs:
 
       - name: cargo build -p surya --features browser
         run: cargo build --jobs 2 -p surya --features browser
+
+      # crates/ui puts four modules behind `#[cfg(feature = "browser")]`, and
+      # ci.yml's ui job runs `cargo test -p surya-ui` with default features,
+      # where that feature is off. So 24 unit tests have never run anywhere:
+      # browser_pane's 17, which is what issue #163 asked for, plus
+      # browser_agent's 6 and browser_device's 1, which come with them.
+      # They run here because the feature drags in crates/browser, which
+      # needs the CEF payload this runner has and a hosted runner does not.
+      #
+      # After the build above rather than before it: everything this needs is
+      # compiled by then, so the step costs a test link and the run, which is
+      # what a shared throttled runner can afford.
+      - name: cargo test -p surya-ui --features browser
+        run: cargo test --jobs 2 -p surya-ui --features browser
 
       # The runtime files the pane needs at start-up, checked by name here so
       # a nightly failure says "Chromium is incomplete" instead of the app

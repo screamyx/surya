@@ -40,6 +40,7 @@ Outside CI:
 
 ```
 cargo build -p surya --features browser      # browser pane, off by default
+cargo test -p surya-ui --features browser    # the browser-gated tests; the CI ui job cannot see them
 cd crates/browser && cargo test               # the browser crate is its own workspace root
 ```
 
