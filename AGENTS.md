@@ -66,6 +66,9 @@ cd crates/browser && cargo test               # the browser crate is its own wor
   It exits 1 and prints `CONFLICT` lines when the branch conflicts.
   The legacy three-argument form always exits 0 and prints a diff either way, so its result cannot be read as clean or conflicted.
 - Squash-merge, then delete the branch.
+- Squash leaves no trace in git that a branch merged, so `git branch --merged` and `git branch -r --contains` both call a landed branch unmerged.
+  `app/scripts/stale-worktrees.sh` asks GitHub instead: it force-fetches `refs/pull/*/head`, reads each PR's state through gh-axi, and prints one verdict per worktree (REMOVE, EDITS, OPEN-PR, CLOSED-PR, PUSHED, UNPUSHED, OTHER-UID).
+  It is a dry run by default. `--remove` deletes only the REMOVE and ON-MAIN rows this uid owns; a top folder under root-owned `/store/agent-worktrees` is left empty for `sudo rmdir`.
 - A UI change ships with a Windows winbox screenshot in the PR or the gallery (decision 28). A Linux shot is smoke, not proof.
 
 ## CI and git
