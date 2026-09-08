@@ -57,10 +57,26 @@ pub(super) fn name_from_path(path: &str) -> String {
         .next()
         .map(str::trim)
         .unwrap_or_default();
-    if name.is_empty() {
+    // Pending refs already carry the original name. Only committed files in
+    // an uploads directory use the engine's eight-hex upload prefix.
+    let in_uploads =
+        !path.starts_with("pending://") && path.rsplit(['/', '\\']).nth(1) == Some("uploads");
+    let display_name = if in_uploads {
+        name.split_once('-')
+            .filter(|(prefix, original)| {
+                prefix.len() == 8
+                    && prefix.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    && !original.is_empty()
+            })
+            .map(|(_, original)| original)
+            .unwrap_or(name)
+    } else {
+        name
+    };
+    if display_name.is_empty() {
         "image".to_string()
     } else {
-        name.to_string()
+        display_name.to_string()
     }
 }
 
@@ -162,6 +178,41 @@ pub fn user_message_rail_text(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn committed_upload_labels_preserve_original_names_and_transport_paths() {
+        for path in [
+            "/data/uploads/80e2a410-notes-sample.txt",
+            r"C:\data\uploads\80e2a410-notes-sample.txt",
+        ] {
+            let content = with_attachments("Read this", &[path.into()]);
+            let parsed = parse_user_message_images(&content);
+            let attachment = &parsed.attachments[0];
+            assert_eq!(attachment.name, "notes-sample.txt");
+            assert_eq!(attachment.path, path);
+            assert_eq!(attachment.id, format!("0:{path}"));
+            assert!(content.ends_with(path));
+        }
+    }
+
+    #[test]
+    fn original_hex_prefixes_and_non_upload_paths_are_preserved() {
+        for path in [
+            "pending://upload-id/80e2a410-notes.txt",
+            "/project/80e2a410-notes.txt",
+            "/data/uploads/12345678-80e2a410-notes.txt",
+        ] {
+            assert_eq!(name_from_path(path), "80e2a410-notes.txt");
+        }
+        for name in [
+            "notes.txt",
+            "nothex00-notes.txt",
+            "1234-notes.txt",
+            "12345678-",
+        ] {
+            assert_eq!(name_from_path(&format!("/data/uploads/{name}")), name);
+        }
+    }
+
     #[test]
     fn text_and_mixed_attachments_round_trip_without_image_wording() {
         for paths in [

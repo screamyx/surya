@@ -34,11 +34,6 @@ impl StagedAttachment {
 
 /// Image formats the whole pipeline supports: intersection of gpui's decoders
 /// and the engine's `mime_by_ext` read-back jail.
-///
-/// One table, because two things read it: the check that decides whether a
-/// picked file is staged, and the notice that tells the user what he may
-/// attach. Written as a second literal, those two drift and the message starts
-/// lying about what the code takes.
 const BY_EXTENSION: &[(&str, ImageFormat)] = &[
     ("png", ImageFormat::Png),
     ("jpg", ImageFormat::Jpeg),
@@ -57,19 +52,6 @@ pub fn format_by_extension(path: &Path) -> Option<ImageFormat> {
         .iter()
         .find(|(candidate, _)| *candidate == ext)
         .map(|(_, format)| *format)
-}
-
-/// The same extensions, spelled out for a message that has to name them.
-///
-/// Every accepted spelling is listed, `jpeg` beside `jpg` and `tiff` beside
-/// `tif`: someone holding a `.jpeg` should not have to guess whether the short
-/// form in a notice includes his file.
-pub fn supported_extensions() -> String {
-    BY_EXTENSION
-        .iter()
-        .map(|(ext, _)| *ext)
-        .collect::<Vec<_>>()
-        .join(", ")
 }
 
 /// use-attachments.ts `ensureExtension`: pasted screenshots often arrive as a
