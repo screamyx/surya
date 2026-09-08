@@ -45,7 +45,7 @@ The skill is loaded only when the agent draws a card: the JSON per shape and the
 | What | Where | How it reaches the agent |
 | --- | --- | --- |
 | The prompt append | `app/assets/surya-system-append.md` | The harness embeds it (`harness/src/claude/surya.rs:31`) and writes it to the run folder as `system-append.md` before every run (`surya.rs:308`). |
-| The cards skill | `app/assets/skills/surya-cards/SKILL.md` | The harness embeds it (`surya.rs:38`, PR #47), lays it out in the run folder as a one-skill plugin (`write_cards_plugin`, `surya.rs:404`) and starts Claude Code with `--plugin-dir` (`surya::apply_files`, `surya.rs:473-475`). The agent then sees it as the skill `surya:surya-cards` and can also invoke it as `/surya:surya-cards` (surya-mcp, measured against Claude Code 2.1.261, `surya.rs:51`). |
+| The cards skill | `app/assets/skills/surya-cards/SKILL.md` | The harness embeds it (`surya.rs:38`, PR #47), lays it out in the run folder as a one-skill plugin (`write_cards_plugin`, `surya.rs:404`) and starts Claude Code with `--plugin-dir` (`surya::apply_files`, `surya.rs:477-479`). The agent then sees it as the skill `surya:surya-cards` and can also invoke it as `/surya:surya-cards` (the `surya:` prefix is `SERVER_NAME`, `surya.rs:51`; measured against Claude Code 2.1.261, the version recorded in `app/crates/mcp/src/protocol.rs:11`). |
 
 The append opens with the situation the agent is in: "surya is a desktop app, not a terminal. The person reading you sees a native window".
 Then it gives the rule for when to draw instead of write.
@@ -91,7 +91,7 @@ show_card({ card: {
 }})
 ```
 
-The six shapes, in the sidecar's words (`app/crates/mcp/src/shapes.rs:18-47`):
+The six shapes, in the sidecar's words (`app/crates/mcp/src/shapes.rs:18-44`):
 
 | Shape | What it draws |
 | --- | --- |
@@ -126,7 +126,7 @@ On every accepted call the sidecar expands the short form into A2UI messages and
 ```
 
 The store is `~/.surya/cards.jsonl` unless the run sets another path (`harness/src/claude/surya.rs:391`).
-When the file passes 8 MB it is renamed to `cards.jsonl.1` and a fresh one starts (`mcp/src/config.rs:116-130`).
+When the file passes 8 MB it is renamed to `cards.jsonl.1` and a fresh one starts (`mcp/src/config.rs:114-137`).
 The tool answers the agent with the `card_id`, and the card is already on screen.
 
 ### How the app matches the record to the call
