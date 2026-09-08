@@ -117,8 +117,17 @@ fn every_program_the_harness_tests_exec_is_checked_in() {
 
     // fake-claude.sh serves the replay scenario; the two under `acp/` are the
     // wedge and the config-option agent, both of which acp.rs used to write
-    // into a temp dir and exec.
-    for name in ["fake-claude.sh", "acp/hung-agent.sh", "acp/devin.py"] {
+    // into a temp dir and exec. The last three are exec'd straight from the
+    // tree by codex.rs, cursor.rs, acp_quiet.rs and acp_stall.rs, which used
+    // to chmod them on every call; this assertion is what replaces that.
+    for name in [
+        "fake-claude.sh",
+        "acp/hung-agent.sh",
+        "acp/devin.py",
+        "fake-acp.sh",
+        "fake-codex.sh",
+        "fake-cursor-shim.sh",
+    ] {
         let path = fixtures.join(name);
         assert!(path.is_file(), "{name} is checked in: {path:?}");
         assert!(

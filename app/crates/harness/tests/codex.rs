@@ -16,17 +16,13 @@ use surya_proto::{
     ToolCall, UserInputAnswer, UserInputQuestion,
 };
 
+/// The checked-in fake CLI. Git records it `100755`, so the mode comes out of
+/// the checkout and this does not chmod it.
 fn fixture_path() -> PathBuf {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
-        .join("fake-codex.sh");
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755));
-    }
-    path
+        .join("fake-codex.sh")
 }
 
 fn harness() -> CodexHarness {
